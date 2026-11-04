@@ -1,0 +1,253 @@
+name: Release (apiduo)
+
+# fork 专属发版流水线。与上游两个 tag 触发的 workflow 互不干扰：
+#   - release.yml        → 三平台二进制，推 Docker Hub 用的凭据在 fork 里不存在
+#   - docker-build.yml   → 多架构推 calciumion/new-api，同样依赖上游 Docker Hub secrets
+# 这两个（以及 electron-build.yml / sync-release-to-gitcode.yml）需在仓库 Actions 页面 disable，
+# 属于「仓库设置」而非改上游文件，rebase 零成本。
+#
+# tag 用 apiduo-vX.Y.Z 而不是裸 vX.Y.Z：fork 若继承上游 tag，裸名字会撞车；
+# 加前缀后两条线永不相交，上游 tag 也不会误触发本流水线。
+#
+# 三种入口：
+#   1. push 到 main          → 自动 patch 自增（读最新 apiduo-v*.*.* tag，+1）
+#   2. push apiduo-v*.*.* tag → 按该 tag 发布，不递增（人工决定 minor/major 时用）
+#   3. workflow_dispatch     → 补发指定已存在 tag，留空则按 1 的规则走
+#
+# 版本号只存在于 git tag，不写回仓库 VERSION 文件（写回要提交主干，污染与上游的合并）；
+# 镜像内版本由 Dockerfile 的 -ldflags -X common.Version=$(cat VERSION) 注入。
+on:
+  push:
+    branches: [main]
+    tags: ['apiduo-v[0-9]*.[0-9]*.[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（必须已存在）；留空则按 patch 自增'
+        required: false
+        default: ''
+
+permissions:
+  contents: write    # 推 tag + 建 Release
+  packages: write    # 推 ghcr
+
+# 两次 push 并发跑会读到同一个 tag 再各自自增，撞版本。必须串行，不能取消。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # 逃生阀：纯文档/CI 配置提交不想发版时在 message 里写 [skip release]。
+    # workflow_dispatch 没有 head_commit，用 || '' 兜底。
+    if: ${{ github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message || '', '[skip release]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 三种入口取不同 ref：
+          #   补发 → inputs.tag（默认分支是错的，会拿主干代码构建旧版本）
+          #   tag  → github.ref（就是那个 tag）
+          #   main → github.sha（github.ref 是移动指针，构建期间再有人 push 就会打错提交）
+          ref: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref || github.sha) }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          INPUT_TAG='${{ inputs.tag }}'
+
+          if [ -n "$INPUT_TAG" ]; then
+            MODE=tag; TAG="$INPUT_TAG"
+          elif [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            MODE=tag; TAG="${GITHUB_REF#refs/tags/}"
+          else
+            MODE=auto
+          fi
+
+          PREFIX='apiduo-v'
+
+          if [ "$MODE" = auto ]; then
+            # 不用 `git tag ... | head`：tag 多时 git 写满管道收到 SIGPIPE，
+            # 在 pipefail 下整步判 141。整段捕获再逐行挑。
+            TAGLIST="$(git tag --list "${PREFIX}*" --sort=-v:refname)"
+            PREV=""
+            while IFS= read -r candidate; do
+              # 严格三段数字：-rc / -beta 这类后缀不参与自增
+              if [[ "$candidate" =~ ^${PREFIX}[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                PREV="$candidate"; break
+              fi
+            done <<< "$TAGLIST"
+            PREV="${PREV:-${PREFIX}0.0.0}"   # 第一版从 0.0.1 起算
+            CORE="${PREV#${PREFIX}}"
+            MAJOR="${CORE%%.*}"
+            REST="${CORE#*.}"
+            MINOR="${REST%%.*}"
+            PATCH="${REST#*.}"
+            TAG="${PREFIX}${MAJOR}.${MINOR}.$((PATCH + 1))"
+          else
+            # 上一个版本 = 该 tag 父提交上最近的同类 tag（${TAG}^ 保证不取到自己）
+            if ! PREV="$(git describe --tags --abbrev=0 \
+                 --match "${PREFIX}[0-9]*" "${TAG}^" 2>/dev/null)"; then
+              PREV=""
+            fi
+          fi
+
+          VERSION="${TAG#${PREFIX}}"
+          SHA="$(git rev-parse --short=7 HEAD)"
+
+          echo "mode=${MODE}"                       >> "$GITHUB_OUTPUT"
+          echo "prev=${PREV}"                       >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}"                         >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}"                 >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}"                         >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "mode=${MODE} prev='${PREV}' tag=${TAG} sha=${SHA}"
+
+      - name: Build changelog
+        run: |
+          set -euo pipefail
+          MODE='${{ steps.ver.outputs.mode }}'
+          PREV='${{ steps.ver.outputs.prev }}'
+          TAG='${{ steps.ver.outputs.tag }}'
+          REPO_URL='https://github.com/${{ github.repository }}'
+          IMAGE='${{ steps.ver.outputs.image }}'
+          VERSION='${{ steps.ver.outputs.version }}'
+          SHA='${{ steps.ver.outputs.sha }}'
+
+          # 不用 `gh release create --generate-notes`：它依赖已合并的 PR，直推的仓库
+          # 只会产出一行 compare 链接。自己 git log 更可靠。
+          if [ "$MODE" = auto ]; then END=HEAD; else END="$TAG"; fi
+
+          {
+            if [ "$PREV" = "apiduo-v0.0.0" ] || [ -z "$PREV" ]; then
+              printf '## 首个版本\n\n'
+              printf '> 本仓库是 [QuantumNous/new-api](https://github.com/QuantumNous/new-api) 的 fork。\n'
+              printf '> 首版之前的提交历史来自上游，下面只列最近 20 条。\n\n'
+              git log --no-merges --pretty='- %s (%h)' --max-count=20 "$END"
+            else
+              printf '**Full changelog**: %s/compare/%s...%s\n\n' "$REPO_URL" "$PREV" "$TAG"
+              printf '## %s 之后的改动\n\n' "$PREV"
+              git log --no-merges --pretty='- %s (%h)' "${PREV}..${END}"
+            fi
+            printf '\n## 镜像\n\n'
+            printf '```\ndocker pull %s:%s\ndocker pull %s:latest\ndocker pull %s:sha-%s\n```\n' \
+              "$IMAGE" "$VERSION" "$IMAGE" "$IMAGE" "$SHA"
+          } > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      # 版本号构建期临时写入 VERSION（不提交）：Dockerfile 用它注入 common.Version，
+      # /api/status 会回报该值，下面冒烟直接断言。
+      - name: Build image
+        run: |
+          set -euo pipefail
+          echo '${{ steps.ver.outputs.version }}' > VERSION
+          docker build \
+            -t '${{ steps.ver.outputs.image }}:${{ steps.ver.outputs.version }}' \
+            -t '${{ steps.ver.outputs.image }}:latest' \
+            -t '${{ steps.ver.outputs.image }}:sha-${{ steps.ver.outputs.sha }}' \
+            .
+          # 只构 linux/amd64（= runner 架构）。要 arm64 就换 buildx + --platform
+          # 并把 --push 交给它；QEMU 下 Go 编译慢一个数量级。
+
+      # 冒烟在 push 之前：镜像一旦进 GHCR 就可能被部署，坏镜像不该出现在那里。
+      - name: Smoke test image
+        run: |
+          set -euo pipefail
+          IMAGE='${{ steps.ver.outputs.image }}:${{ steps.ver.outputs.version }}'
+          VERSION='${{ steps.ver.outputs.version }}'
+          mkdir -p /tmp/newapi-smoke
+          docker run -d --name apiduo-smoke -p 3000:3000 \
+            -v /tmp/newapi-smoke:/data "$IMAGE" >/dev/null
+
+          cleanup() {
+            echo '--- container logs (tail) ---'
+            docker logs apiduo-smoke 2>&1 | tail -n 40 || true
+            docker rm -f apiduo-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3000/api/status -o /tmp/status.json 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          python3 - "$VERSION" <<'PY'
+          import json, sys
+          version = sys.argv[1]
+          with open('/tmp/status.json') as fh:
+              body = json.load(fh)
+          assert body.get('success') is True, f'/api/status not ok: {body}'
+          data = body.get('data') or {}
+          assert data.get('version') == version, (
+              f"image reports version {data.get('version')!r}, expected {version!r} "
+              '-- the VERSION injection did not reach the binary'
+          )
+          print('smoke ok: version', data.get('version'))
+          PY
+
+      - name: Log in to GHCR
+        run: |
+          set -euo pipefail
+          echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+      - name: Push image
+        run: |
+          set -euo pipefail
+          IMAGE='${{ steps.ver.outputs.image }}'
+          VERSION='${{ steps.ver.outputs.version }}'
+          SHA='${{ steps.ver.outputs.sha }}'
+          for tag in "$VERSION" latest "sha-$SHA"; do
+            docker push "$IMAGE:$tag"
+          done
+
+      # 镜像先推、tag 后打：构建或冒烟失败时不会留下「有 tag、没镜像」的半成品。
+      # tag 已存在说明并发或有人手动打过同一版本，直接报错而不是静默复用。
+      - name: Tag and push
+        if: ${{ steps.ver.outputs.mode == 'auto' }}
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.ver.outputs.tag }}'
+          # runner 上没有 git 身份，annotated tag 需要它。
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::tag $TAG already exists -- concurrent run or rewritten history"
+            exit 1
+          fi
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.ver.outputs.tag }}'
+          # 幂等：补发或重跑时同 tag 已存在，直接跳过而不是红。
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists -- skipping creation"
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file RELEASE_NOTES.md
+
+      - name: Summary
+        run: |
+          {
+            echo "### 已发布 ${{ steps.ver.outputs.tag }}（mode=${{ steps.ver.outputs.mode }}）"
+            echo ""
+            echo "- \`${{ steps.ver.outputs.image }}:${{ steps.ver.outputs.version }}\`"
+            echo "- \`${{ steps.ver.outputs.image }}:latest\`"
+            echo "- \`${{ steps.ver.outputs.image }}:sha-${{ steps.ver.outputs.sha }}\`"
+            echo "- Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.ver.outputs.tag }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 包可见性保持人工设置，不写进 workflow（GITHUB_TOKEN 管不了 package 可见性，
+      # 强上只会得到一条假绿）。首次推送后到
+      # https://github.com/orgs/apiduo/packages/container/package/apiduo/settings
+      # 把 visibility 改成 public，否则部署节点要先 docker login。
