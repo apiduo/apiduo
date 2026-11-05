@@ -20,6 +20,9 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
+import { navAppPlacementTop, navAppPlacementBoth } from '@/features/nav-apps/constants'
+import { useNavApps } from '@/features/nav-apps/hooks'
+import { navAppToTopLink } from '@/features/nav-apps/lib/render'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -44,7 +47,7 @@ export type TopNavLink = {
  * }
  */
 export function useTopNavLinks(): TopNavLink[] {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { status } = useStatus()
   const { auth } = useAuthStore()
 
@@ -95,10 +98,30 @@ export function useTopNavLinks(): TopNavLink[] {
     }
   }
 
+  // APIDUO:dynamic-nav:BEGIN
+  const customApps = useNavApps()
+  const customLinks = useMemo(
+    () =>
+      customApps
+        .filter(
+          (app) =>
+            app.placement === navAppPlacementTop ||
+            app.placement === navAppPlacementBoth
+        )
+        .map((app) => navAppToTopLink(app, i18n.languages)),
+    [customApps, i18n.languages]
+  )
+  // APIDUO:dynamic-nav:END
+
   // About
   if (modules?.about !== false) {
     links.push({ title: t('About'), href: '/about' })
   }
 
-  return links
+  // APIDUO:dynamic-nav:BEGIN
+  // Configured entries are appended after the built-in links, matching the
+  // header's capacity assumption: the fixed set is short, configuration adds
+  // to the end rather than reordering what every deployment already shows.
+  return [...links, ...customLinks]
+  // APIDUO:dynamic-nav:END
 }

@@ -82,6 +82,10 @@ export function isAuditDetailObject(
 
 export function auditFieldLabel(key: string, t: TFunction): string {
   switch (key) {
+    // APIDUO:agent-audit:BEGIN 自报的 Agent 名（后端 other.admin_info.agent）
+    case 'agent':
+      return t('Agent')
+    // APIDUO:agent-audit:END
     case 'status':
       return t('Status')
     case 'role':

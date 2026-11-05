@@ -51,6 +51,7 @@ import {
   DASHBOARD_DEFAULT_SECTION,
   DASHBOARD_SECTION_IDS,
 } from './section-registry'
+import { ADMIN_ONLY_DASHBOARD_SECTIONS } from './section-meta'
 import type {
   DashboardChartPreferences,
   DashboardFilters,
@@ -112,6 +113,24 @@ const LazyUserCharts = lazy(() =>
 const LazyFlowCharts = lazy(() =>
   import('./components/flow/flow-charts').then((m) => ({
     default: m.FlowCharts,
+  }))
+)
+
+const LazySkAnalytics = lazy(() =>
+  import('./components/sk/sk-analytics').then((m) => ({
+    default: m.SkAnalytics,
+  }))
+)
+
+const LazyCapacityPlanner = lazy(() =>
+  import('./components/capacity/capacity-planner').then((m) => ({
+    default: m.CapacityPlanner,
+  }))
+)
+
+const LazyRetentionBoard = lazy(() =>
+  import('./components/retention/retention-board').then((m) => ({
+    default: m.RetentionBoard,
   }))
 )
 
@@ -194,6 +213,15 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   users: {
     titleKey: 'User Analytics',
   },
+  sk: {
+    titleKey: 'SK Analytics',
+  },
+  capacity: {
+    titleKey: 'Capacity Planning',
+  },
+  retention: {
+    titleKey: 'Customer Health',
+  },
 }
 
 export function Dashboard() {
@@ -253,7 +281,9 @@ export function Dashboard() {
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) =>
+          section !== 'overview' &&
+          (isAdmin || !ADMIN_ONLY_DASHBOARD_SECTIONS.includes(section))
       ),
     [isAdmin]
   )
@@ -413,6 +443,27 @@ export function Dashboard() {
                   filters={modelFilters}
                   sensitiveVisible={flowSensitiveVisible}
                 />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'sk' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazySkAnalytics />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'capacity' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyCapacityPlanner />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'retention' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyRetentionBoard />
               </Suspense>
             </FadeIn>
           )}

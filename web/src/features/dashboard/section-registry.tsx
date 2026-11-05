@@ -20,6 +20,8 @@ import type { TFunction } from 'i18next'
 
 import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
 
+import { ADMIN_ONLY_DASHBOARD_SECTIONS } from './section-meta'
+
 /**
  * Dashboard page section definitions
  */
@@ -45,11 +47,27 @@ const DASHBOARD_SECTIONS = [
     adminOnly: true,
     build: () => null,
   },
+  {
+    id: 'sk',
+    titleKey: 'SK Analytics',
+    adminOnly: true,
+    build: () => null,
+  },
+  {
+    id: 'capacity',
+    titleKey: 'Capacity Planning',
+    adminOnly: true,
+    build: () => null,
+  },
+  {
+    id: 'retention',
+    titleKey: 'Customer Health',
+    adminOnly: true,
+    build: () => null,
+  },
 ] as const
 
 export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']
-
-const ADMIN_ONLY_SECTIONS = new Set<string>(['users'])
 
 const dashboardRegistry = createSectionRegistry<
   DashboardSectionId,
@@ -72,6 +90,7 @@ export function getDashboardSectionNavItems(
   const all = dashboardRegistry.getSectionNavItems(t)
   if (options?.isAdmin) return all
   return all.filter(
-    (_, idx) => !ADMIN_ONLY_SECTIONS.has(DASHBOARD_SECTIONS[idx].id)
+    (_, idx) =>
+      !ADMIN_ONLY_DASHBOARD_SECTIONS.includes(DASHBOARD_SECTIONS[idx].id)
   )
 }

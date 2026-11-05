@@ -1,0 +1,112 @@
+import {
+  Activity,
+  BookOpen,
+  Bot,
+  Box,
+  Boxes,
+  Brain,
+  Briefcase,
+  Calendar,
+  Cloud,
+  Code,
+  Compass,
+  CreditCard,
+  Database,
+  ExternalLink,
+  Film,
+  FileText,
+  FlaskConical,
+  Gauge,
+  Globe,
+  HardDrive,
+  ImageIcon,
+  Key,
+  LayoutDashboard,
+  ListTodo,
+  MessageSquare,
+  Monitor,
+  Network,
+  Package,
+  Plug,
+  PlugZap,
+  Radio,
+  Rocket,
+  Search,
+  Server,
+  ServerCog,
+  Settings,
+  Shield,
+  Sparkles,
+  Terminal,
+  Ticket,
+  TrendingUp,
+  Users,
+  Wallet,
+  Wrench,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react'
+
+/**
+ * Curated icon set for configured navigation entries.
+ *
+ * The entry stores a name, not markup, and it is resolved through this closed
+ * map. Arbitrary icon markup, font classes or image URLs are deliberately not
+ * supported: they would put administrator input into the render tree and into
+ * outbound image requests, which is a larger surface than navigation needs.
+ * An unknown name falls back to a neutral globe rather than breaking the row.
+ */
+export const NAV_APP_ICONS: Record<string, LucideIcon> = {
+  activity: Activity,
+  'book-open': BookOpen,
+  bot: Bot,
+  box: Box,
+  boxes: Boxes,
+  brain: Brain,
+  briefcase: Briefcase,
+  calendar: Calendar,
+  cloud: Cloud,
+  code: Code,
+  compass: Compass,
+  'credit-card': CreditCard,
+  database: Database,
+  'external-link': ExternalLink,
+  'file-text': FileText,
+  film: Film,
+  flask: FlaskConical,
+  gauge: Gauge,
+  globe: Globe,
+  'hard-drive': HardDrive,
+  image: ImageIcon,
+  key: Key,
+  'layout-dashboard': LayoutDashboard,
+  'list-todo': ListTodo,
+  'message-square': MessageSquare,
+  monitor: Monitor,
+  network: Network,
+  package: Package,
+  plug: Plug,
+  'plug-zap': PlugZap,
+  radio: Radio,
+  rocket: Rocket,
+  search: Search,
+  server: Server,
+  'server-cog': ServerCog,
+  settings: Settings,
+  shield: Shield,
+  sparkles: Sparkles,
+  terminal: Terminal,
+  ticket: Ticket,
+  'trending-up': TrendingUp,
+  users: Users,
+  wallet: Wallet,
+  wrench: Wrench,
+  zap: Zap,
+}
+
+export const NAV_APP_ICON_OPTIONS = Object.keys(NAV_APP_ICONS).sort()
+
+export function navAppIcon(name: string | undefined): LucideIcon {
+  if (!name) return Globe
+  return NAV_APP_ICONS[name] ?? Globe
+}

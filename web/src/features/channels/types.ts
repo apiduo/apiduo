@@ -117,6 +117,43 @@ export interface ChannelOtherSettings {
   upstream_model_update_last_check_time?: number
   upstream_model_update_last_detected_models?: string[]
   advanced_custom?: AdvancedCustomConfig
+  advanced_async?: AdvancedAsyncConfig
+}
+
+export interface AdvancedAsyncConfig {
+  incoming_paths?: string[]
+  submit: AdvancedAsyncSubmit
+  query: AdvancedAsyncQuery
+  fields: AdvancedAsyncFields
+  billing?: AdvancedAsyncBilling
+}
+
+export interface AdvancedAsyncSubmit {
+  upstream_path: string
+  method?: 'POST' | 'PUT' | 'PATCH' | string
+  auth?: AdvancedCustomRouteAuth
+  content_type?: 'json' | 'multipart' | string
+}
+
+export interface AdvancedAsyncQuery {
+  upstream_path: string
+  method?: 'GET' | 'POST' | string
+  task_id_param?: string
+  task_id_location?: 'query' | 'path' | string
+  auth?: AdvancedCustomRouteAuth
+}
+
+export interface AdvancedAsyncFields {
+  task_id_path: string[]
+  status_path: string[]
+  result_url_path?: string[]
+  progress_path?: string[]
+  error_path?: string[]
+  status_map?: Record<string, string>
+}
+
+export interface AdvancedAsyncBilling {
+  mode?: string
 }
 
 export interface AdvancedCustomConfig {

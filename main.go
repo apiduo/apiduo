@@ -326,6 +326,11 @@ func InitResources() error {
 	}
 	model.InitOptionMap()
 
+	// APIDUO:token-ip-allowlist:BEGIN Runs after InitDB: it queries whether any
+	// token is pinned, which the proxy configuration alone cannot answer.
+	middleware.WarnIfIpPinNeedsProxyTrust()
+	// APIDUO:token-ip-allowlist:END
+
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
 

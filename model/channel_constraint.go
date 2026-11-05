@@ -94,10 +94,18 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		if filter.RequestPath == "" {
 			return true
 		}
-		if !constant.IsAdvancedCustomChannel(ch.Type) {
+		// APIDUO:advanced-async:BEGIN The task-only type has no sync route table,
+		// so it must not take the "not an advanced custom channel" pass.
+		if !constant.IsAdvancedCustomChannel(ch.Type) && ch.Type != constant.ChannelTypeAdvancedAsync {
 			return true
 		}
+		// APIDUO:advanced-async:END
 		config := ch.GetOtherSettings().AdvancedCustom
+		// APIDUO:advanced-async:BEGIN
+		if ch.Type == constant.ChannelTypeAdvancedAsync && ch.GetOtherSettings().AdvancedAsync.SupportsIncomingPath(filter.RequestPath) {
+			return true
+		}
+		// APIDUO:advanced-async:END
 		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
 		if filter.TaskPluginKey == "" {

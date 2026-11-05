@@ -26,6 +26,9 @@ var accessTokenExemptRoutes = []string{
 	"POST /api/setup",
 	"GET /api/status",
 	"GET /api/uptime/status",
+	// APIDUO:agent-key: anonymous by design (nonce + signature, rate-limited).
+	"POST /api/agent/challenge",
+	"POST /api/agent/exchange",
 	"GET /api/notice",
 	"GET /api/user-agreement",
 	"GET /api/privacy-policy",

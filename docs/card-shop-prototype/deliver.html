@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡密已交付 · 卡密商城</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+.dv-wrap{max-width:700px;margin:0 auto;padding:20px 0 40px}
+.dv-head{text-align:center;margin-bottom:24px}
+.dv-ok{width:46px;height:46px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;background:oklch(0.96 0.04 163)}
+.dv-head h2{margin:0 0 5px;font-size:19px;font-weight:500}
+.dv-head p{margin:0;font-size:13px;color:var(--muted-fg)}
+.keycard{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.keycard-top{display:flex;justify-content:space-between;align-items:center;padding:15px 20px;border-bottom:1px solid var(--border);background:var(--muted-2)}
+.keycard-top .n{font-size:13.5px;font-weight:500}
+.keycard-top .q{font-size:12px;color:var(--muted-fg)}
+.keybox{padding:26px 20px}
+.secret{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:19px;letter-spacing:.08em;margin-bottom:22px}
+.secret span{padding:10px 16px;border-radius:10px;background:var(--muted);color:var(--fg);user-select:all;border:1px solid var(--border)}
+.secret.masked span{color:var(--muted-fg);letter-spacing:.1em}
+.keyacts{display:flex;gap:9px;justify-content:center;margin-bottom:20px;flex-wrap:wrap}
+.kbtn{height:36px;padding:0 17px;border-radius:9px;border:1px solid var(--border);font-size:13px;transition:all .15s;display:inline-flex;align-items:center;gap:6px;background:#fff}
+.kbtn:hover{border-color:var(--border-strong);background:var(--muted-2)}
+.kbtn.primary{background:var(--fg);color:#fff;border-color:var(--fg)}
+.kbtn.primary:hover{background:oklch(0.25 0 0)}
+.kbtn.done{background:oklch(0.96 0.04 163);border-color:oklch(0.9 0.05 163);color:oklch(0.42 0.1 163)}
+.kmeta{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding-top:18px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted-fg)}
+.kmeta>div{display:flex;flex-direction:column;gap:3px}
+.kmeta>div:last-child{text-align:right}
+.kmeta b{font-weight:500;color:var(--fg);font-size:13px}
+.dvwarn{display:flex;gap:9px;margin-top:18px;padding:12px 14px;border-radius:11px;background:oklch(0.98 0.025 60);font-size:12.5px;color:oklch(0.45 0.1 60);line-height:1.55}
+.dvwarn b{font-weight:500}
+.dv-next{display:flex;justify-content:center;gap:10px;margin-top:22px}
+@media (max-width:520px){
+  .secret{font-size:16px;gap:8px}
+  .secret span{padding:8px 12px}
+  .keybox{padding:20px 15px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="index.html"><span class="brand-mark">A</span>apiduo</a>
+  <nav class="switcher">
+    <a href="api-platform.html">API 平台</a>
+    <a href="index.html" class="on">卡密商城</a>
+  </nav>
+  <div class="topright">
+    <span class="num">¥ 128.40</span>
+    <div class="avatar">帅</div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="side">
+    <div>
+      <div class="side-title">商品分类</div>
+      <div class="side-item"><span>全部商品</span></div>
+      <div class="side-item"><span>AI 会员</span></div>
+      <div class="side-item"><span>AI 工具</span></div>
+      <div class="side-item"><span>成品号</span></div>
+      <div class="side-item"><span>算力额度</span></div>
+      <div class="side-item"><span>资料</span></div>
+    </div>
+    <div>
+      <div class="side-title">我的</div>
+      <a class="side-item on" href="my-cards.html"><span>我的卡密</span></a>
+      <a class="side-item" href="my-cards.html"><span>我的订单</span></a>
+      <a class="side-item" href="my-cards.html"><span>售后工单</span></a>
+    </div>
+    <div>
+      <div class="side-title">管理</div>
+      <a class="side-item" href="admin-goods.html"><span>商家后台</span></a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="dv-wrap">
+      <div class="dv-head">
+        <div class="dv-ok">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="m5 12.5 4.5 4.5L19 7.5" stroke="oklch(0.5 0.12 163)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2>支付成功，卡密已交付</h2>
+        <p id="vsub">—</p>
+      </div>
+
+      <div class="keycard">
+        <div class="keycard-top">
+          <span class="n" id="vname">—</span>
+          <span class="q" id="vqty">数量 1</span>
+        </div>
+        <div class="keybox">
+          <div class="secret" id="vsecret"></div>
+          <div class="keyacts">
+            <button class="kbtn primary" id="copybtn" onclick="copyKey()">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <rect x="5.5" y="5.5" width="8" height="8" rx="1.6" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M10.5 5.5v-1a1.6 1.6 0 0 0-1.6-1.6H4a1.6 1.6 0 0 0-1.6 1.6v4.9A1.6 1.6 0 0 0 4 11h1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+              <span id="copytext">复制卡密</span>
+            </button>
+            <button class="kbtn" onclick="download()">下载 txt</button>
+            <button class="kbtn" onclick="toggleMask()" id="maskbtn">模拟再次访问</button>
+          </div>
+          <div class="kmeta">
+            <div><span>质保到期</span><b class="num" id="vwarranty">—</b></div>
+            <div><span>订单号</span><b class="num" id="vorderno">—</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dvwarn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="flex:none;margin-top:2px">
+          <circle cx="8" cy="8" r="6.4" stroke="oklch(0.58 0.13 60)" stroke-width="1.2"/>
+          <path d="M8 4.6v4.2M8 11.2v.1" stroke="oklch(0.58 0.13 60)" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <div><b>请立即保存。</b>本页面刷新后仅显示脱敏信息（<span class="mono" id="maskdemo">7f3a****e05b</span>），届时只能通过「我的卡密」重新查看完整内容一次。</div>
+      </div>
+
+      <div class="dv-next">
+        <a class="kbtn" href="my-cards.html">查看我的卡密</a>
+        <a class="kbtn" href="index.html">继续逛逛</a>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+let order;
+try { order = JSON.parse(sessionStorage.getItem('card_order') || 'null'); } catch (e) { order = null; }
+if (!order) {
+  order = { no: 'CARD1001NO17628501', name: 'ChatGPT Plus', spec: '月卡 · 自动发货', qty: 1, total: 172, method: '支付宝', warranty: '7 天' };
+}
+
+const segs = Array.from({ length: 4 }, () => Math.random().toString(16).slice(2, 6));
+document.getElementById('vsub').textContent = `订单 ${order.no} · ${order.method}`;
+document.getElementById('vname').textContent = order.name + ' · ' + String(order.spec).split(' · ')[0];
+document.getElementById('vqty').textContent = '数量 ' + order.qty;
+document.getElementById('vorderno').textContent = order.no;
+document.getElementById('maskdemo').textContent = segs[0] + '****' + segs[3];
+
+const d = new Date();
+d.setDate(d.getDate() + 7);
+document.getElementById('vwarranty').textContent =
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ` +
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+const box = document.getElementById('vsecret');
+box.innerHTML = segs.map(s => `<span>${s}</span>`).join('');
+
+function toggleMask(){
+  const btn = document.getElementById('maskbtn');
+  if (box.classList.contains('masked')) {
+    box.innerHTML = segs.map(s => `<span>${s}</span>`).join('');
+    box.classList.remove('masked');
+    btn.textContent = '模拟再次访问';
+  } else {
+    box.innerHTML = `<span>${segs[0]}</span><span>****</span><span>****</span><span>${segs[3]}</span>`;
+    box.classList.add('masked');
+    btn.textContent = '恢复完整显示';
+  }
+}
+
+function copyKey(){
+  const text = segs.join('');
+  const done = () => {
+    const btn = document.getElementById('copybtn');
+    const t = document.getElementById('copytext');
+    btn.classList.add('done'); t.textContent = '已复制';
+    setTimeout(() => { btn.classList.remove('done'); t.textContent = '复制卡密'; }, 1600);
+  };
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { alert('复制失败，请手动选择卡密文本'); }
+    document.body.removeChild(ta);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else { fallback(); }
+}
+
+function download(){
+  const text = `商品：${order.name}\n卡密：${segs.join('')}\n订单：${order.no}\n质保：${order.warranty}\n请妥善保存，泄露自负。\n`;
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `card-${order.no}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"errors"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -270,6 +271,15 @@ func AccessTokenAudit() gin.HandlerFunc {
 			if !internal {
 				if lookup := lookupAccessToken(c, raw); lookup.user != nil {
 					beginAccessTokenAudit(c, lookup.user, lookup.ref)
+					// APIDUO:token-ip-allowlist:BEGIN
+					// Order matters: the lookup above runs before this middleware
+					// creates the audit entry, so anything recorded inside it is
+					// dropped. Write the reason here instead.
+					if errors.Is(lookup.err, model.ErrAccessTokenIpDenied) {
+						setAccessTokenAuditParam(c, "failure_reason", "ip_denied")
+						setAccessTokenAuditParam(c, "client_ip", c.ClientIP())
+					}
+					// APIDUO:token-ip-allowlist:END
 					defer finishAccessTokenAudit(c)
 				}
 			}
@@ -284,8 +294,14 @@ func beginAccessTokenAudit(c *gin.Context, user *model.UserBase, tokenRef string
 	}
 	writer := &auditResponseWriter{ResponseWriter: c.Writer, body: bytes.NewBuffer(nil), maxSize: 64 * 1024}
 	c.Writer = writer
+	entry := model.AuditLog{UserId: user.Id, Username: user.Username, ActorRole: user.Role, Category: model.AuditCategoryAccessToken, AuthMethod: "access_token", TokenRef: tokenRef, CreatedAt: common.GetTimestamp(), EventId: common.NewRequestId()}
+	// APIDUO:agent-audit:BEGIN 每个令牌调用都带上 Agent 名与来源
+	if agent := AttributeAgent(c); agent.Label != "" {
+		entry.Other.AdminInfo = &model.AuditAdminInfo{Agent: agent.Label, AgentSource: agent.Source}
+	}
+	// APIDUO:agent-audit:END
 	c.Set(accessTokenAuditContextKey, &accessTokenRequestAudit{
-		entry:  model.AuditLog{UserId: user.Id, Username: user.Username, ActorRole: user.Role, Category: model.AuditCategoryAccessToken, AuthMethod: "access_token", TokenRef: tokenRef, CreatedAt: common.GetTimestamp(), EventId: common.NewRequestId()},
+		entry:  entry,
 		writer: writer,
 	})
 }

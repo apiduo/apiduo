@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -46,6 +47,7 @@ var auditContentTemplates = map[string]string{
 	"user.passkey_delete":       "Deleted a passkey",
 	"user.reset_passkey":        "Reset the user passkey",
 	"option.update":             "Updated system setting ${key}",
+	"nav_app.update":            "Updated navigation entries (${count}): ${slugs}",
 
 	"option.passkey_domains":           "Updated Passkey domains: removed ${domains}; affected ${known}; unknown ${unknown}",
 	"option.passkey_domains_confirmed": "Confirmed removal of Passkey domains: ${domains}; affected ${known}; unknown ${unknown}",
@@ -118,11 +120,16 @@ func auditContentEN(action string, params map[string]any) string {
 
 // auditOperatorInfo 从上下文构建操作者身份信息（管理员 id/用户名/角色）。
 func auditOperatorInfo(c *gin.Context) *model.AuditAdminInfo {
+	agent := middleware.AttributeAgent(c)
 	return &model.AuditAdminInfo{
 		AdminID:       c.GetInt("id"),
 		AdminUsername: c.GetString("username"),
 		AdminRole:     c.GetInt("role"),
 		AuthMethod:    auditAuthMethod(c),
+		// APIDUO:agent-audit:BEGIN Agent 名与来源，仅用于人工区分，不参与鉴权
+		Agent:       agent.Label,
+		AgentSource: agent.Source,
+		// APIDUO:agent-audit:END
 	}
 }
 

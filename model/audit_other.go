@@ -29,6 +29,14 @@ type AuditAdminInfo struct {
 	AdminUsername string `json:"admin_username,omitempty"`
 	AdminRole     int    `json:"admin_role,omitempty"`
 	AuthMethod    string `json:"auth_method,omitempty"`
+	// Agent is who the client claims to be: an explicit X-Agent-Name label, or a
+	// recognised User-Agent marker. It is not authenticated — token fingerprints
+	// attribute a request, this field only separates several agents that share
+	// one token.
+	Agent string `json:"agent,omitempty"`
+	// AgentSource says how Agent was obtained: "header" for a declaration,
+	// "user_agent" for a guess. Empty when no agent was recognised.
+	AgentSource string `json:"agent_source,omitempty"`
 }
 
 type AuditRequestInfo struct {

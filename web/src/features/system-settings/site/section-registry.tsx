@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SystemInfoSection } from '../general/system-info-section'
+import { NavAppsSection } from '@/features/nav-apps/admin/nav-apps-section'
 import {
   parseHeaderNavModules,
   parseSidebarModulesAdmin,
@@ -91,6 +92,13 @@ const SITE_SECTIONS = [
       )
     },
   },
+  // APIDUO:dynamic-nav:BEGIN
+  {
+    id: 'nav-apps',
+    titleKey: 'Custom entries',
+    build: () => <NavAppsSection />,
+  },
+  // APIDUO:dynamic-nav:END
 ] as const
 
 export type SiteSectionId = (typeof SITE_SECTIONS)[number]['id']

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商品详情 · 卡密商城</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+.back{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--muted-fg);margin:4px 0 18px;transition:color .15s}
+.back:hover{color:var(--fg)}
+.detail{display:grid;grid-template-columns:1.05fr .95fr;gap:40px}
+.visual{height:300px;border-radius:var(--radius);display:grid;place-items:center;background:oklch(0.965 0.028 var(--h));border:1px solid var(--border)}
+.visual .badge-box{display:flex;flex-direction:column;align-items:center;gap:9px}
+.visual .badge-box span{font-size:21px;font-weight:500;color:oklch(0.42 0.115 var(--h));letter-spacing:.01em}
+.visual .badge-box small{font-size:12px;color:oklch(0.55 0.065 var(--h));letter-spacing:.03em}
+.col h2{margin:0 0 6px;font-size:22px;font-weight:500;letter-spacing:-.02em}
+.col .spec{font-size:12.5px;color:var(--muted-fg)}
+.dprice{display:flex;align-items:baseline;gap:10px;margin:15px 0 18px}
+.dprice .big{font-size:32px;font-weight:500;letter-spacing:-.03em}
+.dprice .big i{font-style:normal;font-size:17px;font-weight:400;margin-right:2px}
+.dprice .sub{font-size:12.5px;color:var(--muted-fg)}
+.assure{display:flex;gap:10px;padding:12px 14px;border-radius:12px;background:oklch(0.975 0.022 163);margin-bottom:18px}
+.assure svg{flex:none;margin-top:2px}
+.assure div{font-size:12.5px;color:oklch(0.4 0.06 163);line-height:1.55}
+.assure b{font-weight:500}
+.row-opt{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.row-opt .k{font-size:13px;color:var(--muted-fg)}
+.stepper{display:flex;align-items:center;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+.stepper button{width:32px;height:32px;display:grid;place-items:center;color:var(--muted-fg)}
+.stepper button:hover{background:var(--muted);color:var(--fg)}
+.stepper span{width:40px;text-align:center;font-size:13.5px;border-left:1px solid var(--border);border-right:1px solid var(--border);line-height:32px}
+.buy{width:100%;height:46px;border-radius:12px;background:var(--primary);color:#fff;font-size:15px;font-weight:500;transition:filter .15s}
+.buy:hover{filter:brightness(.95)}
+.disclaim{display:flex;gap:8px;margin-top:12px;padding:10px 13px;border-radius:10px;background:oklch(0.982 0.022 55);font-size:12px;line-height:1.6;color:oklch(0.46 0.11 55)}
+.disclaim b{font-weight:500}
+.notice{margin-top:20px;border-top:1px solid var(--border);padding-top:15px}
+.notice summary{font-size:12.5px;color:var(--muted-fg);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}
+.notice summary::-webkit-details-marker{display:none}
+.notice summary::before{content:'›';transition:transform .2s;font-size:15px;line-height:1}
+.notice[open] summary::before{transform:rotate(90deg)}
+.notice ul{margin:10px 0 0;padding-left:16px;font-size:12.5px;color:var(--muted-fg);line-height:1.9}
+.desc{margin-top:36px;padding-top:26px;border-top:1px solid var(--border);max-width:720px}
+.desc h3{font-size:15px;font-weight:500;margin:0 0 12px}
+.desc p{font-size:13.5px;color:var(--muted-fg);line-height:1.9;margin:0 0 11px}
+.desc ul{font-size:13.5px;color:var(--muted-fg);line-height:1.95;margin:0;padding-left:18px}
+@media (max-width:900px){
+  .detail{grid-template-columns:1fr;gap:24px}
+  .visual{height:200px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="index.html"><span class="brand-mark">A</span>apiduo</a>
+  <nav class="switcher">
+    <a href="api-platform.html">API 平台</a>
+    <a href="index.html" class="on">卡密商城</a>
+  </nav>
+  <div class="topright">
+    <span class="num">¥ 128.40</span>
+    <div class="avatar">帅</div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="side">
+    <div>
+      <div class="side-title">商品分类</div>
+      <div class="side-item on"><span>全部商品</span></div>
+      <div class="side-item"><span>AI 会员</span></div>
+      <div class="side-item"><span>AI 工具</span></div>
+      <div class="side-item"><span>成品号</span></div>
+      <div class="side-item"><span>算力额度</span></div>
+      <div class="side-item"><span>资料</span></div>
+    </div>
+    <div>
+      <div class="side-title">我的</div>
+      <a class="side-item" href="my-cards.html"><span>我的卡密</span></a>
+      <a class="side-item" href="my-cards.html"><span>我的订单</span></a>
+      <a class="side-item" href="my-cards.html"><span>售后工单</span></a>
+    </div>
+    <div>
+      <div class="side-title">管理</div>
+      <a class="side-item" href="admin-goods.html"><span>商家后台</span></a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <a class="back" href="index.html">← 返回商城</a>
+
+    <div class="detail">
+      <div class="visual" id="visual" style="--h:150">
+        <div class="badge-box">
+          <span id="vtext">ChatGPT Plus</span>
+          <small>自动发货 · 7 天质保</small>
+        </div>
+      </div>
+
+      <div class="col">
+        <h2 id="dname">ChatGPT Plus</h2>
+        <div class="spec" id="dspec">月卡 · 自动发货</div>
+
+        <div class="dprice">
+          <span class="big"><i>¥</i><span id="dprice">172</span></span>
+          <span class="sub" id="dstock">库存充足</span>
+        </div>
+
+        <div class="assure">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1.5 2.5 3.8v4.1c0 3 2.3 5.7 5.5 6.6 3.2-.9 5.5-3.6 5.5-6.6V3.8L8 1.5Z" stroke="oklch(0.5 0.1 163)" stroke-width="1.2" stroke-linejoin="round"/>
+            <path d="m5.6 7.9 1.7 1.7 3.2-3.2" stroke="oklch(0.5 0.1 163)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div><b>官方封号包换</b> · 质保 <b id="dwarranty">7 天</b>，期内失效免费补发一次，超期不再受理</div>
+        </div>
+
+        <div class="row-opt">
+          <span class="k">购买数量 <span style="opacity:.7">（每人限 3 件）</span></span>
+          <div class="stepper">
+            <button onclick="step(-1)">−</button>
+            <span id="qty">1</span>
+            <button onclick="step(1)">+</button>
+          </div>
+        </div>
+
+        <button class="buy" id="buybtn" onclick="buy()">立即购买 · ¥172</button>
+
+        <div class="disclaim">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex:none;margin-top:2px">
+            <circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M8 4.6v4.2M8 11.2v.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          <div><b>虚拟商品，一经交付不支持 7 天无理由退货。</b>下单即视为已阅读并同意下方全部条款。</div>
+        </div>
+
+        <details class="notice">
+          <summary>购买须知</summary>
+          <ul>
+            <li>卡密由上游供应商提供，本平台负责交付与质保期内的免费更换。</li>
+            <li>请勿将卡密分享给他人，泄露后无法追回，责任自负。</li>
+            <li>因使用方式不当（如多设备同时登录）导致的封禁不在质保范围。</li>
+            <li>支付后 15 分钟内未完成将自动关闭订单并释放库存。</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <div class="desc">
+      <h3>商品说明</h3>
+      <p id="ddesc">本商品为 ChatGPT Plus 订阅代充，下单后由系统自动从库存中取出卡密并展示。请在购买前确认账号状态。</p>
+      <ul>
+        <li>发货时间：支付成功后即时自动发放，无需等待人工处理。</li>
+        <li>使用方式：复制卡密后按卡密页面的指引完成兑换，全程约需 2 分钟。</li>
+        <li>质保范围：账号因订阅未生效或上游原因失效，期内免费补发一次。</li>
+        <li>不在质保范围：因多设备登录、共享账号、违反上游服务条款导致的封禁。</li>
+      </ul>
+    </div>
+  </main>
+</div>
+
+<script src="assets/data.js"></script>
+<script>
+const id = Number(new URLSearchParams(location.search).get('id') || 1);
+const g = GOODS.find(x => x.id === id) || GOODS[0];
+let qty = 1;
+
+const s = stockLabel(g);
+document.getElementById('visual').style.setProperty('--h', g.h);
+document.getElementById('vtext').textContent = g.name;
+document.getElementById('dname').textContent = g.name;
+document.getElementById('dspec').textContent = g.spec;
+document.getElementById('dprice').textContent = g.price;
+document.getElementById('dstock').textContent = s.text === '充足' ? '库存充足' : s.text;
+document.getElementById('dwarranty').textContent = g.warranty >= 168 ? '7 天' : (g.warranty >= 72 ? '3 天' : '24 小时');
+document.title = g.name + ' · 卡密商城';
+
+function step(d){
+  qty = Math.min(3, Math.max(1, qty + d));
+  document.getElementById('qty').textContent = qty;
+  document.getElementById('buybtn').textContent = `立即购买 · ¥${g.price * qty}`;
+}
+
+function buy(){
+  if (g.stockNum === 0) return;
+  location.href = `checkout.html?id=${g.id}&qty=${qty}`;
+}
+
+step(0);
+</script>
+</body>
+</html>

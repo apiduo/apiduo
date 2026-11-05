@@ -133,6 +133,11 @@ export interface LogOtherData {
     // Operator identity for audit logs (type=3, admin only)
     admin_username?: string
     admin_id?: number | string
+    // APIDUO:agent-audit:BEGIN 客户端声明或 User-Agent 推断出的 Agent
+    agent?: string
+    /** header = 显式声明，user_agent = 从 UA 推断 */
+    agent_source?: 'header' | 'user_agent'
+    // APIDUO:agent-audit:END
     admin_role?: number
     auth_method?: 'session' | 'access_token' | string
     // Quota saturation marker: set when a quota conversion clamped at the

@@ -9,6 +9,9 @@ import (
 	_ "github.com/QuantumNous/new-api/plugins"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/advancedcustom"
+	// APIDUO:advanced-async:BEGIN
+	"github.com/QuantumNous/new-api/relay/channel/advancedcustomasync"
+	// APIDUO:advanced-async:END
 	"github.com/QuantumNous/new-api/relay/channel/ali"
 	"github.com/QuantumNous/new-api/relay/channel/aws"
 	"github.com/QuantumNous/new-api/relay/channel/baidu"
@@ -186,6 +189,12 @@ func TaskPlatformUnavailableError(platform constant.TaskPlatform) (string, strin
 }
 
 func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
+	// APIDUO:advanced-async:BEGIN A task-only channel type serves its own task
+	// API instead of delegating to a task plugin.
+	if platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAdvancedAsync)) {
+		return &advancedcustomasync.Adaptor{}
+	}
+	// APIDUO:advanced-async:END
 	plugin, ok := ResolveTaskPluginForPlatform(pluginruntime.DefaultRegistry.Generation(), platform)
 	if !ok {
 		return nil
@@ -197,6 +206,11 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 // declarative or shared-endpoint router. Legacy task routes are pinned here
 // from one registry generation before the adaptor is returned.
 func getTaskAdaptorForRequest(c *gin.Context, platform constant.TaskPlatform) (constant.TaskPlatform, channel.TaskAdaptor) {
+	// APIDUO:advanced-async:BEGIN
+	if platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAdvancedAsync)) {
+		return platform, &advancedcustomasync.Adaptor{}
+	}
+	// APIDUO:advanced-async:END
 	if c != nil {
 		if value, exists := c.Get(pluginruntime.ContextKeyPinnedPlugin); exists {
 			if pinned, ok := value.(pluginruntime.PinnedPlugin); ok && pinned.Plugin != nil {

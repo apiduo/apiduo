@@ -1020,6 +1020,16 @@ func (channel *Channel) ValidateSettings() error {
 	if err := channelOtherSettings.ValidateToolLossPolicy(); err != nil {
 		return err
 	}
+	// APIDUO:advanced-async:BEGIN
+	if err := channelOtherSettings.AdvancedAsync.Validate(); err != nil {
+		return err
+	}
+	// APIDUO:advanced-async:END
+	// APIDUO:advanced-async:BEGIN
+	if channel.Type == constant.ChannelTypeAdvancedAsync && !channelOtherSettings.AdvancedAsync.IsEnabled() {
+		return fmt.Errorf("advanced_async is required for this channel type")
+	}
+	// APIDUO:advanced-async:END
 	if preset := common.GetAdvancedCustomPreset(channel.Type); preset != nil {
 		channelOtherSettings.AdvancedCustom = preset
 	}

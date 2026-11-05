@@ -28,6 +28,14 @@ type BaseNavItem = {
   icon?: React.ElementType
   activeUrls?: (LinkProps['to'] | (string & {}))[]
   configUrls?: (LinkProps['to'] | (string & {}))[]
+  // APIDUO:dynamic-nav:BEGIN
+  /**
+   * Render as a plain anchor opening a new tab instead of a client-side route.
+   * Used by administrator-configured entries, whose targets are absolute URLs
+   * outside this application.
+   */
+  external?: boolean
+  // APIDUO:dynamic-nav:END
   /**
    * Minimum role required to see this item in the sidebar. When set, the item
    * is hidden for users whose role is below this threshold (see

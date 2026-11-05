@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>原型地图 · 卡密商城</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+.wrap{max-width:1000px;margin:0 auto;padding:40px 32px 80px}
+.hd{margin-bottom:32px}
+.hd h1{margin:0 0 8px;font-size:26px;font-weight:500;letter-spacing:-.02em}
+.hd p{margin:0;color:var(--muted-fg);font-size:13.5px;line-height:1.8;max-width:660px}
+.group{margin-bottom:32px}
+.group h2{font-size:13px;font-weight:500;color:var(--muted-fg);letter-spacing:.06em;text-transform:uppercase;margin:0 0 12px}
+.items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.item{
+  display:block;border:1px solid var(--border);border-radius:14px;padding:16px 18px;
+  transition:border-color .15s,box-shadow .15s,transform .15s;
+}
+.item:hover{border-color:var(--border-strong);box-shadow:var(--shadow);transform:translateY(-1px)}
+.item .t{font-size:14px;font-weight:500;margin-bottom:4px}
+.item .d{font-size:12.5px;color:var(--muted-fg);line-height:1.6}
+.item .p{font-size:11.5px;color:var(--muted-fg);font-family:ui-monospace,monospace;margin-top:8px;opacity:.7}
+.flow{
+  border:1px solid var(--border);border-radius:14px;padding:18px 20px;background:var(--muted-2);
+  font-size:13px;color:var(--muted-fg);line-height:2;
+}
+.flow b{color:var(--fg);font-weight:500}
+.flow code{background:#fff;border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:12px}
+@media (max-width:720px){ .items{grid-template-columns:1fr} .wrap{padding:24px 18px 60px} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="hd">
+    <h1>卡密商城 · 原型</h1>
+    <p>8 个页面，前台 4 屏购买链路 + 我的卡密，后台 3 页。全部为静态原型，数据写死在 <span class="mono">assets/data.js</span>，交互只做到「能看懂」为止，没有后端。</p>
+  </div>
+
+  <div class="group">
+    <h2>主流程（建议按顺序点）</h2>
+    <div class="items">
+      <a class="item" href="index.html">
+        <div class="t">1 · 商城首页</div>
+        <div class="d">分类侧栏 + 商品网格，库存只显示「充足 / 仅剩 N 张 / 售罄」</div>
+        <div class="p">index.html</div>
+      </a>
+      <a class="item" href="goods.html?id=1">
+        <div class="t">2 · 商品详情</div>
+        <div class="d">质保条压在购买按钮之上，虚拟商品免责声明常显</div>
+        <div class="p">goods.html?id=1</div>
+      </a>
+      <a class="item" href="checkout.html?id=1&qty=1">
+        <div class="t">3 · 确认订单</div>
+        <div class="d">15 分钟倒计时真跑，与锁库存同一时钟</div>
+        <div class="p">checkout.html</div>
+      </a>
+      <a class="item" href="deliver.html">
+        <div class="t">4 · 卡密交付</div>
+        <div class="d">首次完整展示，点「模拟再次访问」立刻脱敏</div>
+        <div class="p">deliver.html</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="group">
+    <h2>用户中心</h2>
+    <div class="items">
+      <a class="item" href="my-cards.html">
+        <div class="t">我的卡密</div>
+        <div class="d">已过期的卡密永久脱敏且不可复制，这是防泄露的最后一道闸</div>
+        <div class="p">my-cards.html</div>
+      </a>
+      <a class="item" href="api-platform.html">
+        <div class="t">API 平台（对照）</div>
+        <div class="d">切换过去看两条产品线如何各自拥有独立侧栏与钱包</div>
+        <div class="p">api-platform.html</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="group">
+    <h2>商家后台</h2>
+    <div class="items">
+      <a class="item" href="admin-goods.html">
+        <div class="t">商品管理</div>
+        <div class="d">成本与毛利率仅后台可见，毛利率低于 25% 标红</div>
+        <div class="p">admin-goods.html</div>
+      </a>
+      <a class="item" href="admin-stock.html">
+        <div class="t">卡密库存</div>
+        <div class="d">列表永久脱敏；点「批量导入」看导入弹窗与判重提示</div>
+        <div class="p">admin-stock.html</div>
+      </a>
+      <a class="item" href="admin-orders.html">
+        <div class="t">订单管理</div>
+        <div class="d">含「已支付待补货」告警——这类订单不能拒付</div>
+        <div class="p">admin-orders.html</div>
+      </a>
+    </div>
+  </div>
+
+  <div class="group">
+    <h2>原型里刻意做出来的判断</h2>
+    <div class="flow">
+      <b>库存不暴露精确数字</b> → 精确库存等于公开进货量，竞品和上游都会用来压价<br>
+      <b>质保条在购买按钮上方</b> → 买家点购买前唯一想确认的就是「坏了赔不赔」<br>
+      <b>免责声明常显不折叠</b> → 虚拟商品不退换是法律上的前置告知义务<br>
+      <b>卡密二次访问即脱敏</b> → 首次交付页可下载 txt，之后只剩 <code>7f3a****e05b</code><br>
+      <b>两个钱包不互通</b> → API 额度 <code>$</code> 与商城钱包 <code>¥</code> 分开，退款对账口径才清晰
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

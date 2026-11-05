@@ -210,6 +210,11 @@ import { ChannelPluginExtensions } from '../channel-plugin-extensions'
 import { ChannelQuickOptions } from '../channel-quick-options'
 import { ChannelTypeLogo } from '../channel-type-badge'
 import { useChannels } from '../channels-provider'
+import {
+  CHANNEL_TYPE_ADVANCED_ASYNC,
+  getAdvancedAsyncStats,
+} from '../../lib/advanced-async'
+import { AdvancedAsyncEditorDialog } from '../dialogs/advanced-async-editor-dialog'
 import { AdvancedCustomEditorDialog } from '../dialogs/advanced-custom-editor-dialog'
 import { ConfigureModelsDialog } from '../dialogs/configure-models-dialog'
 import {
@@ -457,6 +462,7 @@ export function ChannelMutateDrawer({
   const [paramOverrideEditorOpen, setParamOverrideEditorOpen] = useState(false)
   const [advancedCustomEditorOpen, setAdvancedCustomEditorOpen] =
     useState(false)
+  const [advancedAsyncEditorOpen, setAdvancedAsyncEditorOpen] = useState(false)
   const [clipboardConnectionInfo, setClipboardConnectionInfo] =
     useState<ChannelConnectionInfo | null>(null)
 
@@ -605,6 +611,7 @@ export function ChannelMutateDrawer({
     formValues.upstream_model_update_check_enabled
   const currentSettings = formValues.settings
   const currentAdvancedCustom = formValues.advanced_custom
+  const currentAdvancedAsync = formValues.advanced_async
   const currentHeaderOverride = formValues.header_override
   const currentProxy = formValues.proxy
   const currentHttpProtocol = formValues.http_protocol
@@ -704,6 +711,10 @@ export function ChannelMutateDrawer({
   const advancedCustomStats = useMemo(
     () => getAdvancedCustomStats(currentAdvancedCustom),
     [currentAdvancedCustom]
+  )
+  const advancedAsyncStats = useMemo(
+    () => getAdvancedAsyncStats(currentAdvancedAsync),
+    [currentAdvancedAsync]
   )
   const advancedCustomRouteTypeLabels =
     advancedCustomStats.routeTypeLabels.slice(
@@ -4359,6 +4370,68 @@ export function ChannelMutateDrawer({
               />
             )}
 
+            {currentType === CHANNEL_TYPE_ADVANCED_ASYNC && (
+              <FormField
+                control={form.control}
+                name='advanced_async'
+                render={({ field }) => (
+                  <FormItem className='space-y-3 border-b py-4'>
+                    <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                      <div className='space-y-2'>
+                        <FormLabel>{t('Advanced async routes')}</FormLabel>
+                        <p className='text-muted-foreground text-xs'>
+                          {t(
+                            'Describe an upstream task API. The gateway submits the work and polls for the result.'
+                          )}
+                        </p>
+                        <div className='flex flex-wrap gap-2'>
+                          <Badge
+                            variant={
+                              advancedAsyncStats.configured
+                                ? 'secondary'
+                                : 'outline'
+                            }
+                          >
+                            {advancedAsyncStats.configured
+                              ? t('Configured')
+                              : t('Not configured')}
+                          </Badge>
+                          {advancedAsyncStats.incomingPaths.map((path) => (
+                            <Badge
+                              key={path}
+                              variant='outline'
+                              className='max-w-[16rem]'
+                            >
+                              <span className='truncate font-mono'>{path}</span>
+                            </Badge>
+                          ))}
+                          {advancedAsyncStats.configured &&
+                          !advancedAsyncStats.valid ? (
+                            <Badge variant='destructive'>
+                              {t('Incomplete')}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        onClick={() => setAdvancedAsyncEditorOpen(true)}
+                      >
+                        <Route className='mr-2 h-4 w-4' />
+                        {t('Configure async routes')}
+                      </Button>
+                    </div>
+                    <FormControl>
+                      <input type='hidden' {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             <ChannelAuthSection>
               {!isEditing && (
                 <FormField
@@ -5154,6 +5227,20 @@ export function ChannelMutateDrawer({
           onOpenChange={setAdvancedCustomEditorOpen}
           onSave={(nextValue) => {
             form.setValue('advanced_custom', nextValue, {
+              shouldDirty: true,
+              shouldValidate: true,
+            })
+          }}
+        />
+      )}
+
+      {advancedAsyncEditorOpen && !sensitiveLocked && (
+        <AdvancedAsyncEditorDialog
+          open={advancedAsyncEditorOpen}
+          value={formValues.advanced_async || ''}
+          onOpenChange={setAdvancedAsyncEditorOpen}
+          onSave={(nextValue) => {
+            form.setValue('advanced_async', nextValue, {
               shouldDirty: true,
               shouldValidate: true,
             })

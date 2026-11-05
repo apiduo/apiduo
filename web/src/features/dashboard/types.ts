@@ -274,3 +274,62 @@ export interface FAQItem {
   question: string
   answer: string
 }
+
+// ============================================================================
+// SK Analytics Types
+// ============================================================================
+
+export interface SkQuotaDataItem {
+  token_id: number
+  token_name: string
+  token_key: string
+  user_id: number
+  username: string
+  model_name: string
+  count: number
+  quota: number
+  token_used: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
+}
+
+export interface SkQuotaTotals {
+  quota: number
+  count: number
+  token_used: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
+}
+
+export interface SkQuotaData {
+  items: SkQuotaDataItem[]
+  totals: SkQuotaTotals
+  truncated: boolean
+  limit: number
+}
+
+// ============================================================================
+// Usage Series / Forecast Types
+// ============================================================================
+
+export interface SeriesPoint {
+  date: string
+  quota: number
+  count: number
+  token_used: number
+}
+
+export interface SeriesGroup {
+  key: string
+  label: string
+  points: SeriesPoint[]
+}
+
+// One spending user with their current balance and a dense daily series.
+export interface UserBalanceItem {
+  user_id: number
+  username: string
+  group: string
+  quota: number
+  daily: number[]
+}

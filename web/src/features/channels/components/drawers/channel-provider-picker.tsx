@@ -48,6 +48,7 @@ import {
   CHANNEL_TYPE_TASK_PLUGIN,
   type ChannelProviderPresentation,
 } from '../../constants'
+import { CHANNEL_TYPE_ADVANCED_ASYNC } from '../../lib/advanced-async'
 import { CHANNEL_TYPE_ADVANCED_CUSTOM } from '../../lib/advanced-custom'
 import type { ChannelProviderTarget } from '../../lib/channel-configuration'
 import {
@@ -138,7 +139,9 @@ export function ChannelProviderPicker(props: ChannelProviderPickerProps) {
         if (props.isCreating && option.value === 7) continue
         if (replacedTypes.has(option.value)) continue
         const isCustom =
-          option.value === 8 || option.value === CHANNEL_TYPE_ADVANCED_CUSTOM
+          option.value === 8 ||
+          option.value === CHANNEL_TYPE_ADVANCED_CUSTOM ||
+          option.value === CHANNEL_TYPE_ADVANCED_ASYNC
         const isGateway =
           option.value === CHANNEL_TYPE_NEW_API ||
           option.value === CHANNEL_TYPE_SUB2API

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>订单管理 · 商家后台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+.filters{display:flex;gap:9px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.filters .input{width:220px;height:34px}
+.filters .select{height:34px}
+.sp{margin-left:auto}
+.acts{display:flex;gap:6px;justify-content:flex-end}
+.alert{
+  display:flex;gap:10px;padding:12px 14px;border-radius:11px;margin-bottom:16px;
+  background:oklch(0.98 0.028 60);font-size:12.5px;color:oklch(0.45 0.11 60);line-height:1.6;
+}
+.alert b{font-weight:500}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="index.html"><span class="brand-mark">A</span>apiduo</a>
+  <nav class="switcher">
+    <a href="api-platform.html">API 平台</a>
+    <a href="index.html" class="on">卡密商城</a>
+  </nav>
+  <div class="topright">
+    <span class="badge info">商家后台</span>
+    <div class="avatar">帅</div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="side">
+    <div>
+      <div class="side-title">商城管理</div>
+      <a class="side-item" href="admin-goods.html"><span>概览</span></a>
+      <a class="side-item" href="admin-goods.html"><span>商品</span></a>
+      <a class="side-item" href="admin-stock.html"><span>卡密库存</span></a>
+      <div class="side-item on"><span>订单</span></div>
+      <div class="side-item"><span>供应商</span></div>
+      <div class="side-item"><span>售后工单</span></div>
+    </div>
+    <div>
+      <div class="side-title">返回</div>
+      <a class="side-item" href="index.html"><span>回到商城前台</span></a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head-row">
+      <div>
+        <h1>订单</h1>
+        <p>支付回调带唯一 trade_no，重复回调只会发货一次；金额一律以本地订单为准，不信回调里的数字</p>
+      </div>
+      <button class="btn" onclick="alert('导出 CSV（原型未实现）')">导出</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="k">今日成交</div><div class="v">38 <small>单</small></div></div>
+      <div class="stat"><div class="k">今日 GMV</div><div class="v">¥6,214</div></div>
+      <div class="stat"><div class="k">待处理</div><div class="v" style="color:var(--warning)">2 <small>单</small></div></div>
+      <div class="stat"><div class="k">售后率</div><div class="v">1.8 <small>%</small></div></div>
+    </div>
+
+    <div class="alert">
+      <span>⚠</span>
+      <div>有 <b>1 笔</b>订单处于「已支付待补货」——买家已付款但库存不足。这类订单<b>不能拒付</b>，必须尽快补货或原路退款，否则就是钱货两空。</div>
+    </div>
+
+    <div class="filters">
+      <input class="input" placeholder="订单号 / 用户 ID / 商品…">
+      <select class="select">
+        <option>全部状态</option><option>已发货</option><option>待审核</option><option>售后中</option><option>已支付待补货</option><option>已关闭</option>
+      </select>
+      <select class="select">
+        <option>全部渠道</option><option>官方直营</option><option>代理-A</option>
+      </select>
+      <span class="sp"></span>
+      <span style="font-size:12.5px;color:var(--muted-fg)">共 7 条</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>订单号</th><th>用户</th><th>商品</th><th class="ta-r">数量</th><th class="ta-r">金额</th><th>支付</th><th>渠道</th><th>状态</th><th>下单时间</th><th class="ta-r">操作</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="assets/data.js"></script>
+<script>
+const cls = {
+  '已发货': 'ok', '待审核': 'warn', '售后中': 'warn',
+  '已支付待补货': 'err', '已关闭': 'gray', '已退款': 'gray'
+};
+
+document.getElementById('tbody').innerHTML = ORDERS.map(o => `
+  <tr>
+    <td class="mono" style="font-size:12px">${o.no}</td>
+    <td class="num" style="font-size:12.5px">${o.user}</td>
+    <td>${o.goods}</td>
+    <td class="ta-r num">${o.qty}</td>
+    <td class="ta-r num" style="font-weight:500">¥${o.amount}</td>
+    <td style="font-size:12.5px;color:var(--muted-fg)">${o.pay}</td>
+    <td><span class="badge ${o.ch === '官方直营' ? 'gray' : 'info'}">${o.ch}</span></td>
+    <td><span class="badge ${cls[o.status] || 'gray'}">${o.status}</span></td>
+    <td class="num" style="font-size:12px;color:var(--muted-fg)">${o.time}</td>
+    <td>
+      <div class="acts">
+        ${o.status === '待审核' ? '<button class="btn sm blue" onclick="alert(\'审核通过并发货（原型未实现）\')">审核</button>' : ''}
+        ${o.status === '已支付待补货' ? '<button class="btn sm danger" onclick="alert(\'需先补货或退款（原型未实现）\')">处理</button>' : ''}
+        <button class="btn sm" onclick="alert('订单详情（原型未实现）')">详情</button>
+      </div>
+    </td>
+  </tr>`).join('');
+</script>
+</body>
+</html>

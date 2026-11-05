@@ -36,6 +36,9 @@ export interface AccessTokenItem {
   last_used_at: number
   last_used_ip: string
   created_at: number
+  // APIDUO:token-ip-allowlist:BEGIN Absent or empty means no restriction.
+  allow_ips?: string
+  // APIDUO:token-ip-allowlist:END
 }
 
 export interface LegacyAccessToken {
@@ -65,12 +68,19 @@ export interface AccessTokenInput {
   name: string
   scopes: string[]
   expires_at: number
+  // APIDUO:token-ip-allowlist:BEGIN One entry per line; empty means anywhere.
+  allow_ips?: string
+  // APIDUO:token-ip-allowlist:END
 }
 
 /** A token edit; scopes is present only when the grant changes. */
 export interface AccessTokenUpdate {
   name: string
   scopes?: string[]
+  // APIDUO:token-ip-allowlist:BEGIN Absent keeps the current restriction; an
+  // empty string clears it.
+  allow_ips?: string
+  // APIDUO:token-ip-allowlist:END
 }
 
 export interface CreatedAccessToken {

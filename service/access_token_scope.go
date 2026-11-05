@@ -100,6 +100,10 @@ var accessTokenStaticResources = []AccessTokenResource{
 		accessTokenView("View groups and prefill groups."),
 		accessTokenEdit("Create, edit, and delete prefill groups."),
 	}},
+	{Resource: "nav_app", LabelKey: "Navigation entries", group: AccessTokenGroupSystem, minRole: common.RoleRootUser, Actions: []authz.ActionDefinition{
+		accessTokenView("View the configured navigation entries."),
+		accessTokenEdit("Replace the configured navigation entries."),
+	}},
 	{Resource: "option", LabelKey: "System settings", group: AccessTokenGroupSystem, minRole: common.RoleRootUser, Actions: []authz.ActionDefinition{
 		accessTokenView("View system settings, custom OAuth providers, and price sync sources."),
 		accessTokenEdit("Change system settings and custom OAuth providers, and sync prices."),
@@ -238,7 +242,12 @@ var accessTokenVerificationScopes = map[string]string{
 	VerificationScopeAccessTokenGenerate:   "",
 	VerificationScopeAccessTokenUpdate:     "",
 	VerificationScopeAccessTokenRevoke:     "",
-	VerificationScopeLogin:                 "",
+	// APIDUO:agent-key:BEGIN Managing agent keys is a browser-session action, so
+	// a personal access token must never be able to obtain this proof.
+	VerificationScopeAgentKeyRegister: "",
+	VerificationScopeAgentKeyRevoke:   "",
+	// APIDUO:agent-key:END
+	VerificationScopeLogin: "",
 }
 
 // AccessTokenVerificationScope returns the token scope a PAT needs for a

@@ -226,6 +226,11 @@ func classifyDashboardCredential(c *gin.Context) (*model.UserBase, service.AuthI
 		if errors.Is(lookup.err, model.ErrAccessTokenExpired) {
 			setAccessTokenAuditParam(c, "failure_reason", "expired")
 		}
+		// APIDUO:token-authversion:BEGIN
+		if errors.Is(lookup.err, model.ErrAccessTokenStale) {
+			setAccessTokenAuditParam(c, "failure_reason", "stale")
+		}
+		// APIDUO:token-authversion:END
 		return nil, service.AuthIdentity{}, dashboardCredentialPAT, lookup.err
 	}
 	if lookup.user == nil {
@@ -274,6 +279,29 @@ func lookupAccessToken(c *gin.Context, raw string) *accessTokenLookup {
 		// Keep the owner so the rejected attempt is still audited.
 		lookup.err = model.ErrAccessTokenExpired
 	}
+	// APIDUO:token-authversion:BEGIN 凭据变更后，旧版本签发的令牌一律失效
+	// A token issued before the owner's last credential change (password reset,
+	// forced logout, security action) is retired. Version 0 means it predates the
+	// binding and is left alone, so an upgrade does not invalidate everything.
+	if lookup.err == nil && lookup.user != nil && token.AuthVersion != 0 && token.AuthVersion != lookup.user.AuthVersion {
+		lookup.err = model.ErrAccessTokenStale
+	}
+	// APIDUO:token-authversion:END
+	// APIDUO:token-ip-allowlist:BEGIN
+	// A pinned token may only be used from the networks the operator listed.
+	// The check runs here, after the token and its owner are known, so the
+	// audit entry can name which token was refused and from where.
+	if lookup.err == nil && token.HasIpRestriction() {
+		clientIp := c.ClientIP()
+		ip := net.ParseIP(clientIp)
+		if ip == nil || !common.IsIpInCIDRList(ip, token.GetIpLimits()) {
+			lookup.err = model.ErrAccessTokenIpDenied
+			// The reason is recorded by AccessTokenAudit, which creates the audit
+			// entry after this lookup returns. Writing the parameter here would
+			// be silently discarded because no entry exists yet.
+		}
+	}
+	// APIDUO:token-ip-allowlist:END
 	return lookup
 }
 
@@ -391,6 +419,20 @@ func writeDashboardAuthError(c *gin.Context, err error) {
 		abortWithWebMessage(c, http.StatusUnauthorized, "ACCESS_TOKEN_LEGACY_RETIRED", common.NewMessage("Legacy access tokens have been retired. Create a new access token in security settings"))
 		return
 	}
+	// APIDUO:token-authversion:BEGIN 凭据变更吊销的令牌，明确告知而不是当成服务器错误
+	if errors.Is(err, model.ErrAccessTokenStale) {
+		abortWithWebMessage(c, http.StatusUnauthorized, "ACCESS_TOKEN_REVOKED", common.NewMessage("Unauthorized, the access token was revoked by a credential change. Create a new one"))
+		return
+	}
+	// APIDUO:token-authversion:END
+	// APIDUO:token-ip-allowlist:BEGIN
+	// 403 not 401: the credential is fine, this address is not allowed. Saying
+	// so saves an operator from reissuing a perfectly good token.
+	if errors.Is(err, model.ErrAccessTokenIpDenied) {
+		abortWithWebMessage(c, http.StatusForbidden, "ACCESS_TOKEN_IP_DENIED", common.NewMessage("Unauthorized, this access token is restricted to other addresses"))
+		return
+	}
+	// APIDUO:token-ip-allowlist:END
 	if errors.Is(err, service.ErrAuthTokenExpired) {
 		abortWithWebMessage(c, http.StatusUnauthorized, "AUTH_TOKEN_EXPIRED", common.NewMessage("Unauthorized, not logged in and no access token provided"))
 		return

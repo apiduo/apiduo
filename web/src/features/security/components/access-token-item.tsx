@@ -101,6 +101,16 @@ export function AccessTokenItem(props: AccessTokenItemProps) {
           </span>
           {expiry}
           <span className='break-all'>{lastUsed}</span>
+          {/* APIDUO:token-ip-allowlist:BEGIN Only shown when set, so the
+              unrestricted case stays as compact as before. */}
+          {token.allow_ips?.trim() && (
+            <span className='text-amber-600 break-all dark:text-amber-500'>
+              {t('Restricted to {{nets}}', {
+                nets: token.allow_ips.trim().split(/[\s,]+/).join(', '),
+              })}
+            </span>
+          )}
+          {/* APIDUO:token-ip-allowlist:END */}
         </p>
       </div>
       <DataTableRowActionMenu ariaLabel={t('Open menu')}>

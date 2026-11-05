@@ -376,6 +376,9 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 		&UserAccessToken{},
+		// APIDUO:agent-key:BEGIN
+		&AgentKey{},
+		// APIDUO:agent-key:END
 	)
 	if err != nil {
 		return err
@@ -383,6 +386,17 @@ func migrateDB() error {
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}
+	// APIDUO:token-authversion:BEGIN 老令牌绑定到当前凭据版本，避免升级瞬间全部失效
+	if err := BindAccessTokensToOwnerAuthVersion(); err != nil {
+		return fmt.Errorf("bind access tokens to auth version: %w", err)
+	}
+	// APIDUO:token-authversion:END
+	// APIDUO:agent-key:BEGIN Exchange mints one token per handshake, so stale
+	// rows would otherwise accumulate one per rotation.
+	if err := DeleteExpiredAgentTokens(); err != nil {
+		fmt.Printf("failed to clear expired agent tokens: %v\n", err)
+	}
+	// APIDUO:agent-key:END
 	if err := EnsureLegacyAccessTokenRetireAt(common.GetTimestamp()); err != nil {
 		return fmt.Errorf("initialize legacy access token deadline: %w", err)
 	}

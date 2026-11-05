@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -65,10 +66,17 @@ export function AccessTokenCreateDialog(props: AccessTokenCreateDialogProps) {
   })
   const expiry = form.watch('expiry')
   const groups = accessTokenPermissionGroups(props.catalog)
+  // APIDUO:token-ip-allowlist:BEGIN Kept outside the schema: it is optional and
+  // has no cross-field rules, so folding it in would only add noise.
+  const [allowIps, setAllowIps] = useState('')
+  // APIDUO:token-ip-allowlist:END
 
   const close = () => {
     if (props.pending) return
     form.reset(defaultAccessTokenFormValues)
+    // APIDUO:token-ip-allowlist:BEGIN
+    setAllowIps('')
+    // APIDUO:token-ip-allowlist:END
     props.onOpenChange(false)
   }
   const submit = async (values: AccessTokenFormValues) => {
@@ -76,9 +84,15 @@ export function AccessTokenCreateDialog(props: AccessTokenCreateDialogProps) {
       name: values.name.trim(),
       scopes: permissionMatrixToScopes(values.permissions),
       expires_at: resolveAccessTokenExpiry(values, Date.now()),
+      // APIDUO:token-ip-allowlist:BEGIN
+      allow_ips: allowIps.trim() || undefined,
+      // APIDUO:token-ip-allowlist:END
     })
     if (!created) return
     form.reset(defaultAccessTokenFormValues)
+    // APIDUO:token-ip-allowlist:BEGIN
+    setAllowIps('')
+    // APIDUO:token-ip-allowlist:END
     props.onOpenChange(false)
   }
 
@@ -184,6 +198,25 @@ export function AccessTokenCreateDialog(props: AccessTokenCreateDialogProps) {
               )}
             />
           )}
+          {/* APIDUO:token-ip-allowlist:BEGIN */}
+          <div className='space-y-1.5'>
+            <label className='text-sm font-medium' htmlFor='access-token-allow-ips'>
+              {t('Allowed addresses (optional)')}
+            </label>
+            <textarea
+              id='access-token-allow-ips'
+              className='border-input placeholder:text-muted-foreground focus-visible:ring-ring min-h-16 w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs shadow-xs outline-none focus-visible:ring-1'
+              value={allowIps}
+              placeholder={'10.0.0.0/8\n203.0.113.7'}
+              onChange={(event) => setAllowIps(event.target.value)}
+            />
+            <p className='text-muted-foreground text-[11px] leading-relaxed'>
+              {t(
+                'One address or CIDR block per line. Leave empty to allow any address. Pinning a token to the network it runs on is the cheapest way to contain a leak: a copied key stops working elsewhere.'
+              )}
+            </p>
+          </div>
+          {/* APIDUO:token-ip-allowlist:END */}
           <FormField
             control={form.control}
             name='permissions'

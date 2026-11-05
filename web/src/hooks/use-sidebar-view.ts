@@ -26,6 +26,9 @@ import type {
   ResolvedSidebarView,
   SidebarBadges,
 } from '@/components/layout/types'
+import { navAppPlacementSide, navAppPlacementBoth } from '@/features/nav-apps/constants'
+import { useNavApps } from '@/features/nav-apps/hooks'
+import { navAppToSidebarItem } from '@/features/nav-apps/lib/render'
 import { useModelPricingIssueBadge } from '@/features/system-settings/models/pricing-issues'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -50,7 +53,7 @@ const ROOT_VIEW_KEY = '__root'
  * already enforced at the route level (`beforeLoad` redirects).
  */
 export function useSidebarView(): ResolvedSidebarView {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const pathname = useLocation({ select: (l) => l.pathname })
   const userRole = useAuthStore((s) => s.auth.user?.role)
   const modelPricingBadge = useModelPricingIssueBadge()
@@ -73,6 +76,29 @@ export function useSidebarView(): ResolvedSidebarView {
 
   const view = resolveSidebarView(pathname)
 
+  // APIDUO:dynamic-nav:BEGIN
+  // Configured entries join the root navigation only. Drill-in views are
+  // scoped workspaces whose sidebar belongs to that workspace; injecting
+  // unrelated entries there would contradict their purpose and make the back
+  // affordance misleading. They are already filtered by role and enabled
+  // state on the server, so no further gating is applied here.
+  const customApps = useNavApps()
+  const rootNavGroupsWithApps = useMemo<NavGroup[]>(() => {
+    const sideApps = customApps.filter(
+      (app) => app.placement === navAppPlacementSide || app.placement === navAppPlacementBoth
+    )
+    if (sideApps.length === 0) return rootNavGroups
+    return [
+      {
+        id: 'apps',
+        title: t('Apps'),
+        items: sideApps.map((app) => navAppToSidebarItem(app, i18n.languages)),
+      },
+      ...rootNavGroups,
+    ]
+  }, [customApps, rootNavGroups, t, i18n.languages])
+  // APIDUO:dynamic-nav:END
+
   if (view) {
     return {
       key: view.id,
@@ -84,6 +110,6 @@ export function useSidebarView(): ResolvedSidebarView {
   return {
     key: ROOT_VIEW_KEY,
     view: null,
-    navGroups: rootNavGroups,
+    navGroups: rootNavGroupsWithApps,
   }
 }

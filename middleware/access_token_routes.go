@@ -59,14 +59,20 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/verify":                    accessTokenAnyRule,
 
 	// router/api-router.go: /api/user (self)
-	"GET /api/user/sessions":                       accessTokenSessionRule,
-	"DELETE /api/user/sessions/:sid":               accessTokenSessionRule,
-	"POST /api/user/sessions/revoke-others":        accessTokenSessionRule,
-	"GET /api/user/self/groups":                    accessTokenScopeRule("profile:read"),
-	"GET /api/user/self":                           accessTokenScopeRule("profile:read"),
-	"GET /api/user/models":                         accessTokenScopeRule("profile:read"),
-	"PUT /api/user/self":                           accessTokenScopeRule("profile:write"),
-	"DELETE /api/user/self":                        accessTokenScopeRule("account_security:write"),
+	"GET /api/user/sessions":                accessTokenSessionRule,
+	"DELETE /api/user/sessions/:sid":        accessTokenSessionRule,
+	"POST /api/user/sessions/revoke-others": accessTokenSessionRule,
+	"GET /api/user/self/groups":             accessTokenScopeRule("profile:read"),
+	"GET /api/user/self":                    accessTokenScopeRule("profile:read"),
+	"GET /api/user/models":                  accessTokenScopeRule("profile:read"),
+	"PUT /api/user/self":                    accessTokenScopeRule("profile:write"),
+	"DELETE /api/user/self":                 accessTokenScopeRule("account_security:write"),
+	// APIDUO:agent-key:BEGIN Registering and revoking a key is a session action,
+	// so a token — scoped or legacy — must not be able to perform it.
+	"GET /api/agent/keys":        accessTokenSessionRule,
+	"POST /api/agent/keys":       accessTokenSessionRule,
+	"DELETE /api/agent/keys/:id": accessTokenSessionRule,
+	// APIDUO:agent-key:END
 	"GET /api/user/access_tokens":                  accessTokenSessionRule,
 	"GET /api/user/access_tokens/catalog":          accessTokenSessionRule,
 	"GET /api/user/access_tokens/scopes":           accessTokenSessionRule,
@@ -144,6 +150,9 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"DELETE /api/subscription/admin/user_subscriptions/:id":          accessTokenScopeRule("billing:write"),
 
 	// router/api-router.go: /api/option
+	"GET /api/nav_apps":                                          accessTokenScopeRule("nav_app:read"),
+	"GET /api/nav_apps/all":                                      accessTokenScopeRule("nav_app:read"),
+	"PUT /api/nav_apps":                                          accessTokenScopeRule("nav_app:write"),
 	"GET /api/option/":                                           accessTokenScopeRule("option:read"),
 	"GET /api/option/request_policy":                             accessTokenScopeRule("option:read"),
 	"PATCH /api/option/request_policy":                           accessTokenScopeRule("option:write"),
@@ -249,6 +258,14 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/data/self":                        accessTokenScopeRule("usage:read"),
 	"GET /api/data/flow":                        accessTokenScopeRule("log:read"),
 	"GET /api/data/flow/self":                   accessTokenScopeRule("usage:read"),
+	// APIDUO:sk-analytics:BEGIN
+	"GET /api/data/sk": accessTokenScopeRule("log:read"),
+	// APIDUO:sk-analytics:END
+	// APIDUO:capacity-forecast:BEGIN
+	"GET /api/data/series":         accessTokenScopeRule("log:read"),
+	"GET /api/data/series/self":    accessTokenScopeRule("usage:read"),
+	"GET /api/data/user-balances":  accessTokenScopeRule("log:read"),
+	// APIDUO:capacity-forecast:END
 
 	// router/api-router.go: /api/group, /api/prefill_group
 	"GET /api/group/":               accessTokenScopeRule("group:read"),

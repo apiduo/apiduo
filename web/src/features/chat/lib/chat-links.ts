@@ -201,8 +201,16 @@ export function resolveChatUrl({
   }
 
   if (safeServerAddress) {
-    const encodedAddress = encodeURIComponent(safeServerAddress)
-    url = replaceToken(url, '{address}', encodedAddress)
+    // Two spellings on purpose, because the right form depends on where the
+    // address lands:
+    //   {address}  — percent-encoded, safe inside an ordinary query value where
+    //                a raw `&`, `?` or `#` would truncate the parameter.
+    //   {base_url} — raw, for templates that embed it inside JSON, base64 or a
+    //                custom protocol. Percent-encoding there is taken literally
+    //                by the receiving app (`https%3A%2F%2F...`), because the
+    //                surrounding value is only decoded once.
+    url = replaceToken(url, '{address}', encodeURIComponent(safeServerAddress))
+    url = replaceToken(url, '{base_url}', safeServerAddress)
   }
 
   if (safeApiKey) {

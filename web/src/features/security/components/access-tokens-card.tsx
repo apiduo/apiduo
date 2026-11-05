@@ -142,6 +142,9 @@ export function AccessTokensCard() {
                       time: formatTime(legacy.last_used_at),
                     })
                   : t('Never used')}
+                {/* APIDUO:agent-audit:BEGIN 排查泄漏时，来源 IP 比时间更有用 */}
+                {legacy.last_used_ip ? ` · ${legacy.last_used_ip}` : ''}
+                {/* APIDUO:agent-audit:END */}
               </span>
             </p>
             <div className='flex flex-wrap items-center justify-between gap-2'>

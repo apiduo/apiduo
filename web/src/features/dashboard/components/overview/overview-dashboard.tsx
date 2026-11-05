@@ -68,6 +68,7 @@ import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
 import { SummaryCards } from './summary-cards'
+import { BalanceRunwayCard } from './balance-runway-card'
 import { UptimePanel } from './uptime-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
@@ -788,6 +789,8 @@ export function OverviewDashboard() {
           )}
 
           <SummaryCards />
+
+          <BalanceRunwayCard />
 
           {showContentPanels && (
             <CardStaggerContainer

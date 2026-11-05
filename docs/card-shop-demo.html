@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡密商城 · Demo</title>
+<style>
+:root{
+  --bg:#fff;
+  --fg:oklch(0.145 0 0);
+  --muted:oklch(0.97 0 0);
+  --muted-2:oklch(0.985 0 0);
+  --muted-fg:oklch(0.49 0 0);
+  --border:oklch(0.93 0 0);
+  --border-strong:oklch(0.88 0 0);
+  --primary:oklch(0.692 0.141 243.716);
+  --primary-fg:#fff;
+  --success:oklch(0.596 0.145 163.225);
+  --warning:oklch(0.681 0.162 75.834);
+  --destructive:oklch(0.577 0.245 27.325);
+  --radius:16px;
+  --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px -12px rgba(0,0,0,.12);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg); color:var(--fg);
+  font-size:14px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- shell ---------- */
+.topbar{
+  position:sticky;top:0;z-index:50;
+  height:56px;display:flex;align-items:center;gap:24px;
+  padding:0 32px;background:rgba(255,255,255,.82);
+  backdrop-filter:saturate(180%) blur(16px);
+  border-bottom:1px solid var(--border);
+}
+.brand{display:flex;align-items:center;gap:9px;font-weight:500;font-size:15px;letter-spacing:-.01em}
+.brand-mark{
+  width:24px;height:24px;border-radius:7px;
+  background:var(--primary);
+  display:grid;place-items:center;color:#fff;font-size:11px;font-weight:500;
+}
+.topnav{display:flex;gap:22px;font-size:13.5px;color:var(--muted-fg)}
+.topnav a{padding:4px 0;transition:color .15s}
+.topnav a:hover{color:var(--fg)}
+.topnav a.on{color:var(--fg);font-weight:500}
+.topnav a.on::after{
+  content:'';display:block;height:2px;margin-top:2px;border-radius:1px;background:var(--primary);
+}
+.topright{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:13px;color:var(--muted-fg)}
+.switcher{display:flex;gap:2px;padding:3px;background:var(--muted);border-radius:10px;margin-left:22px}
+.switcher button{
+  padding:6px 18px;border-radius:8px;font-size:13.5px;color:var(--muted-fg);
+  transition:background .16s,color .16s,box-shadow .16s;white-space:nowrap;
+}
+.switcher button:hover{color:var(--fg)}
+.switcher button.on{background:#fff;color:var(--fg);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.07)}
+
+.shell{
+  display:grid;grid-template-columns:194px minmax(0,1fr);gap:32px;
+  max-width:1240px;margin:0 auto;padding:24px 32px 60px;align-items:start;
+}
+.shell[hidden]{display:none}
+.side{position:sticky;top:84px;display:flex;flex-direction:column;gap:18px}
+.side-title{
+  font-size:11px;color:var(--muted-fg);letter-spacing:.07em;
+  margin:0 0 7px;padding-left:10px;text-transform:uppercase;
+}
+.side-item{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:6px 10px;border-radius:8px;font-size:13px;color:var(--muted-fg);
+  cursor:pointer;transition:background .15s,color .15s;
+}
+.side-item:hover{background:var(--muted);color:var(--fg)}
+.side-item.on{background:var(--muted);color:var(--fg);font-weight:500}
+.side-item em{font-style:normal;font-size:11.5px;color:var(--muted-fg);font-variant-numeric:tabular-nums}
+.main{min-width:0}
+.main .wrap{padding:0;max-width:none}
+.main .page-head{padding:8px 0 20px}
+
+.api-hero{
+  border:1px solid var(--border);border-radius:var(--radius);
+  padding:44px 36px;background:var(--muted-2);margin-top:8px;
+}
+.api-hero h2{margin:0 0 8px;font-size:18px;font-weight:500}
+.api-hero p{margin:0 0 6px;font-size:13.5px;color:var(--muted-fg);line-height:1.85;max-width:560px}
+.api-hero small{font-size:12px;color:var(--muted-fg);opacity:.75}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--muted);display:grid;place-items:center;font-size:11px;color:var(--muted-fg);font-weight:500}
+
+.wrap{max-width:1180px;margin:0 auto;padding:0 32px}
+
+.demo-hint{
+  margin:20px auto 0;max-width:1240px;padding:0 32px;
+}
+.demo-hint div{
+  display:flex;align-items:center;gap:8px;
+  background:oklch(0.97 0.02 243);
+  color:oklch(0.45 0.09 243);
+  border-radius:10px;padding:9px 14px;font-size:12.5px;
+}
+.demo-hint b{font-weight:500}
+
+/* ---------- views ---------- */
+.view{display:none;animation:fade .22s ease}
+.view.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ---------- list ---------- */
+.page-head{padding:34px 0 22px}
+.page-head h1{margin:0 0 6px;font-size:24px;font-weight:500;letter-spacing:-.02em}
+.page-head p{margin:0;color:var(--muted-fg);font-size:13.5px}
+
+.catbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
+.chip{
+  padding:6px 14px;border-radius:999px;font-size:13px;
+  border:1px solid var(--border);color:var(--muted-fg);
+  transition:all .15s;background:#fff;
+}
+.chip:hover{border-color:var(--border-strong);color:var(--fg)}
+.chip.on{background:var(--fg);border-color:var(--fg);color:#fff}
+
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding-bottom:20px}
+.card{
+  border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;background:#fff;cursor:pointer;
+  transition:transform .18s cubic-bezier(.2,.8,.3,1), box-shadow .18s, border-color .18s;
+}
+.card:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--border-strong)}
+.card:active{transform:scale(.995)}
+.card-cover{
+  height:118px;display:grid;place-items:center;
+  background:oklch(0.965 0.028 var(--h));
+  position:relative;
+}
+.card-cover span{
+  font-size:13.5px;font-weight:500;letter-spacing:.02em;
+  color:oklch(0.42 0.115 var(--h));
+}
+.card-cover .tag{
+  position:absolute;top:10px;left:10px;
+  font-size:11px;padding:2px 7px;border-radius:6px;
+  background:rgba(255,255,255,.85);color:oklch(0.45 0.05 var(--h));
+  backdrop-filter:blur(4px);
+}
+.card-body{padding:13px 14px 15px}
+.card-name{font-size:14px;font-weight:500;margin-bottom:2px;letter-spacing:-.01em}
+.card-spec{font-size:12px;color:var(--muted-fg);margin-bottom:11px}
+.card-foot{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.price{font-size:18px;font-weight:500;letter-spacing:-.02em}
+.price i{font-style:normal;font-size:12px;font-weight:400;margin-right:1px}
+.stock{font-size:11.5px;color:var(--muted-fg);white-space:nowrap}
+.stock.low{color:var(--warning)}
+.stock.out{color:var(--muted-fg);opacity:.6}
+.card.out{pointer-events:none}
+.card.out .card-cover{filter:grayscale(.9);opacity:.65}
+.card.out .card-body{opacity:.62}
+
+/* ---------- detail ---------- */
+.back{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:13px;color:var(--muted-fg);margin:24px 0 18px;transition:color .15s;
+}
+.back:hover{color:var(--fg)}
+.detail{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;padding-bottom:60px}
+.detail-visual{
+  height:320px;border-radius:var(--radius);display:grid;place-items:center;
+  background:oklch(0.965 0.028 var(--h));
+  border:1px solid var(--border);
+}
+.detail-visual span{font-size:22px;font-weight:500;color:oklch(0.42 0.115 var(--h));letter-spacing:.01em}
+.detail-col h2{margin:0 0 8px;font-size:22px;font-weight:500;letter-spacing:-.02em}
+.detail-price{display:flex;align-items:baseline;gap:10px;margin:14px 0 18px}
+.detail-price .big{font-size:32px;font-weight:500;letter-spacing:-.03em}
+.detail-price .big i{font-style:normal;font-size:17px;font-weight:400;margin-right:2px}
+.detail-price .sub{font-size:12.5px;color:var(--muted-fg)}
+
+.assure{
+  display:flex;gap:10px;padding:12px 14px;border-radius:12px;
+  background:oklch(0.975 0.022 163);margin-bottom:18px;
+}
+.assure svg{flex:none;margin-top:2px}
+.assure div{font-size:12.5px;color:oklch(0.4 0.06 163);line-height:1.55}
+.assure b{font-weight:500}
+
+.row-opt{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.row-opt .k{font-size:13px;color:var(--muted-fg)}
+.stepper{display:flex;align-items:center;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+.stepper button{width:32px;height:32px;display:grid;place-items:center;color:var(--muted-fg);transition:background .15s}
+.stepper button:hover{background:var(--muted);color:var(--fg)}
+.stepper span{width:40px;text-align:center;font-size:13.5px;border-left:1px solid var(--border);border-right:1px solid var(--border);line-height:32px}
+
+.buy{
+  width:100%;height:46px;border-radius:12px;background:var(--primary);color:#fff;
+  font-size:15px;font-weight:500;letter-spacing:.01em;
+  transition:filter .15s, transform .1s;
+}
+.buy:hover{filter:brightness(.95)}
+.buy:active{transform:scale(.995)}
+.buy:disabled{background:var(--muted);color:var(--muted-fg);cursor:not-allowed}
+
+.notice{margin-top:22px;border-top:1px solid var(--border);padding-top:16px}
+.notice summary{
+  font-size:12.5px;color:var(--muted-fg);cursor:pointer;list-style:none;
+  display:flex;align-items:center;gap:6px;user-select:none;
+}
+.notice summary::-webkit-details-marker{display:none}
+.notice summary::before{content:'›';transition:transform .2s;display:inline-block;font-size:15px;line-height:1}
+.notice[open] summary::before{transform:rotate(90deg)}
+.notice ul{margin:10px 0 0;padding-left:16px;font-size:12.5px;color:var(--muted-fg);line-height:1.9}
+.notice .warn{color:oklch(0.5 0.14 40);font-weight:500}
+.disclaim{
+  display:flex;gap:8px;margin-top:12px;padding:10px 13px;border-radius:10px;
+  background:oklch(0.982 0.022 55);font-size:12px;line-height:1.6;
+  color:oklch(0.46 0.11 55);
+}
+.disclaim b{font-weight:500}
+.desc{margin-top:38px;padding-top:26px;border-top:1px solid var(--border);max-width:720px}
+.desc h3{font-size:15px;font-weight:500;margin:0 0 12px;letter-spacing:-.01em}
+.desc p{font-size:13.5px;color:var(--muted-fg);line-height:1.9;margin:0 0 11px}
+.desc ul{font-size:13.5px;color:var(--muted-fg);line-height:1.95;margin:0;padding-left:18px}
+.dv-badge{display:flex;flex-direction:column;align-items:center;gap:9px}
+.dv-badge small{font-size:12px;color:oklch(0.55 0.065 var(--h));letter-spacing:.03em}
+.dv-next{display:flex;justify-content:center;gap:10px;margin-top:22px}
+.pay-note{
+  margin:18px 0 0;text-align:center;font-size:12px;color:var(--muted-fg);
+  line-height:1.7;padding:0 8px;
+}
+
+/* ---------- pay ---------- */
+.pay-wrap{max-width:520px;margin:0 auto;padding:36px 0 80px}
+.pay-card{border:1px solid var(--border);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
+.pay-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px}
+.pay-head h3{margin:0;font-size:17px;font-weight:500}
+.pay-head .sub{font-size:12.5px;color:var(--muted-fg);margin-top:3px}
+.timer{
+  text-align:right;
+}
+.timer b{display:block;font-size:19px;font-weight:500;color:var(--warning);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.timer span{font-size:11.5px;color:var(--muted-fg)}
+.pay-line{display:flex;justify-content:space-between;padding:9px 0;font-size:13.5px;border-bottom:1px solid var(--border)}
+.pay-line:last-of-type{border-bottom:none}
+.pay-line .k{color:var(--muted-fg)}
+.pay-total{display:flex;justify-content:space-between;align-items:baseline;padding:16px 0 20px;margin-top:6px;border-top:1px solid var(--border)}
+.pay-total .k{font-size:13.5px;color:var(--muted-fg)}
+.pay-total .v{font-size:26px;font-weight:500;letter-spacing:-.02em}
+.pay-total .v i{font-style:normal;font-size:15px;font-weight:400;margin-right:2px}
+.pays{display:grid;gap:9px;margin-bottom:18px}
+.paybtn{
+  display:flex;align-items:center;gap:11px;height:46px;padding:0 15px;
+  border:1px solid var(--border);border-radius:11px;font-size:13.5px;
+  transition:all .15s;background:#fff;text-align:left;width:100%;
+}
+.paybtn:hover{border-color:var(--border-strong);background:var(--muted-2)}
+.paybtn .dot{width:16px;height:16px;border-radius:4px;flex:none}
+.paybtn .arrow{margin-left:auto;color:var(--muted-fg);font-size:15px}
+.mock{
+  width:100%;height:40px;border-radius:10px;border:1px dashed var(--border-strong);
+  color:var(--muted-fg);font-size:12.5px;transition:all .15s;
+}
+.mock:hover{border-color:var(--primary);color:var(--primary)}
+
+/* ---------- deliver ---------- */
+.dv-wrap{max-width:700px;margin:0 auto;padding:44px 0 60px}
+.dv-head{text-align:center;margin-bottom:26px}
+.dv-ok{
+  width:46px;height:46px;border-radius:50%;margin:0 auto 14px;
+  display:grid;place-items:center;background:oklch(0.96 0.04 163);
+}
+.dv-head h2{margin:0 0 5px;font-size:19px;font-weight:500}
+.dv-head p{margin:0;font-size:13px;color:var(--muted-fg)}
+.keycard{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.keycard-top{display:flex;justify-content:space-between;align-items:center;padding:15px 20px;border-bottom:1px solid var(--border);background:var(--muted-2)}
+.keycard-top .n{font-size:13.5px;font-weight:500}
+.keycard-top .q{font-size:12px;color:var(--muted-fg)}
+.keybox{padding:26px 20px}
+.secret{
+  display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:19px;letter-spacing:.08em;margin-bottom:22px;
+}
+.secret span{
+  padding:10px 16px;border-radius:10px;background:var(--muted);
+  color:var(--fg);user-select:all;border:1px solid var(--border);
+}
+.secret.masked span{color:var(--muted-fg);letter-spacing:.1em}
+.keyacts{display:flex;gap:9px;justify-content:center;margin-bottom:20px}
+.kbtn{
+  height:36px;padding:0 17px;border-radius:9px;border:1px solid var(--border);
+  font-size:13px;transition:all .15s;display:inline-flex;align-items:center;gap:6px;
+}
+.kbtn:hover{border-color:var(--border-strong);background:var(--muted-2)}
+.kbtn.primary{background:var(--fg);color:#fff;border-color:var(--fg)}
+.kbtn.primary:hover{background:oklch(0.25 0 0)}
+.kbtn.done{background:oklch(0.96 0.04 163);border-color:oklch(0.9 0.05 163);color:oklch(0.42 0.1 163)}
+.kmeta{
+  display:grid;grid-template-columns:1fr 1fr;gap:20px;padding-top:18px;
+  border-top:1px solid var(--border);font-size:12.5px;color:var(--muted-fg);
+}
+.kmeta>div{display:flex;flex-direction:column;gap:3px}
+.kmeta>div:last-child{text-align:right}
+.kmeta b{font-weight:500;color:var(--fg);font-size:13px}
+.dvwarn{
+  display:flex;gap:9px;margin-top:18px;padding:12px 14px;border-radius:11px;
+  background:oklch(0.98 0.025 60);font-size:12.5px;color:oklch(0.45 0.1 60);line-height:1.55;
+}
+.dvwarn b{font-weight:500}
+
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr;gap:0;padding:14px 20px 40px}
+  .side{
+    position:static;flex-direction:row;align-items:center;gap:14px;
+    overflow-x:auto;padding:0 0 13px;margin-bottom:6px;
+    border-bottom:1px solid var(--border);scrollbar-width:none;
+  }
+  .side::-webkit-scrollbar{display:none}
+  .side>div{display:flex;align-items:center;gap:6px;flex:none}
+  .side-title{display:none}
+  .side-item{white-space:nowrap;border:1px solid var(--border);padding:5px 11px}
+  .side-item em{display:none}
+  .main .page-head{padding:12px 0 16px}
+}
+@media (max-width:430px){
+  .topbar{padding:0 14px;gap:10px}
+  .switcher{margin-left:0;padding:2px}
+  .switcher button{padding:6px 11px;font-size:12.5px}
+  .topright>span:first-child{display:none}
+}
+@media (max-width:520px){
+  .wrap,.demo-hint{padding:0 16px}
+  .page-head{padding:24px 0 18px}
+  .page-head h1{font-size:20px}
+  .page-head p{font-size:12.5px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .card-cover{height:108px}
+  .card-cover span{font-size:12px;padding:0 10px;text-align:center;line-height:1.45}
+  .card-cover .tag{font-size:10.5px;top:8px;left:8px}
+  .card-body{padding:11px 12px 13px}
+  .card-name{font-size:13px}
+  .card-spec{font-size:11px;margin-bottom:9px}
+  .price{font-size:16px}
+  .stock{font-size:11px}
+  .catbar{gap:6px}
+  .chip{padding:5px 12px;font-size:12.5px}
+  .demo-hint div{font-size:12px;padding:8px 12px}
+  .detail-visual{height:190px}
+  .detail-col h2{font-size:19px}
+  .detail-price .big{font-size:27px}
+  .pay-card{padding:20px}
+  .keycard-top{padding:12px 15px}
+  .keybox{padding:20px 15px}
+  .secret{font-size:16px;gap:8px}
+  .secret span{padding:8px 12px}
+  .keyacts{flex-wrap:wrap}
+  .kmeta{gap:14px}
+  .dv-wrap{padding:28px 0 40px}
+  .dv-head h2{font-size:17px}
+}
+@media (prefers-reduced-motion: reduce){
+  .view{animation:none}
+  .card,.buy,.kbtn,.paybtn,.chip,.stepper button{transition:none}
+  .card:hover{transform:none}
+  .card:active{transform:none}
+}
+@media (max-width:900px){
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .detail{grid-template-columns:1fr;gap:24px}
+  .detail-visual{height:220px}
+  .wrap,.demo-hint{padding:0 20px}
+  .topbar{padding:0 20px;gap:16px}
+  .topnav{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><div class="brand-mark">A</div>apiduo</div>
+  <div class="switcher">
+    <button id="sw-api" onclick="setMode('api')">API 平台</button>
+    <button id="sw-shop" class="on" onclick="setMode('shop')">卡密商城</button>
+  </div>
+  <div class="topright">
+    <span>¥ 128.40</span>
+    <div class="avatar">帅</div>
+  </div>
+</div>
+
+<div class="demo-hint">
+  <div>
+    <b>Demo</b>
+    <span>点任意商品 → 详情 → 立即购买 → 选支付方式 → 模拟成功，可走完整链路</span>
+  </div>
+</div>
+
+<div class="shell" id="shell-shop">
+  <aside class="side">
+    <div>
+      <div class="side-title">商品分类</div>
+      <div class="side-item on"><span>全部商品</span><em>8</em></div>
+      <div class="side-item"><span>AI 会员</span><em>3</em></div>
+      <div class="side-item"><span>AI 工具</span><em>3</em></div>
+      <div class="side-item"><span>成品号</span><em>1</em></div>
+      <div class="side-item"><span>算力额度</span><em>1</em></div>
+      <div class="side-item"><span>资料</span><em>0</em></div>
+    </div>
+    <div>
+      <div class="side-title">我的</div>
+      <div class="side-item"><span>我的卡密</span></div>
+      <div class="side-item"><span>我的订单</span></div>
+      <div class="side-item"><span>售后工单</span></div>
+    </div>
+  </aside>
+  <main class="main">
+
+<!-- ============ 列表 ============ -->
+<div class="view on" id="view-list">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>卡密商城</h1>
+      <p>全部商品自动发货，支付成功后立即展示卡密，支持质保期内免费更换</p>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<!-- ============ 详情 ============ -->
+<div class="view" id="view-detail">
+  <div class="wrap">
+    <a class="back" onclick="go('list')">← 返回商城</a>
+    <div class="detail">
+      <div class="detail-visual" id="d-visual" style="--h:150">
+        <div class="dv-badge">
+          <span id="d-visual-text">ChatGPT Plus</span>
+          <small>自动发货 · 7 天质保</small>
+        </div>
+      </div>
+      <div class="detail-col">
+        <h2 id="d-name">ChatGPT Plus</h2>
+        <div class="card-spec" id="d-spec" style="margin:0">月卡 · 自动发货</div>
+
+        <div class="detail-price">
+          <span class="big"><i>¥</i><span id="d-price">172</span></span>
+          <span class="sub" id="d-stock">库存充足</span>
+        </div>
+
+        <div class="assure">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1.5 2.5 3.8v4.1c0 3 2.3 5.7 5.5 6.6 3.2-.9 5.5-3.6 5.5-6.6V3.8L8 1.5Z" stroke="oklch(0.5 0.1 163)" stroke-width="1.2" stroke-linejoin="round"/>
+            <path d="m5.6 7.9 1.7 1.7 3.2-3.2" stroke="oklch(0.5 0.1 163)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div><b>官方封号包换</b> · 质保 <b>7 天</b>，期内失效免费补发一次，超期不再受理</div>
+        </div>
+
+        <div class="row-opt">
+          <span class="k">购买数量 <span id="d-limit" style="opacity:.7">（每人限 3 件）</span></span>
+          <div class="stepper">
+            <button onclick="step(-1)">−</button>
+            <span id="qty">1</span>
+            <button onclick="step(1)">+</button>
+          </div>
+        </div>
+
+        <button class="buy" id="buybtn" onclick="go('pay')">立即购买 · ¥172</button>
+
+        <div class="disclaim">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="flex:none;margin-top:2px">
+            <circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M8 4.6v4.2M8 11.2v.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          <div><b>虚拟商品，一经交付不支持 7 天无理由退货。</b>下单即视为已阅读并同意下方全部条款。</div>
+        </div>
+
+        <details class="notice">
+          <summary>购买须知</summary>
+          <ul>
+            <li>卡密由上游供应商提供，本平台负责交付与质保期内的免费更换。</li>
+            <li>请勿将卡密分享给他人，泄露后无法追回，责任自负。</li>
+            <li>因使用方式不当（如多设备同时登录）导致的封禁不在质保范围。</li>
+            <li>支付后 15 分钟内未完成将自动关闭订单并释放库存。</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <div class="desc">
+      <h3>商品说明</h3>
+      <p>本商品为 ChatGPT Plus 订阅代充，下单后由系统自动从库存中取出卡密并展示。请在使用前确认你的账号状态，代充过程需提供登录凭据的场景请按详情页指引操作。</p>
+      <ul>
+        <li>发货时间：支付成功后即时自动发放，无需等待人工处理。</li>
+        <li>使用方式：复制卡密后按卡密页面的指引完成兑换，全程约需 2 分钟。</li>
+        <li>质保范围：账号因订阅未生效或上游原因失效，7 天内免费补发一次。</li>
+        <li>不在质保范围：因多设备登录、共享账号、违反上游服务条款导致的封禁。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 支付 ============ -->
+<div class="view" id="view-pay">
+  <div class="wrap">
+    <div class="pay-wrap">
+      <a class="back" onclick="go('detail')">← 返回商品</a>
+      <div class="pay-card">
+        <div class="pay-head">
+          <div>
+            <h3>确认订单</h3>
+            <div class="sub" id="p-orderno">订单号 CARD1001NO1762…</div>
+          </div>
+          <div class="timer">
+            <b id="p-timer">15:00</b>
+            <span>支付剩余时间</span>
+          </div>
+        </div>
+
+        <div class="pay-line"><span class="k">商品</span><span id="p-name">ChatGPT Plus 月卡</span></div>
+        <div class="pay-line"><span class="k">单价 × 数量</span><span class="num" id="p-unit">¥172 × 1</span></div>
+        <div class="pay-line"><span class="k">质保</span><span>7 天</span></div>
+
+        <div class="pay-total">
+          <span class="k">应付金额</span>
+          <span class="v"><i>¥</i><span id="p-total">172.00</span></span>
+        </div>
+
+        <div class="pays">
+          <button class="paybtn" onclick="paid('支付宝')">
+            <span class="dot" style="background:#1677ff"></span>支付宝
+            <span class="arrow">›</span>
+          </button>
+          <button class="paybtn" onclick="paid('微信支付')">
+            <span class="dot" style="background:#07c160"></span>微信支付
+            <span class="arrow">›</span>
+          </button>
+        </div>
+
+        <button class="mock" onclick="paid('模拟')">模拟支付成功（Demo 用）</button>
+        <p class="pay-note">支付遇到问题？可在「我的订单」中重新发起支付。<br>订单关闭后所占库存将自动释放，不会扣款。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 交付 ============ -->
+<div class="view" id="view-deliver">
+  <div class="wrap">
+    <div class="dv-wrap">
+      <div class="dv-head">
+        <div class="dv-ok">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="m5 12.5 4.5 4.5L19 7.5" stroke="oklch(0.5 0.12 163)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2>支付成功，卡密已交付</h2>
+        <p id="v-sub">订单 CARD1001NO1762… · 支付宝</p>
+      </div>
+
+      <div class="keycard">
+        <div class="keycard-top">
+          <span class="n" id="v-name">ChatGPT Plus 月卡</span>
+          <span class="q">数量 1</span>
+        </div>
+        <div class="keybox">
+          <div class="secret" id="v-secret">
+            <span>7f3a</span><span>b21c</span><span>9d84</span><span>e05b</span>
+          </div>
+          <div class="keyacts">
+            <button class="kbtn primary" id="copybtn" onclick="copyKey()">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <rect x="5.5" y="5.5" width="8" height="8" rx="1.6" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M10.5 5.5v-1a1.6 1.6 0 0 0-1.6-1.6H4a1.6 1.6 0 0 0-1.6 1.6v4.9A1.6 1.6 0 0 0 4 11h1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+              <span id="copytext">复制卡密</span>
+            </button>
+            <button class="kbtn" onclick="download()">下载 txt</button>
+            <button class="kbtn" onclick="toggleMask()" id="maskbtn">模拟再次访问</button>
+          </div>
+          <div class="kmeta">
+            <div><span>质保到期</span><b class="num">2026-11-12 16:14</b></div>
+            <div><span>订单号</span><b class="num" id="v-orderno">CARD1001NO1762…</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dvwarn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="flex:none;margin-top:2px">
+          <circle cx="8" cy="8" r="6.4" stroke="oklch(0.58 0.13 60)" stroke-width="1.2"/>
+          <path d="M8 4.6v4.2M8 11.2v.1" stroke="oklch(0.58 0.13 60)" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <div><b>请立即保存。</b>本页面刷新后仅显示脱敏信息（<span style="font-family:ui-monospace,monospace">7f3a****e05b</span>），届时只能通过「我的卡密」重新查看完整内容一次。</div>
+      </div>
+
+      <div class="dv-next">
+        <button class="kbtn" onclick="go('list')">查看我的卡密</button>
+        <button class="kbtn" onclick="go('list')">继续逛逛</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const GOODS = [
+  {id:1, name:'ChatGPT Plus', spec:'月卡 · 自动发货', price:172, h:150, tag:'热销', stock:'充足'},
+  {id:2, name:'Claude Pro', spec:'月卡 · 自动发货', price:188, h:38, tag:'', stock:'充足'},
+  {id:3, name:'Midjourney', spec:'基础版 · 月卡', price:112, h:280, tag:'', stock:'仅剩 3 张'},
+  {id:4, name:'Cursor Pro', spec:'月卡 · 自动发货', price:198, h:250, tag:'', stock:'充足'},
+  {id:5, name:'Gemini Advanced', spec:'月卡 · 自动发货', price:205, h:220, tag:'', stock:'充足'},
+  {id:6, name:'ChatGPT 独享号', spec:'永久 · 人工发货', price:168, h:20, tag:'限购 1', stock:'仅剩 2 张'},
+  {id:7, name:'谷歌邮箱号', spec:'单个 · 自动发货', price:12, h:200, tag:'', stock:'充足'},
+  {id:8, name:'Replicate 额度', spec:'$10 面值 · 固定内容', price:75, h:305, tag:'', stock:'售罄'},
+];
+
+let current = GOODS[0];
+let qty = 1;
+
+const grid = document.getElementById('grid');
+grid.innerHTML = GOODS.map(g => `
+  <div class="card ${g.stock==='售罄'?'out':''}" onclick="openDetail(${g.id})">
+    <div class="card-cover" style="--h:${g.h}">
+      ${g.tag?`<span class="tag">${g.tag}</span>`:''}
+      <span>${g.name}</span>
+    </div>
+    <div class="card-body">
+      <div class="card-name">${g.name}</div>
+      <div class="card-spec">${g.spec}</div>
+      <div class="card-foot">
+        <span class="price"><i>¥</i>${g.price}</span>
+        <span class="stock ${g.stock==='售罄'?'out':g.stock.includes('仅剩')?'low':''}">${g.stock||'库存充足'}</span>
+      </div>
+    </div>
+  </div>
+`).join('');
+
+function go(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('on'));
+  document.getElementById('view-'+v).classList.add('on');
+  window.scrollTo({top:0,behavior:'instant'});
+}
+
+function openDetail(id){
+  current = GOODS.find(g=>g.id===id);
+  qty = 1;
+  const h = current.h;
+  document.getElementById('d-visual').style.setProperty('--h', h);
+  document.getElementById('d-visual-text').textContent = current.name;
+  document.getElementById('d-name').textContent = current.name;
+  document.getElementById('d-spec').textContent = current.spec;
+  document.getElementById('d-price').textContent = current.price;
+  document.getElementById('d-stock').textContent = current.stock === '充足' ? '库存充足' : current.stock;
+  document.getElementById('qty').textContent = 1;
+  updateBuy();
+  go('detail');
+}
+
+function step(d){
+  qty = Math.min(3, Math.max(1, qty + d));
+  document.getElementById('qty').textContent = qty;
+  updateBuy();
+}
+
+function updateBuy(){
+  const btn = document.getElementById('buybtn');
+  btn.textContent = `立即购买 · ¥${current.price * qty}`;
+}
+
+document.getElementById('buybtn').addEventListener('click', ()=>{
+  const no = 'CARD1001NO1762' + String(Math.floor(Math.random()*9000+1000));
+  document.getElementById('p-orderno').textContent = '订单号 ' + no;
+  document.getElementById('p-name').textContent = current.name + ' · ' + current.spec.split(' · ')[0];
+  document.getElementById('p-unit').textContent = `¥${current.price} × ${qty}`;
+  document.getElementById('p-total').textContent = (current.price*qty).toFixed(2);
+  startTimer();
+  go('pay');
+});
+
+let timerId = null;
+function startTimer(){
+  clearInterval(timerId);
+  let left = 15*60;
+  const el = document.getElementById('p-timer');
+  const tick = ()=>{
+    const m = String(Math.floor(left/60)).padStart(2,'0');
+    const s = String(left%60).padStart(2,'0');
+    el.textContent = `${m}:${s}`;
+    if(left <= 0){ clearInterval(timerId); el.textContent = '已关闭'; el.style.color = 'var(--muted-fg)'; return; }
+    left--;
+  };
+  tick();
+  timerId = setInterval(tick, 1000);
+}
+
+let lastPay = '支付宝';
+function paid(method){
+  lastPay = method;
+  clearInterval(timerId);
+  document.getElementById('v-sub').textContent =
+    '订单 ' + document.getElementById('p-orderno').textContent.replace('订单号 ','') + ' · ' + method;
+  document.getElementById('v-name').textContent = current.name + ' · ' + current.spec.split(' · ')[0];
+  document.getElementById('v-name').nextElementSibling.textContent = '数量 ' + qty;
+  document.getElementById('v-orderno').textContent =
+    document.getElementById('p-orderno').textContent.replace('订单号 ','');
+
+  const segs = Array.from({length:4}, ()=>Math.random().toString(16).slice(2,6));
+  document.getElementById('v-secret').innerHTML = segs.map(s=>`<span>${s}</span>`).join('');
+  document.getElementById('v-secret').classList.remove('masked');
+  document.getElementById('maskbtn').textContent = '模拟再次访问';
+  window._segs = segs;
+
+  go('deliver');
+}
+
+function toggleMask(){
+  const box = document.getElementById('v-secret');
+  const btn = document.getElementById('maskbtn');
+  if(box.classList.contains('masked')){
+    box.innerHTML = window._segs.map(s=>`<span>${s}</span>`).join('');
+    box.classList.remove('masked');
+    btn.textContent = '模拟再次访问';
+  }else{
+    const s = window._segs;
+    box.innerHTML = `<span>${s[0]}</span><span>****</span><span>****</span><span>${s[3]}</span>`;
+    box.classList.add('masked');
+    btn.textContent = '恢复完整显示';
+  }
+}
+
+function copyKey(){
+  const text = window._segs.join('');
+  const done = ()=>{
+    const btn = document.getElementById('copybtn');
+    const t = document.getElementById('copytext');
+    btn.classList.add('done'); t.textContent = '已复制';
+    setTimeout(()=>{ btn.classList.remove('done'); t.textContent = '复制卡密'; }, 1600);
+  };
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  }else{ fallback(); }
+  function fallback(){
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ alert('复制失败，请手动选择卡密文本'); }
+    document.body.removeChild(ta);
+  }
+}
+
+function download(){
+  const text = `商品：${current.name}\n卡密：${window._segs.join('')}\n订单：${document.getElementById('p-orderno').textContent.replace('订单号 ','')}\n请妥善保存，泄露自负。\n`;
+  const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `card-${Date.now()}.txt`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+
+const _h = location.hash.slice(1);
+if(_h === 'detail'){ openDetail(1); }
+else if(_h === 'pay'){ openDetail(1); document.getElementById('buybtn').click(); }
+else if(_h === 'deliver'){ openDetail(1); document.getElementById('buybtn').click(); paid('支付宝'); }
+
+document.querySelectorAll('.chip').forEach(c=>{
+  c.addEventListener('click', ()=>{
+    document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
+    c.classList.add('on');
+  });
+});
+</script>
+</main>
+</div>
+
+<div class="shell" id="shell-api" hidden>
+  <aside class="side">
+    <div>
+      <div class="side-title">控制台</div>
+      <div class="side-item on"><span>概览</span></div>
+      <div class="side-item"><span>令牌</span></div>
+      <div class="side-item"><span>用量日志</span></div>
+      <div class="side-item"><span>钱包</span></div>
+      <div class="side-item"><span>邀请奖励</span></div>
+    </div>
+    <div>
+      <div class="side-title">管理</div>
+      <div class="side-item"><span>渠道</span></div>
+      <div class="side-item"><span>用户</span></div>
+      <div class="side-item"><span>模型</span></div>
+      <div class="side-item"><span>系统设置</span></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="api-hero">
+      <h2>API 平台</h2>
+      <p>这是你现有的控制台。切换器放在最外层，两条产品线各自拥有独立的侧边栏与视觉基调，互不干扰。</p>
+      <p>商城的分类树、我的卡密、售后工单不会挤进上面这排「渠道 / 用户 / 模型」里，用户也不会在买卡密时撞见「系统设置」。</p>
+      <small>本 Demo 只呈现结构关系，未实现控制台页面。</small>
+    </div>
+  </main>
+</div>
+
+<script>
+function setMode(m){
+  var shop = m === 'shop';
+  document.getElementById('shell-shop').hidden = !shop;
+  document.getElementById('shell-api').hidden = shop;
+  document.getElementById('sw-shop').classList.toggle('on', shop);
+  document.getElementById('sw-api').classList.toggle('on', !shop);
+  window.scrollTo({top:0,behavior:'instant'});
+}
+if(location.hash === '#api') setMode('api');
+</script>
+</body>
+</html>

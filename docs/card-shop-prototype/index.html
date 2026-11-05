@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡密商城 · apiduo</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="index.html"><span class="brand-mark">A</span>apiduo</a>
+  <nav class="switcher">
+    <a href="api-platform.html">API 平台</a>
+    <a href="index.html" class="on">卡密商城</a>
+  </nav>
+  <div class="topright">
+    <span class="num">¥ 128.40</span>
+    <div class="avatar">帅</div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="side">
+    <div>
+      <div class="side-title">商品分类</div>
+      <div class="side-item on"><span>全部商品</span><em>8</em></div>
+      <div class="side-item"><span>AI 会员</span><em>3</em></div>
+      <div class="side-item"><span>AI 工具</span><em>3</em></div>
+      <div class="side-item"><span>成品号</span><em>1</em></div>
+      <div class="side-item"><span>算力额度</span><em>1</em></div>
+      <div class="side-item"><span>资料</span><em>0</em></div>
+    </div>
+    <div>
+      <div class="side-title">我的</div>
+      <a class="side-item" href="my-cards.html"><span>我的卡密</span></a>
+      <a class="side-item" href="my-cards.html"><span>我的订单</span></a>
+      <a class="side-item" href="my-cards.html"><span>售后工单</span></a>
+    </div>
+    <div>
+      <div class="side-title">管理</div>
+      <a class="side-item" href="admin-goods.html"><span>商家后台</span></a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <h1>卡密商城</h1>
+      <p>全部商品自动发货，支付成功后立即展示卡密，支持质保期内免费更换</p>
+    </div>
+    <div class="grid" id="grid"></div>
+  </main>
+</div>
+
+<script src="assets/data.js"></script>
+<script>
+document.getElementById('grid').innerHTML = GOODS.map(g => {
+  const s = stockLabel(g);
+  return `
+  <a class="card ${g.stockNum === 0 ? 'out' : ''}" href="goods.html?id=${g.id}">
+    <div class="card-cover" style="--h:${g.h}">
+      ${g.tag ? `<span class="tag">${g.tag}</span>` : ''}
+      <span>${g.name}</span>
+    </div>
+    <div class="card-body">
+      <div class="card-name">${g.name}</div>
+      <div class="card-spec">${g.spec}</div>
+      <div class="card-foot">
+        <span class="price"><i>¥</i>${g.price}</span>
+        <span class="stock ${s.cls}">${s.text}</span>
+      </div>
+    </div>
+  </a>`;
+}).join('');
+</script>
+</body>
+</html>

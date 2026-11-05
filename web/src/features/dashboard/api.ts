@@ -21,7 +21,10 @@ import { api } from '@/lib/api'
 import type {
   FlowQuotaDataItem,
   QuotaDataItem,
+  SeriesGroup,
+  SkQuotaData,
   UptimeGroupResult,
+  UserBalanceItem,
 } from './types'
 
 // ============================================================================
@@ -89,5 +92,61 @@ export async function getUptimeStatus() {
   const res = await api.get<{ success: boolean; data: UptimeGroupResult[] }>(
     '/api/uptime/status'
   )
+  return res.data
+}
+
+// Get usage grouped by token (SK), model and user. Admin only.
+// Rows are the highest-spending buckets; `totals` always covers the full range.
+export async function getSkQuotaData(params: {
+  start_timestamp: number
+  end_timestamp: number
+  username?: string
+  model?: string
+  limit?: number
+}) {
+  const res = await api.get<{ success: boolean; data: SkQuotaData }>(
+    '/api/data/sk',
+    { params }
+  )
+  return res.data
+}
+
+// Get daily usage series grouped by model, user or channel. Admin only.
+export async function getUsageSeries(params: {
+  start_timestamp: number
+  end_timestamp: number
+  dimension?: 'model' | 'user' | 'channel'
+  tz_offset_minutes?: number
+}) {
+  const res = await api.get<{ success: boolean; data: { groups: SeriesGroup[] } }>(
+    '/api/data/series',
+    { params }
+  )
+  return res.data
+}
+
+// Get the caller's own daily usage series.
+export async function getSelfUsageSeries(params: {
+  start_timestamp: number
+  end_timestamp: number
+  tz_offset_minutes?: number
+}) {
+  const res = await api.get<{ success: boolean; data: SeriesGroup }>(
+    '/api/data/series/self',
+    { params }
+  )
+  return res.data
+}
+
+// Get every spending user's balance plus a dense daily series. Admin only.
+export async function getUserBalanceSeries(params: {
+  days?: number
+  end_timestamp?: number
+  tz_offset_minutes?: number
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: { start_date: string; users: UserBalanceItem[] }
+  }>('/api/data/user-balances', { params })
   return res.data
 }

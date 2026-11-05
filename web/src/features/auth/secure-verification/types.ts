@@ -34,6 +34,10 @@ export type SecurityProofScope =
   | 'access_token.generate'
   | 'access_token.update'
   | 'access_token.revoke'
+  // APIDUO:agent-key:BEGIN
+  | 'agent_key.register'
+  | 'agent_key.revoke'
+  // APIDUO:agent-key:END
   | 'account.binding.bind'
   | 'account.binding.unbind'
   | 'account.password.set'
@@ -84,6 +88,13 @@ export type VerificationOperation =
       scope: 'access_token.update'
       context: { token_id: number; scopes: string[] }
     }
+  // APIDUO:agent-key:BEGIN
+  | {
+      scope: 'agent_key.register'
+      context: { scopes: string[]; expires_at: number; public_key_id: string }
+    }
+  | { scope: 'agent_key.revoke'; context: { key_id: number } }
+  // APIDUO:agent-key:END
   | {
       scope: 'access_token.revoke'
       context: { token_id: number } | { legacy: true }
@@ -97,6 +108,10 @@ export type VerificationOperation =
         | 'access_token.generate'
         | 'access_token.update'
         | 'access_token.revoke'
+        // APIDUO:agent-key:BEGIN
+        | 'agent_key.register'
+        | 'agent_key.revoke'
+        // APIDUO:agent-key:END
         | `admin.user.${string}`
       >
       context?: Record<string, never>

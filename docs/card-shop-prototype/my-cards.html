@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>我的卡密 · 卡密商城</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+.tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.tab{padding:6px 13px;border-radius:999px;border:1px solid var(--border);font-size:13px;color:var(--muted-fg);transition:all .15s;background:#fff}
+.tab:hover{border-color:var(--border-strong);color:var(--fg)}
+.tab.on{background:var(--fg);border-color:var(--fg);color:#fff}
+.list{display:flex;flex-direction:column;gap:12px}
+.ord{border:1px solid var(--border);border-radius:14px;overflow:hidden;transition:border-color .15s}
+.ord:hover{border-color:var(--border-strong)}
+.ord-head{display:flex;align-items:center;gap:14px;padding:14px 18px;background:var(--muted-2);border-bottom:1px solid var(--border)}
+.ord-head .nm{font-size:13.5px;font-weight:500}
+.ord-head .no{font-size:11.5px;color:var(--muted-fg);font-family:ui-monospace,monospace}
+.ord-head .rt{margin-left:auto;display:flex;align-items:center;gap:8px}
+.ord-body{padding:16px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.key{display:flex;gap:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;letter-spacing:.05em;flex-wrap:wrap}
+.key span{padding:5px 9px;border-radius:7px;background:var(--muted);border:1px solid var(--border);user-select:all}
+.key.masked span{color:var(--muted-fg);letter-spacing:.1em;background:var(--muted-2)}
+.ord-acts{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap}
+.ord-foot{padding:0 18px 14px;display:flex;gap:22px;font-size:12px;color:var(--muted-fg);flex-wrap:wrap}
+.ord-foot b{font-weight:500;color:var(--fg)}
+.reveal-note{
+  display:flex;gap:7px;margin:0 18px 14px;padding:9px 12px;border-radius:9px;
+  background:oklch(0.98 0.025 60);font-size:12px;color:oklch(0.46 0.11 60);line-height:1.6;
+}
+@media (max-width:640px){
+  .ord-acts{margin-left:0;width:100%}
+  .ord-head .no{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="index.html"><span class="brand-mark">A</span>apiduo</a>
+  <nav class="switcher">
+    <a href="api-platform.html">API 平台</a>
+    <a href="index.html" class="on">卡密商城</a>
+  </nav>
+  <div class="topright">
+    <span class="num">¥ 128.40</span>
+    <div class="avatar">帅</div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="side">
+    <div>
+      <div class="side-title">商品分类</div>
+      <a class="side-item" href="index.html"><span>全部商品</span></a>
+      <div class="side-item"><span>AI 会员</span></div>
+      <div class="side-item"><span>AI 工具</span></div>
+      <div class="side-item"><span>成品号</span></div>
+      <div class="side-item"><span>算力额度</span></div>
+      <div class="side-item"><span>资料</span></div>
+    </div>
+    <div>
+      <div class="side-title">我的</div>
+      <div class="side-item on"><span>我的卡密</span></div>
+      <div class="side-item"><span>我的订单</span></div>
+      <div class="side-item"><span>售后工单</span></div>
+    </div>
+    <div>
+      <div class="side-title">管理</div>
+      <a class="side-item" href="admin-goods.html"><span>商家后台</span></a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <h1>我的卡密</h1>
+      <p>卡密仅首次交付时完整展示，之后永久脱敏。每次「查看」都会记录到审计日志，可查看次数有限。</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab on" onclick="pick(this)">全部</button>
+      <button class="tab" onclick="pick(this)">质保中</button>
+      <button class="tab" onclick="pick(this)">已过期</button>
+      <button class="tab" onclick="pick(this)">售后中</button>
+    </div>
+
+    <div class="list" id="list"></div>
+  </main>
+</div>
+
+<script>
+const MINE = [
+  { name: 'ChatGPT Plus', spec: '月卡', no: 'CARD1001NO17628501', qty: 1, amount: 172, time: '2026-11-05 15:42', warrantyEnd: '2026-11-12 15:42', status: '质保中', wasted: false, left: 1, segs: ['7f3a', 'b21c', '9d84', 'e05b'] },
+  { name: '谷歌邮箱号', spec: '单个', no: 'CARD1007NO17627990', qty: 3, amount: 36, time: '2026-11-05 11:48', warrantyEnd: '2026-11-06 11:48', status: '质保中', wasted: false, left: 2, segs: ['2c91', '4ad7', '18f0', 'bb03'] },
+  { name: 'Cursor Pro', spec: '月卡', no: 'CARD1001NO17627842', qty: 1, amount: 198, time: '2026-11-01 10:31', warrantyEnd: '2026-11-08 10:31', status: '售后中', wasted: false, left: 0, segs: ['d80e', '1f3a', '55c2', '9e77'] },
+  { name: 'Midjourney', spec: '基础版', no: 'CARD1001NO17601233', qty: 1, amount: 112, time: '2026-10-18 09:05', warrantyEnd: '2026-10-25 09:05', status: '已过期', wasted: true, left: 0, segs: ['9a4c', '0e51', '7b22', '3d18'] },
+];
+
+const badgeCls = { '质保中': 'ok', '已过期': 'gray', '售后中': 'warn' };
+const revealed = new Set();
+
+function keyHtml(o, i){
+  if (revealed.has(i)) {
+    return `<div class="key"><span>${o.segs[0]}</span><span>${o.segs[1]}</span><span>${o.segs[2]}</span><span>${o.segs[3]}</span></div>`;
+  }
+  return `<div class="key masked"><span>${o.segs[0]}</span><span>****</span><span>****</span><span>${o.segs[3]}</span></div>`;
+}
+
+function render(){
+  document.getElementById('list').innerHTML = MINE.map((o, i) => {
+    const canView = !o.wasted && (o.left > 0 || revealed.has(i));
+    const viewBtn = o.wasted
+      ? `<button class="btn sm" disabled>不可查看</button>`
+      : (revealed.has(i)
+          ? `<button class="btn sm" onclick="hideKey(${i})">隐藏</button>`
+          : `<button class="btn sm blue" onclick="reveal(${i})" ${canView ? '' : 'disabled'}>查看</button>`);
+
+    return `
+    <div class="ord">
+      <div class="ord-head">
+        <div>
+          <div class="nm">${o.name} · ${o.spec} × ${o.qty}</div>
+          <div class="no">${o.no}</div>
+        </div>
+        <div class="rt">
+          <span class="badge ${badgeCls[o.status] || 'gray'}">${o.status}</span>
+          <span class="num" style="font-size:13.5px;font-weight:500">¥${o.amount}</span>
+        </div>
+      </div>
+      <div class="ord-body">
+        ${keyHtml(o, i)}
+        <div class="ord-acts">
+          ${viewBtn}
+          <button class="btn sm" onclick="copyOne(${i})" ${revealed.has(i) ? '' : 'disabled'}>复制</button>
+          <button class="btn sm" onclick="dl(${i})" ${revealed.has(i) ? '' : 'disabled'}>下载</button>
+          <button class="btn sm" onclick="alert('进入售后工单（原型未实现）')">申请售后</button>
+        </div>
+      </div>
+      ${revealed.has(i) ? `<div class="reveal-note"><span>⚠</span><div>这是<b>最后一次</b>完整查看，请立即保存。关闭后仅剩脱敏显示，再次查看需联系客服并核验身份。</div></div>` : ''}
+      <div class="ord-foot">
+        <span>购买时间 <b class="num">${o.time}</b></span>
+        <span>质保到期 <b class="num">${o.warrantyEnd}</b></span>
+        ${o.wasted
+          ? '<span>已过质保期，卡密永久不可查看</span>'
+          : `<span>剩余查看次数 <b>${o.left}</b></span>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function reveal(i){
+  if (MINE[i].left <= 0) return alert('该订单的查看次数已用尽，请联系客服');
+  revealed.add(i);
+  MINE[i].left = Math.max(0, MINE[i].left - 1);
+  render();
+}
+
+function hideKey(i){
+  revealed.delete(i);
+  render();
+}
+
+function pick(el){
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function copyOne(i){
+  if (!revealed.has(i)) return alert('请先点「查看」再复制');
+  const text = MINE[i].segs.join('');
+  const done = () => alert('已复制：' + text);
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done).catch(done);
+  else done();
+}
+
+function dl(i){
+  if (!revealed.has(i)) return alert('请先点「查看」再下载');
+  const o = MINE[i];
+  const blob = new Blob([`商品：${o.name}\n卡密：${o.segs.join('')}\n订单：${o.no}\n`], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${o.no}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+render();
+</script>
+</body>
+</html>

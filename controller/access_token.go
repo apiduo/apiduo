@@ -26,6 +26,10 @@ type accessTokenCreateRequest struct {
 	Name      string   `json:"name"`
 	Scopes    []string `json:"scopes"`
 	ExpiresAt int64    `json:"expires_at"`
+	// APIDUO:token-ip-allowlist:BEGIN Empty or absent means usable from
+	// anywhere, which keeps existing clients working unchanged.
+	AllowIps string `json:"allow_ips"`
+	// APIDUO:token-ip-allowlist:END
 }
 
 // accessTokenUpdateRequest renames a token; a present scopes field also
@@ -33,6 +37,10 @@ type accessTokenCreateRequest struct {
 type accessTokenUpdateRequest struct {
 	Name   string   `json:"name"`
 	Scopes []string `json:"scopes"`
+	// APIDUO:token-ip-allowlist:BEGIN Nil leaves the current restriction
+	// untouched; an empty string clears it.
+	AllowIps *string `json:"allow_ips"`
+	// APIDUO:token-ip-allowlist:END
 }
 
 func newAccessTokenItem(token *model.UserAccessToken) accessTokenItem {
@@ -46,6 +54,24 @@ func newAccessTokenItem(token *model.UserAccessToken) accessTokenItem {
 // writeAccessTokenError responds with a stable code and a web console message.
 func writeAccessTokenError(c *gin.Context, status int, code, key string, params ...map[string]any) {
 	common.ApiErrorStatus(c, status, common.NewMessage(key, params...), gin.H{"code": code})
+}
+
+// writeAccessTokenIpError turns an allowlist rejection into a code the caller
+// can act on. Each cause needs a different fix, so they must not collapse into
+// one generic "invalid" message.
+func writeAccessTokenIpError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, model.ErrAccessTokenIpTooLarge):
+		writeAccessTokenError(c, http.StatusBadRequest, "ACCESS_TOKEN_IP_TOO_LARGE",
+			"At most {{entries}} addresses or CIDR blocks are allowed ({{bytes}} bytes total).",
+			map[string]any{"entries": model.AccessTokenMaxIpEntries, "bytes": model.AccessTokenMaxIpBytes})
+	case errors.Is(err, model.ErrAccessTokenIpTooBroad):
+		writeAccessTokenError(c, http.StatusBadRequest, "ACCESS_TOKEN_IP_TOO_BROAD",
+			"0.0.0.0/0 and ::/0 each cover only one address family, not every address. Leave the field empty to allow any address.")
+	default:
+		writeAccessTokenError(c, http.StatusBadRequest, "ACCESS_TOKEN_IP_INVALID",
+			"One of the allowed addresses is not a valid IP address or CIDR block.")
+	}
 }
 
 // normalizeAccessTokenName returns the trimmed name, or false when it is empty
@@ -143,6 +169,16 @@ func CreateAccessToken(c *gin.Context) {
 		writeAccessTokenError(c, http.StatusBadRequest, "ACCESS_TOKEN_SCOPE_INVALID", "Select at least one valid permission.")
 		return
 	}
+	// APIDUO:token-ip-allowlist:BEGIN Validated before the proof is consumed: a
+	// typo should not cost the user a verification step.
+	allowIps := strings.TrimSpace(req.AllowIps)
+	if allowIps != "" {
+		if err := model.ValidateIpAllowlist(allowIps); err != nil {
+			writeAccessTokenIpError(c, err)
+			return
+		}
+	}
+	// APIDUO:token-ip-allowlist:END
 	proofContext, err := common.Marshal(service.AccessTokenGenerateContext{Scopes: scopes, ExpiresAt: req.ExpiresAt})
 	if err != nil {
 		writeSecurityOperationError(c, err)
@@ -163,7 +199,16 @@ func CreateAccessToken(c *gin.Context) {
 		TokenHint: model.AccessTokenHint(raw),
 		ExpiresAt: req.ExpiresAt,
 		CreatedAt: now,
+		// Bind to the credential version that authorised this issuance, so a
+		// later password change retires the token instead of leaving a leaked
+		// copy usable forever.
+		AuthVersion: identity.UserAuthVersion,
 	}
+	// APIDUO:token-ip-allowlist:BEGIN
+	if allowIps != "" {
+		token.AllowIps = &allowIps
+	}
+	// APIDUO:token-ip-allowlist:END
 	if err := token.SetScopes(scopes); err != nil {
 		writeSecurityOperationError(c, err)
 		return
@@ -208,6 +253,15 @@ func UpdateAccessToken(c *gin.Context) {
 		writeAccessTokenError(c, http.StatusBadRequest, "ACCESS_TOKEN_NAME_INVALID", "Access token name must be 1 to 64 characters.")
 		return
 	}
+	// APIDUO:token-ip-allowlist:BEGIN Absent leaves the current restriction
+	// alone; an explicit empty string clears it.
+	if req.AllowIps != nil {
+		if err := model.ValidateIpAllowlist(*req.AllowIps); err != nil {
+			writeAccessTokenIpError(c, err)
+			return
+		}
+	}
+	// APIDUO:token-ip-allowlist:END
 	var scopes []string
 	var previous *model.UserAccessToken
 	if req.Scopes != nil {
@@ -247,6 +301,19 @@ func UpdateAccessToken(c *gin.Context) {
 		writeSecurityOperationError(c, err)
 		return
 	}
+	// APIDUO:token-ip-allowlist:BEGIN Applied after the rename so the two writes
+	// stay independent; a failure here leaves the name changed but the old
+	// restriction intact, which is the safer half to keep.
+	if req.AllowIps != nil {
+		if err := model.SetAccessTokenIpAllowlist(identity.UserID, id, *req.AllowIps); err != nil {
+			writeSecurityOperationError(c, err)
+			return
+		}
+		if updated, err := model.GetUserAccessToken(identity.UserID, id); err == nil {
+			token = updated
+		}
+	}
+	// APIDUO:token-ip-allowlist:END
 	if previous == nil {
 		recordUserSecurityAudit(c, identity.UserID, "access_token.rename", map[string]any{"token_id": token.Id, "name": token.Name})
 		common.ApiSuccess(c, newAccessTokenItem(token))

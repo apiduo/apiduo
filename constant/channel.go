@@ -61,7 +61,13 @@ const (
 	ChannelTypeTaskPlugin     = 61
 	ChannelTypeVLLM           = 62
 	ChannelTypeSGLang         = 63
-	ChannelTypeDummy          // this one is only for count, do not add any channel after this
+	// APIDUO:advanced-async:BEGIN A task-only channel type: it owns the async
+	// route table and never reads advanced_custom.
+	ChannelTypeAdvancedAsync = 64
+	// APIDUO:advanced-async:END
+	// APIDUO:advanced-async:BEGIN
+	ChannelTypeDummy = 65 // this one is only for count, do not add any channel after this
+	// APIDUO:advanced-async:END
 
 )
 
@@ -132,6 +138,9 @@ var ChannelBaseURLs = []string{
 	"",                                          //61
 	"",                                          //62
 	"",                                          //63
+	// APIDUO:advanced-async:BEGIN
+	"", //64
+	// APIDUO:advanced-async:END
 }
 
 func GetChannelBaseURL(channelType int) string {
@@ -202,6 +211,9 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeTaskPlugin:     "Task Plugin",
 	ChannelTypeVLLM:           "vLLM",
 	ChannelTypeSGLang:         "SGLang",
+	// APIDUO:advanced-async:BEGIN
+	ChannelTypeAdvancedAsync: "Advanced Custom Async",
+	// APIDUO:advanced-async:END
 }
 
 func GetChannelTypeName(channelType int) string {

@@ -21,6 +21,16 @@ services:
     restart: always
     command: --log-dir /app/logs
     ports:
+      # APIDUO:token-ip-allowlist:BEGIN
+      # Publishing on all interfaces lets any host on the same private network
+      # reach this container directly. Private ranges are trusted by default
+      # (TRUSTED_PROXIES unset), so such a host could forge X-Forwarded-For and
+      # slip past an access token's allow_ips. Two ways to close that:
+      #   - put a reverse proxy on this host and bind loopback only:
+      #       - "127.0.0.1:3000:3000"
+      #   - or keep it published and pin the proxy's address in TRUSTED_PROXIES
+      #     (see below), so forwarded headers from anything else are ignored.
+      # APIDUO:token-ip-allowlist:END
       - "3000:3000"
     volumes:
       - ./data:/data
@@ -43,6 +53,16 @@ services:
 #      - SESSION_COOKIE_SECURE=true  # true：启用 Secure Refresh Cookie 和严格 refresh/logout OriginGuard；false/未配置：关闭 OriginGuard，仅用于本地 HTTP (true: Secure cookie + strict refresh/logout OriginGuard; false/unset: guard disabled for local HTTP only)
 #      - SESSION_COOKIE_TRUSTED_URL=https://example.com,https://admin.example.com  # Secure=true 时必填的精确 HTTPS Origin；不是 relay CORS 白名单，不支持通配符/路径 (Required exact HTTPS origins when Secure=true; not a relay CORS allowlist, no wildcard/path)
 #      - TRUSTED_PROXIES=172.20.0.0/16  # 未配置时信任回环/RFC1918/fc00::/7 并告警，none 为严格模式，显式列表替代默认值 (Unset trusts loopback/RFC 1918/fc00::/7 with a warning; none trusts no proxies; an explicit list replaces defaults)
+#      # APIDUO:token-ip-allowlist:BEGIN
+#      # 访问令牌的 IP 白名单依赖 ClientIP()，而它由这个变量决定。显式设成反代
+#      # 的实际地址，转发头就只从那一跳采信；设为 none 则完全忽略转发头，适合
+#      # 没有反代、客户端直连的部署。未设置时内网任意主机都可伪造来源地址。
+#      # The allow_ips restriction on access tokens reads ClientIP(), which this
+#      # variable controls. Pinning it to the proxy's address makes forwarded
+#      # headers trusted from that hop only; `none` ignores them entirely, which
+#      # suits a direct-exposure deployment with no proxy in front. Left unset,
+#      # any host on a private network can forge its source address.
+#      # APIDUO:token-ip-allowlist:END
 #      - USER_SESSION_ACTIVE_LIMIT=50
 #      - USER_SESSION_ISSUANCE_LIMIT=100
 #      - USER_SESSION_ISSUANCE_WINDOW_SECONDS=86400  # 不得大于 revoked 保留期 (must not exceed revoked retention)

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡密库存 · 商家后台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+.filters{display:flex;gap:9px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.filters .input{width:200px;height:34px}
+.filters .select{height:34px}
+.sp{margin-left:auto}
+.acts{display:flex;gap:6px;justify-content:flex-end}
+.import-tip{font-size:12px;color:var(--muted-fg);line-height:1.7;margin:0 0 12px}
+textarea.textarea{min-height:150px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;letter-spacing:.02em}
+.import-preview{margin-top:12px;padding:10px 12px;border-radius:9px;background:var(--muted-2);font-size:12px;color:var(--muted-fg);display:none}
+.import-preview.on{display:block}
+.import-preview b{font-weight:500;color:var(--fg)}
+.danger-note{display:flex;gap:8px;margin-top:12px;padding:10px 12px;border-radius:9px;background:oklch(0.98 0.025 27);font-size:12px;color:oklch(0.48 0.14 27);line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="index.html"><span class="brand-mark">A</span>apiduo</a>
+  <nav class="switcher">
+    <a href="api-platform.html">API 平台</a>
+    <a href="index.html" class="on">卡密商城</a>
+  </nav>
+  <div class="topright">
+    <span class="badge info">商家后台</span>
+    <div class="avatar">帅</div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="side">
+    <div>
+      <div class="side-title">商城管理</div>
+      <a class="side-item" href="admin-goods.html"><span>概览</span></a>
+      <a class="side-item" href="admin-goods.html"><span>商品</span></a>
+      <div class="side-item on"><span>卡密库存</span></div>
+      <a class="side-item" href="admin-orders.html"><span>订单</span></a>
+      <div class="side-item"><span>供应商</span></div>
+      <div class="side-item"><span>售后工单</span></div>
+    </div>
+    <div>
+      <div class="side-title">返回</div>
+      <a class="side-item" href="index.html"><span>回到商城前台</span></a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head-row">
+      <div>
+        <h1>卡密库存</h1>
+        <p>库中卡密以 AES-GCM 加密存储，列表永久脱敏；明文只在买家支付成功的那一刻解密一次</p>
+      </div>
+      <button class="btn blue" onclick="openImport()">批量导入</button>
+    </div>
+
+    <div class="filters">
+      <input class="input" placeholder="搜索商品或批次…">
+      <select class="select">
+        <option>全部状态</option><option>未售</option><option>锁定</option><option>已售</option><option>作废</option>
+      </select>
+      <select class="select">
+        <option>全部供应商</option><option>上游A</option><option>上游B</option><option>上游C</option>
+      </select>
+      <span class="sp"></span>
+      <span style="font-size:12.5px;color:var(--muted-fg)">共 7 条</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>商品</th><th>卡密</th><th>批次</th><th>供应商</th><th>状态</th><th>导入时间</th><th class="ta-r">操作</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="import-preview" style="display:block;margin-top:16px">
+      <b>为什么列表永远脱敏：</b>运营、客服、管理员都不需要看到完整卡密。能看到明文的地方只有两处——买家首次交付页、售后核验页（需二次验证）。这样即使后台账号被撞，攻击者也拿不到可用的货。
+    </div>
+  </main>
+</div>
+
+<div class="modal-mask" id="importModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>批量导入卡密</h3>
+        <p>每行一条，支持「卡密」或「卡密,备注」两种格式</p>
+      </div>
+      <button class="icon-btn" onclick="closeImport()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="import-tip">导入后立即加密入库，原文不落磁盘日志。同批次内重复的卡密会被自动跳过（按 SHA-256 判重）。</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div class="field">
+          <label>归属商品</label>
+          <select class="select" id="impGoods">
+            <option>ChatGPT Plus</option><option>Claude Pro</option><option>Midjourney</option><option>Cursor Pro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>供应商</label>
+          <select class="select"><option>上游A</option><option>上游B</option><option>上游C</option></select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>卡密内容</label>
+        <textarea class="textarea" id="impText" oninput="previewImport()">7f3ab21c9d84e05b
+2c914ad718f0bb03
+a91f7c30de52b804
+3c6d80f1a74e29bb</textarea>
+      </div>
+
+      <div class="import-preview" id="prev">
+        识别到 <b id="prevCount">0</b> 条，其中 <b id="prevDup">0</b> 条与库中重复将被跳过，实际入库 <b id="prevReal">0</b> 条
+      </div>
+
+      <div class="danger-note">
+        <span>⚠</span>
+        <div>导入前请先用 1~2 条小样验证有效性。<b>废卡率会直接吃掉毛利</b>——毛利 5% 的品类，废卡率超过 4% 就是净亏。</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeImport()">取消</button>
+      <button class="btn blue" onclick="doImport()">确认导入</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/data.js"></script>
+<script>
+const stCls = { '未售': 'gray', '锁定': 'warn', '已售': 'ok', '作废': 'err' };
+
+document.getElementById('tbody').innerHTML = STOCK.map(s => `
+  <tr>
+    <td class="num" style="color:var(--muted-fg)">#${s.id}</td>
+    <td>${s.goods}</td>
+    <td><span class="mono" style="font-size:12.5px;letter-spacing:.04em">${s.mask}</span></td>
+    <td class="num" style="font-size:12px;color:var(--muted-fg)">${s.batch}</td>
+    <td>${s.supplier}</td>
+    <td><span class="badge ${stCls[s.status]}">${s.status}</span></td>
+    <td class="num" style="font-size:12px;color:var(--muted-fg)">${s.in}</td>
+    <td>
+      <div class="acts">
+        <button class="btn sm" onclick="alert('查看详情（原型未实现）')">详情</button>
+        ${(s.status === '未售' || s.status === '锁定') ? `<button class="btn sm danger" onclick="alert('作废后不可恢复，需二次确认（原型未实现）')">作废</button>` : ''}
+      </div>
+    </td>
+  </tr>`).join('');
+
+function openImport(){ document.getElementById('importModal').classList.add('on'); previewImport(); }
+function closeImport(){ document.getElementById('importModal').classList.remove('on'); }
+
+const KNOWN = ['7f3ab21c9d84e05b', '2c914ad718f0bb03'];
+
+function previewImport(){
+  const lines = document.getElementById('impText').value.split('\n').map(x => x.trim()).filter(Boolean);
+  const dup = lines.filter(l => KNOWN.includes(l.split(',')[0].trim())).length;
+  document.getElementById('prevCount').textContent = lines.length;
+  document.getElementById('prevDup').textContent = dup;
+  document.getElementById('prevReal').textContent = lines.length - dup;
+  document.getElementById('prev').classList.add('on');
+}
+
+function doImport(){
+  const n = document.getElementById('impText').value.split('\n').filter(x => x.trim()).length;
+  if (n === 0) return alert('请先粘贴卡密');
+  closeImport();
+  const t = document.createElement('div');
+  t.className = 'toast on';
+  t.textContent = `已加密导入 ${n} 条，可在列表中查看`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+document.getElementById('importModal').addEventListener('click', e => {
+  if (e.target.id === 'importModal') closeImport();
+});
+
+if (location.hash === '#import') { openImport(); previewImport(); }
+</script>
+</body>
+</html>

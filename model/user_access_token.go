@@ -27,6 +27,7 @@ var (
 	ErrAccessTokenNotFound      = errors.New("access token not found")
 	ErrAccessTokenLimit         = errors.New("access token limit reached")
 	ErrAccessTokenExpired       = errors.New("access token has expired")
+	ErrAccessTokenStale         = errors.New("access token was issued before the last credential change")
 	ErrLegacyAccessTokenRetired = errors.New("legacy access token has been retired")
 	errLegacyRetireAtReadOnly   = errors.New("LegacyAccessTokenRetireAt is managed by the server")
 )
@@ -49,6 +50,20 @@ type UserAccessToken struct {
 	LastUsedAt int64  `json:"last_used_at" gorm:"type:bigint"`
 	LastUsedIp string `json:"last_used_ip" gorm:"type:varchar(64)"`
 	CreatedAt  int64  `json:"created_at" gorm:"type:bigint"`
+	// AuthVersion is the owner's auth_version at issue time. A password change,
+	// forced logout, or any other credential change bumps the user's version and
+	// therefore retires every token bound to the old one. Zero means "issued
+	// before this column existed" and is treated as unbound so an upgrade does
+	// not invalidate everything at once.
+	AuthVersion int64 `json:"-" gorm:"type:bigint;not null;default:0;column:auth_version"`
+	// AgentKeyId is the agent key that minted this token, or 0 for a token a
+	// human created. Revoking the key deletes every row bound to it, and an
+	// exchange replaces the previous row so one key never holds two live tokens.
+	AgentKeyId int `json:"-" gorm:"type:int;not null;default:0;index;column:agent_key_id"`
+	// APIDUO:token-ip-allowlist:BEGIN Nil or empty means usable from anywhere;
+	// otherwise the request must come from one of the listed networks.
+	AllowIps *string `json:"allow_ips,omitempty" gorm:"type:text"`
+	// APIDUO:token-ip-allowlist:END
 }
 
 func (UserAccessToken) TableName() string {
@@ -295,6 +310,48 @@ func checkAccessTokenIdentity(tx *gorm.DB, tokenID int, identity AuthSessionIden
 	}
 	if token.Expired(time.Now().Unix()) {
 		return ErrUserSessionInactive
+	}
+	return nil
+}
+
+// BindAccessTokensToOwnerAuthVersion gives pre-existing tokens the auth_version
+// of their owner.
+//
+// The column is new, so every stored token starts at 0. Left that way they would
+// compare unequal to their owner's version (which starts at 1) and an upgrade
+// would invalidate every personal access token at once. Rebinding to the current
+// version keeps them working while still retiring them on the next credential
+// change. A token whose owner cannot be read stays at 0, which the request path
+// treats as unbound rather than stale.
+func BindAccessTokensToOwnerAuthVersion() error {
+	var tokens []UserAccessToken
+	if err := DB.Select("id", "user_id").Where("auth_version = ?", 0).Find(&tokens).Error; err != nil {
+		return err
+	}
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	versions := make(map[int]int64)
+	for _, token := range tokens {
+		if _, seen := versions[token.UserId]; seen {
+			continue
+		}
+		var version int64
+		if err := DB.Model(&User{}).Where("id = ?", token.UserId).Select("auth_version").Scan(&version).Error; err != nil {
+			continue
+		}
+		if version > 0 {
+			versions[token.UserId] = version
+		}
+	}
+
+	for userID, version := range versions {
+		if err := DB.Model(&UserAccessToken{}).
+			Where("user_id = ? AND auth_version = ?", userID, 0).
+			Update("auth_version", version).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }

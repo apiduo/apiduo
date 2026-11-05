@@ -597,6 +597,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
     if (adminInfo.auth_method === 'session') return t('Session')
     return String(adminInfo.auth_method)
   })()
+  // APIDUO:agent-audit:BEGIN 自报的 Agent 名，未提供时不显示
+  const agentLabel = (() => {
+    if (!props.isAdmin) return ''
+    const agent = adminInfo?.agent
+    return agent == null ? '' : String(agent).trim()
+  })()
+  // APIDUO:agent-audit:END
 
   // Top-up, audit, and login logs share the language-independent descriptor.
   const quotaOperation = isTopup
@@ -1066,6 +1073,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 value={authMethodLabel}
               />
             )}
+            {/* APIDUO:agent-audit:BEGIN */}
+            {agentLabel !== '' && (
+              <DetailRow label={t('Agent')} value={agentLabel} />
+            )}
+            {/* APIDUO:agent-audit:END */}
             {changedFieldsText !== '' && (
               <DetailRow
                 label={t('Changed Fields')}

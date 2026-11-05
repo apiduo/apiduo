@@ -322,12 +322,25 @@ func TestUserAuthAppliesAccessTokenRouteRules(t *testing.T) {
 	channel, _ := createMiddlewareScopedToken(t, admin.Id, time.Now().Unix()+3600, "channel:read")
 	expired, _ := createMiddlewareScopedToken(t, admin.Id, time.Now().Unix()-1, "profile:read")
 
+	// nav_app is a root-only resource, so the grant needs a root user.
+	navRoot := createMiddlewarePATUser(t, "route-rule-root", "middleware-root-token")
+	require.NoError(t, model.DB.Model(navRoot).Update("role", common.RoleRootUser).Error)
+	navApp, _ := createMiddlewareScopedToken(t, navRoot.Id, 0, "nav_app:read")
+
+	// A token bound to an older credential version must stop working once the
+	// owner's version moves on (password change, forced logout).
+	staleToken, _ := createMiddlewareScopedToken(t, admin.Id, 0, "profile:read")
+	require.NoError(t, model.DB.Model(&model.UserAccessToken{}).
+		Where("token_hash = ?", model.AccessTokenFingerprint(staleToken)).
+		Update("auth_version", 9999).Error)
+
 	ok := func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"id": c.GetInt("id")}) }
 	router := gin.New()
 	router.GET("/api/user/self", UserAuth(), ok)
 	router.GET("/api/user/access_tokens", UserAuth(), ok)
 	router.GET("/api/undeclared", UserAuth(), ok)
 	router.GET("/api/channel/", AdminAuth(), RequirePermission(authz.ChannelRead), ok)
+	router.GET("/api/nav_apps", UserAuth(), ok)
 	router.GET("/api/pricing", TryUserAuth(), ok)
 
 	for _, test := range []struct {
@@ -340,9 +353,20 @@ func TestUserAuthAppliesAccessTokenRouteRules(t *testing.T) {
 		{name: "session route", path: "/api/user/access_tokens", token: profile, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
 		{name: "permission route with its scope", path: "/api/channel/", token: channel, status: http.StatusOK},
 		{name: "permission route without its scope", path: "/api/channel/", token: profile, status: http.StatusForbidden, code: "ACCESS_TOKEN_SCOPE_DENIED", reason: "scope_denied"},
+		// A feature added later must be reachable by a scoped token. Before the
+		// declaration was added this returned ACCESS_TOKEN_ROUTE_UNDECLARED.
+		{name: "nav app route with its scope", path: "/api/nav_apps", token: navApp, status: http.StatusOK},
+		{name: "nav app route without its scope", path: "/api/nav_apps", token: profile, status: http.StatusForbidden, code: "ACCESS_TOKEN_SCOPE_DENIED", reason: "scope_denied"},
+		{name: "token bound to an older credential version", path: "/api/user/self", token: staleToken, status: http.StatusUnauthorized, code: "ACCESS_TOKEN_REVOKED"},
 		{name: "expired token", path: "/api/user/self", token: expired, status: http.StatusUnauthorized, code: "ACCESS_TOKEN_EXPIRED", reason: "expired"},
 		{name: "legacy token before the deadline", path: "/api/user/self", token: legacy, status: http.StatusOK},
 		{name: "legacy token on a session route", path: "/api/user/access_tokens", token: legacy, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
+		// The account-level legacy token predates scopes and is allowed through
+		// every non-session route, including ones that declare a scope it does
+		// not have. Pinned here because it is the reason "just use the admin
+		// token" works at all — and the reason it grants far more than an agent
+		// needs.
+		{name: "legacy token ignores the declared scope", path: "/api/nav_apps", token: legacy, status: http.StatusOK},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response := middlewareBearerRequest(router, test.path, test.token)

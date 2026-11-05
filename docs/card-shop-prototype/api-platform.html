@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API 平台 · apiduo</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+.hero{border:1px solid var(--border);border-radius:var(--radius);padding:40px 36px;background:var(--muted-2)}
+.hero h2{margin:0 0 10px;font-size:18px;font-weight:500}
+.hero p{margin:0 0 8px;font-size:13.5px;color:var(--muted-fg);line-height:1.85;max-width:580px}
+.hero small{font-size:12px;color:var(--muted-fg);opacity:.75}
+.note{margin-top:20px;border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+.note h3{margin:0 0 10px;font-size:14px;font-weight:500}
+.note ul{margin:0;padding-left:18px;font-size:13px;color:var(--muted-fg);line-height:1.95}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="index.html"><span class="brand-mark">A</span>apiduo</a>
+  <nav class="switcher">
+    <a href="api-platform.html" class="on">API 平台</a>
+    <a href="index.html">卡密商城</a>
+  </nav>
+  <div class="topright">
+    <span class="num">$ 18.42</span>
+    <div class="avatar">帅</div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="side">
+    <div>
+      <div class="side-title">控制台</div>
+      <div class="side-item on"><span>概览</span></div>
+      <div class="side-item"><span>令牌</span></div>
+      <div class="side-item"><span>用量日志</span></div>
+      <div class="side-item"><span>钱包</span></div>
+      <div class="side-item"><span>邀请奖励</span></div>
+    </div>
+    <div>
+      <div class="side-title">管理</div>
+      <div class="side-item"><span>渠道</span></div>
+      <div class="side-item"><span>用户</span></div>
+      <div class="side-item"><span>模型</span></div>
+      <div class="side-item"><span>系统设置</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-head">
+      <h1>API 平台</h1>
+      <p>这是 apiduo 现有的控制台</p>
+    </div>
+
+    <div class="hero">
+      <h2>两条产品线在此并列</h2>
+      <p>切换器在最外层，两条线各自拥有独立的侧边栏与计费口径。买卡密的人不会撞见「系统设置」，调接口的人也不会看到「我的卡密」。</p>
+      <p>注意右上角的余额显示不同：这里显示 <b>$18.42</b>（API 额度），商城显示 <b>¥128.40</b>（商城钱包）。<b>两个钱包不互通</b>——这是刻意的。</p>
+      <small>本原型只呈现结构关系，控制台页面沿用现有实现。</small>
+    </div>
+
+    <div class="note">
+      <h3>为什么两个钱包必须分开</h3>
+      <ul>
+        <li>API 额度按 token 扣费，有汇率换算、分组倍率、缓存命中折扣，账务逻辑复杂且必须精确。</li>
+        <li>卡密是买断制，一次性交付，交付完成即结束，没有后续计量。</li>
+        <li>混在一个钱包里，退款、对账、发票口径全部纠不清——退一张卡密要不要扣回已消耗的 token？</li>
+        <li>所以：<b>商城只卖外部卡密，自营额度充值留在钱包页</b>。商城不出售额度卡。</li>
+      </ul>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -30,6 +30,10 @@ const (
 	VerificationScopeLogin               = "auth.login"
 	VerificationScopeAccessTokenGenerate = "access_token.generate"
 	VerificationScopeAccessTokenRevoke   = "access_token.revoke"
+	// APIDUO:agent-key:BEGIN 注册/吊销 Agent 公钥与签发凭据同级，都需要人在场
+	VerificationScopeAgentKeyRegister = "agent_key.register"
+	VerificationScopeAgentKeyRevoke   = "agent_key.revoke"
+	// APIDUO:agent-key:END
 	VerificationScopeAccessTokenUpdate   = "access_token.update"
 	VerificationScopeAccountBind         = "account.binding.bind"
 	VerificationScopeAccountUnbind       = "account.binding.unbind"
@@ -109,6 +113,23 @@ type AccessTokenGenerateContext struct {
 	Scopes    []string `json:"scopes"`
 	ExpiresAt int64    `json:"expires_at"`
 }
+
+// APIDUO:agent-key:BEGIN Contexts for registering and revoking an agent key.
+// They mirror the token contexts: the proof is bound to the exact grant and the
+// exact key material, so a proof obtained for one request cannot be replayed for
+// another.
+type AgentKeyRegisterContext struct {
+	Scopes    []string `json:"scopes"`
+	ExpiresAt int64    `json:"expires_at"`
+	// PublicKeyID is a short fingerprint of the submitted public key.
+	PublicKeyID string `json:"public_key_id"`
+}
+
+type AgentKeyRevokeContext struct {
+	KeyID int `json:"key_id"`
+}
+
+// APIDUO:agent-key:END
 
 // AccessTokenUpdateContext binds a grant change to one token and the exact new
 // grant, compared as a sorted, de-duplicated set.
@@ -238,6 +259,28 @@ func BindVerificationOperation(operation VerificationOperation) (VerificationBin
 		}
 		context.Scopes = scopes
 		normalized = context
+	// APIDUO:agent-key:BEGIN
+	case VerificationScopeAgentKeyRegister:
+		var context AgentKeyRegisterContext
+		if len(fields) != 3 || common.Unmarshal(operation.Context, &context) != nil || context.ExpiresAt < 0 {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		scopes, ok := NormalizeAccessTokenScopeList(context.Scopes)
+		if !ok {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		context.Scopes = scopes
+		if strings.TrimSpace(context.PublicKeyID) == "" {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		normalized = context
+	case VerificationScopeAgentKeyRevoke:
+		var context AgentKeyRevokeContext
+		if len(fields) != 1 || common.Unmarshal(operation.Context, &context) != nil || context.KeyID <= 0 {
+			return VerificationBinding{}, ErrVerificationContextInvalid
+		}
+		normalized = context
+	// APIDUO:agent-key:END
 	case VerificationScopeAccessTokenUpdate:
 		var context AccessTokenUpdateContext
 		if len(fields) != 2 || common.Unmarshal(operation.Context, &context) != nil || context.TokenID <= 0 {
@@ -326,6 +369,9 @@ func securityVerificationPolicy(scope string, state model.UserVerificationState)
 		}
 	case VerificationScopePasskeyRegister, VerificationScopeTwoFASetup,
 		VerificationScopeAccessTokenGenerate, VerificationScopeAccessTokenUpdate, VerificationScopeAccessTokenRevoke,
+		// APIDUO:agent-key:BEGIN 与签发 PAT 相同的门槛
+		VerificationScopeAgentKeyRegister, VerificationScopeAgentKeyRevoke,
+		// APIDUO:agent-key:END
 		VerificationScopeAccountBind, VerificationScopeAccountUnbind,
 		VerificationScopePasswordSet, VerificationScopePasswordChange, VerificationScopeAccountDelete,
 		VerificationScopeAdminUserCreate, VerificationScopeAdminUserUpdate, VerificationScopeAdminUserDelete,

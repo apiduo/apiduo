@@ -40,6 +40,12 @@ import {
   stringifyAdvancedCustomConfig,
   validateAdvancedCustomConfig,
 } from './advanced-custom'
+import {
+  CHANNEL_TYPE_ADVANCED_ASYNC,
+  parseAdvancedAsyncConfig,
+  stringifyAdvancedAsyncConfig,
+  validateAdvancedAsyncConfig,
+} from './advanced-async'
 import { readTaskExtendPluginKeys } from './channel-plugin-extensions'
 import { supportsResponsesWebSocket } from './responses-websocket'
 
@@ -254,6 +260,7 @@ export const channelFormSchema = z
       .optional()
       .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
     advanced_custom: z.string().optional(),
+    advanced_async: z.string().optional(),
     other: z.string().optional(),
     // Multi-key options (not sent to backend directly)
     multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
@@ -351,6 +358,27 @@ export const channelFormSchema = z
           ctx,
           'upstream_model_update_check_enabled',
           'OpenAI Models route is required to enable upstream model checks'
+        )
+      }
+    }
+
+    if (data.type === CHANNEL_TYPE_ADVANCED_ASYNC) {
+      const advancedAsyncConfig = parseAdvancedAsyncConfig(data.advanced_async)
+      const advancedAsyncError =
+        validateAdvancedAsyncConfig(advancedAsyncConfig)
+      if (advancedAsyncError) {
+        addRequiredIssue(ctx, 'advanced_async', advancedAsyncError.message)
+      }
+      if (
+        advancedAsyncConfig &&
+        !data.base_url?.trim() &&
+        (advancedAsyncConfig.submit.upstream_path.startsWith('/') ||
+          advancedAsyncConfig.query.upstream_path.startsWith('/'))
+      ) {
+        addRequiredIssue(
+          ctx,
+          'base_url',
+          'Base URL is required when an advanced route uses an upstream path'
         )
       }
     }
@@ -491,6 +519,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
   advanced_custom: '',
+  advanced_async: '',
 }
 
 // ============================================================================
@@ -568,6 +597,7 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
+  let advancedAsync = ''
 
   if (channel.settings) {
     try {
@@ -600,6 +630,9 @@ export function transformChannelToFormDefaults(
         : ''
       if (parsed.advanced_custom) {
         advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom)
+      }
+      if (parsed.advanced_async) {
+        advancedAsync = stringifyAdvancedAsyncConfig(parsed.advanced_async)
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -656,6 +689,7 @@ export function transformChannelToFormDefaults(
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
     advanced_custom: advancedCustom,
+    advanced_async: advancedAsync,
   }
 }
 
@@ -853,6 +887,15 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     }
   } else if ('advanced_custom' in settingsObj) {
     delete settingsObj.advanced_custom
+  }
+
+  if (formData.type === CHANNEL_TYPE_ADVANCED_ASYNC) {
+    const advancedAsyncConfig = parseAdvancedAsyncConfig(formData.advanced_async)
+    if (advancedAsyncConfig) {
+      settingsObj.advanced_async = advancedAsyncConfig
+    }
+  } else if ('advanced_async' in settingsObj) {
+    delete settingsObj.advanced_async
   }
 
   return JSON.stringify(settingsObj)
