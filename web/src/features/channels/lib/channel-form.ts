@@ -40,12 +40,14 @@ import {
   stringifyAdvancedCustomConfig,
   validateAdvancedCustomConfig,
 } from './advanced-custom'
+/* APIDUO:advanced-async:BEGIN */
 import {
   CHANNEL_TYPE_ADVANCED_ASYNC,
   parseAdvancedAsyncConfig,
   stringifyAdvancedAsyncConfig,
   validateAdvancedAsyncConfig,
 } from './advanced-async'
+/* APIDUO:advanced-async:END */
 import { readTaskExtendPluginKeys } from './channel-plugin-extensions'
 import { supportsResponsesWebSocket } from './responses-websocket'
 
@@ -260,7 +262,9 @@ export const channelFormSchema = z
       .optional()
       .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
     advanced_custom: z.string().optional(),
+    /* APIDUO:advanced-async:BEGIN */
     advanced_async: z.string().optional(),
+    /* APIDUO:advanced-async:END */
     other: z.string().optional(),
     // Multi-key options (not sent to backend directly)
     multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
@@ -362,6 +366,7 @@ export const channelFormSchema = z
       }
     }
 
+    /* APIDUO:advanced-async:BEGIN */
     if (data.type === CHANNEL_TYPE_ADVANCED_ASYNC) {
       const advancedAsyncConfig = parseAdvancedAsyncConfig(data.advanced_async)
       const advancedAsyncError =
@@ -382,6 +387,7 @@ export const channelFormSchema = z
         )
       }
     }
+    /* APIDUO:advanced-async:END */
 
     if ([3, 18, 21, 39, 41, 49].includes(data.type) && !data.other?.trim()) {
       addRequiredIssue(
@@ -519,7 +525,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
   advanced_custom: '',
+  /* APIDUO:advanced-async:BEGIN */
   advanced_async: '',
+  /* APIDUO:advanced-async:END */
 }
 
 // ============================================================================
@@ -597,7 +605,9 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
+  /* APIDUO:advanced-async:BEGIN */
   let advancedAsync = ''
+  /* APIDUO:advanced-async:END */
 
   if (channel.settings) {
     try {
@@ -631,9 +641,11 @@ export function transformChannelToFormDefaults(
       if (parsed.advanced_custom) {
         advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom)
       }
+      /* APIDUO:advanced-async:BEGIN */
       if (parsed.advanced_async) {
         advancedAsync = stringifyAdvancedAsyncConfig(parsed.advanced_async)
       }
+      /* APIDUO:advanced-async:END */
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to parse channel settings:', error)
@@ -689,7 +701,9 @@ export function transformChannelToFormDefaults(
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
     advanced_custom: advancedCustom,
+    /* APIDUO:advanced-async:BEGIN */
     advanced_async: advancedAsync,
+    /* APIDUO:advanced-async:END */
   }
 }
 
@@ -733,6 +747,7 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
   if (formData.tls_insecure_skip_verify === true) {
     settingObj.tls_insecure_skip_verify = true
   }
+
   return JSON.stringify(settingObj)
 }
 
@@ -888,6 +903,7 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     delete settingsObj.advanced_custom
   }
 
+  /* APIDUO:advanced-async:BEGIN */
   if (formData.type === CHANNEL_TYPE_ADVANCED_ASYNC) {
     const advancedAsyncConfig = parseAdvancedAsyncConfig(formData.advanced_async)
     if (advancedAsyncConfig) {
@@ -896,6 +912,7 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
   } else if ('advanced_async' in settingsObj) {
     delete settingsObj.advanced_async
   }
+  /* APIDUO:advanced-async:END */
 
   return JSON.stringify(settingsObj)
 }

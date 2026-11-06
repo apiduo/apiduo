@@ -117,15 +117,22 @@ export interface ChannelOtherSettings {
   upstream_model_update_last_check_time?: number
   upstream_model_update_last_detected_models?: string[]
   advanced_custom?: AdvancedCustomConfig
+  /* APIDUO:advanced-async:BEGIN */
   advanced_async?: AdvancedAsyncConfig
+  /* APIDUO:advanced-async:END */
+  /* APIDUO:file-relay:BEGIN */
   file_relay?: FileRelayConfig
+  /* APIDUO:file-relay:END */
 }
 
+/* APIDUO:file-relay:BEGIN */
 export interface FileRelayConfig {
   purposes?: string[]
   max_upload_bytes?: number
 }
+/* APIDUO:file-relay:END */
 
+/* APIDUO:advanced-async:BEGIN */
 export interface AdvancedAsyncConfig {
   incoming_paths?: string[]
   submit: AdvancedAsyncSubmit
@@ -161,6 +168,7 @@ export interface AdvancedAsyncFields {
 export interface AdvancedAsyncBilling {
   mode?: string
 }
+/* APIDUO:advanced-async:END */
 
 export interface AdvancedCustomConfig {
   advanced_routes?: AdvancedCustomRoute[]
