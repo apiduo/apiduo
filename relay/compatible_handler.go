@@ -168,6 +168,12 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 	}
 
+	// APIDUO:artifact-rewrite:BEGIN
+	// Covers every OpenAI-compatible response, which is where text-to-image and
+	// text-to-audio results arrive for most providers.
+	httpResp = service.RewriteResponseArtifactsInPlace(c.Request.Context(), info.GetChannelID(), httpResp)
+	// APIDUO:artifact-rewrite:END
+
 	usage, newApiErr := adaptor.DoResponse(c, httpResp, info)
 	if newApiErr != nil {
 		// reset status code 重置状态码

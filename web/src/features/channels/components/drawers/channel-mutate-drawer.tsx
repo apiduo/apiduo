@@ -237,6 +237,13 @@ import {
   type ModelMappingDraftRequest,
 } from '../model-mapping-editor'
 import { ModelRedirectPanel } from '../model-redirect-panel'
+/* APIDUO:marks:BEGIN */
+import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
+/* APIDUO:marks:END */
+import { FileRelaySetting } from '../file-relay-setting'
+/* APIDUO:artifact-storage:BEGIN */
+import { ArtifactStorageBlock } from '../artifact-storage-setting'
+/* APIDUO:artifact-storage:END */
 import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
 import { UpstreamModelSelection } from '../upstream-model-selection'
 import {
@@ -4864,6 +4871,34 @@ export function ChannelMutateDrawer({
                 {systemPromptOverrideFields}
               </fieldset>
             </div>
+            <div
+              role='group'
+              aria-label={t('File relay')}
+              data-apiduo={apiduoBlockMark('channel:file-relay')}
+              className={channelConfigurationBlockClassName('idle', 'space-y-4')}
+            >
+              <CardHeading
+                status='idle'
+                title={t('File relay')}
+                icon={<FileText className='size-4' />}
+              />
+              <fieldset
+                disabled={sensitiveLocked}
+                className='space-y-4 disabled:opacity-60'
+              >
+                <FileRelaySetting
+                  channelType={currentType}
+                  disabled={sensitiveLocked || isSubmitting}
+                />
+              </fieldset>
+            </div>
+            {/* APIDUO:artifact-storage:BEGIN */}
+            <ArtifactStorageBlock
+              className={channelConfigurationBlockClassName('idle', 'space-y-4')}
+              locked={sensitiveLocked}
+              disabled={sensitiveLocked || isSubmitting}
+            />
+            {/* APIDUO:artifact-storage:END */}
             {fieldPassthroughFields}
           </>
         }

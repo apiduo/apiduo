@@ -152,6 +152,14 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
+	// APIDUO:artifact-rewrite:BEGIN
+	// Copy every media reference in the response into object storage and hand
+	// back the stored addresses. A stream, an oversized body, an unconfigured
+	// channel or any storage failure leaves the response exactly as the upstream
+	// produced it - storage must never turn a good answer into a bad one.
+	httpResp = service.RewriteResponseArtifactsInPlace(c.Request.Context(), info.GetChannelID(), httpResp)
+	// APIDUO:artifact-rewrite:END
+
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {
 		// reset status code 重置状态码

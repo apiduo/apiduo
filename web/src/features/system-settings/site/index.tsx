@@ -38,6 +38,16 @@ const defaultSiteSettings: SiteSettings = {
   'legal.privacy_policy': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
+  // APIDUO:artifact-storage:BEGIN
+  // Off by default: an unconfigured gateway keeps proxying upstream artifacts.
+  // The pool travels as JSON because the option store is a flat key/value map.
+  'artifact_storage_setting.enabled': false,
+  'artifact_storage_setting.targets': '',
+  'artifact_storage_setting.presign_ttl_seconds': 900,
+  'artifact_storage_setting.max_object_bytes': 0,
+  'artifact_storage_setting.rewrite_paths': '[]',
+  'artifact_storage_setting.field_names': '[]',
+  // APIDUO:artifact-storage:END
 }
 
 export function SiteSettings() {

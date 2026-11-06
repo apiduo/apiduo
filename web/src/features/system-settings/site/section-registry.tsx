@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { SystemInfoSection } from '../general/system-info-section'
 import { NavAppsSection } from '@/features/nav-apps/admin/nav-apps-section'
+// APIDUO:artifact-storage:BEGIN
+import { ArtifactStorageSettingsSection } from '../integrations/artifact-storage-settings-section'
+// APIDUO:artifact-storage:END
 import {
   parseHeaderNavModules,
   parseSidebarModulesAdmin,
@@ -99,6 +102,15 @@ const SITE_SECTIONS = [
     build: () => <NavAppsSection />,
   },
   // APIDUO:dynamic-nav:END
+  // APIDUO:artifact-storage:BEGIN
+  {
+    id: 'artifact-storage',
+    titleKey: 'Object storage',
+    build: (settings: SiteSettings) => (
+      <ArtifactStorageSettingsSection settings={settings} />
+    ),
+  },
+  // APIDUO:artifact-storage:END
 ] as const
 
 export type SiteSectionId = (typeof SITE_SECTIONS)[number]['id']

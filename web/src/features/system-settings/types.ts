@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+// APIDUO:artifact-storage:BEGIN
+import type { ArtifactStorageSettingKeys } from './artifact-storage-types'
+// APIDUO:artifact-storage:END
+
 export type SystemOption = {
   key: string
   value: string
@@ -154,7 +158,7 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
-}
+} & ArtifactStorageSettingKeys
 
 export type AuthSettings = {
   PasswordLoginEnabled: boolean
