@@ -210,11 +210,13 @@ import { ChannelPluginExtensions } from '../channel-plugin-extensions'
 import { ChannelQuickOptions } from '../channel-quick-options'
 import { ChannelTypeLogo } from '../channel-type-badge'
 import { useChannels } from '../channels-provider'
+/* APIDUO:advanced-async:BEGIN */
 import {
   CHANNEL_TYPE_ADVANCED_ASYNC,
   getAdvancedAsyncStats,
 } from '../../lib/advanced-async'
 import { AdvancedAsyncEditorDialog } from '../dialogs/advanced-async-editor-dialog'
+/* APIDUO:advanced-async:END */
 import { AdvancedCustomEditorDialog } from '../dialogs/advanced-custom-editor-dialog'
 import { ConfigureModelsDialog } from '../dialogs/configure-models-dialog'
 import {
@@ -240,7 +242,9 @@ import { ModelRedirectPanel } from '../model-redirect-panel'
 /* APIDUO:marks:BEGIN */
 import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
 /* APIDUO:marks:END */
+/* APIDUO:file-relay:BEGIN */
 import { FileRelaySetting } from '../file-relay-setting'
+/* APIDUO:file-relay:END */
 /* APIDUO:artifact-storage:BEGIN */
 import { ArtifactStorageBlock } from '../artifact-storage-setting'
 /* APIDUO:artifact-storage:END */
@@ -469,7 +473,9 @@ export function ChannelMutateDrawer({
   const [paramOverrideEditorOpen, setParamOverrideEditorOpen] = useState(false)
   const [advancedCustomEditorOpen, setAdvancedCustomEditorOpen] =
     useState(false)
+  /* APIDUO:advanced-async:BEGIN */
   const [advancedAsyncEditorOpen, setAdvancedAsyncEditorOpen] = useState(false)
+  /* APIDUO:advanced-async:END */
   const [clipboardConnectionInfo, setClipboardConnectionInfo] =
     useState<ChannelConnectionInfo | null>(null)
 
@@ -618,7 +624,9 @@ export function ChannelMutateDrawer({
     formValues.upstream_model_update_check_enabled
   const currentSettings = formValues.settings
   const currentAdvancedCustom = formValues.advanced_custom
+  /* APIDUO:advanced-async:BEGIN */
   const currentAdvancedAsync = formValues.advanced_async
+  /* APIDUO:advanced-async:END */
   const currentHeaderOverride = formValues.header_override
   const currentProxy = formValues.proxy
   const currentHttpProtocol = formValues.http_protocol
@@ -719,10 +727,12 @@ export function ChannelMutateDrawer({
     () => getAdvancedCustomStats(currentAdvancedCustom),
     [currentAdvancedCustom]
   )
+  /* APIDUO:advanced-async:BEGIN */
   const advancedAsyncStats = useMemo(
     () => getAdvancedAsyncStats(currentAdvancedAsync),
     [currentAdvancedAsync]
   )
+  /* APIDUO:advanced-async:END */
   const advancedCustomRouteTypeLabels =
     advancedCustomStats.routeTypeLabels.slice(
       0,
@@ -4377,6 +4387,7 @@ export function ChannelMutateDrawer({
               />
             )}
 
+            {/* APIDUO:advanced-async:BEGIN */}
             {currentType === CHANNEL_TYPE_ADVANCED_ASYNC && (
               <FormField
                 control={form.control}
@@ -4438,6 +4449,7 @@ export function ChannelMutateDrawer({
                 )}
               />
             )}
+            {/* APIDUO:advanced-async:END */}
 
             <ChannelAuthSection>
               {!isEditing && (
@@ -4871,6 +4883,7 @@ export function ChannelMutateDrawer({
                 {systemPromptOverrideFields}
               </fieldset>
             </div>
+            {/* APIDUO:file-relay:BEGIN */}
             <div
               role='group'
               aria-label={t('File relay')}
@@ -4892,6 +4905,7 @@ export function ChannelMutateDrawer({
                 />
               </fieldset>
             </div>
+            {/* APIDUO:file-relay:END */}
             {/* APIDUO:artifact-storage:BEGIN */}
             <ArtifactStorageBlock
               className={channelConfigurationBlockClassName('idle', 'space-y-4')}
@@ -5269,6 +5283,7 @@ export function ChannelMutateDrawer({
         />
       )}
 
+      {/* APIDUO:advanced-async:BEGIN */}
       {advancedAsyncEditorOpen && !sensitiveLocked && (
         <AdvancedAsyncEditorDialog
           open={advancedAsyncEditorOpen}
@@ -5282,6 +5297,7 @@ export function ChannelMutateDrawer({
           }}
         />
       )}
+      {/* APIDUO:advanced-async:END */}
 
       <SecureVerificationDialog {...verification.dialogProps} />
 
