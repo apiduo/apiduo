@@ -31,14 +31,26 @@ type SkQuotaTotals struct {
 	CacheCreationTokens int64 `json:"cache_creation_tokens" gorm:"column:cache_creation_tokens"`
 }
 
-func skQuotaQuery(startTime int64, endTime int64, username string, modelName string) *gorm.DB {
+// skQuotaFilter describes who is allowed to see the rows. UserID is only ever
+// filled from the authenticated session, never from a query parameter, so a
+// self-scoped request cannot be widened by the caller.
+type skQuotaFilter struct {
+	UserID   int
+	Username string
+	Model    string
+}
+
+func skQuotaQuery(startTime int64, endTime int64, filter skQuotaFilter) *gorm.DB {
 	query := DB.Table("quota_data").
 		Where("created_at >= ? and created_at <= ?", startTime, endTime)
-	if username != "" {
-		query = query.Where("username = ?", username)
+	if filter.UserID > 0 {
+		query = query.Where("user_id = ?", filter.UserID)
 	}
-	if modelName != "" {
-		query = query.Where("model_name = ?", modelName)
+	if filter.Username != "" {
+		query = query.Where("username = ?", filter.Username)
+	}
+	if filter.Model != "" {
+		query = query.Where("model_name = ?", filter.Model)
 	}
 	return query
 }
@@ -47,8 +59,22 @@ func skQuotaQuery(startTime int64, endTime int64, username string, modelName str
 // totals for the full filter set. Rows are ordered by quota so a truncated
 // result keeps the buckets that matter.
 func GetSkQuotaData(startTime int64, endTime int64, username string, modelName string, limit int) ([]*SkQuotaData, *SkQuotaTotals, error) {
+	return querySkQuota(startTime, endTime, skQuotaFilter{Username: username, Model: modelName}, limit)
+}
+
+// GetSelfSkQuotaData is GetSkQuotaData narrowed to one owner. A reseller is a
+// regular user whose downstream customers are distinguished by token, so the
+// owner id is the whole boundary: every row belongs to a key they own.
+func GetSelfSkQuotaData(userID int, startTime int64, endTime int64, modelName string, limit int) ([]*SkQuotaData, *SkQuotaTotals, error) {
+	if userID <= 0 {
+		return []*SkQuotaData{}, &SkQuotaTotals{}, nil
+	}
+	return querySkQuota(startTime, endTime, skQuotaFilter{UserID: userID, Model: modelName}, limit)
+}
+
+func querySkQuota(startTime int64, endTime int64, filter skQuotaFilter, limit int) ([]*SkQuotaData, *SkQuotaTotals, error) {
 	rows := make([]*SkQuotaData, 0, min(limit, 256))
-	err := skQuotaQuery(startTime, endTime, username, modelName).
+	err := skQuotaQuery(startTime, endTime, filter).
 		Select("token_id, user_id, username, model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, sum(cache_read_tokens) as cache_read_tokens, sum(cache_creation_tokens) as cache_creation_tokens").
 		Group("token_id, user_id, username, model_name").
 		Order("quota DESC").
@@ -59,7 +85,7 @@ func GetSkQuotaData(startTime int64, endTime int64, username string, modelName s
 	}
 
 	totals := &SkQuotaTotals{}
-	err = skQuotaQuery(startTime, endTime, username, modelName).
+	err = skQuotaQuery(startTime, endTime, filter).
 		Select("coalesce(sum(quota), 0) as quota, coalesce(sum(count), 0) as count, coalesce(sum(token_used), 0) as token_used, coalesce(sum(cache_read_tokens), 0) as cache_read_tokens, coalesce(sum(cache_creation_tokens), 0) as cache_creation_tokens").
 		Scan(totals).Error
 	if err != nil {

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { Eye, EyeOff } from 'lucide-react'
-import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -31,6 +31,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+/* APIDUO:marks:BEGIN */
+import { AdminOnlyBadge } from '@/features/apiduo-marks/admin-only-badge'
+import { apiduoTabMark } from '@/features/apiduo-marks/marks'
+/* APIDUO:marks:END */
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -213,6 +217,9 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   users: {
     titleKey: 'User Analytics',
   },
+  'my-keys': {
+    titleKey: 'My keys',
+  },
   sk: {
     titleKey: 'SK Analytics',
   },
@@ -352,13 +359,35 @@ export function Dashboard() {
     ) : null
   const sectionActions = modelActions ?? flowActions
 
+  // Hiding a section from the tabs does not remove the URL. Bounce to the
+  // default instead of rendering a page whose data request is bound to 403.
+  const sectionVisible =
+    activeSection === 'overview' || visibleSections.includes(activeSection)
+  useEffect(() => {
+    if (sectionVisible) return
+    void navigate({
+      to: '/dashboard/$section',
+      params: { section: DASHBOARD_DEFAULT_SECTION },
+      replace: true,
+    })
+  }, [sectionVisible, navigate])
+
+  if (!sectionVisible) return null
+
   if (activeSection === 'overview') {
     return <OverviewDashboard />
   }
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {t(meta.titleKey)}
+        {/* APIDUO:marks:BEGIN */}
+        <AdminOnlyBadge
+          visible={ADMIN_ONLY_DASHBOARD_SECTIONS.includes(activeSection)}
+        />
+        {/* APIDUO:marks:END */}
+      </SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
           <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
@@ -366,9 +395,15 @@ export function Dashboard() {
               <Tabs value={activeSection} onValueChange={handleSectionChange}>
                 <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
                   {visibleSections.map((section) => (
-                    <TabsTrigger key={section} value={section}>
+                    /* APIDUO:marks:BEGIN */
+                    <TabsTrigger
+                      key={section}
+                      value={section}
+                      data-apiduo={apiduoTabMark(section)}
+                    >
                       {t(SECTION_META[section].titleKey)}
                     </TabsTrigger>
+                    /* APIDUO:marks:END */
                   ))}
                 </TabsList>
               </Tabs>
@@ -443,6 +478,13 @@ export function Dashboard() {
                   filters={modelFilters}
                   sensitiveVisible={flowSensitiveVisible}
                 />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'my-keys' && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazySkAnalytics scope='self' />
               </Suspense>
             </FadeIn>
           )}

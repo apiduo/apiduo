@@ -22,6 +22,11 @@ import type { DashboardSectionId } from './section-registry'
 // section tab list both filter through this list, so adding an admin-only
 // section here is enough to keep them in sync.
 export const ADMIN_ONLY_DASHBOARD_SECTIONS: readonly DashboardSectionId[] = [
+  // These read the global aggregates (/api/data, /api/data/flow, /api/data/sk).
+  // Regular users only have the /self variants, so showing the tabs would just
+  // render a 403. Their own view lives in "My keys".
+  'models',
+  'flow',
   'users',
   'sk',
   'capacity',

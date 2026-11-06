@@ -34,7 +34,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { getSkQuotaData } from '@/features/dashboard/api'
+import { getSelfSkQuotaData, getSkQuotaData } from '@/features/dashboard/api'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
 import {
   buildSkStackRows,
@@ -89,6 +89,7 @@ function SkStackChart(props: {
   data: SkStackData
   loading: boolean
   colors: Map<string, string>
+  title: string
 }) {
   const { t } = useTranslation()
 
@@ -113,7 +114,7 @@ function SkStackChart(props: {
   return (
     <div className='rounded-lg border p-3 sm:p-4'>
       <div className='flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1'>
-        <span className='text-sm font-semibold'>{t('SK spend by model')}</span>
+        <span className='text-sm font-semibold'>{props.title}</span>
         <span className='text-muted-foreground text-[11px]'>
           {t('Bar length is cost, segments are models')}
         </span>
@@ -188,8 +189,17 @@ function SkStackChart(props: {
   )
 }
 
-export function SkAnalytics() {
+interface SkAnalyticsProps {
+  /**
+   * admin aggregates every user; self is hard-scoped server-side to the caller's
+   * own keys, which is what a reseller needs (their customers are the keys).
+   */
+  scope?: 'admin' | 'self'
+}
+
+export function SkAnalytics({ scope = 'admin' }: SkAnalyticsProps = {}) {
   const { t } = useTranslation()
+  const isSelf = scope === 'self'
   const [rangeDays, setRangeDays] = useState(DEFAULT_RANGE_DAYS)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -210,11 +220,16 @@ export function SkAnalytics() {
     queryKey: [
       'dashboard',
       'sk-analytics',
+      scope,
       timeRange.start_timestamp,
       timeRange.end_timestamp,
     ],
     queryFn: async () =>
-      requireServerSuccess(await getSkQuotaData(timeRange)),
+      requireServerSuccess(
+        isSelf
+          ? await getSelfSkQuotaData(timeRange)
+          : await getSkQuotaData(timeRange)
+      ),
     select: (response) => response.data,
     staleTime: 60_000,
   })
@@ -304,12 +319,12 @@ export function SkAnalytics() {
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `sk-analytics-${rangeDays}d-${new Date()
+    anchor.download = `${isSelf ? 'key-usage' : 'sk-analytics'}-${rangeDays}d-${new Date()
       .toISOString()
       .slice(0, 10)}.csv`
     anchor.click()
     URL.revokeObjectURL(url)
-  }, [visibleRows, rangeDays])
+  }, [visibleRows, rangeDays, isSelf])
 
   const noTokenLabel = t('No token')
   const columns = [
@@ -317,7 +332,7 @@ export function SkAnalytics() {
       id: 'sk',
       header: (
         <SortHeader
-          label={t('SK')}
+          label={isSelf ? t('Key') : t('SK')}
           sortKey='sk'
           activeKey={sort.key}
           direction={sort.direction}
@@ -448,19 +463,29 @@ export function SkAnalytics() {
         )
       },
     },
-  ]
+  ].filter((column) => !isSelf || column.id !== 'user')
 
-  const emptyTitle = search ? t('No matching combinations') : t('No Data')
-  const emptyDescription = search
-    ? t('Try a different SK, user or model.')
-    : t('No usage was recorded in this time range.')
+  const searchPlaceholder = isSelf
+    ? t('Filter by key or model')
+    : t('Filter by SK, user or model')
+  let emptyTitle = t('No Data')
+  if (search) emptyTitle = t('No matching combinations')
+
+  let emptyDescription = t('No usage was recorded in this time range.')
+  if (search) {
+    emptyDescription = isSelf
+      ? t('Try a different key or model.')
+      : t('Try a different SK, user or model.')
+  }
 
   let tableBody
   if (query.isError) {
     tableBody = (
       <div className='space-y-2 px-4 py-10 text-center'>
         <div className='text-sm font-medium'>
-          {t('Failed to load SK analytics')}
+          {isSelf
+            ? t('Failed to load key usage')
+            : t('Failed to load SK analytics')}
         </div>
         <div className='text-muted-foreground text-xs'>
           {(query.error as Error)?.message}
@@ -525,7 +550,7 @@ export function SkAnalytics() {
     },
     {
       key: 'sk',
-      label: t('Active SK'),
+      label: isSelf ? t('Active keys') : t('Active SK'),
       value: formatNumber(summary.skCount),
     },
   ]
@@ -552,9 +577,9 @@ export function SkAnalytics() {
           <Input
             value={search}
             onChange={(event) => handleSearch(event.target.value)}
-            placeholder={t('Filter by SK, user or model')}
+            placeholder={searchPlaceholder}
             className='h-8 pl-8 text-xs'
-            aria-label={t('Filter by SK, user or model')}
+            aria-label={searchPlaceholder}
           />
         </div>
 
@@ -568,6 +593,14 @@ export function SkAnalytics() {
           {t('Export CSV')}
         </Button>
       </div>
+
+      {isSelf && (
+        <p className='text-muted-foreground text-[11px]'>
+          {t(
+            'Each key stands for one customer. Rename keys in API Keys to match your customer names.'
+          )}
+        </p>
+      )}
 
       <div className='overflow-hidden rounded-lg border'>
         <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-4'>
@@ -588,6 +621,7 @@ export function SkAnalytics() {
         data={stackData}
         loading={loading}
         colors={stackColors}
+        title={isSelf ? t('Key spend by model') : t('SK spend by model')}
       />
 
       <div className='overflow-hidden rounded-lg border'>
@@ -595,7 +629,7 @@ export function SkAnalytics() {
           <div className='flex items-center gap-2'>
             <KeyRound className='text-muted-foreground size-4' />
             <span className='text-sm font-semibold'>
-              {t('SK × model × user')}
+              {isSelf ? t('Key × model') : t('SK × model × user')}
             </span>
             <span className='text-muted-foreground text-xs'>
               {t('{{count}} combinations', {

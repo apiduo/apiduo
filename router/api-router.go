@@ -64,6 +64,9 @@ func SetApiRouter(router *gin.Engine) {
 		// /api/data: that endpoint already exposes every user's usage to admins,
 		// so this adds no new reach. The token key is masked server-side.
 		apiRouter.GET("/data/sk", middleware.AdminAuth(), controller.GetSkQuotaDates)
+		// Self-scoped variant for resellers: the owner boundary comes from the
+		// session, so it is safe for every logged-in user.
+		apiRouter.GET("/data/sk/self", middleware.UserAuth(), controller.GetSelfSkQuotaDates)
 		// APIDUO:sk-analytics:END
 		// APIDUO:capacity-forecast:BEGIN
 		// Daily series feeding the capacity planner and the balance runway. Same

@@ -154,3 +154,79 @@ func TestSkQuotaDatesRejectsInvalidLimit(t *testing.T) {
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
 	require.False(t, payload.Success)
 }
+
+func callSelfSkQuotaDates(t *testing.T, userID int, query string) skQuotaPayload {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/api/data/sk/self", func(c *gin.Context) {
+		c.Set("id", userID)
+		GetSelfSkQuotaDates(c)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/data/sk/self"+query, nil)
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload skQuotaPayload
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.True(t, payload.Success, recorder.Body.String())
+	return payload
+}
+
+// A reseller must only ever see the keys they own. Passing another user's
+// identifiers must not widen the result set, because the scope is read from the
+// session rather than the query string.
+func TestSelfSkQuotaDatesIgnoresScopeParameters(t *testing.T) {
+	setupSkAnalyticsTestDB(t)
+
+	payload := callSelfSkQuotaDates(t, 1, "?start_timestamp=1000&end_timestamp=1200&username=bob&user_id=2")
+
+	items := payload.Data.Items
+	require.Len(t, items, 2)
+	for _, item := range items {
+		require.Equal(t, 1, item.UserID)
+		require.Equal(t, "alice", item.Username)
+	}
+	require.Equal(t, int64(220), payload.Data.Totals.Quota)
+	require.Equal(t, int64(4), payload.Data.Totals.Count)
+}
+
+func TestSelfSkQuotaDatesScopesTotalsToCaller(t *testing.T) {
+	setupSkAnalyticsTestDB(t)
+
+	// bob owns token 22 only.
+	bob := callSelfSkQuotaDates(t, 2, "?start_timestamp=1000&end_timestamp=1200")
+	require.Len(t, bob.Data.Items, 1)
+	require.Equal(t, 22, bob.Data.Items[0].TokenID)
+	require.Equal(t, int64(30), bob.Data.Totals.Quota)
+
+	// carol has usage without a token: it still belongs to her, and must not
+	// leak into anyone else's totals.
+	carol := callSelfSkQuotaDates(t, 3, "?start_timestamp=1000&end_timestamp=1200")
+	require.Len(t, carol.Data.Items, 1)
+	require.Equal(t, 0, carol.Data.Items[0].TokenID)
+	require.Equal(t, int64(5), carol.Data.Totals.Quota)
+}
+
+func TestSelfSkQuotaDatesRejectsInvalidLimit(t *testing.T) {
+	setupSkAnalyticsTestDB(t)
+
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/api/data/sk/self", func(c *gin.Context) {
+		c.Set("id", 1)
+		GetSelfSkQuotaDates(c)
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/data/sk/self?start_timestamp=1000&end_timestamp=1200&limit=abc", nil)
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var body struct {
+		Success bool `json:"success"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &body))
+	require.False(t, body.Success)
+}

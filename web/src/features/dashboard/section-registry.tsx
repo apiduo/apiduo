@@ -32,6 +32,13 @@ const DASHBOARD_SECTIONS = [
     build: () => null,
   },
   {
+    id: 'my-keys',
+    // Everyone sees this one: it is hard-scoped to the caller's own keys, which
+    // is how a reseller tracks the customers behind each key.
+    titleKey: 'My keys',
+    build: () => null,
+  },
+  {
     id: 'models',
     titleKey: 'Model Call Analytics',
     build: () => null,

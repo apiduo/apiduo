@@ -71,10 +71,10 @@ const ITEMS: SkQuotaData['items'] = [
 let client: QueryClient
 let response: SkQuotaData
 
-function renderSkAnalytics() {
+function renderSkAnalytics(scope?: 'admin' | 'self') {
   return render(
     <QueryClientProvider client={client}>
-      <SkAnalytics />
+      <SkAnalytics scope={scope} />
     </QueryClientProvider>
   )
 }
@@ -134,6 +134,25 @@ describe('SkAnalytics', () => {
       expect(screen.queryByText('primary-prod')).toBeNull()
     })
     expect(screen.getAllByText('backup-ci').length).toBeGreaterThan(0)
+  })
+
+  it('uses the self endpoint and drops the user column for resellers', async () => {
+    const get = vi.mocked(api.get)
+    get.mockClear()
+    renderSkAnalytics('self')
+
+    expect((await screen.findAllByText('primary-prod')).length).toBeGreaterThan(
+      0
+    )
+
+    // The owner boundary is server-side, so the client must call the /self
+    // variant instead of filtering an admin response.
+    expect(get.mock.calls[0]?.[0]).toBe('/api/data/sk/self')
+    // The user column would repeat the caller's own name on every row.
+    expect(screen.queryByText('alice')).toBeNull()
+    expect(
+      screen.getByText(/Each key stands for one customer/)
+    ).toBeInTheDocument()
   })
 
   it('warns when the row list is truncated', async () => {

@@ -111,6 +111,22 @@ export async function getSkQuotaData(params: {
   return res.data
 }
 
+// Get usage grouped by key and model for the caller only. The owner boundary is
+// enforced server-side from the session, so there is deliberately no user
+// parameter to pass.
+export async function getSelfSkQuotaData(params: {
+  start_timestamp: number
+  end_timestamp: number
+  model?: string
+  limit?: number
+}) {
+  const res = await api.get<{ success: boolean; data: SkQuotaData }>(
+    '/api/data/sk/self',
+    { params }
+  )
+  return res.data
+}
+
 // Get daily usage series grouped by model, user or channel. Admin only.
 export async function getUsageSeries(params: {
   start_timestamp: number
