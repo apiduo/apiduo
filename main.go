@@ -229,6 +229,11 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		common.SysError(common.LogText("server forced to shutdown: %v", err))
 	}
+	// APIDUO:log-writer:BEGIN
+	// Runs after the server stopped serving so no new rows arrive while the
+	// writer drains its queue.
+	model.ShutdownLogWriter()
+	// APIDUO:log-writer:END
 	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
 	if common.DataExportEnabled {
 		model.SaveQuotaDataCache()
@@ -339,6 +344,14 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+
+	// APIDUO:log-writer:BEGIN
+	// A log writer that cannot start must not keep the gateway down; the
+	// synchronous insert path stays in charge when it is inactive.
+	if err := model.StartLogWriter(); err != nil {
+		common.SysError(common.LogText("log writer disabled: %s", err.Error()))
+	}
+	// APIDUO:log-writer:END
 
 	// Initialize Redis
 	err = common.InitRedisClient()

@@ -98,6 +98,11 @@ func ensureLogRequestId(log *Log) {
 
 func createLog(log *Log) error {
 	ensureLogRequestId(log)
+	// APIDUO:log-writer:BEGIN
+	if handled, err := enqueueLog(log); handled {
+		return err
+	}
+	// APIDUO:log-writer:END
 	return LOG_DB.Create(log).Error
 }
 
