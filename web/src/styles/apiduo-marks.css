@@ -1,0 +1,230 @@
+/*
+ * Marks for apiduo-only console entries.
+ *
+ * Two independent channels, because they answer different questions:
+ *   - `source` on a dashboard tab: did apiduo add this, or is it upstream?
+ *   - `admin-badge` in a page title: do the users I bill see this page?
+ *
+ * Both are CSS-only. No element is added to the tab strip, so the tab geometry
+ * stays whatever upstream chose and a rebase cannot turn the mark into a
+ * layout bug.
+ */
+
+/* A primary that survives being 13px text. `--primary` is tuned for fills:
+ * at oklch L 0.692 on white it lands near 3:1, which reads as "disabled". */
+:root {
+  --apiduo-ink: var(--primary);
+  --apiduo-ink: oklch(from var(--primary) calc(l - 0.17) c h);
+}
+
+.dark {
+  --apiduo-ink: var(--primary);
+  --apiduo-ink: oklch(from var(--primary) calc(l + 0.17) c h);
+}
+
+/*
+ * Baseline is a plain coloured label with a leading dot: readable everywhere,
+ * and it is what a browser without `background-clip: text` keeps.
+ *
+ * The dot is a pseudo-element rather than a background layer. A 5px
+ * radial-gradient gets quantised into a square on a 1x display, and the
+ * `padding-box` clip needed to keep it outside the text clip is one more thing
+ * that can go wrong across browsers.
+ */
+[data-apiduo='source'] {
+  position: relative;
+  padding-left: 17px;
+  color: var(--apiduo-ink);
+  transition: background-position 900ms ease;
+}
+
+[data-apiduo='source']::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 7px;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 999px;
+  background-image: radial-gradient(
+    circle at 32% 28%,
+    rgb(255 255 255 / 0.95),
+    var(--apiduo-ink) 72%
+  );
+}
+
+/*
+ * The gradient text is an enhancement, never the carrier of meaning. Wrapping
+ * it in `@supports` keeps the failure mode "plain blue label" instead of
+ * "transparent label over a white card".
+ */
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  [data-apiduo='source'] {
+    background-image: linear-gradient(
+      100deg,
+      var(--apiduo-ink) 0%,
+      color-mix(in oklch, var(--primary) 62%, var(--apiduo-ink)) 52%,
+      var(--apiduo-ink) 100%
+    );
+    background-size: 220% 100%;
+    background-position: 0 0;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    /* `text-fill-color`, not `color: transparent`: a selected tab paints its
+     * own background, and leaving `color` intact keeps that background from
+     * inheriting the transparent treatment. */
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Only the gradient sweeps, so a hover never moves the label. */
+  [data-apiduo='source']:hover {
+    background-position: 100% 0;
+  }
+}
+
+/*
+ * `text` variant: the origin mark for a block inside a page — a card heading, a
+ * field label, a settings section title.
+ *
+ * It colours the innermost heading rather than the container itself, so the ink
+ * never leaks into borders, badges or icons the block also owns. Callers put the
+ * attribute on the smallest wrapper that still contains the label, or directly
+ * on the heading when the wrapper is a component that only takes a class name.
+ */
+[data-apiduo='text'] :is(h3, h4, label, [data-slot='card-title']),
+[data-apiduo='text']:is(h3, h4, label),
+.apiduo-text {
+  color: var(--apiduo-ink);
+}
+
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  [data-apiduo='text'] :is(h3, h4, label, [data-slot='card-title']),
+  [data-apiduo='text']:is(h3, h4, label),
+  .apiduo-text {
+    background-image: linear-gradient(
+      100deg,
+      var(--apiduo-ink) 0%,
+      color-mix(in oklch, var(--primary) 62%, var(--apiduo-ink)) 52%,
+      var(--apiduo-ink) 100%
+    );
+    background-size: 220% 100%;
+    background-position: 0 0;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    transition: background-position 900ms ease;
+  }
+
+  /* Only wrappers sweep on hover; a lone heading has no area to gesture over. */
+  [data-apiduo='text']:hover :is(h3, h4, label, [data-slot='card-title']) {
+    background-position: 100% 0;
+  }
+}
+
+/*
+ * `self` variant: a settings sidebar entry.
+ *
+ * It colours only the label, and it uses `-webkit-text-fill-color` instead of
+ * `color` because the row's icon is stroked with `currentColor` — making
+ * `color` transparent to reveal the gradient would erase the icon with it.
+ */
+[data-apiduo='self'] > span:first-of-type {
+  color: var(--apiduo-ink);
+}
+
+/*
+ * The entry's own icon is the other half of the mark. Upstream sub-items
+ * carry no icon at all, so the icon is structure apiduo added; painting its
+ * stroke with the same two-stop sweep as the label makes icon and text read
+ * as one marked unit. A plain stroke cannot produce the sweep, and SVG paint
+ * servers resolve against the document — `#apiduo-mark-grad` is mounted once
+ * by `ApiduoMarkDefs` in the authenticated layout.
+ */
+[data-apiduo='self'] svg {
+  stroke: url(#apiduo-mark-grad);
+}
+
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  [data-apiduo='self'] > span:first-of-type {
+    background-image: linear-gradient(
+      100deg,
+      var(--apiduo-ink) 0%,
+      color-mix(in oklch, var(--primary) 62%, var(--apiduo-ink)) 52%,
+      var(--apiduo-ink) 100%
+    );
+    background-size: 220% 100%;
+    background-position: 0 0;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+/*
+ * `icon-dot` variant: the origin dot on a sidebar entry's own icon.
+ *
+ * The configured-apps entries all have icons, and the icon corner is where
+ * users already look for state (badges, presence, updates), so the dot lands
+ * there instead of before the label — the row keeps the exact geometry
+ * upstream chose, and the mark costs no horizontal space.
+ *
+ * Same 5px highlight sphere as the tabs, so one shape means "apiduo" across
+ * surfaces. The button clips overflow, but the dot stays inside its 8px
+ * padding, so nothing is cut off in either sidebar width.
+ */
+[data-apiduo='icon-dot'] {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+[data-apiduo='icon-dot']::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background-image: radial-gradient(
+    circle at 32% 28%,
+    rgb(255 255 255 / 0.95),
+    var(--apiduo-ink) 72%
+  );
+}
+
+[data-apiduo='admin-badge'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 9px;
+  padding: 1px 9px 1px 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--primary) 30%, transparent);
+  background-color: color-mix(in oklch, var(--primary) 8%, transparent);
+  color: var(--apiduo-ink);
+  font-size: 11.5px;
+  font-weight: 400;
+  vertical-align: 2px;
+  white-space: nowrap;
+}
+
+/* A ring, not a filled dot: "restricted", not "unread". */
+[data-apiduo='admin-badge']::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-apiduo='source'] {
+    transition: none;
+  }
+}

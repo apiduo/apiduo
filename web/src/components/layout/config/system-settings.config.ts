@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TFunction } from 'i18next'
 import {
-  Box,
+  Boxes,
   Route,
   CreditCard,
   Layout,
@@ -26,6 +26,7 @@ import {
   Shield,
   ShieldAlert,
   Wrench,
+  Puzzle,
 } from 'lucide-react'
 
 import { getAuthSectionNavItems } from '@/features/system-settings/auth/section-registry.tsx'
@@ -36,6 +37,12 @@ import { getOperationsSectionNavItems } from '@/features/system-settings/operati
 import { getPolicySectionNavItems } from '@/features/system-settings/request-policies/section-registry'
 import { getSecuritySectionNavItems } from '@/features/system-settings/security/section-registry.tsx'
 import { getSiteSectionNavItems } from '@/features/system-settings/site/section-registry.tsx'
+/* APIDUO:marks:BEGIN */
+import {
+  apiduoSettingsNavIcon,
+  apiduoSettingsNavMark,
+} from '@/features/apiduo-marks/marks'
+/* APIDUO:marks:END */
 
 import type { NavGroup, SidebarBadges, SidebarView } from '../types'
 
@@ -58,7 +65,11 @@ function getSystemSettingsNavGroups(
         {
           title: t('Site & Branding'),
           icon: Settings,
-          items: getSiteSectionNavItems(t),
+          /* APIDUO:marks:BEGIN */
+          items: getSiteSectionNavItems(t).filter(
+            (item) => !apiduoSettingsNavMark(item.url)
+          ),
+          /* APIDUO:marks:END */
         },
         {
           title: t('Authentication'),
@@ -75,7 +86,7 @@ function getSystemSettingsNavGroups(
         },
         {
           title: t('Models'),
-          icon: Box,
+          icon: Boxes,
           items: getModelsSectionNavItems(t),
         },
         {
@@ -98,6 +109,26 @@ function getSystemSettingsNavGroups(
           icon: Wrench,
           items: getOperationsSectionNavItems(t),
         },
+        /* APIDUO:marks:BEGIN */
+        {
+          // Apiduo's own settings live here instead of inside whichever group
+          // happens to own the surrounding concept. An operator looking for
+          // one of them is looking for "the thing apiduo added", not for a
+          // site setting, so a named group is the only place they will look.
+          // The route stays under /site so existing links keep working.
+          title: t('Extensions'),
+          icon: Puzzle,
+          items: getSiteSectionNavItems(t)
+            .filter((item) => apiduoSettingsNavMark(item.url))
+            .map((item) => ({
+              ...item,
+              // Upstream sub-items are bare text, so an icon on a sub-item is
+              // a structure only apiduo builds. The icon is registered in the
+              // marks table with the rest of the identity system.
+              icon: apiduoSettingsNavIcon(item.url as string),
+            })),
+        },
+        /* APIDUO:marks:END */
       ],
     },
   ]

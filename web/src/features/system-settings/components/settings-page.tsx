@@ -22,6 +22,9 @@ import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
+/* APIDUO:marks:BEGIN */
+import { apiduoSettingsSectionMark } from '@/features/apiduo-marks/marks'
+/* APIDUO:marks:END */
 
 import { useSystemOptions, getOptionValue } from '../hooks/use-system-options'
 import type { SystemOption } from '../types'
@@ -54,6 +57,9 @@ type SettingsPageProps<
 type SettingsPageFrameProps = {
   title: ReactNode
   children: ReactNode
+  /* APIDUO:marks:BEGIN */
+  mark?: string
+  /* APIDUO:marks:END */
 }
 
 function SettingsPageFrame(props: SettingsPageFrameProps) {
@@ -69,7 +75,12 @@ function SettingsPageFrame(props: SettingsPageFrameProps) {
     >
       <SectionPageLayout>
         <SectionPageLayout.Title>
-          <span className='inline-flex max-w-full min-w-0 items-center gap-2 align-middle'>
+          {/* APIDUO:marks:BEGIN */}
+          <span
+            className='inline-flex max-w-full min-w-0 items-center gap-2 align-middle'
+            data-apiduo={props.mark}
+          >
+            {/* APIDUO:marks:END */}
             <span className='truncate'>{props.title}</span>
             <span
               ref={setTitleStatusContainer}
@@ -130,7 +141,10 @@ export function SettingsPage<
 
   if (isLoading) {
     return (
-      <SettingsPageFrame title={t(sectionMeta.titleKey)}>
+      <SettingsPageFrame
+        title={t(sectionMeta.titleKey)}
+        mark={apiduoSettingsSectionMark(activeSection)}
+      >
         <div className='text-muted-foreground flex min-h-40 items-center justify-center text-sm'>
           {t(loadingMessage)}
         </div>
@@ -140,7 +154,10 @@ export function SettingsPage<
 
   if (isError && !data) {
     return (
-      <SettingsPageFrame title={t(sectionMeta.titleKey)}>
+      <SettingsPageFrame
+        title={t(sectionMeta.titleKey)}
+        mark={apiduoSettingsSectionMark(activeSection)}
+      >
         <ErrorState
           title={t('Failed to load settings')}
           onRetry={() => void refetch()}
@@ -156,7 +173,10 @@ export function SettingsPage<
   )
 
   return (
-    <SettingsPageFrame title={t(sectionMeta.titleKey)}>
+    <SettingsPageFrame
+      title={t(sectionMeta.titleKey)}
+      mark={apiduoSettingsSectionMark(activeSection)}
+    >
       {sectionContent}
     </SettingsPageFrame>
   )

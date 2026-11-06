@@ -16,6 +16,7 @@
     "preview": "rsbuild preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "bun e2e/marks.e2e.ts",
     "format:check": "node scripts/format-with-protected-headers.mjs --check",
     "format": "node scripts/format-with-protected-headers.mjs --write",
     "copyright:check": "node scripts/add-copyright.mjs --check",
@@ -106,6 +107,7 @@
     "knip": "^6.43.0",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.72.0",
+    "puppeteer-core": "^25.16.0",
     "shadcn": "^4.12.0",
     "vitest": "^5.0.4"
   },
