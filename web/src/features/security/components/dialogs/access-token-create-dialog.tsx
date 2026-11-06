@@ -35,6 +35,9 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+/* APIDUO:marks:BEGIN */
+import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
+/* APIDUO:marks:END */
 import { permissionMatrixToScopes } from '@/lib/admin-permissions'
 
 import type { AccessTokenCatalog, AccessTokenInput } from '../../api'
@@ -199,7 +202,10 @@ export function AccessTokenCreateDialog(props: AccessTokenCreateDialogProps) {
             />
           )}
           {/* APIDUO:token-ip-allowlist:BEGIN */}
-          <div className='space-y-1.5'>
+          <div
+            className='space-y-1.5'
+            data-apiduo={apiduoBlockMark('token:ip-allowlist')}
+          >
             <label className='text-sm font-medium' htmlFor='access-token-allow-ips'>
               {t('Allowed addresses (optional)')}
             </label>

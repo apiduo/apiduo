@@ -259,12 +259,13 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/data/flow":                        accessTokenScopeRule("log:read"),
 	"GET /api/data/flow/self":                   accessTokenScopeRule("usage:read"),
 	// APIDUO:sk-analytics:BEGIN
-	"GET /api/data/sk": accessTokenScopeRule("log:read"),
+	"GET /api/data/sk":      accessTokenScopeRule("log:read"),
+	"GET /api/data/sk/self": accessTokenScopeRule("usage:read"),
 	// APIDUO:sk-analytics:END
 	// APIDUO:capacity-forecast:BEGIN
-	"GET /api/data/series":         accessTokenScopeRule("log:read"),
-	"GET /api/data/series/self":    accessTokenScopeRule("usage:read"),
-	"GET /api/data/user-balances":  accessTokenScopeRule("log:read"),
+	"GET /api/data/series":        accessTokenScopeRule("log:read"),
+	"GET /api/data/series/self":   accessTokenScopeRule("usage:read"),
+	"GET /api/data/user-balances": accessTokenScopeRule("log:read"),
 	// APIDUO:capacity-forecast:END
 
 	// router/api-router.go: /api/group, /api/prefill_group

@@ -37,6 +37,9 @@ import {
   permissionMatrixToScopes,
   scopesToPermissionMatrix,
 } from '@/lib/admin-permissions'
+/* APIDUO:marks:BEGIN */
+import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
+/* APIDUO:marks:END */
 
 import type {
   AccessTokenCatalog,
@@ -165,7 +168,10 @@ export function AccessTokenEditDialog(props: AccessTokenEditDialogProps) {
             )}
           />
                     {/* APIDUO:token-ip-allowlist:BEGIN */}
-          <div className='space-y-1.5'>
+          <div
+            className='space-y-1.5'
+            data-apiduo={apiduoBlockMark('token:ip-allowlist')}
+          >
             <label
               className='text-sm font-medium'
               htmlFor='access-token-edit-allow-ips'
