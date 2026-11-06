@@ -733,7 +733,6 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
   if (formData.tls_insecure_skip_verify === true) {
     settingObj.tls_insecure_skip_verify = true
   }
-
   return JSON.stringify(settingObj)
 }
 

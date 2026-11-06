@@ -118,6 +118,12 @@ export interface ChannelOtherSettings {
   upstream_model_update_last_detected_models?: string[]
   advanced_custom?: AdvancedCustomConfig
   advanced_async?: AdvancedAsyncConfig
+  file_relay?: FileRelayConfig
+}
+
+export interface FileRelayConfig {
+  purposes?: string[]
+  max_upload_bytes?: number
 }
 
 export interface AdvancedAsyncConfig {

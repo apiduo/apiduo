@@ -679,6 +679,7 @@ export function AdvancedCustomEditorDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t('Advanced Custom Routes')}
+      titleClassName='apiduo-text'
       description={t('Advanced Custom')}
       contentClassName='flex max-h-[min(90dvh,var(--dialog-available-height))] flex-col gap-0 p-0 sm:max-w-5xl'
       headerClassName='border-b px-6 py-4'

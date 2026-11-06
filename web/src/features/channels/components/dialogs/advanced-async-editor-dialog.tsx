@@ -156,6 +156,7 @@ export function AdvancedAsyncEditorDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t('Advanced async routes')}
+      titleClassName='apiduo-text'
       description={t(
         'Describe the upstream task API. The gateway submits work and polls for the result.'
       )}

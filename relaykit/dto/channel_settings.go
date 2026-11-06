@@ -144,6 +144,12 @@ type ChannelOtherSettings struct {
 	// rejection. Empty follows the default allow policy. Accepted values:
 	// "", "allow", "safe", "strict".
 	ToolLossPolicy string `json:"tool_loss_policy,omitempty"`
+	// APIDUO:file-relay:BEGIN
+	FileRelay *ChannelFileRelayConfig `json:"file_relay,omitempty"`
+	// APIDUO:file-relay:END
+	// APIDUO:artifact-storage:BEGIN
+	ArtifactStorage *ChannelArtifactStorageConfig `json:"artifact_storage,omitempty"`
+	// APIDUO:artifact-storage:END
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {
