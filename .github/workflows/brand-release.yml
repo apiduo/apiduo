@@ -137,6 +137,17 @@ jobs:
           } > RELEASE_NOTES.md
           cat RELEASE_NOTES.md
 
+      # 热路径 SQL 预算：/v1/chat/completions 每请求的语句条数一旦变化，这里先红，
+      # 坏改动不会进镜像。新加查询不是错误，但必须是一个被看见、被写进 diff 的决定。
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Relay SQL budget
+        run: go test ./router/ -run TestRelaySQLBudget -count=1
+
       # 版本号构建期临时写入 VERSION（不提交）：Dockerfile 用它注入 common.Version，
       # /api/status 会回报该值，下面冒烟直接断言。
       - name: Build image
