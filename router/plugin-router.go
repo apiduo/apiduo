@@ -67,6 +67,11 @@ var defaultPluginDispatcher = &pluginRouteDispatcher{registry: jsplugin.DefaultR
 var pluginHandoffRoutes = map[string]struct{}{
 	http.MethodGet + " /v1/videos/:task_id":   {},
 	http.MethodPost + " /v1beta/models/*path": {},
+	// APIDUO:file-relay:BEGIN hailuo serves GET /v1/files/retrieve, a static
+	// path that would otherwise be shadowed by the gateway's /v1/files/:id.
+	// Declaring the overlap here keeps the plugin route alive.
+	http.MethodGet + " /v1/files/:id": {},
+	// APIDUO:file-relay:END
 }
 
 func SetPluginRouter(outer *gin.Engine) gin.HandlerFunc {

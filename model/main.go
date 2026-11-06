@@ -379,6 +379,9 @@ func migrateDB() error {
 		// APIDUO:agent-key:BEGIN
 		&AgentKey{},
 		// APIDUO:agent-key:END
+		// APIDUO:file-relay:BEGIN
+		&FileObject{},
+		// APIDUO:file-relay:END
 	)
 	if err != nil {
 		return err
