@@ -45,6 +45,15 @@ services:
       - TZ=Asia/Shanghai
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
+      # APIDUO:memory-cache:BEGIN
+      # 渠道/能力表常驻内存，省掉每请求 3 次查询（实测 13 → 10 条 SQL/请求）。
+      # 配了 REDIS_CONN_STRING 时本来就会强制打开；这里显式写出来，是为了在没有
+      # Redis 的环境里也保持同一套行为。
+      # 注意：多副本时各实例独立缓存，渠道/价格改动最多延迟 SYNC_FREQUENCY 秒生效；
+      # 需要立即一致请走 Redis。
+      - MEMORY_CACHE_ENABLED=true
+      # - SYNC_FREQUENCY=60  # 缓存刷新间隔（秒），默认 60
+      # APIDUO:memory-cache:END
       - NODE_NAME=new-api-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)
 #      - DEFAULT_LANGUAGE=zh-CN  # 默认语言：日志输出，以及对方没有指定语言时返回的提示、邮件和通知；可选 en、zh-CN、zh-TW，不设置为 en (Default language of logs and of messages, emails and notifications when the reader states none: en, zh-CN or zh-TW; en if unset)
 #      - STREAMING_TIMEOUT=300  # 流模式无响应超时时间，单位秒，默认120秒，如果出现空补全可以尝试改为更大值 （Streaming timeout in seconds, default is 120s. Increase if experiencing empty completions）
