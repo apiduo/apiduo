@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>六个语义怎么权衡 · apiduo</title>
+<style>
+:root{
+  --bg:#FAFAF8; --surface:#FFFFFF; --surface-2:#F5F5F2;
+  --border:rgba(20,20,19,.09); --border-strong:rgba(20,20,19,.16);
+  --text:#1C1C1A; --text-2:#5F5E5A; --text-3:#8A8983;
+  --primary:#534AB7; --primary-soft:#EEEDFE;
+  --green:#0F6E56; --green-soft:#E1F5EE;
+  --amber:#854F0B; --amber-soft:#FAEEDA;
+  --red:#A32D2D; --red-soft:#FCEBEB;
+  --gray:#5F5E5A; --gray-soft:#F1EFE8;
+  --radius:12px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input[type=range]{font-family:inherit}
+
+.page{max-width:1120px;margin:0 auto;padding:36px 24px 100px}
+
+.head{margin-bottom:28px}
+h1{font-size:20px;font-weight:500;letter-spacing:-.015em}
+.lead{color:var(--text-2);font-size:13px;margin-top:8px;max-width:680px;line-height:1.65}
+.lead b{font-weight:500;color:var(--text)}
+
+.sec{margin-bottom:28px}
+.sec-h{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+.sec-h h2{font-size:13px;font-weight:500;letter-spacing:.01em}
+.sec-h span{font-size:11.5px;color:var(--text-3)}
+
+.grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+
+.dim-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 14px;cursor:pointer;transition:.16s;position:relative;overflow:hidden}
+.dim-card:hover{border-color:var(--border-strong)}
+.dim-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gray)}
+.dim-card.keep::before{background:#1D9E75}
+.dim-card.split::before{background:#BA7517}
+.dim-card.split{background:#FFFDF7;border-color:rgba(186,117,23,.28)}
+.dim-card.ignore::before{background:#B4B2A9}
+
+.dim-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.dim-name{font-size:13.5px;font-weight:500;letter-spacing:-.005em}
+.dim-code{font-family:var(--mono);font-size:11px;color:var(--text-3);margin-top:2px}
+.badge{font-size:10.5px;font-weight:500;padding:1px 6px 2px;border-radius:4px;white-space:nowrap;flex:none}
+.badge.keep{background:var(--green-soft);color:var(--green)}
+.badge.split{background:var(--amber-soft);color:var(--amber)}
+.badge.ignore{background:var(--gray-soft);color:var(--gray)}
+
+.dim-meta{display:flex;gap:14px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border)}
+.dim-meta div{flex:1}
+.dim-meta .mk{font-size:10.5px;color:var(--text-3);margin-bottom:2px}
+.dim-meta .mv{font-size:12px;font-weight:500;font-variant-numeric:tabular-nums}
+.mv.hot{color:var(--amber)}
+.mv.cold{color:var(--text-2)}
+
+.dim-detail{max-height:0;overflow:hidden;transition:max-height .22s cubic-bezier(.32,.72,0,1)}
+.dim-card.open .dim-detail{max-height:180px}
+.dim-detail p{font-size:12px;color:var(--text-2);line-height:1.6;padding-top:10px;margin-top:10px;border-top:1px dashed var(--border)}
+.dim-hint{font-size:10.5px;color:var(--text-3);position:absolute;right:12px;bottom:10px;opacity:.7}
+
+.sim{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.sim-body{display:grid;grid-template-columns:300px 1fr}
+.sim-left{padding:18px;border-right:1px solid var(--border);background:var(--surface-2)}
+.sim-right{padding:18px 20px}
+
+.ctl{margin-bottom:18px}
+.ctl:last-child{margin-bottom:0}
+.ctl-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+.ctl-h label{font-size:12px;color:var(--text-2)}
+.ctl-h .v{font-size:14px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+input[type=range]{width:100%;height:3px;border-radius:2px;background:rgba(20,20,19,.12);appearance:none;outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:var(--text);cursor:grab;box-shadow:0 0 0 3px #fff}
+input[type=range]::-webkit-slider-thumb:active{cursor:grabbing;transform:scale(1.08)}
+.ctl-note{font-size:10.5px;color:var(--text-3);margin-top:5px}
+
+.metric{margin-bottom:20px}
+.metric:last-child{margin-bottom:0}
+.metric-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+.metric-h .mt{font-size:12.5px;font-weight:500}
+.metric-h .mv2{font-size:11.5px;color:var(--text-3);font-variant-numeric:tabular-nums}
+.bar-row{display:flex;align-items:center;gap:9px;margin-bottom:5px}
+.bar-lbl{font-size:11px;color:var(--text-3);width:36px;flex:none;text-align:right}
+.bar-track{flex:1;height:16px;background:var(--surface-2);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .28s cubic-bezier(.32,.72,0,1);min-width:3px}
+.bar-fill.now{background:#BA7517}
+.bar-fill.after{background:#1D9E75}
+.bar-num{font-size:11.5px;font-weight:500;font-variant-numeric:tabular-nums;width:52px;flex:none}
+.bar-num.faint{color:var(--text-3)}
+.bar-num{white-space:nowrap;text-align:right}
+
+.steps{display:flex;flex-direction:column;gap:7px}
+.step{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0;overflow:hidden;cursor:pointer;transition:.14s}
+.step:hover{border-color:var(--border-strong)}
+.step-h{display:flex;align-items:center;gap:12px;padding:12px 15px}
+.step-n{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:500;flex:none;background:var(--surface-2);color:var(--text-2)}
+.step.s1 .step-n{background:var(--green-soft);color:var(--green)}
+.step.s2 .step-n{background:var(--green-soft);color:var(--green)}
+.step.s3 .step-n{background:var(--gray-soft);color:var(--gray)}
+.step.s4 .step-n{background:var(--amber-soft);color:var(--amber)}
+.step-t{flex:1;font-size:12.5px;font-weight:500}
+.step-r{font-size:11px;padding:1px 7px 2px;border-radius:4px;flex:none}
+.step-r.zero{background:var(--green-soft);color:var(--green)}
+.step-r.low{background:var(--gray-soft);color:var(--gray)}
+.step-r.high{background:var(--amber-soft);color:var(--amber)}
+.step-body{max-height:0;overflow:hidden;transition:max-height .22s cubic-bezier(.32,.72,0,1)}
+.step.open .step-body{max-height:140px}
+.step-body p{font-size:12px;color:var(--text-2);padding:0 15px 13px 47px;line-height:1.6}
+
+.verdict{border-radius:var(--radius);padding:20px 22px;border:1px solid var(--border);background:var(--surface);transition:.2s}
+.verdict.calm{border-color:rgba(15,110,86,.26);background:#F7FCFA}
+.verdict.warn{border-color:rgba(186,117,23,.3);background:#FFFDF7}
+.verdict.hot{border-color:rgba(163,45,45,.26);background:#FFFAFA}
+.v-head{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.v-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.verdict.calm .v-dot{background:#1D9E75}
+.verdict.warn .v-dot{background:#BA7517}
+.verdict.hot .v-dot{background:#E24B4A}
+.v-title{font-size:14px;font-weight:500}
+.verdict p{font-size:12.5px;color:var(--text-2);line-height:1.65;max-width:760px}
+.verdict b{font-weight:500;color:var(--text)}
+.v-act{margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.v-pill{font-size:11.5px;padding:3px 9px 4px;border-radius:6px;background:rgba(20,20,19,.05);color:var(--text-2)}
+.v-pill b{color:var(--text)}
+
+.foot{margin-top:26px;font-size:11.5px;color:var(--text-3);line-height:1.75;max-width:760px}
+.foot code{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+.reset{height:28px;padding:0 11px;border-radius:7px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--text-2);transition:.14s}
+.reset:hover{background:var(--surface-2);color:var(--text)}
+
+@media (max-width:880px){
+  .grid6{grid-template-columns:1fr 1fr}
+  .sim-body{grid-template-columns:1fr}
+  .sim-left{border-right:none;border-bottom:1px solid var(--border)}
+}
+@media (max-width:560px){
+  .grid6{grid-template-columns:1fr}
+  .page{padding:22px 14px 80px}
+  .sim-right{padding:16px}
+  .step-body p{padding-left:15px}
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="head">
+    <h1>六个语义，怎么权衡</h1>
+    <p class="lead">这张图容易让人以为六个都要拆。实际上<b>只有一个是问题</b>，判断依据是：它在请求路径上<b>参与算术</b>，还是只做<b>查找</b>。<br>下面把参数拨到你的真实规模，看结论怎么变。</p>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h2>逐个定性</h2><span>点卡片展开判据</span></div>
+    <div class="grid6" id="dims"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h2>复杂度模拟</h2><span>拨到你现在的真实数字</span>
+      <button class="reset" style="margin-left:auto" onclick="resetSim()">重置</button>
+    </div>
+    <div class="sim">
+      <div class="sim-body">
+        <div class="sim-left">
+          <div class="ctl">
+            <div class="ctl-h"><label>用户分组数</label><span class="v" id="v-g">6</span></div>
+            <input type="range" id="s-g" min="2" max="20" value="6">
+            <div class="ctl-note">user.group 有多少个不同的值</div>
+          </div>
+          <div class="ctl">
+            <div class="ctl-h"><label>渠道池数</label><span class="v" id="v-p">4</span></div>
+            <input type="range" id="s-p" min="1" max="8" value="4">
+            <div class="ctl-note">channel.group 有多少个不同的池</div>
+          </div>
+          <div class="ctl">
+            <div class="ctl-h"><label>每年促销次数</label><span class="v" id="v-r">8</span></div>
+            <input type="range" id="s-r" min="0" max="24" value="8">
+            <div class="ctl-note">每做一次促销要新建一个分组</div>
+          </div>
+        </div>
+        <div class="sim-right" id="metrics"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h2>按风险排的动作顺序</h2><span>点击展开改动面</span></div>
+    <div class="steps" id="steps"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h2>当前参数下的结论</h2></div>
+    <div class="verdict calm" id="verdict"></div>
+  </div>
+
+  <p class="foot">
+    模型依据：<code>group_group_ratio</code> 是 <code>map[string]map[string]float64</code>，
+    所以它的配置量是 N×M；其余五项都是 <code>map[string]X</code> 或单字段，配置量是 O(N)。
+    只有前者会随分组数平方增长，也只有它需要拆。
+  </p>
+</div>
+
+<script>
+const DIMS = [
+  {k:'keep', name:'渠道路由', code:'ability 三元组',
+   op:'查找', cost:'O(N)', note:'本职',
+   detail:'这是 group 的本职工作。一个分组名，本来就是“一批渠道的集合”。它天生该在请求路径上，也天生该是低频配置。'},
+  {k:'split', name:'折扣倍率', code:'group_ratio × N²',
+   op:'算术（乘法）', cost:'O(N×M)', note:'唯一的乘数',
+   detail:'六项里唯一参与算术的。矩阵的每一格都要人工对齐，加一个分组不是 +1，而是 +另一边的数量。这是“分组一多就管不动”的唯一来源。'},
+  {k:'keep', name:'可用范围', code:'usable_groups',
+   op:'判断', cost:'O(N)', note:'同义延伸',
+   detail:'和路由是同一件事的两面：能被路由到，和能看见并使用，通常是同一批人。共享命名空间是合理的，但需要体检——否则会出现“用户在分组里但那分组没渠道”的静默失败。'},
+  {k:'keep', name:'令牌范围', code:'token.group',
+   op:'判断', cost:'O(N)', note:'同义延伸',
+   detail:'客户端侧的资格声明，本质是“这个 key 只允许走这些池”。加一行配置，不产生组合。'},
+  {k:'ignore', name:'订阅升降级', code:'UpgradeGroup',
+   op:'离线写字段', cost:'不进路径', note:'是动作不是状态',
+   detail:'这不是一个“语义”，是一个动作：购买后把 user.group 改成某个值。需要的是约束写入（谁什么时候能改），不是拆分。'},
+  {k:'ignore', name:'统计维度', code:'log.group',
+   op:'异步写字段', cost:'不进路径', note:'观测',
+   detail:'观测字段，越细越好。但它不应该反过来影响设计——如果为了报表方便而设计分组，那就是本末倒置。'}
+];
+
+const STEPS = [
+  {n:1, cls:'s1', title:'分组体检', risk:'零', rcls:'zero',
+   body:'只加一个只读接口，聚合 abilities / users / logs / quota_data 四张表的数字。不动计费路径、不动缓存、不动 schema。它不解决问题，只让问题可见——但很多“不敢删”在看清之后就自己解决了。'},
+  {n:2, cls:'s2', title:'分组加 expires_at', risk:'零', rcls:'zero',
+   body:'一个字段 + 一个定时归档任务。切断“促销沉淀成分组”这条唯一的分组增长路径。这是投入产出比最高的一步：一天工作量，让分组数量停止增长。'},
+  {n:3, cls:'s3', title:'UI 隐藏 GroupGroupRatio', risk:'低', rcls:'low',
+   body:'纯前端。矩阵还在，但运营不再看见它。新增的分组只走单值 group_ratio + 例外。降低误操作，不改变行为。'},
+  {n:4, cls:'s4', title:'折扣拆成策略', risk:'高', rcls:'high',
+   body:'4 处上游文件改动 + 一张策略表 + 一次全量缓存重建。风险来自 UserBase 的 HMAC 签名覆盖整个结构体，加字段会让存量缓存全部回源。做完前四步再观察一个月，如果分组数量已经不涨了，这一步可以不做。'}
+];
+
+const D = {};
+function renderDims(){
+  document.getElementById('dims').innerHTML = DIMS.map((d,i)=>`
+    <div class="dim-card ${d.k}" id="dim-${i}" onclick="toggleDim(${i})">
+      <div class="dim-top">
+        <div>
+          <div class="dim-name">${d.name}</div>
+          <div class="dim-code">${d.code}</div>
+        </div>
+        <span class="badge ${d.k}">${d.k==='keep'?'留在 group':d.k==='split'?'必须拆':'不用管'}</span>
+      </div>
+      <div class="dim-meta">
+        <div><div class="mk">路径上做什么</div><div class="mv ${d.op.includes('算术')?'hot':'cold'}">${d.op}</div></div>
+        <div><div class="mk">增长成本</div><div class="mv ${d.cost.includes('N×M')?'hot':'cold'}">${d.cost}</div></div>
+      </div>
+      <div class="dim-detail"><p>${d.detail}</p></div>
+    </div>`).join('');
+}
+function toggleDim(i){
+  const el = document.getElementById('dim-'+i);
+  const open = el.classList.contains('open');
+  document.querySelectorAll('.dim-card').forEach(x=>x.classList.remove('open'));
+  if(!open) el.classList.add('open');
+}
+
+function renderSteps(){
+  document.getElementById('steps').innerHTML = STEPS.map((s,i)=>`
+    <div class="step ${s.cls}" id="step-${i}" onclick="toggleStep(${i})">
+      <div class="step-h">
+        <span class="step-n">${s.n}</span>
+        <span class="step-t">${s.title}</span>
+        <span class="step-r ${s.rcls}">风险 ${s.risk}</span>
+      </div>
+      <div class="step-body"><p>${s.body}</p></div>
+    </div>`).join('');
+}
+function toggleStep(i){
+  const el = document.getElementById('step-'+i);
+  const open = el.classList.contains('open');
+  document.querySelectorAll('.step').forEach(x=>x.classList.remove('open'));
+  if(!open) el.classList.add('open');
+}
+
+const DEF = {g:6, p:4, r:8};
+let S = {...DEF};
+
+function calc(){
+  const {g,p,r} = S;
+  const addPoolNow = g;          // 每个用户组都要为新池配一遍倍率
+  const addPoolAfter = 1;
+  const addPromoNow = 2 + p;     // 建分组 + 配可见性 + p 个矩阵格
+  const addPromoAfter = 1;
+  const listNow = g + r;         // 促销沉淀成永久分组
+  const listAfter = g;
+  const cellsNow = g * p;
+  return {g,p,r,addPoolNow,addPoolAfter,addPromoNow,addPromoAfter,listNow,listAfter,cellsNow};
+}
+
+function metricBlock(title, sub, now, after, unit){
+  const max = Math.max(now, after, 1);
+  return `<div class="metric">
+    <div class="metric-h"><span class="mt">${title}</span><span class="mv2">${sub}</span></div>
+    <div class="bar-row">
+      <span class="bar-lbl">现在</span>
+      <div class="bar-track"><div class="bar-fill now" style="width:${Math.max(3, now/max*100)}%"></div></div>
+      <span class="bar-num">${now}${unit}</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-lbl">拆后</span>
+      <div class="bar-track"><div class="bar-fill after" style="width:${Math.max(3, after/max*100)}%"></div></div>
+      <span class="bar-num faint">${after}${unit}</span>
+    </div>
+  </div>`;
+}
+
+function renderMetrics(){
+  const c = calc();
+  document.getElementById('metrics').innerHTML =
+    metricBlock('新增一个渠道池', '要改几处配置', c.addPoolNow, c.addPoolAfter, ' 处') +
+    metricBlock('新增一次促销', '要动几个地方', c.addPromoNow, c.addPromoAfter, ' 处') +
+    metricBlock('一年后分组列表', '含沉淀下来的促销组', c.listNow, c.listAfter, ' 个') +
+    `<div class="metric" style="margin-top:2px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="metric-h"><span class="mt">矩阵格子总数</span>
+      <span class="mv2">${c.g} 组 × ${c.p} 池 = <b style="color:var(--text)">${c.cellsNow}</b> 格</span></div>
+      <div style="font-size:11.5px;color:var(--text-3);line-height:1.6">这些格子每一格都需要人工确认倍率，任何一格漏配都不会报错，只会算错钱。</div>
+    </div>`;
+}
+
+function renderVerdict(){
+  const c = calc();
+  const el = document.getElementById('verdict');
+  let cls, title, body, act;
+
+  if(c.cellsNow <= 12 && c.r <= 3){
+    cls='calm'; title='什么都不用做';
+    body=`${c.g} 个分组 × ${c.p} 个池 = ${c.cellsNow} 格，一年 ${c.r} 次促销。这个规模下，直接改 <b>user.group</b> 再配 <b>group_ratio</b> 就够，五分钟的事。任何重构在这里都是净负担。`;
+    act='<span class="v-pill">建议：<b>保持现状</b></span><span class="v-pill">唯一值得做的：分组体检</span>';
+  } else if(c.cellsNow <= 40 && c.r <= 12){
+    cls='warn'; title='做前三步，先别碰计费';
+    body=`${c.cellsNow} 格矩阵、一年后列表涨到 <b>${c.listNow} 个</b>分组。问题真实存在，但还没到必须动计费路径的程度。体检 + <b>expires_at</b> + UI 隐藏矩阵，零风险，能让分组数量先停下来。`;
+    act='<span class="v-pill">先做：<b>分组体检</b></span><span class="v-pill">再做：<b>expires_at</b></span><span class="v-pill">观察一个月再决定</span>';
+  } else {
+    cls='hot'; title='值得拆，但仍然最后做';
+    body=`${c.cellsNow} 格矩阵、一年 ${c.r} 次促销、列表会涨到 <b>${c.listNow} 个</b>。到这一步，新增一次促销要动 <b>${c.addPromoNow} 个地方</b>，漏配一格就是错价。拆成策略后都变成 1 处，但先做完前三步——它们零风险，而且可能让这一步变得没必要。`;
+    act='<span class="v-pill">三步之后如果分组还在涨 → <b>拆折扣</b></span><span class="v-pill">拆前必备：<b>shadow 对拍 7 天</b></span>';
+  }
+
+  el.className = 'verdict ' + cls;
+  el.innerHTML = `<div class="v-head"><span class="v-dot"></span><span class="v-title">${title}</span></div>
+    <p>${body}</p><div class="v-act">${act}</div>`;
+}
+
+function sync(){
+  document.getElementById('v-g').textContent = S.g;
+  document.getElementById('v-p').textContent = S.p;
+  document.getElementById('v-r').textContent = S.r;
+  renderMetrics();
+  renderVerdict();
+}
+
+function resetSim(){
+  S = {...DEF};
+  document.getElementById('s-g').value = DEF.g;
+  document.getElementById('s-p').value = DEF.p;
+  document.getElementById('s-r').value = DEF.r;
+  sync();
+}
+
+['g','p','r'].forEach(k=>{
+  document.getElementById('s-'+k).addEventListener('input', e=>{
+    S[k] = parseInt(e.target.value,10);
+    sync();
+  });
+});
+
+renderDims();
+renderSteps();
+sync();
+</script>
+</body>
+</html>

@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分组体检 · apiduo demo</title>
+<style>
+:root{
+  --bg:#FAFAF8; --surface:#FFFFFF; --surface-2:#F5F5F2;
+  --border:rgba(20,20,19,.09); --border-strong:rgba(20,20,19,.16);
+  --text:#1C1C1A; --text-2:#5F5E5A; --text-3:#8A8983;
+  --primary:#534AB7; --primary-soft:#EEEDFE;
+  --green:#0F6E56; --green-soft:#E1F5EE;
+  --amber:#854F0B; --amber-soft:#FAEEDA;
+  --red:#A32D2D; --red-soft:#FCEBEB;
+  --gray:#5F5E5A; --gray-soft:#F1EFE8;
+  --radius:12px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font-family:inherit;font-size:inherit}
+
+.page{max-width:1180px;margin:0 auto;padding:32px 24px 120px}
+
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}
+h1{font-size:19px;font-weight:500;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sub{color:var(--text-3);font-size:12.5px;margin-top:5px;max-width:620px}
+
+.apiduo-mark{
+  font-size:11px;font-weight:500;padding:1px 7px 2px;border-radius:20px;
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--primary-soft);color:#3C3489;position:relative;
+}
+.apiduo-mark::before{
+  content:"";width:5px;height:5px;border-radius:50%;
+  background:linear-gradient(135deg,#534AB7,#1D9E75);flex:none;
+}
+
+.btn{height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--border);background:var(--surface);display:inline-flex;align-items:center;gap:6px;font-weight:500;transition:.14s;white-space:nowrap}
+.btn:hover{background:var(--surface-2);border-color:var(--border-strong)}
+.btn-primary{background:var(--text);border-color:var(--text);color:#fff}
+.btn-primary:hover{background:#333331;border-color:#333331}
+.btn-danger{background:var(--red);border-color:var(--red);color:#fff}
+.btn-danger:hover{background:#8A2424}
+.btn-sm{height:26px;padding:0 9px;font-size:12px;border-radius:6px}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.stat .k{font-size:11.5px;color:var(--text-3);margin-bottom:8px;letter-spacing:.01em}
+.stat .v{font-size:24px;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat .n{font-size:11.5px;color:var(--text-3);margin-top:6px;line-height:1.45}
+.stat.warn .v{color:var(--amber)}
+.stat.danger .v{color:var(--red)}
+
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.toolbar{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.search{height:30px;padding:0 10px 0 30px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);width:220px;outline:none;transition:.14s}
+.search:focus{background:var(--surface);border-color:var(--primary);box-shadow:0 0 0 3px rgba(83,74,183,.09)}
+.search-wrap{position:relative;display:flex;align-items:center}
+.search-wrap svg{position:absolute;left:9px;pointer-events:none;opacity:.4}
+.chips{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap}
+.chip{height:26px;padding:0 10px;border-radius:20px;font-size:12px;color:var(--text-2);border:1px solid transparent;transition:.14s;display:inline-flex;align-items:center;gap:5px}
+.chip:hover{background:var(--surface-2)}
+.chip.on{background:var(--text);color:#fff}
+.chip .c{font-size:11px;opacity:.65;font-variant-numeric:tabular-nums}
+
+table{width:100%;border-collapse:collapse}
+thead th{font-size:11px;font-weight:400;color:var(--text-3);text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap;letter-spacing:.02em}
+thead th.num{text-align:right}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:#FCFCFB}
+tbody tr.sel{background:var(--primary-soft)}
+tbody tr.expanded{background:#FCFCFB}
+td{padding:0 10px;height:44px;vertical-align:middle}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+.cb{width:14px;height:14px;accent-color:var(--primary);cursor:pointer;vertical-align:middle}
+
+.gname{display:flex;align-items:center;gap:7px;cursor:pointer}
+.dot{width:6px;height:6px;border-radius:50%;flex:none}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:-.01em}
+.gdesc{font-size:11px;color:var(--text-3);margin-top:1px}
+
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;font-size:10.5px;font-weight:500;white-space:nowrap;line-height:1}
+.tag.active{background:var(--green-soft);color:var(--green)}
+.tag.core{background:var(--primary-soft);color:#3C3489}
+.tag.zombie{background:var(--gray-soft);color:var(--gray)}
+.tag.orphan{background:var(--amber-soft);color:var(--amber)}
+.tag.ghost{background:var(--amber-soft);color:var(--amber)}
+.tag.expired{background:var(--red-soft);color:var(--red)}
+
+.muted{color:var(--text-3)}
+td:last-child,tbody td:nth-child(8){white-space:nowrap}
+.warnv{color:var(--amber)}
+.dangerv{color:var(--red)}
+
+.row-actions{display:flex;gap:2px;justify-content:flex-end;opacity:0;transition:.12s}
+tr:hover .row-actions{opacity:1}
+.icon-btn{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-3);transition:.12s}
+.icon-btn:hover{background:var(--surface-2);color:var(--text)}
+.icon-btn.del:hover{background:var(--red-soft);color:var(--red)}
+
+.caret{width:12px;height:12px;color:var(--text-3);transition:transform .15s;flex:none}
+tr.expanded .caret{transform:rotate(90deg)}
+
+.detail-row td{padding:0;height:auto;border-bottom:1px solid var(--border)}
+.detail{padding:14px 16px 16px 44px;background:#FCFCFB;border-top:1px dashed var(--border)}
+.detail h4{font-size:11px;font-weight:500;color:var(--text-3);margin-bottom:9px;letter-spacing:.03em}
+.slots{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+.slot{border:1px solid var(--border);border-radius:7px;padding:8px 10px;background:var(--surface)}
+.slot .sn{font-family:var(--mono);font-size:10.5px;color:var(--text-3);margin-bottom:5px}
+.slot .sv{font-size:12px;font-weight:500;display:flex;align-items:center;gap:5px}
+.slot.miss{border-style:dashed;background:transparent}
+.slot.miss .sv{color:var(--text-3);font-weight:400}
+
+.impact{border:1px solid var(--amber-soft);background:#FFFDF7;border-radius:8px;padding:11px 13px}
+.impact.warn{border-color:var(--red-soft);background:#FFFAFA}
+.impact-title{font-size:12px;font-weight:500;color:var(--amber);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.impact.warn .impact-title{color:var(--red)}
+.impact ul{list-style:none;display:flex;flex-direction:column;gap:4px}
+.impact li{font-size:12px;color:var(--text-2);padding-left:14px;position:relative}
+.impact li::before{content:"";position:absolute;left:3px;top:8px;width:4px;height:4px;border-radius:50%;background:var(--amber);opacity:.6}
+.impact.warn li::before{background:var(--red)}
+.impact b{color:var(--text);font-weight:500}
+
+.bulk{position:fixed;left:50%;bottom:24px;transform:translate(-50%,200px);opacity:0;pointer-events:none;background:#1C1C1A;color:#fff;border-radius:10px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:14px;box-shadow:0 8px 28px rgba(0,0,0,.18);transition:transform .22s cubic-bezier(.32,.72,0,1),opacity .16s;z-index:60;font-size:12.5px}
+.bulk.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+.bulk b{font-weight:500}
+.bulk .bbtn{background:rgba(255,255,255,.14);height:28px;padding:0 11px;border-radius:6px;color:#fff;font-size:12px;transition:.14s}
+.bulk .bbtn:hover{background:rgba(255,255,255,.24)}
+.bulk .bbtn.danger{background:#E24B4A}
+.bulk .bbtn.danger:hover{background:#C93C3B}
+
+.overlay{position:fixed;inset:0;background:rgba(20,20,19,.32);opacity:0;pointer-events:none;transition:opacity .18s;z-index:70}
+.overlay.show{opacity:1;pointer-events:auto}
+
+.modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-48%) scale(.97);width:min(520px,calc(100vw - 32px));background:var(--surface);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.2);opacity:0;pointer-events:none;transition:.18s cubic-bezier(.32,.72,0,1);z-index:80;overflow:hidden}
+.modal.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.modal-head{padding:18px 20px 14px}
+.modal-head h3{font-size:15px;font-weight:500;margin-bottom:4px}
+.modal-head p{font-size:12.5px;color:var(--text-3)}
+.modal-body{padding:0 20px 18px}
+.modal-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--surface-2)}
+
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(440px,100vw);background:var(--surface);box-shadow:-12px 0 48px rgba(0,0,0,.14);transform:translateX(100%);transition:transform .24s cubic-bezier(.32,.72,0,1);z-index:80;display:flex;flex-direction:column}
+.drawer.show{transform:translateX(0)}
+.drawer-head{padding:20px 20px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start}
+.drawer-head h3{font-size:15px;font-weight:500}
+.drawer-head p{font-size:12px;color:var(--text-3);margin-top:3px}
+.drawer-body{padding:16px 20px;overflow-y:auto;flex:1}
+.tpl{border:1px solid var(--border);border-radius:9px;padding:12px;margin-bottom:9px;cursor:pointer;transition:.14s}
+.tpl:hover{border-color:var(--primary);background:#FCFCFF}
+.tpl h4{font-size:12.5px;font-weight:500;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.tpl p{font-size:11.5px;color:var(--text-3);line-height:1.5}
+.tpl .cfg{margin-top:8px;display:flex;gap:5px;flex-wrap:wrap}
+.pill{font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--surface-2);color:var(--text-2);font-family:var(--mono)}
+
+.toast{position:fixed;left:50%;top:20px;transform:translate(-50%,-24px);background:#1C1C1A;color:#fff;padding:9px 16px;border-radius:8px;font-size:12.5px;opacity:0;pointer-events:none;transition:.2s;z-index:100}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+.empty{padding:48px 0;text-align:center;color:var(--text-3);font-size:12.5px}
+.meta{font-size:11.5px;color:var(--text-3);margin:0 0 12px;font-variant-numeric:tabular-nums}
+.foot-note{margin-top:18px;font-size:11.5px;color:var(--text-3);line-height:1.7}
+.foot-note code{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+@media (max-width:720px){
+  thead th:nth-child(4),tbody td:nth-child(4),
+  thead th:nth-child(5),tbody td:nth-child(5),
+  thead th:nth-child(6),tbody td:nth-child(6),
+  thead th:nth-child(7),tbody td:nth-child(7),
+  thead th:nth-child(8),tbody td:nth-child(8){display:none}
+  .detail{padding-left:16px}
+  .row-actions{opacity:1}
+  .page{padding:20px 14px 100px}
+}
+@media (max-width:900px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .slots{grid-template-columns:repeat(2,1fr)}
+  .search{width:160px}
+  td,thead th{padding:0 6px}
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>分组管理 <span class="apiduo-mark" data-apiduo="text">分组体检</span></h1>
+      <p class="sub">分组不是一个实体表，它是 <span class="mono">group_ratio</span>、<span class="mono">user_usable_groups</span>、<span class="mono">topup_group_ratio</span> 三个 map 的 key 并集，再叠加 <span class="mono">abilities</span> 与 <span class="mono">users</span> 里的引用。删不干净就会留幽灵。</p>
+    </div>
+    <button class="btn btn-primary" onclick="openDrawer()">新建分组</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="k">分组总数</div>
+      <div class="v" id="s-total">12</div>
+      <div class="n">其中 <b id="s-risk">4</b> 个需要处理</div>
+    </div>
+    <div class="stat warn">
+      <div class="k">90 天零调用</div>
+      <div class="v" id="s-zombie">4</div>
+      <div class="n">没人用，但还占着配置和路由</div>
+    </div>
+    <div class="stat danger">
+      <div class="k">已过期未清理</div>
+      <div class="v" id="s-expired">2</div>
+      <div class="n">促销结束了，分组还活着</div>
+    </div>
+    <div class="stat danger">
+      <div class="k">用户仍在但无渠道</div>
+      <div class="v" id="s-orphan">1</div>
+      <div class="n">这些用户的请求会直接失败</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <input class="search" id="q" placeholder="搜索分组名或描述…" oninput="render()">
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34px"><input type="checkbox" class="cb" id="cb-all" onchange="toggleAll(this)"></th>
+          <th>分组</th>
+          <th style="width:64px">倍率</th>
+          <th style="width:56px" class="num">渠道</th>
+          <th style="width:64px" class="num">用户</th>
+          <th style="width:88px" class="num">30 天调用</th>
+          <th style="width:88px">最后使用</th>
+          <th style="width:112px">到期</th>
+          <th style="width:56px"></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <p class="foot-note">
+    点行展开可以看到这个分组在五个位置的存留状态 —— 这就是“不敢删”的实际原因。
+    点垃圾桶可以看到删除的影响面。勾选多个可以批量归档。
+  </p>
+</div>
+
+<div class="bulk" id="bulk">
+  <span>已选 <b id="bulk-n">0</b> 个分组</span>
+  <button class="bbtn" onclick="clearSel()">取消</button>
+  <button class="bbtn danger" onclick="archiveSel()">归档为过期</button>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeAll()"></div>
+
+<div class="modal" id="modal">
+  <div class="modal-head">
+    <h3 id="m-title">删除分组</h3>
+    <p id="m-sub"></p>
+  </div>
+  <div class="modal-body">
+    <div id="m-impact"></div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn" onclick="closeAll()">取消</button>
+    <button class="btn" id="m-migrate">先迁移再删</button>
+    <button class="btn btn-danger" id="m-force">强制删除</button>
+  </div>
+</div>
+
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div>
+      <h3>从模板新建分组</h3>
+      <p>一次把五个位置配好，避免只配一半</p>
+    </div>
+    <button class="icon-btn" onclick="closeAll()">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="tpls"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const NOW = new Date('2026-11-06T22:04:00+08:00');
+
+const GROUPS = [
+  {name:'default',       ratio:1.00, desc:'默认分组',                channels:8, users:1204, calls:48210, last:2,      exp:null},
+  {name:'vip',           ratio:0.90, desc:'VIP 订阅用户',            channels:4, users:87,   calls:6210,  last:5,      exp:null},
+  {name:'big_client_a',  ratio:0.75, desc:'大客户 A · 合同 #1234',   channels:2, users:1,    calls:8820,  last:1,      exp:null},
+  {name:'svip',          ratio:0.85, desc:'SVIP 年度订阅',           channels:3, users:12,   calls:890,   last:60,     exp:null},
+  {name:'claude_pro',    ratio:1.20, desc:'Claude 高价专用池',       channels:3, users:34,   calls:2210,  last:20,     exp:null},
+  {name:'gpt_batch',     ratio:0.95, desc:'批量任务',                channels:2, users:18,   calls:640,   last:360,    exp:null},
+  {name:'new_user',      ratio:0.70, desc:'新客首月七折',            channels:1, users:203,  calls:1120,  last:4320,   exp:'2026-12-31'},
+  {name:'internal',      ratio:0.50, desc:'内部测试',                channels:2, users:6,    calls:44,    last:11520,  exp:null},
+  {name:'vip_promo_618', ratio:0.80, desc:'618 大促',                channels:2, users:45,   calls:0,     last:204480, exp:'2026-06-20'},
+  {name:'promo_double11',ratio:0.70, desc:'去年双 11',               channels:1, users:22,   calls:0,     last:518400, exp:'2025-11-12'},
+  {name:'vip_2025',      ratio:0.90, desc:'2025 年度 VIP',           channels:0, users:3,    calls:0,     last:446400, exp:null},
+  {name:'test_group',    ratio:1.00, desc:'测试用，忘了删',          channels:1, users:0,    calls:0,     last:332640, exp:null}
+];
+
+const TEMPLATES = [
+  {name:'用户等级', desc:'按订阅档位分层。渠道复用同一批，靠倍率区分价格。', pills:['ratio','usable','topup'], code:'vip'},
+  {name:'促销活动', desc:'带到期时间。到期后自动归档，不留在默认列表里。', pills:['ratio','expires_at'], code:'promo'},
+  {name:'大客户', desc:'单人或多人的合同价。绑定固定渠道池，不走自动分组。', pills:['ratio','ability','users'], code:'contract'},
+  {name:'测试隔离', desc:'隔离新上游。不对外可见，无用户，7 天后提醒清理。', pills:['ability','trial'], code:'sandbox'}
+];
+
+let sel = new Set();
+let expanded = null;
+let filter = 'all';
+
+function classify(g){
+  if(g.exp && new Date(g.exp) < NOW) return 'expired';
+  if(g.users > 0 && g.channels === 0) return 'orphan';
+  if(g.users === 0 && g.channels > 0) return 'ghost';
+  if(g.calls === 0 && g.last > 90*1440) return 'zombie';
+  if(g.users > 500) return 'core';
+  return 'active';
+}
+const LABEL = {expired:'已过期', orphan:'无渠道', ghost:'无用户', zombie:'零调用', core:'主力', active:'活跃'};
+
+function isIdle(g){ return g.calls === 0 && g.last > 90*1440; }
+
+function risk(g){
+  const c = classify(g);
+  return c === 'expired' || c === 'orphan' || c === 'ghost' || c === 'zombie';
+}
+
+function ago(min){
+  if(min < 1) return '刚刚';
+  if(min < 60) return min + ' 分钟前';
+  if(min < 1440) return Math.floor(min/60) + ' 小时前';
+  const d = Math.floor(min/1440);
+  if(d < 30) return d + ' 天前';
+  return Math.floor(d/30) + ' 个月前';
+}
+
+function expView(g){
+  if(!g.exp) return {t:'不过期', cls:'muted'};
+  const exp = new Date(g.exp);
+  if(exp < NOW){
+    const d = Math.floor((NOW - exp)/86400000);
+    return {t:'已过期 ' + d + ' 天', cls:'dangerv'};
+  }
+  const d = Math.floor((exp - NOW)/86400000);
+  if(d < 30) return {t:d + ' 天后到期', cls:'warnv'};
+  return {t:g.exp, cls:'muted'};
+}
+
+function render(){
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  let list = GROUPS.filter(g => {
+    if(g._archived) return false;
+    if(filter === 'risk' && !risk(g)) return false;
+    if(filter === 'zombie' && !isIdle(g)) return false;
+    if(filter !== 'all' && filter !== 'risk' && filter !== 'zombie' && classify(g) !== filter) return false;
+    if(q && !(g.name.toLowerCase().includes(q) || g.desc.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('tbody');
+  if(!list.length){
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty">没有匹配的分组</div></td></tr>';
+    updateStats(); return;
+  }
+
+  tbody.innerHTML = list.map(g => {
+    const c = classify(g);
+    const e = expView(g);
+    const isSel = sel.has(g.name);
+    const isOpen = expanded === g.name;
+    const color = {core:'#534AB7', active:'#1D9E75', zombie:'#B4B2A9', orphan:'#BA7517', ghost:'#BA7517', expired:'#E24B4A'}[c];
+    const calls = g.calls === 0 ? '<span class="muted">0</span>' : g.calls.toLocaleString();
+    const expT = e.cls === 'muted' ? '<span class="muted">' + e.t + '</span>' : '<span class="' + e.cls + '">' + e.t + '</span>';
+    return `
+    <tr class="${isSel?'sel':''} ${isOpen?'expanded':''}" onclick="toggleRow('${g.name}')">
+      <td><input type="checkbox" class="cb" ${isSel?'checked':''} onclick="event.stopPropagation();toggleSel('${g.name}',this)"></td>
+      <td>
+        <div class="gname">
+          <svg class="caret" viewBox="0 0 12 12" fill="none"><path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="dot" style="background:${color}"></span>
+          <div>
+            <div class="mono">${g.name}</div>
+            <div class="gdesc">${g.desc}</div>
+          </div>
+          <span class="tag ${c}">${LABEL[c]}</span>
+        </div>
+      </td>
+      <td class="mono">${g.ratio.toFixed(2)}</td>
+      <td class="num ${g.channels===0?'dangerv':''}">${g.channels}</td>
+      <td class="num">${g.users.toLocaleString()}</td>
+      <td class="num">${calls}</td>
+      <td class="${g.last>90*1440?'muted':''}">${ago(g.last)}</td>
+      <td>${expT}</td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn del" title="删除" onclick="event.stopPropagation();askDelete('${g.name}')">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 5h10M6.5 5V3.5h3V5M5 5l.6 8.2c0 .5.4.8.9.8h3c.5 0 .9-.3.9-.8L11 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+    ${isOpen ? detailRow(g) : ''}`;
+  }).join('');
+
+  updateStats();
+  updateBulk();
+}
+
+function detailRow(g){
+  const c = classify(g);
+  const e = expView(g);
+  const slots = [
+    {n:'group_ratio', v:g.ratio.toFixed(2), ok:true},
+    {n:'user_usable_groups', v:'已登记', ok:true},
+    {n:'abilities', v:g.channels + ' 条', ok:g.channels>0},
+    {n:'users', v:g.users + ' 人', ok:g.users>0},
+    {n:'group_group_ratio', v:g.name==='vip'?'1 条规则':'—', ok:g.name==='vip'}
+  ];
+
+  let impact = '';
+  if(c === 'orphan'){
+    impact = `<div class="impact warn">
+      <div class="impact-title">这 ${g.users} 个用户当前无法调用任何模型</div>
+      <ul>
+        <li><span class="mono">abilities</span> 里没有 <span class="mono">group='${g.name}'</span> 的渠道</li>
+        <li>他们的请求会在选渠道阶段失败，报 <b>无可用渠道</b></li>
+        <li>要么补一条渠道，要么把这 ${g.users} 人迁回 <b>default</b></li>
+      </ul>
+    </div>`;
+  } else if(c === 'ghost'){
+    impact = `<div class="impact">
+      <div class="impact-title">${g.channels} 条渠道挂在一个没人用的分组上</div>
+      <ul>
+        <li>这些渠道永远不会被选中，但仍在健康检查、额度统计里出现</li>
+        <li>直接删分组会同时下线这 ${g.channels} 条渠道，先确认它们不是唯一入口</li>
+      </ul>
+    </div>`;
+  } else if(c === 'expired'){
+    impact = `<div class="impact warn">
+      <div class="impact-title">活动已于 ${g.exp} 结束，但分组仍在生效</div>
+      <ul>
+        <li><b>${g.users} 个用户</b>仍在享受 ${g.ratio.toFixed(2)} 倍率，按 default 的 1.00 算，等于持续让利 <b>${Math.round((1-g.ratio)/g.ratio*100)}%</b></li>
+        <li>删除前需要先把他们迁走，否则会突然涨价</li>
+      </ul>
+    </div>`;
+  } else if(c === 'zombie'){
+    impact = `<div class="impact">
+      <div class="impact-title">90 天没有任何调用</div>
+      <ul>
+        <li>最后使用是 <b>${ago(g.last)}</b>，没有任何活跃用户的迹象</li>
+        <li>归档不会删除配置，只是从默认列表移走，随时可以恢复</li>
+      </ul>
+    </div>`;
+  } else {
+    impact = `<div class="impact">
+      <div class="impact-title">状态正常</div>
+      <ul>
+        <li><b>${g.users.toLocaleString()} 个用户</b>正在使用，30 天 ${g.calls.toLocaleString()} 次调用</li>
+        <li>删除会导致这些用户的请求回落到 default（倍率 ${(g.ratio<1?'上涨 '+Math.round((1-g.ratio)/g.ratio*100)+'%':'下降')})</li>
+      </ul>
+    </div>`;
+  }
+
+  return `<tr class="detail-row"><td colspan="9"><div class="detail">
+    <h4>五个位置的存留状态</h4>
+    <div class="slots">${slots.map(s=>`
+      <div class="slot ${s.ok?'':'miss'}">
+        <div class="sn">${s.n}</div>
+        <div class="sv">${s.ok?'<span class="dot" style="background:#1D9E75"></span>':''}${s.v}</div>
+      </div>`).join('')}</div>
+    <div class="meta">渠道 ${g.channels} · 用户 ${g.users.toLocaleString()} · 30 天 ${g.calls.toLocaleString()} 次调用 · 最后使用 ${ago(g.last)} · ${e.t}</div>
+    ${impact}
+  </div></td></tr>`;
+}
+
+function updateStats(){
+  const live = GROUPS.filter(g=>!g._archived);
+  document.getElementById('s-total').textContent = live.length;
+  document.getElementById('s-risk').textContent = live.filter(risk).length;
+  document.getElementById('s-zombie').textContent = live.filter(isIdle).length;
+  document.getElementById('s-expired').textContent = live.filter(g=>classify(g)==='expired').length;
+  document.getElementById('s-orphan').textContent = live.filter(g=>classify(g)==='orphan').length;
+
+  const counts = {
+    all: live.length,
+    risk: live.filter(risk).length,
+    expired: live.filter(g=>classify(g)==='expired').length,
+    zombie: live.filter(isIdle).length
+  };
+  const defs = [['all','全部'],['risk','需处理'],['expired','已过期'],['zombie','零调用']];
+  document.getElementById('chips').innerHTML = defs.map(([k,t])=>
+    `<button class="chip ${filter===k?'on':''}" onclick="setFilter('${k}')">${t}<span class="c">${counts[k]}</span></button>`
+  ).join('');
+}
+
+function setFilter(f){ filter = f; render(); }
+function toggleRow(n){ expanded = expanded === n ? null : n; render(); }
+function toggleSel(n, cb){
+  if(cb.checked) sel.add(n); else sel.delete(n);
+  render();
+}
+function toggleAll(cb){
+  if(cb.checked){ GROUPS.filter(g=>!g._archived).forEach(g=>sel.add(g.name)); }
+  else sel.clear();
+  render();
+}
+function clearSel(){ sel.clear(); render(); }
+
+function updateBulk(){
+  const n = sel.size;
+  document.getElementById('bulk-n').textContent = n;
+  document.getElementById('bulk').classList.toggle('show', n > 0);
+}
+
+function archiveSel(){
+  const n = sel.size;
+  sel.forEach(name => {
+    const g = GROUPS.find(x=>x.name===name);
+    if(g) g._archived = true;
+  });
+  sel.clear();
+  toast('已归档 ' + n + ' 个分组，配置仍保留，可在归档区恢复');
+  render();
+}
+
+function askDelete(name){
+  const g = GROUPS.find(x=>x.name===name);
+  if(!g) return;
+  const c = classify(g);
+  document.getElementById('m-title').textContent = '删除分组 ' + g.name;
+  document.getElementById('m-sub').textContent = '删除会同时清理五个位置的引用，无法撤销。';
+
+  const items = [];
+  if(g.users > 0) items.push(`<li><b>${g.users} 个用户</b>仍属于这个分组，删除后会回落到 <b>default</b>，倍率从 ${g.ratio.toFixed(2)} 变成 1.00${g.ratio<1?`（每人成本上涨 <b>${Math.round((1-g.ratio)/g.ratio*100)}%</b>）`:''}</li>`);
+  if(g.channels > 0) items.push(`<li><b>${g.channels} 条渠道</b>只服务这个分组，会被一并停用</li>`);
+  if(g.name === 'vip') items.push('<li>有 <b>1 条特殊倍率规则</b>引用了这个分组</li>');
+  if(!items.length) items.push('<li>没有用户和渠道引用，可以安全删除</li>');
+
+  const danger = g.users > 0 || g.channels > 0;
+  document.getElementById('m-impact').innerHTML = `
+    <div class="impact ${danger?'warn':''}">
+      <div class="impact-title">${danger?'会影响线上的改动':'无影响'}</div>
+      <ul>${items.join('')}</ul>
+    </div>`;
+
+  const migrate = document.getElementById('m-migrate');
+  migrate.style.display = g.users > 0 ? '' : 'none';
+  migrate.textContent = `先把 ${g.users} 人迁到 default`;
+  migrate.onclick = () => { closeAll(); toast('已把 ' + g.users + ' 个用户迁到 default，现在可以安全删除'); };
+
+  document.getElementById('m-force').onclick = () => {
+    g._archived = true;
+    closeAll();
+    toast('已删除 ' + g.name + '，五个位置的引用同时清理');
+    render();
+  };
+
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('modal').classList.add('show');
+}
+
+function openDrawer(){
+  document.getElementById('tpls').innerHTML = TEMPLATES.map(t=>`
+    <div class="tpl" onclick="pickTpl('${t.name}')">
+      <h4>${t.name}</h4>
+      <p>${t.desc}</p>
+      <div class="cfg">${t.pills.map(p=>`<span class="pill">${p}</span>`).join('')}</div>
+    </div>`).join('');
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('drawer').classList.add('show');
+}
+
+function pickTpl(n){
+  closeAll();
+  toast('已按「' + n + '」模板创建，五个位置一次配好');
+}
+
+function closeAll(){
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('modal').classList.remove('show');
+  document.getElementById('drawer').classList.remove('show');
+}
+
+let toastTimer;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2600);
+}
+
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeAll(); });
+
+render();
+</script>
+</body>
+</html>
