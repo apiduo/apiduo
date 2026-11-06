@@ -440,12 +440,23 @@ curl -s -X PUT "$BASE/api/nav_apps" \
 
 成功返回新 `revision`，Agent 保存下来供下次写使用。
 
+`href` 有两种合法取值。别的机器上的绝对 `http(s)` 地址可以内嵌，也可以新标签打开；
+`cherrystudio://providers/api-keys?v=1&data=...` 这样的客户端深链会交给操作系统调起已安装的客户端，
+所以只能 `display_type: "external"`，配 `iframe` 会被 `NAV_APP_INVALID` 拒绝。
+能在本站执行脚本的 scheme（`javascript://`、`data://`、`file://` 等）一律拒绝。
+
+`href` 里可以写占位符，点击时才在浏览器端替换：`{key}` 与 `{cherryConfig}`
+`{aionuiConfig}` `{deepchatConfig}` `{aqbotConfig}` 用当前登录用户自己的 API 密钥，
+`{address}` `{base_url}` 用本站地址。所以配置里不要写字面凭据——`GET /api/nav_apps`
+会把它返回给每个能看到该条目的用户。占位符不能出现在 host 里（那会绕过同源检查），
+也不能用于 `iframe`（内嵌页在点击前就已加载，key 会从目标站日志和 Referer 泄漏）。
+
 ### 8.4 三种拒绝
 
 ```json
 // 字段非法
 { "success": false, "code": "NAV_APP_INVALID",
-  "message_key": "Target address must be an absolute http(s) URL",
+  "message_key": "Target address must be an absolute http(s) URL or a client link such as cherrystudio://",
   "message_params": { "field": "href" } }
 
 // 并发冲突（revision 过期）

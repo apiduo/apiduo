@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useLocation } from '@tanstack/react-router'
-import { ChevronRight, ExternalLink } from 'lucide-react'
+import { AppWindow, ChevronRight, ExternalLink } from 'lucide-react'
 import { type ReactNode, useState, useEffect } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -46,6 +46,13 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+/* APIDUO:marks:BEGIN */
+import { apiduoSettingsNavMark } from '@/features/apiduo-marks/marks'
+/* APIDUO:marks:END */
+/* APIDUO:dynamic-nav:BEGIN */
+import { useNavAppOpener } from '@/features/nav-apps/hooks'
+import { navAppUsesTemplate } from '@/features/nav-apps/lib/template'
+/* APIDUO:dynamic-nav:END */
 
 import { checkIsActive } from '../lib/url-utils'
 import type {
@@ -122,6 +129,13 @@ function NavBadge({ children }: { children: ReactNode }) {
  */
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { isMobile, setOpenMobile } = useSidebar()
+  // APIDUO:dynamic-nav:BEGIN
+  const openApp = useNavAppOpener()
+  const appHref = item.url as string
+  // A templated address is not usable as stored: the placeholders stand for the
+  // viewer's key and this deployment's address, both only known at click time.
+  const templated = item.external === true && navAppUsesTemplate(appHref)
+  // APIDUO:dynamic-nav:END
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -131,12 +145,20 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
           item.external ? (
             // APIDUO:dynamic-nav:BEGIN
             // Administrator-configured entries point outside this application,
-            // so they bypass the router and open in a new tab.
+            // so they bypass the router. A client deep link is not a page: the
+            // browser hands it to the operating system, and opening it through
+            // a new tab would leave that tab behind empty, so only web targets
+            // get target=_blank.
             <a
-              href={item.url as string}
-              target='_blank'
-              rel='noopener noreferrer'
-              onClick={() => setOpenMobile(false)}
+              href={appHref}
+              target={item.appLink ? undefined : '_blank'}
+              rel={item.appLink ? undefined : 'noopener noreferrer'}
+              onClick={(event) => {
+                setOpenMobile(false)
+                if (!templated) return
+                event.preventDefault()
+                void openApp(appHref)
+              }}
             />
             // APIDUO:dynamic-nav:END
           ) : (
@@ -148,12 +170,34 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
           )
         }
       >
-        {item.icon && <item.icon className='shrink-0' />}
+        {/* APIDUO:marks:BEGIN */}
+        {/* A configured entry's icon carries the origin dot. The icon corner
+            is where a reader already looks for state, so the mark answers
+            "who added this row" without adding a second element to scan. */}
+        {item.icon &&
+          (item.apiduoIconDot ? (
+            <span
+              className='relative inline-flex shrink-0'
+              data-apiduo='icon-dot'
+            >
+              <item.icon className='shrink-0' />
+            </span>
+          ) : (
+            <item.icon className='shrink-0' />
+          ))}
+        {/* APIDUO:marks:END */}
         <span className='min-w-0 flex-1 truncate'>{item.title}</span>
         {item.badge && <NavBadge>{item.badge}</NavBadge>}
-        {item.external && (
-          <ExternalLink className='size-3 shrink-0 opacity-50' />
-        )}
+        {/* APIDUO:dynamic-nav:BEGIN */}
+        {/* A deep link launches an installed application rather than opening a
+            page, so the link-out arrow would describe the wrong action. */}
+        {item.external &&
+          (item.appLink ? (
+            <AppWindow className='size-3 shrink-0 opacity-50' />
+          ) : (
+            <ExternalLink className='size-3 shrink-0 opacity-50' />
+          ))}
+        {/* APIDUO:dynamic-nav:END */}
       </SidebarMenuButton>
     </SidebarMenuItem>
   )
@@ -205,6 +249,7 @@ function SidebarMenuCollapsible({
             <SidebarMenuSubItem key={subItem.title}>
               <SidebarMenuSubButton
                 isActive={checkIsActive(href, subItem)}
+                data-apiduo={apiduoSettingsNavMark(subItem.url as string)}
                 render={
                   <Link
                     to={subItem.url}

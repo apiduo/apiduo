@@ -1,7 +1,8 @@
-import type { NavItem, TopNavLink } from '@/components/layout/types'
+import type { NavGroup, NavItem, TopNavLink } from '@/components/layout/types'
 
+import { classifyNavAppHref, isClientLink } from './href'
 import { navAppIcon } from './icons'
-import type { NavApp } from '../types'
+import type { NavApp, NavAppGroup } from '../types'
 
 /**
  * Expands one language code into the spellings an operator might reasonably use
@@ -38,16 +39,20 @@ function languageCandidates(tag: string): string[] {
  * added to the shipped locale files, so localization is stored alongside the
  * entry instead.
  */
-export function navAppTitle(app: NavApp, languages: readonly string[]): string {
-  if (!app.name_i18n) return app.name
+export function localizedName(
+  name: string,
+  nameI18n: string,
+  languages: readonly string[]
+): string {
+  if (!nameI18n) return name
 
   let table: Record<string, string>
   try {
-    const parsed = JSON.parse(app.name_i18n) as unknown
-    if (!parsed || typeof parsed !== 'object') return app.name
+    const parsed = JSON.parse(nameI18n) as unknown
+    if (!parsed || typeof parsed !== 'object') return name
     table = parsed as Record<string, string>
   } catch {
-    return app.name
+    return name
   }
 
   // Walk the same chain i18next uses to render the surrounding UI. Using only
@@ -62,7 +67,18 @@ export function navAppTitle(app: NavApp, languages: readonly string[]): string {
       if (value) return value
     }
   }
-  return app.name
+  return name
+}
+
+export function navAppTitle(app: NavApp, languages: readonly string[]): string {
+  return localizedName(app.name, app.name_i18n, languages)
+}
+
+export function navAppGroupTitle(
+  group: NavAppGroup,
+  languages: readonly string[]
+): string {
+  return localizedName(group.name, group.name_i18n, languages)
 }
 
 /**
@@ -72,13 +88,15 @@ export function navAppTitle(app: NavApp, languages: readonly string[]): string {
  * hostname this deployment is reachable on. Repeating the check in the browser
  * closes that gap: a frame served from our own origin could read our cookies
  * and local storage.
+ *
+ * A client deep link is excluded for a different reason: it resolves to no
+ * document at all, so a frame around it could only ever show an error.
  */
 export function canEmbed(href: string): boolean {
   if (typeof window === 'undefined') return false
+  if (classifyNavAppHref(href) !== 'web') return false
   try {
-    const target = new URL(href)
-    if (target.protocol !== 'http:' && target.protocol !== 'https:') return false
-    return target.origin !== window.location.origin
+    return new URL(href).origin !== window.location.origin
   } catch {
     return false
   }
@@ -144,6 +162,8 @@ export function navAppToSidebarItem(
       icon,
       url: `/app/${app.slug}`,
       external: false,
+      // Every sidebar entry from this feature is apiduo's, however it opens.
+      apiduoIconDot: true,
     }
   }
   return {
@@ -151,6 +171,10 @@ export function navAppToSidebarItem(
     icon,
     url: app.href,
     external: true,
+    // Tells the sidebar to skip `target=_blank`: the browser hands a deep link
+    // to the operating system and would leave the opened tab behind empty.
+    appLink: isClientLink(app.href),
+    apiduoIconDot: true,
   }
 }
 
@@ -162,5 +186,126 @@ export function navAppToTopLink(
   if (app.display_type === 'iframe') {
     return { title, href: `/app/${app.slug}`, external: false }
   }
-  return { title, href: app.href, external: true }
+  return {
+    title,
+    href: app.href,
+    external: true,
+    appLink: isClientLink(app.href),
+  }
+}
+
+/** Id of the bucket that receives entries without a group. */
+export const DEFAULT_NAV_APP_GROUP_ID = 'apiduo-default'
+
+/**
+ * Projects the entry list into sidebar groups, each holding at most two levels.
+ *
+ * Two independent dimensions are resolved here: `group_slug` decides which
+ * heading an entry appears under, and `parent_slug` decides whether it is a
+ * collapsible row. A child inherits its parent's group, because a sub-entry's
+ * own group field would otherwise split a menu that is meant to stay together.
+ *
+ * Entries pointing at a missing parent or a missing group fall back to the top
+ * level and the default group instead of disappearing: the stored value may
+ * predate these rules, and a hidden entry is worse than a misplaced one.
+ */
+export function navAppsToSidebarGroups(
+  apps: NavApp[],
+  groups: NavAppGroup[],
+  languages: readonly string[],
+  defaultTitle: string
+): NavGroup[] {
+  const bySlug = new Map(apps.map((app) => [app.slug, app]))
+  const childrenOf = new Map<string, NavApp[]>()
+  const roots: NavApp[] = []
+
+  for (const app of apps) {
+    const parentSlug = app.parent_slug?.trim()
+    const parent = parentSlug ? bySlug.get(parentSlug) : undefined
+    const usableParent =
+      parent && parent.slug !== app.slug && !parent.parent_slug?.trim()
+    if (!usableParent) {
+      roots.push(app)
+      continue
+    }
+    const list = childrenOf.get(parent.slug) ?? []
+    list.push(app)
+    childrenOf.set(parent.slug, list)
+  }
+
+  const knownGroups = new Set(groups.map((group) => group.slug))
+  const buckets = new Map<string, NavItem[]>()
+  for (const root of roots) {
+    const key =
+      root.group_slug && knownGroups.has(root.group_slug)
+        ? root.group_slug
+        : DEFAULT_NAV_APP_GROUP_ID
+    const children = childrenOf.get(root.slug)
+    const item = buildNavItem(root, children, languages)
+    const list = buckets.get(key) ?? []
+    list.push(item)
+    buckets.set(key, list)
+  }
+
+  const projected: NavGroup[] = []
+  for (const group of groups) {
+    const items = buckets.get(group.slug)
+    if (!items?.length) continue
+    projected.push({
+      id: group.slug,
+      title: navAppGroupTitle(group, languages),
+      items,
+    })
+  }
+  const defaults = buckets.get(DEFAULT_NAV_APP_GROUP_ID)
+  if (defaults?.length) {
+    projected.push({
+      id: DEFAULT_NAV_APP_GROUP_ID,
+      title: defaultTitle,
+      items: defaults,
+    })
+  }
+  return projected
+}
+
+function buildNavItem(
+  root: NavApp,
+  children: NavApp[] | undefined,
+  languages: readonly string[]
+): NavItem {
+  const rootItem = navAppToSidebarItem(root, languages)
+  if (!children?.length) return rootItem
+  return {
+    title: rootItem.title,
+    icon: rootItem.icon,
+    apiduoIconDot: true,
+    items: children.map((child) => {
+      const childItem = navAppToSidebarItem(child, languages)
+      const url = 'url' in childItem ? childItem.url : ''
+      return { ...childItem, url }
+    }),
+  } satisfies NavItem
+}
+
+/**
+ * Applies the configured top-level order.
+ *
+ * Ids missing from the order keep their relative position and sort after the
+ * listed ones, so a group added by a later release still shows up rather than
+ * being dropped by an order list that predates it.
+ */
+export function orderSidebarGroups(
+  groups: NavGroup[],
+  order: readonly string[]
+): NavGroup[] {
+  if (order.length === 0) return groups
+  const rank = new Map<string, number>()
+  order.forEach((id, index) => rank.set(id, index))
+  // NavGroup.id is optional in the layout contract, so an unidentified group
+  // simply keeps its original position at the end.
+  return [...groups].sort((left, right) => {
+    const leftRank = rank.get(left.id ?? '') ?? Number.MAX_SAFE_INTEGER
+    const rightRank = rank.get(right.id ?? '') ?? Number.MAX_SAFE_INTEGER
+    return leftRank - rightRank
+  })
 }

@@ -27,8 +27,16 @@ import type {
   SidebarBadges,
 } from '@/components/layout/types'
 import { navAppPlacementSide, navAppPlacementBoth } from '@/features/nav-apps/constants'
-import { useNavApps } from '@/features/nav-apps/hooks'
-import { navAppToSidebarItem } from '@/features/nav-apps/lib/render'
+import {
+  useNavAppGroupOrder,
+  useNavAppGroupTitle,
+  useNavAppGroups,
+  useNavApps,
+} from '@/features/nav-apps/hooks'
+import {
+  navAppsToSidebarGroups,
+  orderSidebarGroups,
+} from '@/features/nav-apps/lib/render'
 import { useModelPricingIssueBadge } from '@/features/system-settings/models/pricing-issues'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -83,20 +91,30 @@ export function useSidebarView(): ResolvedSidebarView {
   // affordance misleading. They are already filtered by role and enabled
   // state on the server, so no further gating is applied here.
   const customApps = useNavApps()
+  const customGroupTitle = useNavAppGroupTitle()
+  const customGroups = useNavAppGroups()
+  const customGroupOrder = useNavAppGroupOrder()
   const rootNavGroupsWithApps = useMemo<NavGroup[]>(() => {
     const sideApps = customApps.filter(
       (app) => app.placement === navAppPlacementSide || app.placement === navAppPlacementBoth
     )
-    if (sideApps.length === 0) return rootNavGroups
-    return [
-      {
-        id: 'apps',
-        title: t('Apps'),
-        items: sideApps.map((app) => navAppToSidebarItem(app, i18n.languages)),
-      },
-      ...rootNavGroups,
-    ]
-  }, [customApps, rootNavGroups, t, i18n.languages])
+    const projected = navAppsToSidebarGroups(
+      sideApps,
+      customGroups,
+      i18n.languages,
+      customGroupTitle || t('Apps')
+    )
+    if (projected.length === 0) return orderSidebarGroups(rootNavGroups, customGroupOrder)
+    return orderSidebarGroups([...projected, ...rootNavGroups], customGroupOrder)
+  }, [
+    customApps,
+    customGroupTitle,
+    customGroups,
+    customGroupOrder,
+    rootNavGroups,
+    t,
+    i18n.languages,
+  ])
   // APIDUO:dynamic-nav:END
 
   if (view) {

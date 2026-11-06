@@ -27,6 +27,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+/* APIDUO:dynamic-nav:BEGIN */
+import { useNavAppOpener } from '@/features/nav-apps/hooks'
+import { navAppUsesTemplate } from '@/features/nav-apps/lib/template'
+/* APIDUO:dynamic-nav:END */
 import { cn } from '@/lib/utils'
 
 import { type TopNavLink } from '../types'
@@ -40,6 +44,18 @@ type TopNavProps = React.HTMLAttributes<HTMLElement> & {
  * 在大屏幕显示水平导航，在小屏幕显示下拉菜单
  */
 export function TopNav({ className, links, ...props }: TopNavProps) {
+  // APIDUO:dynamic-nav:BEGIN
+  const openApp = useNavAppOpener()
+
+  // A templated link cannot be followed as stored: its placeholders stand for
+  // the viewer's key and this deployment's address, resolved at click time.
+  const handleExternalClick = (event: React.MouseEvent, href: string) => {
+    if (!navAppUsesTemplate(href)) return
+    event.preventDefault()
+    void openApp(href)
+  }
+  // APIDUO:dynamic-nav:END
+
   // 规范化链接，确保所有可选属性都有默认值
   const normalizedLinks = useMemo(
     () =>
@@ -64,19 +80,24 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent side='bottom' align='start'>
             {normalizedLinks.map(
-              ({ title, href, isActive, disabled, external }) => (
+              ({ title, href, isActive, disabled, external, appLink }) => (
                 <DropdownMenuItem
                   key={`${title}-${href}`}
                   render={
                     external ? (
+                      // APIDUO:dynamic-nav:BEGIN
+                      // A client deep link is handed to the operating system,
+                      // so a new tab would only be left behind empty.
                       <a
                         href={href}
-                        target='_blank'
-                        rel='noopener noreferrer'
+                        target={appLink ? undefined : '_blank'}
+                        rel={appLink ? undefined : 'noopener noreferrer'}
+                        onClick={(event) => handleExternalClick(event, href)}
                         className={!isActive ? 'text-muted-foreground' : ''}
                       >
                         {title}
                       </a>
+                      // APIDUO:dynamic-nav:END
                     ) : (
                       <Link
                         to={href}
@@ -102,17 +123,21 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
         )}
         {...props}
       >
-        {normalizedLinks.map(({ title, href, isActive, disabled, external }) =>
+        {normalizedLinks.map(({ title, href, isActive, disabled, external, appLink }) =>
           external ? (
+            // APIDUO:dynamic-nav:BEGIN
+            // Same rule as the mobile menu: a deep link keeps the current tab.
             <a
               key={`${title}-${href}`}
               href={href}
-              target='_blank'
-              rel='noopener noreferrer'
+              target={appLink ? undefined : '_blank'}
+              rel={appLink ? undefined : 'noopener noreferrer'}
+              onClick={(event) => handleExternalClick(event, href)}
               className={`hover:text-primary text-sm font-medium transition-colors ${isActive ? '' : 'text-muted-foreground'}`}
             >
               {title}
             </a>
+            // APIDUO:dynamic-nav:END
           ) : (
             <Link
               key={`${title}-${href}`}

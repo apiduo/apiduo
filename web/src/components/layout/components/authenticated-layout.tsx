@@ -25,6 +25,9 @@ import { SearchProvider } from '@/context/search-provider'
 import { getCookie } from '@/lib/cookies'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
+/* APIDUO:marks:BEGIN */
+import { ApiduoMarkDefs } from '@/features/apiduo-marks/mark-defs'
+/* APIDUO:marks:END */
 
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
@@ -43,6 +46,11 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
     <LayoutProvider>
       <SearchProvider>
         <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
+          {/* APIDUO:marks:BEGIN */}
+          {/* Paint server for the mark-stroked icons; must live above every
+              surface that references `url(#apiduo-mark-grad)`. */}
+          <ApiduoMarkDefs />
+          {/* APIDUO:marks:END */}
           <SkipToMain />
           <AppHeader />
           <div className='flex min-h-0 w-full flex-1'>

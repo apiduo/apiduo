@@ -17,6 +17,15 @@ import (
 
 const navAppTestHost = "gateway.example.com"
 
+// The two rejections below are shared by several cases, so the exact wording
+// lives here: the same string is the frontend translation key, and a silent
+// divergence between the two would surface as an untranslated toast.
+const (
+	navAppInvalidTargetKey = "Target address must be an absolute http(s) URL or a client link such as cherrystudio://"
+	navAppCannotEmbedKey   = "A client link cannot be embedded. Choose the new tab option instead"
+	navAppTemplateEmbedKey = "A template cannot be embedded. Choose the new tab option or a client link instead"
+)
+
 func navAppTestContext() *gin.Context {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -52,14 +61,131 @@ func TestNormalizeNavAppRejectsRelativeTarget(t *testing.T) {
 		"//gateway.example.com/profile",
 		"javascript:alert(1)",
 		"data:text/html,<script>alert(1)</script>",
-		"",
+		// Claims a web scheme but carries no host: malformed, and must not be
+		// reclassified as a deep link just because the scheme passes the
+		// pattern.
+		"https://",
+		// An empty target is deliberately absent here: it makes the entry a
+		// group heading, and validateNavAppTree rejects a heading that nothing
+		// is nested under.
 	}
 	for _, href := range cases {
 		t.Run(href, func(t *testing.T) {
 			app := validNavApp()
 			app.Href = href
 			_, key, _ := normalizeNavApp(navAppTestContext(), &app)
-			assert.Equal(t, "Target address must be an absolute http(s) URL", key)
+			assert.Equal(t, navAppInvalidTargetKey, key)
+		})
+	}
+}
+
+// A client deep link launches an installed application instead of opening a
+// document. It is what makes a "Cherry Studio" sidebar entry work in one click.
+func TestNormalizeNavAppAcceptsClientLink(t *testing.T) {
+	cases := []string{
+		"cherrystudio://providers/api-keys?v=1&data=aGVsbG8=",
+		"cherrystudio://",
+		"vscode://file/tmp/project",
+		"obsidian://open?vault=notes",
+	}
+	for _, href := range cases {
+		t.Run(href, func(t *testing.T) {
+			app := validNavApp()
+			app.Href = href
+			app.DisplayType = navAppDisplayExternal
+			_, key, _ := normalizeNavApp(navAppTestContext(), &app)
+			assert.Empty(t, key)
+		})
+	}
+}
+
+// A placeholder is resolved in the browser, using the viewer's own key, so the
+// stored value never contains a credential.
+func TestNormalizeNavAppAcceptsTemplate(t *testing.T) {
+	cases := []struct {
+		href        string
+		displayType string
+	}{
+		{"cherrystudio://providers/api-keys?v=1&data={cherryConfig}", navAppDisplayExternal},
+		{"cherrystudio://providers/api-keys?v=1&data={cherryConfig}&x=1", navAppDisplayExternal},
+		{"https://chat.example.com/?key={key}", navAppDisplayExternal},
+		{"https://example.com/set?provider={\"type\":\"openai\",\"apiKey\":\"{key}\"}", navAppDisplayExternal},
+		{"https://example.com/?base={address}", navAppDisplayExternal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.href, func(t *testing.T) {
+			app := validNavApp()
+			app.Href = tc.href
+			app.DisplayType = tc.displayType
+			_, key, _ := normalizeNavApp(navAppTestContext(), &app)
+			assert.Empty(t, key)
+		})
+	}
+}
+
+func TestNormalizeNavAppRejectsTemplateWhenEmbedded(t *testing.T) {
+	for _, href := range []string{
+		"https://chat.example.com/?key={key}",
+		"https://example.com/?base={address}",
+	} {
+		t.Run(href, func(t *testing.T) {
+			// validNavApp is an iframe entry.
+			app := validNavApp()
+			app.Href = href
+			_, key, _ := normalizeNavApp(navAppTestContext(), &app)
+			assert.Equal(t, navAppTemplateEmbedKey, key)
+		})
+	}
+}
+
+// A `{` in the host makes url.Parse fail. Without attributing the value to the
+// scheme it claims, it would fall through to the deep-link pattern and skip the
+// same-origin rule that only applies to web targets.
+func TestNormalizeNavAppRejectsPlaceholderInHost(t *testing.T) {
+	for _, href := range []string{
+		"https://{host}/path?k={key}",
+		"https://{gateway.example.com}/admin",
+	} {
+		t.Run(href, func(t *testing.T) {
+			app := validNavApp()
+			app.Href = href
+			app.DisplayType = navAppDisplayExternal
+			_, key, _ := normalizeNavApp(navAppTestContext(), &app)
+			assert.Equal(t, navAppInvalidTargetKey, key)
+		})
+	}
+}
+
+func TestNormalizeNavAppRejectsClientLinkWhenEmbedded(t *testing.T) {
+	// validNavApp is an iframe entry. A deep link resolves to no document, so
+	// framing it could only ever render an error page.
+	app := validNavApp()
+	app.Href = "cherrystudio://providers/api-keys"
+	_, key, _ := normalizeNavApp(navAppTestContext(), &app)
+	assert.Equal(t, navAppCannotEmbedKey, key)
+}
+
+// Each value here would either run script in this console's origin once placed
+// in an anchor href or read local resources. The first three carry an authority
+// marker, so the `scheme://` shape check alone would let them through — only
+// the scheme denial stops them.
+func TestNormalizeNavAppRejectsDangerousSchemes(t *testing.T) {
+	for _, href := range []string{
+		"javascript://example.com/%0Aalert(1)",
+		"data://text/html,<script>alert(1)</script>",
+		"file:///etc/passwd",
+		"vbscript://msgbox(1)",
+		"about://blank",
+		"chrome://settings",
+		"view-source://https://example.com",
+		"cherrystudio:providers",
+	} {
+		t.Run(href, func(t *testing.T) {
+			app := validNavApp()
+			app.Href = href
+			app.DisplayType = navAppDisplayExternal
+			_, key, _ := normalizeNavApp(navAppTestContext(), &app)
+			assert.Equal(t, navAppInvalidTargetKey, key)
 		})
 	}
 }
@@ -135,4 +261,113 @@ func TestNormalizeNavAppAppliesDefaults(t *testing.T) {
 	assert.Equal(t, navAppDisplayExternal, app.DisplayType)
 	assert.Equal(t, navAppPlacementSide, app.Placement)
 	assert.Equal(t, common.RoleCommonUser, app.MinRole)
+}
+
+func TestValidateNavAppTreeAcceptsTwoLevels(t *testing.T) {
+	apps := []model.NavApp{
+		{Slug: "tools", Name: "Tools"},
+		{Slug: "probe", Name: "Probe", Href: "https://probe.internal", ParentSlug: "tools"},
+	}
+	field, key, _ := validateNavAppTree(apps)
+	assert.Empty(t, field, "a parent without a target and one child must be valid")
+	assert.Empty(t, key)
+}
+
+func TestValidateNavAppTreeRejectsSelfParent(t *testing.T) {
+	apps := []model.NavApp{{Slug: "tools", Name: "Tools", ParentSlug: "tools"}}
+	field, key, _ := validateNavAppTree(apps)
+	assert.Equal(t, "parent_slug", field)
+	assert.NotEmpty(t, key)
+}
+
+func TestValidateNavAppTreeRejectsMissingParent(t *testing.T) {
+	apps := []model.NavApp{
+		{Slug: "probe", Name: "Probe", Href: "https://probe.internal", ParentSlug: "ghost"},
+	}
+	field, key, params := validateNavAppTree(apps)
+	assert.Equal(t, "parent_slug", field)
+	assert.NotEmpty(t, key)
+	assert.Equal(t, "ghost", params["slug"])
+}
+
+func TestValidateNavAppTreeRejectsThirdLevel(t *testing.T) {
+	apps := []model.NavApp{
+		{Slug: "tools", Name: "Tools"},
+		{Slug: "probe", Name: "Probe", Href: "https://probe.internal", ParentSlug: "tools"},
+		{Slug: "deep", Name: "Deep", Href: "https://deep.internal", ParentSlug: "probe"},
+	}
+	field, key, params := validateNavAppTree(apps)
+	assert.Equal(t, "parent_slug", field)
+	assert.NotEmpty(t, key)
+	assert.Equal(t, "probe", params["slug"])
+}
+
+func TestValidateNavAppTreeRejectsParentWithTarget(t *testing.T) {
+	apps := []model.NavApp{
+		{Slug: "tools", Name: "Tools", Href: "https://tools.internal"},
+		{Slug: "probe", Name: "Probe", Href: "https://probe.internal", ParentSlug: "tools"},
+	}
+	field, key, params := validateNavAppTree(apps)
+	assert.Equal(t, "parent_slug", field)
+	assert.NotEmpty(t, key)
+	assert.Equal(t, "tools", params["slug"])
+}
+
+func TestValidateNavAppTreeRejectsOrphanHeading(t *testing.T) {
+	apps := []model.NavApp{{Slug: "tools", Name: "Tools"}}
+	field, key, params := validateNavAppTree(apps)
+	assert.Equal(t, "href", field, "a heading with nothing under it is not usable")
+	assert.NotEmpty(t, key)
+	assert.Equal(t, "tools", params["slug"])
+}
+
+func TestValidateNavAppGroupsAcceptsGroupsAndLinks(t *testing.T) {
+	groups := []model.NavAppGroup{
+		{Slug: "tools", Name: "Tools"},
+		{Slug: "ops", Name: "Ops"},
+	}
+	apps := []model.NavApp{
+		{Slug: "probe", Name: "Probe", Href: "https://probe.internal", GroupSlug: "ops"},
+	}
+	normalized, field, key, _ := validateNavAppGroups(groups, apps)
+	assert.Empty(t, field, key)
+	assert.Len(t, normalized, 2)
+}
+
+func TestValidateNavAppGroupsRejectsReservedSlug(t *testing.T) {
+	for _, reserved := range []string{"chat", "general", "personal", "admin"} {
+		groups := []model.NavAppGroup{{Slug: reserved, Name: "Clash"}}
+		_, field, key, params := validateNavAppGroups(groups, nil)
+		assert.Equal(t, "slug", field, reserved)
+		assert.NotEmpty(t, key)
+		assert.Equal(t, reserved, params["slug"])
+	}
+}
+
+func TestValidateNavAppGroupsRejectsDuplicateSlug(t *testing.T) {
+	groups := []model.NavAppGroup{
+		{Slug: "tools", Name: "Tools"},
+		{Slug: "tools", Name: "Tools again"},
+	}
+	_, field, key, params := validateNavAppGroups(groups, nil)
+	assert.Equal(t, "slug", field)
+	assert.NotEmpty(t, key)
+	assert.Equal(t, "tools", params["slug"])
+}
+
+func TestValidateNavAppGroupsRejectsMissingGroupReference(t *testing.T) {
+	apps := []model.NavApp{
+		{Slug: "probe", Name: "Probe", Href: "https://probe.internal", GroupSlug: "ghost"},
+	}
+	_, field, key, params := validateNavAppGroups(nil, apps)
+	assert.Equal(t, "group_slug", field)
+	assert.NotEmpty(t, key)
+	assert.Equal(t, "ghost", params["slug"])
+}
+
+func TestValidateNavAppGroupsIgnoresUnassignedEntries(t *testing.T) {
+	apps := []model.NavApp{{Slug: "probe", Name: "Probe", Href: "https://probe.internal"}}
+	_, field, key, _ := validateNavAppGroups(nil, apps)
+	assert.Empty(t, field, "an entry with no group is valid and uses the default heading")
+	assert.Empty(t, key)
 }

@@ -32,6 +32,10 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+  // APIDUO:dynamic-nav:BEGIN
+  /** Client deep link: hand the address off without opening a tab. */
+  appLink?: boolean
+  // APIDUO:dynamic-nav:END
 }
 
 /**

@@ -35,6 +35,20 @@ type BaseNavItem = {
    * outside this application.
    */
   external?: boolean
+  /**
+   * Whether the target is a client deep link (`cherrystudio://...`) rather than
+   * a web page. Such an entry keeps `external` semantics but must not carry
+   * `target=_blank`: the browser hands the address to the operating system and
+   * would leave the opened tab behind empty.
+   */
+  appLink?: boolean
+  /**
+   * Show the apiduo origin dot on this entry's icon. Every sidebar entry from
+   * the configured-apps feature is apiduo's regardless of how its target
+   * opens, and the icon corner is where a reader already looks for state —
+   * the dot answers "who added this row" there without adding a new element.
+   */
+  apiduoIconDot?: boolean
   // APIDUO:dynamic-nav:END
   /**
    * Minimum role required to see this item in the sidebar. When set, the item
@@ -105,6 +119,10 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+  // APIDUO:dynamic-nav:BEGIN
+  /** Client deep link: hand the address off without opening a tab. */
+  appLink?: boolean
+  // APIDUO:dynamic-nav:END
 }
 
 /**

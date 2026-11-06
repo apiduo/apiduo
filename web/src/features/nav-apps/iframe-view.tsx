@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useNavAppsQuery } from './hooks'
+import { isClientLink } from './lib/href'
 import { canEmbed, isSameSite, navAppTitle } from './lib/render'
 import { navAppIcon } from './lib/icons'
 
@@ -107,7 +108,9 @@ export function NavAppFrame({ slug }: { slug: string }) {
       <FrameNotice
         title={title}
         description={t('This entry opens as an external link.')}
-        href={app.href}
+        // A client deep link has no address a tab could open; offering one
+        // would be a link that does nothing when clicked.
+        href={isClientLink(app.href) ? undefined : app.href}
       />
     )
   }
