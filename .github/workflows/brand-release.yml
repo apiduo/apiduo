@@ -148,6 +148,12 @@ jobs:
       - name: Relay SQL budget
         run: go test ./router/ -run TestRelaySQLBudget -count=1
 
+      # 标记块覆盖：上游已有的文件里，自上次同步以来新增的代码必须写在
+      # APIDUO:<feature>:BEGIN/END 内。否则下次合并上游时无法区分哪些行是自己的，
+      # 冲突只能靠记忆去拼。基线在 .apiduo/sync-base，见 docs/apiduo/upstream-sync.md。
+      - name: Marker coverage
+        run: go run ./tools/markercheck
+
       # 版本号构建期临时写入 VERSION（不提交）：Dockerfile 用它注入 common.Version，
       # /api/status 会回报该值，下面冒烟直接断言。
       - name: Build image
