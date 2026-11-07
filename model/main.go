@@ -433,6 +433,13 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
+	// APIDUO:log-final:BEGIN
+	// A failed upgrade must not stop the gateway: the existing table still
+	// works, it just keeps duplicate replays until the next start retries.
+	if err := upgradeClickHouseLogEngine(ttlDays); err != nil {
+		common.SysError(common.LogText("log table engine upgrade failed: %s", err.Error()))
+	}
+	// APIDUO:log-final:END
 	return syncClickHouseLogTTL(ttlDays)
 }
 

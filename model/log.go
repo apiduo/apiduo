@@ -692,6 +692,11 @@ type Stat struct {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+	// APIDUO:log-final:BEGIN
+	if finalStat, ok, finalErr := sumUsedQuotaFinal(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group); ok {
+		return finalStat, finalErr
+	}
+	// APIDUO:log-final:END
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -754,6 +759,11 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 }
 
 func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
+	// APIDUO:log-final:BEGIN
+	if finalToken, ok := sumUsedTokenFinal(startTimestamp, endTimestamp, modelName, username, tokenName); ok {
+		return finalToken
+	}
+	// APIDUO:log-final:END
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
 	if username != "" {
 		tx = tx.Where("username = ?", username)

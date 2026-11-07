@@ -275,14 +275,15 @@ func TestAdversarial_Int32CastSilentlyTruncates(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. at-least-once: replay duplicates rows, and no query de-duplicates
+// 6. at-least-once: replay re-inserts rows; the engine and FINAL collapse them
 // ---------------------------------------------------------------------------
 
-// The file header says reconciliation queries must de-duplicate on request_id,
-// but the table is a plain MergeTree (no ReplacingMergeTree / unique key) and
-// model/log.go aggregates with plain sum(quota). A crash between Insert and
-// marker write doubles consumption.
-func TestAdversarial_ReplayDuplicatesRowsAndAggregatesDoubleCount(t *testing.T) {
+// Replaying a batch whose marker was lost is inherent to at-least-once. What
+// must not happen is those replays reaching sum(quota), so the ClickHouse table
+// is ReplacingMergeTree keyed on (created_at, request_id) and every aggregation
+// reads it with FINAL. A SQLite test can pin the replay itself but not the
+// engine, so the DDL assertion below covers that half.
+func TestAdversarial_ReplayReinsertsRowsAndEngineCollapsesThem(t *testing.T) {
 	setupLogWriterTestDB(t)
 	dir := t.TempDir()
 
@@ -312,9 +313,14 @@ func TestAdversarial_ReplayDuplicatesRowsAndAggregatesDoubleCount(t *testing.T) 
 
 	var sum int64
 	require.NoError(t, LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0)").Scan(&sum).Error)
-	t.Logf("证据：重放 3 行后库中 %d 行、sum(quota)=%d（应为 300，实际翻倍）；表无去重键，查询无 DISTINCT", countStoredLogs(t), sum)
-	assert.EqualValues(t, 6, countStoredLogs(t))
-	assert.EqualValues(t, 600, sum, "消费统计在重放后直接翻倍")
+	assert.EqualValues(t, 6, countStoredLogs(t), "重放会再次插入同一批行，这是 at-least-once 的固有尾巴")
+	assert.EqualValues(t, 600, sum)
+
+	// Nothing above keeps duplicates out of the numbers — the engine does.
+	replacing, err := replacingLogTableDDL("logs", 0)
+	require.NoError(t, err)
+	assert.Contains(t, replacing, "ENGINE = ReplacingMergeTree()",
+		"重放去重依赖 ReplacingMergeTree；改回 MergeTree 会让 sum(quota) 直接翻倍")
 }
 
 // ---------------------------------------------------------------------------

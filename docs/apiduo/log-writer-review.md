@@ -216,7 +216,7 @@ LOG_WRITER_SPOOL_DIR=data/log_spool/apiduo-cn   # 每实例独立，避免共享
 | L2 | ✅ 已修 | ~~队列满**阻塞请求**~~：改为有界等待 + 交回同步插入（`LOG_WRITER_ENQUEUE_WAIT_MS`，默认 1000ms），并计入 `fallback` | `TestAdversarial_EnqueueFallsBackWhenQueueIsFull` | 同步回退本身也会等 CH，真需求是「有界等待 + 明确降级」，不能简单改回同步 |
 | L3 | ✅ 已修 | ~~stop 后随机接受/报错~~：stop 优先判定，一律返回 `handled=false` 让 `createLog` 走同步插入，不再丢行 | `TestAdversarial_EnqueueAfterStopFallsBack` | `srv.Shutdown` 正常情况下会等在途请求，所以 HTTP 路径概率低；但后台 goroutine（task billing）不受其约束，风险真实 |
 | L4 | ✅ 已修 | ~~spool 写失败 + insert 失败即丢行~~：`spoolDirty` 标记后下一轮把 pending 一并写盘，重启可 replay | 重启 replay 0 行 | 需磁盘故障叠加 CH 故障，双故障；但日志正是为这种时刻存在的 |
-| L5 | 🟠 P1 | at-least-once 重复且查询不去重 ⇒ 统计翻倍 | 3 行→6 行，sum 300→600 | 文档已声明「查询须去重」，属**实现未兑现**，不是设计疏忽 |
+| L5 | ✅ 已修 | ~~at-least-once 重复且查询不去重~~：`logs` 改 `ReplacingMergeTree`（`ORDER BY created_at, request_id`），三处统计查询走 `logs FINAL`；启动时自动迁移，旧表保留为 `logs_mergetree_backup` | 3 行→6 行，sum 300→600 | 文档已声明「查询须去重」，属**实现未兑现**，不是设计疏忽 |
 | L6 | ⏸ 部署约定 | ~~多实例共享 spool 目录互删~~：单副本无影响；扩容时必须为每个副本设置不同的 `LOG_WRITER_SPOOL_DIR`（代码不做自动隔离，避免 hostname 变动误判） | A 丢行 + 误重放 B | 当前单副本未触发；一旦按「用 CH 部署」扩容即命中 |
 | L7 | 🟠 P1 | TTL 漂移：`TTL_DAYS=0` 会 REMOVE 已有 TTL | `syncClickHouseLogTTL` | 只要显式配 30 就没事；风险在「漏配」而非代码错 |
 | L8 | 🟠 P1 | `stop_grace_period 30s` < `flushTimeout 60s` | compose / main.go | 当前 SQLite 无 writer，未触发；接 CH 后才会暴露 |
@@ -2473,4 +2473,58 @@ LAG_ALERT_SECONDS=1800 /opt/apiduo-cn/check-dashboard-freshness.sh
 ```bash
 go test ./model/ -run 'TestAdversarial_Enqueue' -v   # 2 个新语义用例
 go test ./model/ -count=1                            # 全包 12.5s 通过
+```
+
+---
+
+## 10. L5 修复记录（2026-11-07 23:55，0.0.9）
+
+### 问题
+
+writer 是 at-least-once：insert 成功后、写 marker 前崩溃，下次启动会 replay 那一批。
+表是普通 `MergeTree`，`ORDER BY (created_at, request_id)` 只是排序键不是去重键，
+于是重放后 `count(*)` 翻倍、`sum(quota)` 翻倍。文档写了「查询须去重」，代码没做。
+
+### 修法
+
+两半，缺一不可：
+
+1. **引擎**：DDL 改为 `ENGINE = ReplacingMergeTree()`。后台 merge 会按
+   `(created_at, request_id)` 折叠同一批的重复行。
+2. **查询**：`sum(quota)`、`count(*)/sum(tokens)`、`sum(tokens)` 三处统计改为
+   `FROM logs FINAL`。FINAL 保证**查询那一刻**就已经去重，不用等 merge。
+
+`FINAL` 只对 ReplacingMergeTree 生效，所以第 2 步必须在第 1 步之后才有意义。
+
+### 迁移
+
+`CREATE TABLE IF NOT EXISTS` 不会改既有表的引擎，所以启动时加了一次性迁移
+（`upgradeClickHouseLogEngine`）：
+
+```
+DROP TABLE IF EXISTS logs_replacing_staging
+CREATE TABLE logs_replacing_staging (...) ENGINE = ReplacingMergeTree()
+INSERT INTO logs_replacing_staging SELECT * FROM logs
+DROP TABLE IF EXISTS logs_mergetree_backup
+RENAME TABLE logs TO logs_mergetree_backup, logs_replacing_staging TO logs
+```
+
+- 先建 staging 再 RENAME 交换，`logs` 在任何时刻都存在。
+- 旧表**改名不删**：核对无误后可手动 `DROP TABLE logs_mergetree_backup`。
+- 迁移失败只打 `[SYS]` 错误、不阻断启动 —— 旧表仍可用，下次启动重试。
+
+### 查询侧为什么不能继续用 GORM
+
+`LOG_DB.Table("logs FINAL")` 会被 GORM 当成一个带空格的表名整体加反引号
+（`` `logs FINAL` ``），ClickHouse 报 Unknown table。所以三处统计改用 `Raw` +
+`logWhere` 条件构造器（保留 `%` 通配的 LIKE 语义），表名由 `logQueryTable()` 给出：
+ClickHouse 返回 `logs FINAL`，其他日志库返回 `logs`（它们逐行写入，不会重放）。
+
+### 验证
+
+```bash
+go test ./model/ -count=1     # 11.9s 通过
+# 线上：SHOW CREATE TABLE logs 应为 ReplacingMergeTree
+#       SELECT count() FROM (SELECT created_at, request_id FROM logs GROUP BY created_at, request_id HAVING count() > 1)
+#       应为 0；logs_mergetree_backup 保留
 ```
