@@ -710,3 +710,13 @@ ClickHouse 实证：4 张成功各 `quota=38`、`usage 1/0`，三入口计费完
 `git diff 0.0.9..HEAD` 对图像协议文件为空 ⇒ 结论对生产 0.0.12 成立。
 另记：e2e 日志表是 `MergeTree`、生产是 `ReplacingMergeTree`，升级 e2e 必须同步换引擎，
 否则 `logs FINAL` 报 `ILLEGAL_FINAL`。完整记录见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
+
+
+### 9.14 部署收尾（2026-11-08 01:45）
+
+- 真实上游 `bfl-flux-3-image` 已同步到生产 `apiduo_cn`（渠道 7、`ModelPrice 0.04`），
+  生产 app 以 0.0.12 重建使配置生效；mysql/CH 容器与数据未动。
+- 独立测试实例 `apiduo-cn-e2e` 升级到 0.0.12 完成 7/7 零成本矩阵复测后**已拆除**。
+- 渠道缓存延迟按需求**只降配置不改代码**：`SYNC_FREQUENCY 60 → 15`（部署机 env）。
+  根因是 `AddChannel` 不刷缓存 + 定时全量重载；实测 DB 直写 8.2s 可见。
+  ⚠️ 该值不在仓库里，重新部署需带上。详见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
