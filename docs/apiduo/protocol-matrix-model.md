@@ -674,3 +674,18 @@ chat 非流式 parts 与流式 md 拿到转存后链接，全部通过。完整�
 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
 
 🔴 纪律：新增标记块要**同步提交** `.apiduo/merge-budget.txt`，否则 CI markercheck 判超支，发版会失败。
+
+
+### 9.12 真实上游（火山方舟 / seedream）渠道配置（2026-11-07 23:45）
+
+部署态独立实例 `apiduo-cn-e2e` 已配真实上游渠道 `volcengine-ark-seedream`
+（type 58，`https://ark.cn-beijing.volces.com`，`image_protocol.upstream=seedream`）。
+
+要点：方舟基址是 `/api/v3`，所以 `upstream_path` 与 `primary_path` 都要写成
+`/api/v3/images/generations`，`base_url` 不带路径；三入口 `incoming_path` 仍是
+`/v1/...`。渠道匹配与协议层接管已用两个本地 400 验证（零出站）。
+
+⚠️ **`LIVETEST_ARK_API_KEY` 已失效**：`GET /api/v3/models` 在工作站/ai-prod 宿主/
+容器内三视角均 401 `The API key doesn't exist`（上次实测 2026-09-13）。
+配置可用但凭据需更新，未发任何真实生成请求。契约要点（`size` 至少 3686400 像素、
+`response_format=url` 返回 TOS 链接）见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
