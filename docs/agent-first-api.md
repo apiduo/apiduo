@@ -9,8 +9,11 @@
 | **存量拼接** | 今天之前已经上线的接口（136 个路径） | 用既有 REST 组合出场景，必要时多步调用 | 零开发，Agent 侧多几次往返 |
 | **新功能设计** | 今天起新增的功能 | 设计阶段就把 Agent 可用性做进去（第 8 节清单） | 每个功能多写约 40 行 |
 
-**当前默认凭据：管理员账号级访问令牌（legacy）。** 它不受 scope 限制、所有非 session 路由通吃，
-配合 `X-Agent-Name` 头即可完成审计归属。PAT + scope 是**未来**做最小权限时的路径，不是现在的门槛。
+**当前默认凭据：个人访问令牌（PAT，`nap_` 前缀）。** 一把 Agent 一把，scope 最小化 +
+`allow_ips` 钉住出口 IP；创建一次后长期直接 `Authorization: Bearer`，不需要任何握手。
+账号级令牌（legacy）只在临时排障时用——它不受 scope 限制、所有非 session 路由通吃，改密码后仍然可用，
+**但部署后 30 天自动退役（见 2.4），本来就不能当长期方案**。Agent Key（Ed25519 握手）保留为
+「连可复制秘密都不能接受」时的备选，不是默认路径。
 选型见 2.2。
 
 判断标准只有一条：**一个只持有令牌（PAT 或账号级访问令牌）的程序，能不能在无人值守的情况下完成这件事？**
@@ -55,12 +58,85 @@ Authorization: Bearer <access_token>
 
 | 场景 | 选择 | 理由 |
 |---|---|---|
-| 一个 Agent、自己维护、只想尽快跑通 | 账号级访问令牌 | 零配置，所有接口通吃 |
+| 一个 Agent、受控机器、固定出口 IP（**默认**） | PAT | 一次创建长期直用，scope + `allow_ips` 就能圈住 |
 | 多个 Agent、或交给别人跑 | PAT | 一 Agent 一把钥匙，泄漏只影响一条 |
 | 需要最小权限（只读巡检 / 只发密钥） | PAT | scope 能精确到 `api_key:write` |
 | 需要单独吊销某个 Agent | PAT | legacy 只能整账号重生成 |
+| Agent 跑在不可信机器、怕配置文件被抄走 | Agent Key | 私钥不出本机，服务端只存公钥 |
+| 临时排障、只想尽快跑通 | 账号级令牌（legacy） | 零配置、所有接口通吃，**用完记得清空** |
 
-一句话：**legacy 解决"能不能调"，PAT 解决"该不该让它调这么多"。**
+一句话：**默认发 PAT；legacy 是临时手段；Agent Key 是「可复制秘密也不能接受」时的退路。**
+
+PAT 的三个硬约束（配置前先算清）：
+
+- 每人最多 **20 把**（`AccessTokenMaxPerUser`），多 Agent 要算着分
+- 最短有效期 **1 小时**；`expires_at=0` 表示永不过期，建议 ≤90 天。**改密码会让全部 PAT 立即失效**
+- `allow_ips` 只在「服务端口只给反代」时成立：compose 必须是 `127.0.0.1:39047:3000`，
+  写成裸 `39047:3000` 后私网主机可伪造 `X-Forwarded-For` 绕过白名单
+
+### 2.2.1 三档最小 scope（可直接照抄）
+
+**档 1 · 只读巡检（默认就选这个）**
+
+```
+profile:read
+usage:read
+log:read
+```
+
+读自己的资料、分组、模型列表，以及自己的用量与日志。定时报表、健康巡检、容量观察都够用。
+不能跨用户读、不能改配置、不能创建密钥。
+
+**档 2 · 代发与轮换 API 密钥**
+
+```
+profile:read
+api_key:read
+api_key:write
+```
+
+列出、创建、删除 API 密钥（sk），适合「Agent 给自己或子租户发钥匙」。
+
+🔴 **不要加 `api_key:reveal`**：它能让 Agent 读出完整 sk 明文，等于把"持有者"变成"可以传播密钥的人"。
+
+**档 3 · 全站只读（运维巡检，谨慎）**
+
+```
+profile:read
+usage:read
+log:read
+user:read
+billing:read
+model:read
+deployment:read
+group:read
+```
+
+以管理员视角读全站用户、账单、模型、部署与分组。泄漏面从「一个人」变成「整个站点」，
+只在确有巡检需求时给，且把 `expires_at` 压到 30 天内。
+
+**不要给 Agent 的（给了等于交出站点）**
+
+```
+option:read / option:write     系统设置：支付、SMTP、渠道定价
+nav_app:write                  导航入口
+plugin:write                   任务插件
+ops:write                      运维操作
+account_security:write         改密码 / 2FA / 绑定
+```
+
+依据是 2026-11-07 的线上实测：绑定 root 账号的 PAT 若含 `option:write`，
+`PATCH /api/option/model_pricing` 能**通过 scope 检查**（返回 400 是「空变更」的业务校验，不是权限拒绝）。
+
+### 2.2.2 三个最容易「以为配了其实没配」的字段
+
+| 你以为 | 实际判据 |
+|---|---|
+| 配了 IP 白名单 | 列表里 `allow_ips` 有值。**空值会被省略**，看不到就是没配 |
+| 设了过期时间 | `expires_at` 是具体时间戳；`0` 表示**永久**，而且到期前不会有任何告警 |
+| 限制了权限 | 拿它打一个越权路由，确认返回 403 `ACCESS_TOKEN_SCOPE_DENIED`，而不是 200 |
+
+默认有效期是 30 天（`AccessTokenDefaultExpiryDays`），最短 1 小时；填 `0` 就是永久。
 
 ### 2.3 把令牌钉在网络上（推荐的防泄漏手段）
 
