@@ -141,7 +141,11 @@ type NavApp struct {
 	// Empty means "use Name for every language".
 	NameI18n string `json:"name_i18n"`
 	Icon     string `json:"icon"`
-	Href     string `json:"href"`
+	// IconURL is an optional https image shown instead of the preset icon.
+	// Only a URL string is stored: administrator input must never become
+	// markup in the render tree. The controller restricts it to public hosts.
+	IconURL string `json:"icon_url,omitempty"`
+	Href    string `json:"href"`
 	// DisplayType is one of: external (new tab), iframe (embedded). A client
 	// deep link is always external.
 	DisplayType string `json:"display_type"`

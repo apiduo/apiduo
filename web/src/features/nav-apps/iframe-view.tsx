@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next'
 
 import { useNavAppsQuery } from './hooks'
 import { isClientLink } from './lib/href'
-import { canEmbed, isSameSite, navAppTitle } from './lib/render'
 import { navAppIcon } from './lib/icons'
+import { canEmbed, isSameSite, navAppTitle } from './lib/render'
 
 /**
  * Frame policy for embedded entries.
@@ -52,17 +52,17 @@ function FrameNotice({
   const { t } = useTranslation()
   return (
     <div className='flex h-full flex-col items-center justify-center gap-3 p-8 text-center'>
-      <AlertTriangle className='size-6 text-muted-foreground' />
+      <AlertTriangle className='text-muted-foreground size-6' />
       <div className='space-y-1'>
         <p className='text-sm font-medium'>{title}</p>
-        <p className='max-w-md text-xs text-muted-foreground'>{description}</p>
+        <p className='text-muted-foreground max-w-md text-xs'>{description}</p>
       </div>
       {href && (
         <a
           href={href}
           target='_blank'
           rel='noopener noreferrer'
-          className='inline-flex items-center gap-1 text-xs text-primary hover:underline'
+          className='text-primary inline-flex items-center gap-1 text-xs hover:underline'
         >
           <ExternalLink className='size-3' />
           {t('Open in a new tab')}
@@ -78,13 +78,16 @@ export function NavAppFrame({ slug }: { slug: string }) {
   const [reloadKey, setReloadKey] = useState(0)
 
   const app = useMemo(
-    () => (data?.success && data.data ? data.data : []).find((item) => item.slug === slug),
+    () =>
+      (data?.success && data.data ? data.data : []).find(
+        (item) => item.slug === slug
+      ),
     [data, slug]
   )
 
   if (isLoading) {
     return (
-      <div className='flex h-full items-center justify-center text-xs text-muted-foreground'>
+      <div className='text-muted-foreground flex h-full items-center justify-center text-xs'>
         {t('Loading...')}
       </div>
     )
@@ -129,14 +132,14 @@ export function NavAppFrame({ slug }: { slug: string }) {
     )
   }
 
-  const Icon = navAppIcon(app.icon)
+  const Icon = navAppIcon(app.icon, app.icon_url)
   const sameSite = isSameSite(app.href)
 
   return (
     <div className='flex h-full min-h-0 flex-col'>
       <div className='flex shrink-0 items-center justify-between gap-3 border-b px-3 py-1.5'>
         <div className='flex min-w-0 items-center gap-2'>
-          <Icon className='size-4 shrink-0 text-muted-foreground' />
+          <Icon className='text-muted-foreground size-4 shrink-0' />
           <span className='truncate text-sm font-medium'>{title}</span>
         </div>
         <div className='flex shrink-0 items-center gap-1'>
@@ -160,7 +163,7 @@ export function NavAppFrame({ slug }: { slug: string }) {
         </div>
       </div>
       {!sameSite && (
-        <div className='shrink-0 border-b bg-muted/50 px-3 py-1.5 text-[11px] leading-relaxed text-muted-foreground'>
+        <div className='bg-muted/50 text-muted-foreground shrink-0 border-b px-3 py-1.5 text-[11px] leading-relaxed'>
           {t(
             'This target is on another site. Browsers block third-party cookies in frames, so it may not stay signed in. Serving it under the same main domain avoids this; opening it in a new tab always works.'
           )}
@@ -170,7 +173,7 @@ export function NavAppFrame({ slug }: { slug: string }) {
         key={reloadKey}
         src={app.href}
         title={title}
-        className='min-h-0 w-full flex-1 border-0 bg-background'
+        className='bg-background min-h-0 w-full flex-1 border-0'
         sandbox={FRAME_SANDBOX}
         allow='storage-access'
         referrerPolicy='no-referrer'

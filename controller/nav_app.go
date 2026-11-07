@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -222,11 +223,60 @@ type navAppField = string
 
 // normalizeNavApp trims input and applies defaults, returning the message key
 // of the first violated invariant and the field that caused it.
+const (
+	navAppIconURLLimit = 512
+	// One stable key for every rejection so the console can show a single
+	// translated message and all seven locale files need only one entry.
+	navAppIconURLError = "Icon URL must be an https address on a public host"
+)
+
+// validateNavAppIconURL keeps an administrator-supplied image address from
+// turning navigation into a request against a viewer's private network. The
+// image is fetched by every visitor's browser, so loopback, link-local and
+// other non-public targets are as unsafe here as they would be for a
+// server-side fetch. Markup schemes are rejected by the https-only rule.
+func validateNavAppIconURL(raw string) string {
+	if len(raw) > navAppIconURLLimit {
+		return navAppIconURLError
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" {
+		return navAppIconURLError
+	}
+	if parsed.User != nil {
+		return navAppIconURLError
+	}
+	if port := parsed.Port(); port != "" && port != "443" {
+		return navAppIconURLError
+	}
+	if navAppIconHostBlocked(parsed.Hostname()) {
+		return navAppIconURLError
+	}
+	return ""
+}
+
+func navAppIconHostBlocked(host string) bool {
+	h := strings.ToLower(strings.TrimSuffix(host, "."))
+	if h == "localhost" || strings.HasSuffix(h, ".localhost") ||
+		strings.HasSuffix(h, ".local") || strings.HasSuffix(h, ".internal") ||
+		strings.HasSuffix(h, ".test") || strings.HasSuffix(h, ".example") ||
+		strings.HasSuffix(h, ".invalid") {
+		return true
+	}
+	if ip := net.ParseIP(h); ip != nil {
+		return !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() ||
+			ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+			ip.IsUnspecified() || ip.IsMulticast()
+	}
+	return false
+}
+
 func normalizeNavApp(c *gin.Context, app *model.NavApp) (navAppField, string, map[string]any) {
 	app.Slug = strings.ToLower(strings.TrimSpace(app.Slug))
 	app.Name = strings.TrimSpace(app.Name)
 	app.Href = strings.TrimSpace(app.Href)
 	app.Icon = strings.TrimSpace(app.Icon)
+	app.IconURL = strings.TrimSpace(app.IconURL)
 	app.NameI18n = strings.TrimSpace(app.NameI18n)
 	app.ParentSlug = strings.ToLower(strings.TrimSpace(app.ParentSlug))
 
@@ -257,6 +307,11 @@ func normalizeNavApp(c *gin.Context, app *model.NavApp) (navAppField, string, ma
 	}
 	if len(app.NameI18n) > 4096 {
 		return "name_i18n", "Localized names must be 4096 characters or fewer", nil
+	}
+	if app.IconURL != "" {
+		if key := validateNavAppIconURL(app.IconURL); key != "" {
+			return "icon_url", key, nil
+		}
 	}
 
 	// A target is either a web address or a client deep link, and the two
@@ -363,11 +418,17 @@ func GetAllNavApps(c *gin.Context) {
 	// The revision travels alongside the list so the console can submit it back
 	// and detect a concurrent edit. It is a separate top-level field rather than
 	// part of `data`, which stays a plain array for existing consumers.
+	// The editor seeds its group list and order from this admin endpoint, not
+	// from the visible-list endpoint. Omitting them here made a saved order
+	// vanish on the next reload even though SaveNavApps had stored it.
+	groups, _ := model.LoadNavAppGroups()
 	c.JSON(http.StatusOK, gin.H{
-		"success":  true,
-		"message":  "",
+		"success":     true,
+		"message":     "",
 		"data":        apps,
 		"revision":    model.NavAppsRevision(),
+		"groups":      groups,
+		"group_order": model.LoadNavAppGroupOrder(),
 		"group_title": model.LoadNavAppGroupTitle(),
 	})
 }

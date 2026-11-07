@@ -28,7 +28,7 @@ import {
 } from '../constants'
 import { useAllNavApps, useSaveNavApps } from '../hooks'
 import { classifyNavAppHref, isClientLink } from '../lib/href'
-import { NAV_APP_ICON_OPTIONS, navAppIcon } from '../lib/icons'
+import { NAV_APP_ICON_GROUPS, navAppIcon, navAppIconLabel } from '../lib/icons'
 import { DEFAULT_NAV_APP_GROUP_ID, isSameSite } from '../lib/render'
 import { navAppUsesTemplate } from '../lib/template'
 import type {
@@ -454,7 +454,8 @@ export function NavAppsSection() {
     const seen = new Set<string>()
     for (const app of draft) {
       if (!slugPattern.test(app.slug)) {
-        flagInvalidEntry(app,
+        flagInvalidEntry(
+          app,
           t(
             'Slug must use lowercase letters, digits and hyphens, and start with a letter or digit'
           )
@@ -477,7 +478,8 @@ export function NavAppsSection() {
           shapeOk = false
         }
         if (!shapeOk) {
-          flagInvalidEntry(app,
+          flagInvalidEntry(
+            app,
             t('Localized names must be a JSON object of language tag to text')
           )
           return
@@ -498,13 +500,17 @@ export function NavAppsSection() {
           iconOk = false
         }
         if (!iconOk) {
-          flagInvalidEntry(app, t('Icon URL must be an https address on a public host'))
+          flagInvalidEntry(
+            app,
+            t('Icon URL must be an https address on a public host')
+          )
           return
         }
       }
       const hrefKind = classifyNavAppHref(app.href)
       if (!hrefKind) {
-        flagInvalidEntry(app,
+        flagInvalidEntry(
+          app,
           t(
             'Target address must be an absolute http(s) URL or a client link such as cherrystudio://'
           )
@@ -512,7 +518,8 @@ export function NavAppsSection() {
         return
       }
       if (hrefKind === 'web' && targetsThisSite(app.href)) {
-        flagInvalidEntry(app,
+        flagInvalidEntry(
+          app,
           t('A navigation entry cannot point at this site. Use another host.')
         )
         return
@@ -521,7 +528,8 @@ export function NavAppsSection() {
       // an error. The server rejects this too; catching it here keeps the
       // message next to the row instead of arriving as a failed save.
       if (hrefKind === 'app' && app.display_type === navAppDisplayIframe) {
-        flagInvalidEntry(app,
+        flagInvalidEntry(
+          app,
           t(
             'A client link cannot be embedded. Choose the new tab option instead'
           )
@@ -536,7 +544,8 @@ export function NavAppsSection() {
         app.display_type === navAppDisplayIframe &&
         navAppUsesTemplate(app.href)
       ) {
-        flagInvalidEntry(app,
+        flagInvalidEntry(
+          app,
           t(
             'A template cannot be embedded. Choose the new tab option or a client link instead'
           )
@@ -544,7 +553,10 @@ export function NavAppsSection() {
         return
       }
       if (seen.has(app.slug)) {
-        flagInvalidEntry(app, t('Slug {{slug}} is already in use', { slug: app.slug }))
+        flagInvalidEntry(
+          app,
+          t('Slug {{slug}} is already in use', { slug: app.slug })
+        )
         return
       }
       seen.add(app.slug)
@@ -696,6 +708,7 @@ export function NavAppsSection() {
         >
           {draft.map((app, index) => {
             const Icon = navAppIcon(app.icon, app.icon_url)
+            const PresetIcon = navAppIcon(app.icon)
             const slugLocked = persistedSlugs.has(app.slug)
             const clientLink = isClientLink(app.href)
             const templated = navAppUsesTemplate(app.href)
@@ -892,19 +905,31 @@ export function NavAppsSection() {
                       <div className='flex flex-col gap-1'>
                         <label className='flex flex-col gap-1'>
                           <span className={labelClass}>{t('Icon')}</span>
-                          <select
-                            className={fieldClass}
-                            value={app.icon}
-                            onChange={(event) =>
-                              patch(index, { icon: event.target.value })
-                            }
-                          >
-                            {NAV_APP_ICON_OPTIONS.map((name) => (
-                              <option key={name} value={name}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
+                          <div className='relative'>
+                            <span className='pointer-events-none absolute top-1/2 left-2 -translate-y-1/2'>
+                              <PresetIcon className='size-4' />
+                            </span>
+                            <select
+                              className={`${fieldClass} pl-8`}
+                              value={app.icon}
+                              onChange={(event) =>
+                                patch(index, { icon: event.target.value })
+                              }
+                            >
+                              {NAV_APP_ICON_GROUPS.map((group) => (
+                                <optgroup
+                                  key={group.id}
+                                  label={t(group.labelKey)}
+                                >
+                                  {group.names.map((name) => (
+                                    <option key={name} value={name}>
+                                      {navAppIconLabel(name)}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </div>
                         </label>
                         <label className='flex flex-col gap-1'>
                           <span className={labelClass}>

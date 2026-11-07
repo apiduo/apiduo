@@ -1,8 +1,8 @@
 import type { NavGroup, NavItem, TopNavLink } from '@/components/layout/types'
 
+import type { NavApp, NavAppGroup } from '../types'
 import { classifyNavAppHref, isClientLink } from './href'
 import { navAppIcon } from './icons'
-import type { NavApp, NavAppGroup } from '../types'
 
 /**
  * Expands one language code into the spellings an operator might reasonably use
@@ -114,16 +114,40 @@ export function canEmbed(href: string): boolean {
  * warning, never a wrong one that blocks configuration.
  */
 const MULTI_LABEL_PUBLIC_SUFFIXES = new Set([
-  'co.uk', 'org.uk', 'ac.uk', 'gov.uk',
-  'com.cn', 'net.cn', 'org.cn', 'gov.cn',
-  'com.au', 'net.au', 'co.jp', 'co.kr', 'com.br', 'com.tw', 'com.hk',
-  'co.nz', 'com.sg', 'com.mx', 'com.tr', 'co.in',
-  'github.io', 'vercel.app', 'netlify.app', 'pages.dev', 'herokuapp.com',
+  'co.uk',
+  'org.uk',
+  'ac.uk',
+  'gov.uk',
+  'com.cn',
+  'net.cn',
+  'org.cn',
+  'gov.cn',
+  'com.au',
+  'net.au',
+  'co.jp',
+  'co.kr',
+  'com.br',
+  'com.tw',
+  'com.hk',
+  'co.nz',
+  'com.sg',
+  'com.mx',
+  'com.tr',
+  'co.in',
+  'github.io',
+  'vercel.app',
+  'netlify.app',
+  'pages.dev',
+  'herokuapp.com',
 ])
 
 function siteKey(hostname: string): string {
   const host = hostname.toLowerCase()
-  if (host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':')) {
+  if (
+    host === 'localhost' ||
+    /^\d+\.\d+\.\d+\.\d+$/.test(host) ||
+    host.includes(':')
+  ) {
     return host
   }
   const labels = host.split('.')
@@ -153,7 +177,7 @@ export function navAppToSidebarItem(
   languages: readonly string[]
 ): NavItem {
   const title = navAppTitle(app, languages)
-  const icon = navAppIcon(app.icon)
+  const icon = navAppIcon(app.icon, app.icon_url)
   // Embedded entries navigate to the in-app container route; everything else
   // opens directly, so no container route exists for it.
   if (app.display_type === 'iframe') {

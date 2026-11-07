@@ -1,13 +1,17 @@
 package controller
 
 import (
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // These tests pin the invariants the renderer relies on. The same-origin
@@ -370,4 +374,96 @@ func TestValidateNavAppGroupsIgnoresUnassignedEntries(t *testing.T) {
 	_, field, key, _ := validateNavAppGroups(nil, apps)
 	assert.Empty(t, field, "an entry with no group is valid and uses the default heading")
 	assert.Empty(t, key)
+}
+
+// The admin editor seeds its sortable group rows from this endpoint. Omitting
+// groups or group_order here makes a saved drag order disappear on the next
+// page load even though SaveNavApps stored it correctly.
+func TestGetAllNavAppsReturnsGroupConfiguration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/nav_apps/all", nil)
+
+	common.OptionMapRWMutex.Lock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	previousGroups, hadGroups := common.OptionMap[model.NavAppGroupsOptionKey]
+	previousOrder, hadOrder := common.OptionMap[model.NavAppGroupOrderOptionKey]
+	common.OptionMap[model.NavAppGroupsOptionKey] = `[{"slug":"team","name":"Team","name_i18n":"","sort":0}]`
+	common.OptionMap[model.NavAppGroupOrderOptionKey] = `["apiduo-default","chat"]`
+	common.OptionMapRWMutex.Unlock()
+
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if hadGroups {
+			common.OptionMap[model.NavAppGroupsOptionKey] = previousGroups
+		} else {
+			delete(common.OptionMap, model.NavAppGroupsOptionKey)
+		}
+		if hadOrder {
+			common.OptionMap[model.NavAppGroupOrderOptionKey] = previousOrder
+		} else {
+			delete(common.OptionMap, model.NavAppGroupOrderOptionKey)
+		}
+	})
+
+	GetAllNavApps(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+	assert.Equal(t, []any{"apiduo-default", "chat"}, body["group_order"])
+	groups, ok := body["groups"].([]any)
+	require.True(t, ok, "groups must be a JSON array, not absent or null")
+	assert.Len(t, groups, 1)
+}
+
+// A custom icon is fetched by every viewer's browser. Reject anything that
+// could turn a navigation entry into a probe of their private network, and
+// any markup scheme that could carry script.
+func TestValidateNavAppIconURL(t *testing.T) {
+	for _, raw := range []string{
+		"https://cdn.example.com/logo.png",
+		"https://example.com/favicon.ico?v=2",
+		"https://example.com:443/a.png",
+		"https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/workbuddy-color.svg",
+	} {
+		assert.Empty(t, validateNavAppIconURL(raw), raw)
+	}
+
+	for _, raw := range []string{
+		"http://cdn.example.com/logo.png",
+		"data:image/svg+xml,<svg onload=alert(1)>",
+		"javascript:alert(1)",
+		"https://127.0.0.1/a.png",
+		"https://192.168.1.1/a.png",
+		"https://10.0.0.1/a.png",
+		"https://169.254.169.254/latest/meta-data",
+		"https://[::1]/a.png",
+		"https://localhost/a.png",
+		"https://printer.local/a.png",
+		"https://user:pass@cdn.example.com/a.png",
+		"https://cdn.example.com:8443/a.png",
+		"https://example.com/" + strings.Repeat("a", 600),
+	} {
+		assert.Equal(t, navAppIconURLError, validateNavAppIconURL(raw), raw)
+	}
+}
+
+func TestNormalizeNavAppKeepsSafeIconURL(t *testing.T) {
+	app := validNavApp()
+	app.IconURL = "  https://cdn.example.com/logo.png  "
+	_, key, _ := normalizeNavApp(navAppTestContext(), &app)
+	assert.Empty(t, key)
+	assert.Equal(t, "https://cdn.example.com/logo.png", app.IconURL)
+}
+
+func TestNormalizeNavAppRejectsUnsafeIconURL(t *testing.T) {
+	app := validNavApp()
+	app.IconURL = "https://127.0.0.1/a.png"
+	_, key, _ := normalizeNavApp(navAppTestContext(), &app)
+	assert.Equal(t, navAppIconURLError, key)
 }

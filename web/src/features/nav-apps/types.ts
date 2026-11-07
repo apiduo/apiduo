@@ -14,6 +14,8 @@ export type NavApp = {
   /** Optional JSON object of language tag to display name. */
   name_i18n: string
   icon: string
+  /** Optional https image URL; overrides the preset icon when set. */
+  icon_url?: string
   href: string
   display_type: NavAppDisplayType
   placement: NavAppPlacement
