@@ -24,6 +24,9 @@ import {
   ChevronDown,
   ChevronRight,
   ListOrdered,
+  // APIDUO:multi-key-sticky:BEGIN
+  Pin,
+  // APIDUO:multi-key-sticky:END
   Shuffle,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -821,12 +824,20 @@ export function useChannelsColumns(
           const channel = row.original as Channel
           const isMultiKey = isMultiKeyChannel(channel)
           const multiKeyMode = channel.channel_info?.multi_key_mode ?? 'random'
+          // APIDUO:multi-key-sticky:BEGIN
           const MultiKeyModeIcon =
-            multiKeyMode === 'random' ? Shuffle : ListOrdered
+            multiKeyMode === 'random'
+              ? Shuffle
+              : multiKeyMode === 'sticky'
+                ? Pin
+                : ListOrdered
           const multiKeyTooltip =
             multiKeyMode === 'random'
               ? t('Multi-key: Random rotation')
-              : t('Multi-key: Polling rotation')
+              : multiKeyMode === 'sticky'
+                ? t('Multi-key: Token sticky')
+                : t('Multi-key: Polling rotation')
+          // APIDUO:multi-key-sticky:END
 
           const ionetMeta = parseIonetMeta(channel.other_info)
           const isIonet = ionetMeta?.source === 'ionet'

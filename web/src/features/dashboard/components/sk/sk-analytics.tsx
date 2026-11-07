@@ -35,6 +35,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getSelfSkQuotaData, getSkQuotaData } from '@/features/dashboard/api'
+import { ApiduoGlow } from '@/features/apiduo-appearance'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
 import {
   buildSkStackRows,
@@ -602,7 +603,8 @@ export function SkAnalytics({ scope = 'admin' }: SkAnalyticsProps = {}) {
         </p>
       )}
 
-      <div className='overflow-hidden rounded-lg border'>
+      <div className='overflow-hidden rounded-lg border' data-ap-surface=''>
+        <ApiduoGlow />
         <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-4'>
           {metrics.map((metric) => (
             <div key={metric.key} className='min-w-0 px-3 py-2.5'>

@@ -659,6 +659,24 @@ func executeTaskSubmissionWith(
 	stage = "insert"
 	task := model.InitTask(result.Platform, relayInfo)
 	task.PrivateData.Execution = service.TaskExecutionSnapshotFromContext(c)
+	// APIDUO:multi-key-task-binding:BEGIN
+	// Async upstream APIs scope a task to the credential that created it. Record
+	// which key this submission used; every later status poll or retry reads it
+	// back instead of rotating to a key that cannot see the task (404, not 401).
+	// Read from the context rather than relayInfo: the context is rewritten by
+	// SetupContextForSelectedChannel on every attempt, so it names the key that
+	// actually submitted this task, not the one from the first attempt.
+	// The index is only a lookup hint — the fingerprint is the identity, because
+	// editing the key list renumbers everything after the edit.
+	task.PrivateData.MultiKeyIndex = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+	if common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey) {
+		// Only multi-key channels need the copy: a single-key channel's key is
+		// still in channels.key, and extra copies of secrets are pure exposure.
+		task.PrivateData.MultiKeyFingerprint = model.MultiKeyFingerprint(common.GetContextKeyString(c, constant.ContextKeyChannelKey))
+		task.PrivateData.UpstreamKey = common.GetContextKeyString(c, constant.ContextKeyChannelKey)
+		task.PrivateData.UpstreamKeyAt = common.GetTimestamp()
+	}
+	// APIDUO:multi-key-task-binding:END
 	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 	task.PrivateData.BillingSource = relayInfo.BillingSource
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId

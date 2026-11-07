@@ -136,6 +136,27 @@ type TaskPrivateData struct {
 	// and every retrieval surface treats the task as not found. The zero
 	// value keeps historical rows retained and retrievable.
 	ResultDiscarded bool `json:"result_discarded,omitempty"`
+
+	// APIDUO:multi-key-task-binding:BEGIN
+	// The channel key that submitted this task. Async upstream APIs scope a task
+	// to the credential that created it, so a status poll or a retry must use
+	// the same key — any other key answers 404, not 401.
+	//
+	// Both fields are recorded because either alone is wrong. The index is not an
+	// identity: inserting or deleting one line renumbers every key after it. The
+	// fingerprint alone cannot be found in O(1). Together they give a fast path
+	// (the list did not move, the key at that index still hashes the same) and a
+	// correct path (scan for the fingerprint).
+	MultiKeyIndex       int    `json:"multi_key_index,omitempty"`
+	MultiKeyFingerprint string `json:"multi_key_fingerprint,omitempty"`
+	// UpstreamKey keeps the credential itself for a short while, so a task stays
+	// reachable even after the operator edits the channel's key list — the
+	// fingerprint can only find a key that still exists. It carries the same
+	// exposure as channels.key (both are plaintext in this database) and is
+	// ignored once UpstreamKeyAt is older than taskKeyRetentionSeconds.
+	UpstreamKey   string `json:"upstream_key,omitempty"`
+	UpstreamKeyAt int64  `json:"upstream_key_at,omitempty"`
+	// APIDUO:multi-key-task-binding:END
 }
 
 type TaskExecutionSnapshot struct {

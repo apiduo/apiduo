@@ -29,6 +29,16 @@ import vi from './locales/vi.json'
 import zhTW from './locales/zh-TW.json'
 import zhCN from './locales/zh.json'
 
+/* APIDUO:i18n:BEGIN */
+import apiduoEn from './apiduo/en.json'
+import apiduoFr from './apiduo/fr.json'
+import apiduoJa from './apiduo/ja.json'
+import apiduoRu from './apiduo/ru.json'
+import apiduoVi from './apiduo/vi.json'
+import apiduoZhTW from './apiduo/zh-TW.json'
+import apiduoZhCN from './apiduo/zh.json'
+/* APIDUO:i18n:END */
+
 export const resources = {
   en,
   zhCN,
@@ -38,6 +48,32 @@ export const resources = {
   vi,
   zhTW,
 } as const
+
+/* APIDUO:i18n:BEGIN
+ * apiduo text lives in its own files. The upstream locale files stay byte
+ * identical to upstream, so a rebase never produces a conflict over a phrase.
+ * These values win over the upstream map: if someone runs i18n:sync and the
+ * same key lands back in a locale file, the apiduo wording still renders.
+ */
+const apiduoLocales: Record<string, { translation: Record<string, string> }> = {
+  en: apiduoEn,
+  zhCN: apiduoZhCN,
+  fr: apiduoFr,
+  ru: apiduoRu,
+  ja: apiduoJa,
+  vi: apiduoVi,
+  zhTW: apiduoZhTW,
+}
+
+for (const [code, extra] of Object.entries(apiduoLocales)) {
+  const target = (
+    resources as Record<string, { translation: Record<string, string> }>
+  )[code]
+  if (target) {
+    Object.assign(target.translation, extra.translation)
+  }
+}
+/* APIDUO:i18n:END */
 
 i18n
   .use(LanguageDetector)

@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/empty-state'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserBalanceSeries } from '@/features/dashboard/api'
+import { ApiduoGlow } from '@/features/apiduo-appearance'
 import {
   computeRunway,
   roundTopUp,
@@ -182,7 +183,8 @@ export function RetentionBoard() {
         )}
       </div>
 
-      <div className='overflow-hidden rounded-lg border'>
+      <div className='overflow-hidden rounded-lg border' data-ap-surface=''>
+        <ApiduoGlow />
         <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-5'>
           {LEVEL_ORDER.map((level) => {
             const active = filter === level

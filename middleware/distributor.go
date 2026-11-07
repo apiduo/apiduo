@@ -669,6 +669,9 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
 	key, index, newAPIError := channel.GetNextEnabledKey()
+	// APIDUO:multi-key-sticky:BEGIN
+	key, index, newAPIError = overrideStickyChannelKey(c, channel, key, index, newAPIError)
+	// APIDUO:multi-key-sticky:END
 	if newAPIError != nil {
 		return newAPIError
 	}

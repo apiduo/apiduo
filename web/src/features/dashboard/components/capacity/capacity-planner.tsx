@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getUsageSeries } from '@/features/dashboard/api'
+import { ApiduoGlow } from '@/features/apiduo-appearance'
 import {
   buildDailySeries,
   forecastUsage,
@@ -268,7 +269,8 @@ export function CapacityPlanner() {
         </div>
       </div>
 
-      <div className='overflow-hidden rounded-lg border'>
+      <div className='overflow-hidden rounded-lg border' data-ap-surface=''>
+        <ApiduoGlow />
         <div className='divide-border/60 grid grid-cols-2 divide-x sm:grid-cols-4'>
           {metrics.map((metric) => (
             <div key={metric.key} className='min-w-0 px-3 py-2.5'>

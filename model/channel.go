@@ -70,6 +70,12 @@ type ChannelInfo struct {
 	MultiKeyDisabledTime   map[int]int64         `json:"multi_key_disabled_time,omitempty"`   // key禁用时间列表，key index -> time
 	MultiKeyPollingIndex   int                   `json:"multi_key_polling_index"`             // 多Key模式下轮询的key索引
 	MultiKeyMode           constant.MultiKeyMode `json:"multi_key_mode"`
+	// APIDUO:multi-key-min-active:BEGIN
+	// How many keys should stay active at once. Zero keeps every key active,
+	// which is the pre-existing behaviour. Surplus keys park as standby and are
+	// pulled back in as active ones get disabled.
+	MinActiveKeys int `json:"min_active_keys,omitempty"`
+	// APIDUO:multi-key-min-active:END
 }
 
 type ChannelSortOptions struct {
@@ -239,8 +245,33 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	}
 
 	// Collect indexes of enabled keys
-	enabledIdx := make([]int, 0, len(keys))
+	// APIDUO:multi-key-min-active:BEGIN
+	// Size the slice to the cap, not the key count: this allocation happens on
+	// every request, and a 3000-key channel capped at 10 was reserving 24KB to
+	// keep ten integers.
+	limit := channel.ActiveKeyLimit()
+	capacity := len(keys)
+	if limit > 0 && limit < capacity {
+		capacity = limit
+	}
+	enabledIdx := make([]int, 0, capacity)
+	// APIDUO:multi-key-min-active:END
 	for i := range keys {
+		// APIDUO:multi-key-min-active:BEGIN
+		// Both checks only run under a cap, because only then do they change the
+		// answer: the loop can stop once the window is full, and a blank line
+		// would otherwise occupy one of the slots for good. Without a cap the
+		// upstream cost stays untouched — trimming 3000 keys on every request
+		// measured 2.2x slower, and a rare blank key was already just one retry.
+		if limit > 0 {
+			if len(enabledIdx) == limit {
+				break
+			}
+			if strings.TrimSpace(keys[i]) == "" {
+				continue
+			}
+		}
+		// APIDUO:multi-key-min-active:END
 		if getStatus(i) == common.ChannelStatusEnabled {
 			enabledIdx = append(enabledIdx, i)
 		}
@@ -252,6 +283,16 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 		return "", 0, types.NewError(errors.New("no enabled keys"), types.ErrorCodeChannelNoAvailableKey)
 	}
 
+	// APIDUO:multi-key-default-mode:BEGIN
+	// Unset or unknown modes, and `sticky` without a request seed (task polling,
+	// balance checks, channel tests), must spread. The console reports all of
+	// them as `random`, and the default branch below pins keys[0] — so the UI
+	// claimed load was spread while one key served everything.
+	if mode := channel.ChannelInfo.MultiKeyMode; mode != constant.MultiKeyModeRandom && mode != constant.MultiKeyModePolling {
+		selectedIdx := enabledIdx[rand.Intn(len(enabledIdx))]
+		return keys[selectedIdx], selectedIdx, nil
+	}
+	// APIDUO:multi-key-default-mode:END
 	switch channel.ChannelInfo.MultiKeyMode {
 	case constant.MultiKeyModeRandom:
 		// Randomly pick one enabled key
@@ -281,9 +322,26 @@ func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 		}
 		for i := range keys {
 			idx := (start + i) % len(keys)
+			// APIDUO:multi-key-min-active:BEGIN
+			// Polling walks the raw key ring, so the cap has to be asked here as
+			// well: without this guard a channel capped at 2 served all six keys,
+			// while random honoured the same setting.
+			if !isActiveIndex(enabledIdx, idx) {
+				continue
+			}
+			// APIDUO:multi-key-min-active:END
 			if getStatus(idx) == common.ChannelStatusEnabled {
 				// update polling index for next call (point to the next position)
-				channel.ChannelInfo.MultiKeyPollingIndex = (idx + 1) % len(keys)
+				// APIDUO:multi-key-polling-cursor:BEGIN
+				// Advance to the next key that may serve, not the next array slot:
+				// under a cap the slot after the window is a spare, and stepping
+				// into it makes the next scan walk the whole list.
+				channel.ChannelInfo.MultiKeyPollingIndex = nextActiveIndex(enabledIdx, idx)
+				// Mirror to the cached copy: callers holding a database channel
+				// (relay_task) would otherwise advance a private copy and pin
+				// every one of their requests to the same key.
+				channelInfo.MultiKeyPollingIndex = channel.ChannelInfo.MultiKeyPollingIndex
+				// APIDUO:multi-key-polling-cursor:END
 				return keys[idx], idx, nil
 			}
 		}

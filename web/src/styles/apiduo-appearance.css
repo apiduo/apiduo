@@ -1,0 +1,384 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/* ── Apiduo appearance effects ─────────────────────────────────────────────
+ *
+ * One vocabulary for every decoration apiduo paints on its own surfaces.
+ * The layer is always rendered by <ApiduoGlow>, positioned absolutely inside a
+ * container that provides `position: relative` and `border-radius` — the exact
+ * contract upstream's `.auto-group-flow-border` already relies on.
+ *
+ * Everything is variable driven, so the console can retune the effect without
+ * a rebuild:
+ *
+ *   --ap-color   any CSS colour. Absent means "follow --primary".
+ *   --ap-speed   one revolution, e.g. 3200ms.
+ *   --ap-ring    visible stroke width.
+ *   --ap-tail    angular length of the travelling highlight.
+ *
+ * The colour falls back through var(--ap-color, var(--primary)) rather than
+ * being written as a default here: a theme change must carry over, and an
+ * explicit "no colour" must not freeze today's palette.
+ */
+
+@property --ap-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes ap-travel {
+  to {
+    --ap-angle: 360deg;
+  }
+}
+
+@keyframes ap-sheen-run {
+  0%,
+  52% {
+    left: -60%;
+  }
+  88%,
+  100% {
+    left: 130%;
+  }
+}
+
+/* One sweep per cycle: tight and opaque against the border, then spread out and
+ * gone. Written as a single fade rather than a there-and-back keyframe pair,
+ * because at every intermediate stop the two halves were dim enough that the
+ * ring was effectively invisible on a dark surface.
+ */
+@keyframes ap-pulse-ring {
+  from {
+    box-shadow: 0 0 0 1px
+      color-mix(in oklch, var(--ap-color, var(--primary)) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 16px 10px
+      color-mix(in oklch, var(--ap-color, var(--primary)) 0%, transparent);
+  }
+}
+
+/* ── Border highlight (flow / rainbow) ────────────────────────────────────
+ *
+ * The conic gradient covers the whole layer; the two-layer mask (content-box
+ * XOR full box) keeps only a `padding`-wide ring, so the highlight hugs the
+ * rounded perimeter instead of filling the card.
+ */
+.ap-glow {
+  position: absolute;
+  /* Inside the border box, not over it: a card with overflow-hidden would clip
+   * an outward ring to nothing, and apiduo surfaces are ordinary cards that may
+   * opt into clipping at any time. */
+  inset: 0;
+  border-radius: inherit;
+  padding: var(--ap-ring, 1.5px);
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--ap-angle),
+    transparent 0deg,
+    transparent calc(360deg - var(--ap-tail, 120deg)),
+    color-mix(in oklch, var(--ap-color, var(--primary)) 45%, transparent)
+      calc(360deg - var(--ap-tail, 120deg) * 0.5),
+    var(--ap-color, var(--primary))
+      calc(360deg - var(--ap-tail, 120deg) * 0.15),
+    transparent 360deg
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  animation: ap-travel var(--ap-speed, 3.2s) linear infinite;
+}
+
+.ap-glow[data-ap-glow='on'] {
+  filter: drop-shadow(
+    0 0 3px color-mix(in oklch, var(--ap-color, var(--primary)) 55%, transparent)
+  );
+}
+
+/* Multi-colour sweep: same mask, different colour stops. Kept as a separate
+ * class instead of a modifier so the stop list can be replaced wholesale. */
+.ap-glow-rainbow {
+  background: conic-gradient(
+    from var(--ap-angle),
+    transparent 0deg,
+    transparent calc(360deg - var(--ap-tail, 120deg)),
+    #ff6b6b calc(360deg - var(--ap-tail, 120deg) * 0.8),
+    #f7b32b calc(360deg - var(--ap-tail, 120deg) * 0.62),
+    #4ade80 calc(360deg - var(--ap-tail, 120deg) * 0.44),
+    #22d3ee calc(360deg - var(--ap-tail, 120deg) * 0.26),
+    #818cf8 calc(360deg - var(--ap-tail, 120deg) * 0.1),
+    #e879f9 360deg
+  );
+}
+
+/* ── Pointer spotlight ────────────────────────────────────────────────────
+ *
+ * --ap-mx / --ap-my are written by the provider's delegated pointer listener
+ * onto the nearest [data-ap-surface] ancestor, and inherit down to this layer.
+ */
+.ap-spot {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    220px circle at var(--ap-mx, 50%) var(--ap-my, 50%),
+    color-mix(in oklch, var(--ap-color, var(--primary)) 16%, transparent),
+    transparent 72%
+  );
+  opacity: 0.4;
+  transition: opacity 240ms ease;
+}
+
+[data-ap-surface]:hover > .ap-spot {
+  opacity: 1;
+}
+
+/* ── Surface sheen ────────────────────────────────────────────────────────
+ *
+ * A skewed band that crosses the card and then waits off-screen, so the
+ * surface is quiet most of the cycle.
+ */
+.ap-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ap-sheen::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: -60%;
+  /* Narrow on purpose: a band wider than a fifth of the card reads as a split
+   * down the middle rather than as light passing over it. */
+  width: 18%;
+  transform: skewX(-18deg);
+  background: linear-gradient(
+    105deg,
+    transparent 15%,
+    color-mix(in oklch, var(--ap-color, var(--primary)) 24%, transparent) 50%,
+    transparent 85%
+  );
+  animation: ap-sheen-run var(--ap-speed-sheen, 4.2s) ease-in-out infinite;
+}
+
+/* ── Breathing ring ───────────────────────────────────────────────────────
+ *
+ * box-shadow instead of a transformed layer: the glow spreads outside the
+ * border, so there is nothing to clip and nothing to keep in sync with radius.
+ */
+.ap-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: ap-pulse-ring var(--ap-speed, 2.8s) ease-in-out infinite;
+}
+
+/* A container that hosts an effect. It only guarantees the stacking context
+ * the layers need; radius and overflow stay the component's business. */
+[data-ap-surface] {
+  position: relative;
+}
+
+/* Nothing is painted until the server has answered. Without this gate a slow
+ * connection would show the shipped look and then remove it, which reads as a
+ * glitch; the attribute is set by the provider. */
+html:not([data-ap-ready]) .ap-glow,
+html:not([data-ap-ready]) .ap-spot,
+html:not([data-ap-ready]) .ap-sheen,
+html:not([data-ap-ready]) .ap-pulse {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-glow,
+  .ap-sheen::after,
+  .ap-pulse {
+    animation: none;
+  }
+  .ap-glow,
+  .ap-sheen {
+    display: none;
+  }
+  .ap-pulse {
+    box-shadow: 0 0 0 2px
+      color-mix(in oklch, var(--ap-color, var(--primary)) 30%, transparent);
+  }
+  .ap-spot {
+    opacity: 0;
+  }
+}
+
+/* ── Holiday skins ────────────────────────────────────────────────────────
+ *
+ * A holiday is a site-wide palette, not a decoration: it replaces the accent
+ * the whole console is drawn with, so buttons, links, selected rows and charts
+ * change together with the effect.
+ *
+ * The selector is a bare attribute rather than `body[...]` on purpose: the same
+ * rule has to paint the real site (attribute on <body>) and the preview card in
+ * the console (attribute on one div), and a nested card must win over the page
+ * it sits in. It ties with [data-theme-preset] on specificity, and this
+ * stylesheet is imported after it — so a holiday cancels a personal preset, not
+ * the other way round.
+ *
+ * Only colour tokens are overridden. Radius, font and density stay wherever the
+ * visitor put them — a holiday has no opinion about how round a corner is.
+ */
+[data-ap-holiday='spring-festival'] {
+  --primary: oklch(0.55 0.21 25);
+  --primary-foreground: oklch(1 0 0);
+  --ring: oklch(0.55 0.21 25);
+  --sidebar-primary: oklch(0.55 0.21 25);
+  --sidebar-ring: oklch(0.55 0.21 25);
+  --chart-1: oklch(0.55 0.21 25);
+  --chart-2: oklch(0.74 0.14 78);
+  --chart-3: oklch(0.64 0.17 40);
+  --chart-4: oklch(0.82 0.09 88);
+  --chart-5: oklch(0.44 0.15 20);
+}
+
+.dark [data-ap-holiday='spring-festival'] {
+  --primary: oklch(0.68 0.18 25);
+  --primary-foreground: oklch(0.14 0.02 25);
+  --ring: oklch(0.68 0.18 25);
+  --sidebar-primary: oklch(0.68 0.18 25);
+  --sidebar-ring: oklch(0.68 0.18 25);
+  --chart-1: oklch(0.68 0.18 25);
+  --chart-2: oklch(0.8 0.12 78);
+  --chart-3: oklch(0.72 0.16 40);
+  --chart-4: oklch(0.86 0.08 88);
+  --chart-5: oklch(0.6 0.15 20);
+}
+
+[data-ap-holiday='mid-autumn'] {
+  --primary: oklch(0.6 0.14 70);
+  --primary-foreground: oklch(1 0 0);
+  --ring: oklch(0.6 0.14 70);
+  --sidebar-primary: oklch(0.6 0.14 70);
+  --sidebar-ring: oklch(0.6 0.14 70);
+  --chart-1: oklch(0.6 0.14 70);
+  --chart-2: oklch(0.55 0.12 245);
+  --chart-3: oklch(0.72 0.1 85);
+  --chart-4: oklch(0.48 0.08 60);
+  --chart-5: oklch(0.84 0.06 90);
+}
+
+.dark [data-ap-holiday='mid-autumn'] {
+  --primary: oklch(0.78 0.13 78);
+  --primary-foreground: oklch(0.18 0.03 70);
+  --ring: oklch(0.78 0.13 78);
+  --sidebar-primary: oklch(0.78 0.13 78);
+  --sidebar-ring: oklch(0.78 0.13 78);
+  --chart-1: oklch(0.78 0.13 78);
+  --chart-2: oklch(0.68 0.11 245);
+  --chart-3: oklch(0.84 0.1 88);
+  --chart-4: oklch(0.62 0.08 60);
+  --chart-5: oklch(0.9 0.05 92);
+}
+
+[data-ap-holiday='national-day'] {
+  --primary: oklch(0.52 0.22 27);
+  --primary-foreground: oklch(1 0 0);
+  --ring: oklch(0.52 0.22 27);
+  --sidebar-primary: oklch(0.52 0.22 27);
+  --sidebar-ring: oklch(0.52 0.22 27);
+  --chart-1: oklch(0.52 0.22 27);
+  --chart-2: oklch(0.76 0.15 82);
+  --chart-3: oklch(0.62 0.18 35);
+  --chart-4: oklch(0.86 0.09 90);
+  --chart-5: oklch(0.42 0.16 22);
+}
+
+.dark [data-ap-holiday='national-day'] {
+  --primary: oklch(0.65 0.2 27);
+  --primary-foreground: oklch(0.14 0.02 25);
+  --ring: oklch(0.65 0.2 27);
+  --sidebar-primary: oklch(0.65 0.2 27);
+  --sidebar-ring: oklch(0.65 0.2 27);
+  --chart-1: oklch(0.65 0.2 27);
+  --chart-2: oklch(0.82 0.13 82);
+  --chart-3: oklch(0.72 0.17 35);
+  --chart-4: oklch(0.88 0.08 90);
+  --chart-5: oklch(0.58 0.17 22);
+}
+
+[data-ap-holiday='halloween'] {
+  --primary: oklch(0.62 0.17 50);
+  --primary-foreground: oklch(1 0 0);
+  --ring: oklch(0.62 0.17 50);
+  --sidebar-primary: oklch(0.62 0.17 50);
+  --sidebar-ring: oklch(0.62 0.17 50);
+  --chart-1: oklch(0.62 0.17 50);
+  --chart-2: oklch(0.45 0.16 300);
+  --chart-3: oklch(0.72 0.12 70);
+  --chart-4: oklch(0.38 0.1 295);
+  --chart-5: oklch(0.82 0.08 80);
+}
+
+.dark [data-ap-holiday='halloween'] {
+  --primary: oklch(0.73 0.16 55);
+  --primary-foreground: oklch(0.16 0.03 50);
+  --ring: oklch(0.73 0.16 55);
+  --sidebar-primary: oklch(0.73 0.16 55);
+  --sidebar-ring: oklch(0.73 0.16 55);
+  --chart-1: oklch(0.73 0.16 55);
+  --chart-2: oklch(0.62 0.18 300);
+  --chart-3: oklch(0.8 0.11 70);
+  --chart-4: oklch(0.55 0.12 295);
+  --chart-5: oklch(0.88 0.07 80);
+}
+
+[data-ap-holiday='christmas'] {
+  --primary: oklch(0.5 0.13 155);
+  --primary-foreground: oklch(1 0 0);
+  --ring: oklch(0.5 0.13 155);
+  --sidebar-primary: oklch(0.5 0.13 155);
+  --sidebar-ring: oklch(0.5 0.13 155);
+  --chart-1: oklch(0.5 0.13 155);
+  --chart-2: oklch(0.55 0.19 25);
+  --chart-3: oklch(0.72 0.11 150);
+  --chart-4: oklch(0.62 0.16 30);
+  --chart-5: oklch(0.84 0.06 150);
+}
+
+.dark [data-ap-holiday='christmas'] {
+  --primary: oklch(0.66 0.13 155);
+  --primary-foreground: oklch(0.14 0.02 155);
+  --ring: oklch(0.66 0.13 155);
+  --sidebar-primary: oklch(0.66 0.13 155);
+  --sidebar-ring: oklch(0.66 0.13 155);
+  --chart-1: oklch(0.66 0.13 155);
+  --chart-2: oklch(0.66 0.18 25);
+  --chart-3: oklch(0.76 0.11 150);
+  --chart-4: oklch(0.7 0.15 30);
+  --chart-5: oklch(0.88 0.05 150);
+}

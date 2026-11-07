@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { ROLE } from '@/lib/roles'
 
 import { SettingsSection } from '@/features/system-settings/components/settings-section'
+import { ApiduoGlow } from '@/features/apiduo-appearance'
 
 import { classifyNavAppHref, isClientLink } from '../lib/href'
 import {
@@ -487,8 +488,10 @@ export function NavAppsSection() {
         return (
           <div
             key={app.clientKey}
+            data-ap-surface=''
             className='flex flex-col gap-3 rounded-lg border p-3'
           >
+            <ApiduoGlow />
             <div className='flex items-center justify-between gap-2'>
               <div className='flex min-w-0 items-center gap-2'>
                 <Icon className='size-4 shrink-0 text-muted-foreground' />

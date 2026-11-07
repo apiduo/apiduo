@@ -239,6 +239,12 @@ import {
   type ModelMappingDraftRequest,
 } from '../model-mapping-editor'
 import { ModelRedirectPanel } from '../model-redirect-panel'
+/* APIDUO:multi-key-sticky:BEGIN */
+import { MultiKeyModeHint } from '../multi-key-mode-hint'
+/* APIDUO:multi-key-sticky:END */
+/* APIDUO:multi-key-min-active:BEGIN */
+import { MinActiveKeysField } from '../min-active-keys-field'
+/* APIDUO:multi-key-min-active:END */
 /* APIDUO:marks:BEGIN */
 import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
 /* APIDUO:marks:END */
@@ -4753,6 +4759,12 @@ export function ChannelMutateDrawer({
                             value: 'polling',
                             label: t('Polling'),
                           },
+                          /* APIDUO:multi-key-sticky:BEGIN */
+                          {
+                            value: 'sticky',
+                            label: t('Token Sticky'),
+                          },
+                          /* APIDUO:multi-key-sticky:END */
                         ]}
                         onValueChange={field.onChange}
                         value={field.value}
@@ -4770,10 +4782,19 @@ export function ChannelMutateDrawer({
                             <SelectItem value='polling'>
                               {t('Polling')}
                             </SelectItem>
+                            {/* APIDUO:multi-key-sticky:BEGIN */}
+                            <SelectItem value='sticky'>
+                              {t('Token Sticky')}
+                            </SelectItem>
+                            {/* APIDUO:multi-key-sticky:END */}
                           </SelectGroup>
                         </SelectContent>
                       </Select>
                       <FormDescription>
+                        {/* APIDUO:multi-key-sticky:BEGIN */}
+                        {multiKeyType !== 'sticky' && (
+                          <>
+                        {/* APIDUO:multi-key-sticky:END */}
                         {multiKeyType === 'polling' ? (
                           <span className='text-warning'>
                             {t(
@@ -4785,12 +4806,36 @@ export function ChannelMutateDrawer({
                             'Randomly select a key from the pool for each request'
                           )
                         )}
+                        {/* APIDUO:multi-key-sticky:BEGIN */}
+                          </>
+                        )}
+                        {multiKeyType === 'sticky' && (
+                          <MultiKeyModeHint mode='sticky' />
+                        )}
+                        {/* APIDUO:multi-key-sticky:END */}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               )}
+
+              {/* APIDUO:multi-key-min-active:BEGIN */}
+              {(isMultiKeyChannel ||
+                (!isEditing && multiKeyMode === 'multi_to_single')) && (
+                <FormField
+                  control={form.control}
+                  name='min_active_keys'
+                  render={({ field }) => (
+                    <MinActiveKeysField
+                      field={field}
+                      disabled={sensitiveLocked}
+                      statusList={currentRow?.channel_info?.multi_key_status_list}
+                    />
+                  )}
+                />
+              )}
+              {/* APIDUO:multi-key-min-active:END */}
             </ChannelAuthSection>
           </fieldset>
         </div>
@@ -5273,6 +5318,9 @@ export function ChannelMutateDrawer({
         <AdvancedCustomEditorDialog
           open={advancedCustomEditorOpen}
           value={formValues.advanced_custom || ''}
+          // APIDUO:coverage:BEGIN
+          channelModels={formValues.models}
+          // APIDUO:coverage:END
           onOpenChange={setAdvancedCustomEditorOpen}
           onSave={(nextValue) => {
             form.setValue('advanced_custom', nextValue, {

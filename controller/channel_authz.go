@@ -133,4 +133,7 @@ var channelNonSensitiveFields = map[string]struct{}{
 	"remark":              {},
 	"channel_info":        {},
 	"multi_key_mode":      {},
+	// APIDUO:multi-key-min-active:BEGIN
+	"min_active_keys": {},
+	// APIDUO:multi-key-min-active:END
 }

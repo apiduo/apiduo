@@ -24,6 +24,12 @@
 //	go run ./tools/markercheck -v              # 附带每个文件删除上游行的数量
 //	go run ./tools/markercheck -update         # 按当前实际情况重写遗留基线
 //	go run ./tools/markercheck -base <sha>     # 临时指定基线（排查用）
+//	go run ./tools/markercheck -cost           # 按文件打印合并面并与预算比对
+//	go run ./tools/markercheck -cost -update   # 收紧合并面预算
+//
+// 合并面预算 .apiduo/merge-budget.txt 记总量（上游文件数 / 标记块数 / 新增行 /
+// 删除上游行），只允许下调：功能收尾时跑 -cost -update 把数字压到新的实际值，
+// 想让它上涨就必须显式改一次预算，这比靠自觉可靠。
 package main
 
 import (
@@ -51,6 +57,17 @@ const (
 	headerFormat = "%-6s %-6s %-6s %s\n"
 	reportFormat = "%-6d %-6d %-6d %s\n"
 )
+
+const budgetFile = ".apiduo/merge-budget.txt"
+
+// budgetHeader 记录合并面的三个总量。单个文件允许波动，总量只允许下降：
+// 一个功能多占 20 块是设计失误，一百个功能各多占 2 块才是真正把 rebase 拖死的
+// 原因，而后者在逐文件视图里看不出来。
+const budgetHeader = `# 上游合并面预算：上游文件里我方插入的行、标记块、以及删除的上游行。
+# 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
+# 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
+# 格式：<key>	<value>
+`
 
 const baselineHeader = `# 历史遗留：同步点之前新增、尚未标记的非空行数。
 # 只允许下调。新增违规会让 CI 变红，用 go run ./tools/markercheck -update 收紧。
@@ -83,6 +100,7 @@ func main() {
 	baseFlag := flag.String("base", "", "覆盖基线提交（默认读 "+baseFile+"）")
 	update := flag.Bool("update", false, "按当前实际情况重写 "+baselineFile)
 	verbose := flag.Bool("v", false, "打印删除上游行的明细")
+	cost := flag.Bool("cost", false, "按文件打印合并面（块数/新增行/删除行）并与预算比对")
 	flag.Parse()
 
 	root, err := repositoryRoot()
@@ -105,6 +123,13 @@ func main() {
 		fail("%v", err)
 	}
 
+	if *cost {
+		if err := reportCost(reports, *update); err != nil {
+			fail("%v", err)
+		}
+		return
+	}
+
 	unmarked := make(map[string]int, len(reports))
 	for _, report := range reports {
 		if report.unmarked > 0 {
@@ -116,7 +141,10 @@ func main() {
 		if err := writeBaseline(unmarked); err != nil {
 			fail("写入遗留基线失败: %v", err)
 		}
-		fmt.Printf("已重写 %s（%d 个文件，共 %d 行）\n", baselineFile, len(unmarked), sum(unmarked))
+		if err := writeBudget(budgetTotals(reports)); err != nil {
+			fail("写入合并面预算失败: %v", err)
+		}
+		fmt.Printf("已重写 %s（%d 个文件，共 %d 行）与 %s\n", baselineFile, len(unmarked), sum(unmarked), budgetFile)
 		return
 	}
 
@@ -162,7 +190,169 @@ func main() {
 		os.Exit(1)
 	}
 
+	if grew := budgetGrowth(reports); len(grew) > 0 {
+		fmt.Printf("\n合并面超过预算（%d 项）：\n", len(grew))
+		for _, line := range grew {
+			fmt.Printf("  %s\n", line)
+		}
+		fmt.Println("\n新增挂接点要用在上游文件里不可替代的位置，能挪进新文件的就挪。")
+		os.Exit(1)
+	}
+
 	fmt.Printf("\n标记块覆盖检查通过（遗留欠账 %d 个文件 / %d 行）\n", len(unmarked), sum(unmarked))
+}
+
+// costRow 是一个上游文件的合并面：块越多、删得越多，未来 rebase 越难。
+type costRow struct {
+	file      string
+	blocks    int
+	added     int
+	deletions int
+}
+
+func countBlocks(path string) int {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, match := range markerPattern.FindAllSubmatch(content, -1) {
+		if string(match[2]) == "BEGIN" {
+			count++
+		}
+	}
+	return count
+}
+
+func costRows(reports []fileReport) []costRow {
+	rows := make([]costRow, 0, len(reports))
+	for _, report := range reports {
+		rows = append(rows, costRow{
+			file:      report.file,
+			blocks:    countBlocks(report.file),
+			added:     report.added,
+			deletions: report.deletions,
+		})
+	}
+	// 删除上游行排最前：新增行通常还能和上游的改动共存，删掉的行必然冲突。
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].deletions != rows[j].deletions {
+			return rows[i].deletions > rows[j].deletions
+		}
+		if rows[i].blocks != rows[j].blocks {
+			return rows[i].blocks > rows[j].blocks
+		}
+		return rows[i].file < rows[j].file
+	})
+	return rows
+}
+
+var budgetKeys = []string{"files", "blocks", "added", "deleted"}
+
+func budgetTotals(reports []fileReport) map[string]int {
+	totals := map[string]int{"files": len(reports)}
+	for _, report := range reports {
+		totals["blocks"] += countBlocks(report.file)
+		totals["added"] += report.added
+		totals["deleted"] += report.deletions
+	}
+	return totals
+}
+
+func readBudget() (map[string]int, error) {
+	budget := make(map[string]int, len(budgetKeys))
+	content, err := os.ReadFile(budgetFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return budget, nil
+		}
+		return nil, err
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		value, convErr := strconv.Atoi(fields[1])
+		if convErr != nil {
+			continue
+		}
+		budget[fields[0]] = value
+	}
+	return budget, nil
+}
+
+func writeBudget(totals map[string]int) error {
+	var out strings.Builder
+	out.WriteString(budgetHeader)
+	for _, key := range budgetKeys {
+		fmt.Fprintf(&out, "%s\t%d\n", key, totals[key])
+	}
+	return os.WriteFile(budgetFile, []byte(out.String()), 0o644)
+}
+
+// budgetGrowth 只比总量，不比单文件：单个功能多占几块是设计取舍，一百个功能
+// 各多占两块才是把 rebase 拖死的原因，而后者在逐文件视图里看不见。
+func budgetGrowth(reports []fileReport) []string {
+	budget, err := readBudget()
+	if err != nil || len(budget) == 0 {
+		return nil
+	}
+	totals := budgetTotals(reports)
+	var grew []string
+	for _, key := range budgetKeys {
+		allowed, ok := budget[key]
+		if ok && totals[key] > allowed {
+			grew = append(grew, fmt.Sprintf("%s  %d -> %d（多出 %d）", key, allowed, totals[key], totals[key]-allowed))
+		}
+	}
+	return grew
+}
+
+func reportCost(reports []fileReport, update bool) error {
+	rows := costRows(reports)
+	fmt.Printf("%-6s %-6s %-6s %s\n", "blocks", "added", "del", "file")
+	for _, row := range rows {
+		fmt.Printf("%-6d %-6d %-6d %s\n", row.blocks, row.added, row.deletions, row.file)
+	}
+
+	totals := budgetTotals(reports)
+	fmt.Printf("\n合计：上游文件 %d 个，标记块 %d 个，新增 %d 行，删除上游 %d 行\n",
+		totals["files"], totals["blocks"], totals["added"], totals["deleted"])
+
+	if update {
+		if err := writeBudget(totals); err != nil {
+			return err
+		}
+		fmt.Printf("已写入 %s\n", budgetFile)
+		return nil
+	}
+
+	budget, err := readBudget()
+	if err != nil {
+		return err
+	}
+	if len(budget) == 0 {
+		fmt.Println("尚无预算基线，确认数字后跑 go run ./tools/markercheck -cost -update 建立。")
+		return nil
+	}
+	for _, key := range budgetKeys {
+		allowed, ok := budget[key]
+		if !ok {
+			continue
+		}
+		switch delta := totals[key] - allowed; {
+		case delta > 0:
+			fmt.Printf("  %s 超预算 +%d（%d -> %d）\n", key, delta, allowed, totals[key])
+		case delta < 0:
+			fmt.Printf("  %s 可收紧 %d（%d -> %d）\n", key, -delta, allowed, totals[key])
+		}
+	}
+	return nil
 }
 
 func repositoryRoot() (string, error) {
@@ -237,7 +427,10 @@ func scan(base string, verbose bool) ([]fileReport, error) {
 }
 
 func changedFiles(base string) ([]string, error) {
-	out, err := gitOutput("diff", "--name-only", base, "HEAD")
+	// 不加 HEAD：比较的是基线提交与工作区，这样提交前的改动也会计入合并面。
+	// 只比 base..HEAD 会让「只在工作区碰过的上游文件」凭空消失，而那恰恰是
+	// 功能开发中最需要盯住的时刻。
+	out, err := gitOutput("diff", "--name-only", base)
 	if err != nil {
 		return nil, err
 	}
@@ -268,8 +461,12 @@ func skipByFormat(file string) bool {
 }
 
 // diffCounts 返回新增行在新文件里的行号，以及删除的行数。二进制文件返回空切片。
+//
+// 比较的是「基线 vs 工作区」，不是「基线 vs HEAD」：markedLines 读的是工作区文件，
+// 两边对齐才能算准行号。早先写成 HEAD，本地只要有一点未提交改动，行号就会整体
+// 错位，把已标记的行误判成违规。
 func diffCounts(base, file string) ([]int, int, error) {
-	out, err := gitOutput("diff", "-U0", base, "HEAD", "--", file)
+	out, err := gitOutput("diff", "-U0", base, "--", file)
 	if err != nil {
 		return nil, 0, err
 	}

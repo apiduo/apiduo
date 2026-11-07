@@ -1,6 +1,9 @@
 package advancedcustom
 
 import (
+	// APIDUO:image-edits-fold:BEGIN
+	"bytes"
+	// APIDUO:image-edits-fold:END
 	"errors"
 	"fmt"
 	"io"
@@ -273,6 +276,26 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 	if info.RelayMode == relayconstant.RelayModeAudioTranscription ||
 		info.RelayMode == relayconstant.RelayModeAudioTranslation ||
 		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
+		// APIDUO:image-edits-fold:BEGIN
+		// 下游调 edits（multipart）、上游只有 generations（收 JSON）时，
+		// 把表单折成 canonical JSON 再发；上游仍是 edits 端点时保持原样转发。
+		if info.RelayMode == relayconstant.RelayModeImagesEdits {
+			if body, handled, err := foldEditsRequestForJSONUpstream(c, a.route.UpstreamPath); handled {
+				if err != nil {
+					return nil, err
+				}
+				// 折叠后是 JSON，得让 SetupApiRequestHeader 带上 json 的 Content-Type
+				// （否则会把客户端的 multipart boundary 一起发上去）。发完立刻还原：
+				// 重试会用同一个 gin.Context 再走一遍 DoRequest，留着 JSON 头会让
+				// 重试把原始 multipart body 当 JSON 发出去。
+				originalContentType := c.Request.Header.Get("Content-Type")
+				c.Request.Header.Set("Content-Type", "application/json")
+				resp, requestErr := channel.DoApiRequest(a, c, info, bytes.NewReader(body))
+				c.Request.Header.Set("Content-Type", originalContentType)
+				return resp, requestErr
+			}
+		}
+		// APIDUO:image-edits-fold:END
 		return channel.DoFormRequest(a, c, info, requestBody)
 	}
 	if info.RelayMode == relayconstant.RelayModeRealtime {

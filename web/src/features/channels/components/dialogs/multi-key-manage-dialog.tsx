@@ -249,9 +249,13 @@ export function MultiKeyManageDialog({
             {currentRow.channel_info?.multi_key_mode && (
               <StatusBadge
                 label={
+                  /* APIDUO:multi-key-sticky:BEGIN */
                   currentRow.channel_info.multi_key_mode === 'random'
                     ? t('Random')
-                    : t('Polling')
+                    : currentRow.channel_info.multi_key_mode === 'sticky'
+                      ? t('Token Sticky')
+                      : t('Polling')
+                  /* APIDUO:multi-key-sticky:END */
                 }
                 variant='neutral'
                 copyable={false}

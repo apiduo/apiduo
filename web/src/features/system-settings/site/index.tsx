@@ -48,6 +48,20 @@ const defaultSiteSettings: SiteSettings = {
   'artifact_storage_setting.rewrite_paths': '[]',
   'artifact_storage_setting.field_names': '[]',
   // APIDUO:artifact-storage:END
+  // APIDUO:appearance:BEGIN
+  // Mirrors the server default so the first paint already matches what the
+  // gateway will answer with.
+  'apiduo_appearance_setting.enabled': true,
+  'apiduo_appearance_setting.style': 'flow',
+  'apiduo_appearance_setting.color': '',
+  'apiduo_appearance_setting.speed_ms': 3200,
+  'apiduo_appearance_setting.ring_px': 1.5,
+  'apiduo_appearance_setting.tail_deg': 120,
+  'apiduo_appearance_setting.glow': true,
+  'apiduo_appearance_setting.holiday': '',
+  'apiduo_appearance_setting.holiday_from': '',
+  'apiduo_appearance_setting.holiday_to': '',
+  // APIDUO:appearance:END
 }
 
 export function SiteSettings() {

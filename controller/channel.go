@@ -701,6 +701,10 @@ type AddChannelRequest struct {
 	MultiKeyMode              constant.MultiKeyMode `json:"multi_key_mode"`
 	BatchAddSetKeyPrefix2Name bool                  `json:"batch_add_set_key_prefix_2_name"`
 	Channel                   *model.Channel        `json:"channel"`
+
+	// APIDUO:multi-key-min-active:BEGIN
+	MinActiveKeys *int `json:"min_active_keys,omitempty"`
+	// APIDUO:multi-key-min-active:END
 }
 
 func getVertexArrayKeys(keys string) ([]string, []int, error) {
@@ -773,6 +777,11 @@ func AddChannel(c *gin.Context) {
 	case "multi_to_single":
 		addChannelRequest.Channel.ChannelInfo.IsMultiKey = true
 		addChannelRequest.Channel.ChannelInfo.MultiKeyMode = addChannelRequest.MultiKeyMode
+		// APIDUO:multi-key-min-active:BEGIN
+		if addChannelRequest.MinActiveKeys != nil && *addChannelRequest.MinActiveKeys > 0 {
+			addChannelRequest.Channel.ChannelInfo.MinActiveKeys = *addChannelRequest.MinActiveKeys
+		}
+		// APIDUO:multi-key-min-active:END
 		if addChannelRequest.Channel.Type == constant.ChannelTypeVertexAi && addChannelRequest.Channel.GetOtherSettings().VertexKeyType != dto.VertexKeyTypeAPIKey {
 			array, indices, err := getVertexArrayKeys(addChannelRequest.Channel.Key)
 			if err != nil {
@@ -1088,6 +1097,10 @@ type PatchChannel struct {
 	model.Channel
 	MultiKeyMode *string `json:"multi_key_mode"`
 	KeyMode      *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
+
+	// APIDUO:multi-key-min-active:BEGIN
+	MinActiveKeys *int `json:"min_active_keys,omitempty"`
+	// APIDUO:multi-key-min-active:END
 }
 
 type ChannelStatusRequest struct {
@@ -1177,6 +1190,13 @@ func UpdateChannel(c *gin.Context) {
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
 		channel.ChannelInfo.MultiKeyMode = constant.MultiKeyMode(*channel.MultiKeyMode)
 	}
+	// APIDUO:multi-key-min-active:BEGIN
+	// Zero is meaningful here: it turns the pool off and returns the channel to
+	// "every key active", so it must be applied even when the value is 0.
+	if channel.MinActiveKeys != nil {
+		channel.ChannelInfo.MinActiveKeys = *channel.MinActiveKeys
+	}
+	// APIDUO:multi-key-min-active:END
 
 	// 处理多key模式下的密钥追加/覆盖逻辑
 	if channel.KeyMode != nil && channel.ChannelInfo.IsMultiKey {

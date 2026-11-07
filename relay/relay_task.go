@@ -99,10 +99,16 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	info.LockedChannel = ch
 
 	if originTask.ChannelId != info.ChannelId {
-		key, _, newAPIError := ch.GetNextEnabledKey()
-		if newAPIError != nil {
-			return service.TaskErrorWrapper(newAPIError, "channel_no_available_key", newAPIError.StatusCode, common.UpstreamAddresses(c)...)
+		// APIDUO:multi-key-task-binding:BEGIN
+		// Same rule as the status poll: operate on the task with the key that
+		// owns it. Rotating here reaches a different upstream account and the
+		// task simply does not exist for it.
+		key, keyIndex := model.GetTaskKey(ch, originTask)
+		if key == "" {
+			return service.TaskErrorWrapperLocal(errors.New("channel has no usable key"), "channel_no_available_key", http.StatusBadRequest)
 		}
+		common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, keyIndex)
+		// APIDUO:multi-key-task-binding:END
 		common.SetContextKey(c, constant.ContextKeyChannelKey, key)
 		common.SetContextKey(c, constant.ContextKeyChannelType, ch.Type)
 		common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, ch.GetBaseURL())
@@ -546,6 +552,12 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	if adaptor == nil {
 		return nil
 	}
+	// APIDUO:multi-key-task-binding:BEGIN
+	// A task lives under the key that submitted it: any other key answers 404.
+	// Channel.Key on a multi-key channel is every key joined by newlines, so it
+	// is replaced with the single bound key — every use below then reads right.
+	channelModel.Key, _ = model.GetTaskKey(channelModel, task)
+	// APIDUO:multi-key-task-binding:END
 	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
 		ChannelType:     channelModel.Type,
 		ChannelId:       channelModel.Id,

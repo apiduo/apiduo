@@ -26,6 +26,9 @@ import {
   ChevronRight,
   CircleDollarSign,
   Code2,
+  // APIDUO:matrix-grid:BEGIN
+  Grid3x3,
+  // APIDUO:matrix-grid:END
   Info,
   ListTree,
   Plus,
@@ -77,6 +80,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+// APIDUO:coverage:BEGIN
+import { CoverageSummary } from '@/features/protocol-matrix/components/coverage-summary'
+// APIDUO:coverage:END
+// APIDUO:matrix-grid:BEGIN
+import { MatrixGrid } from '@/features/protocol-matrix/components/matrix-grid'
+import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
+// APIDUO:matrix-grid:END
 
 import {
   ADVANCED_CUSTOM_BALANCE_LABEL,
@@ -125,9 +135,20 @@ type AdvancedCustomEditorDialogProps = {
   value: string
   onOpenChange: (open: boolean) => void
   onSave: (value: string) => void
+  // APIDUO:coverage:BEGIN
+  /** 渠道声明的模型清单（逗号分隔），只用于覆盖视图，不写进配置。 */
+  channelModels?: string
+  // APIDUO:coverage:END
 }
 
-type AdvancedCustomEditorTab = 'forwarding' | 'models' | 'balance' | 'json'
+// APIDUO:matrix-grid:BEGIN
+type AdvancedCustomEditorTab =
+  | 'forwarding'
+  | 'matrix'
+  | 'models'
+  | 'balance'
+  | 'json'
+// APIDUO:matrix-grid:END
 
 const longSelectContentClass = 'w-[360px] max-w-[calc(100vw-2rem)]'
 const longSelectItemClass =
@@ -143,6 +164,9 @@ const catchAllOrderErrorMessage =
 const emptyAdvancedRoutes: AdvancedCustomRoute[] = []
 const advancedCustomTabs = new Set<AdvancedCustomEditorTab>([
   'forwarding',
+  // APIDUO:matrix-grid:BEGIN
+  'matrix',
+  // APIDUO:matrix-grid:END
   'models',
   'balance',
   'json',
@@ -258,6 +282,9 @@ export function AdvancedCustomEditorDialog({
   value,
   onOpenChange,
   onSave,
+  // APIDUO:coverage:BEGIN
+  channelModels,
+  // APIDUO:coverage:END
 }: AdvancedCustomEditorDialogProps) {
   const { t } = useTranslation()
   const routeKeyCounterRef = useRef(0)
@@ -707,12 +734,25 @@ export function AdvancedCustomEditorDialog({
         className='min-w-0 gap-0'
       >
         <div className='border-b px-4 py-3'>
-          <TabsList className='grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4'>
+          {/* APIDUO:matrix-grid:BEGIN */}
+          <TabsList className='grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5'>
+            {/* APIDUO:matrix-grid:END */}
             <TabsTrigger value='forwarding'>
               <ListTree className='size-4' aria-hidden='true' />
               {t('Forwarding Routes')}
               <Badge variant='outline'>{routeRows.length}</Badge>
             </TabsTrigger>
+            {/* APIDUO:matrix-grid:BEGIN */}
+            <TabsTrigger value='matrix'>
+              <Grid3x3 className='size-4' aria-hidden='true' />
+              <span
+                className='apiduo-text'
+                data-apiduo={apiduoBlockMark('channel:protocol-matrix')}
+              >
+                {t('Matrix')}
+              </span>
+            </TabsTrigger>
+            {/* APIDUO:matrix-grid:END */}
             <TabsTrigger value='models'>
               <ListTree className='size-4' aria-hidden='true' />
               {t('Model List')}
@@ -734,6 +774,24 @@ export function AdvancedCustomEditorDialog({
           </TabsList>
         </div>
 
+        {/* APIDUO:matrix-grid:BEGIN */}
+        <TabsContent value='matrix' className='p-4'>
+          <MatrixGrid
+            routes={config.advanced_routes}
+            models={channelModels}
+            onChange={(nextRoutes) => {
+              const stamp = Date.now()
+              replaceRoutes(
+                nextRoutes,
+                nextRoutes.map(
+                  (_, index) => `advanced-custom-route-matrix-${index}-${stamp}`
+                )
+              )
+            }}
+          />
+        </TabsContent>
+        {/* APIDUO:matrix-grid:END */}
+
         <TabsContent value='forwarding' className='flex flex-col gap-4 p-4'>
           <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
             <div>
@@ -743,6 +801,12 @@ export function AdvancedCustomEditorDialog({
               </p>
             </div>
             <div className='flex flex-wrap gap-2'>
+              {/* APIDUO:coverage:BEGIN */}
+              <CoverageSummary
+                routes={config.advanced_routes}
+                models={channelModels}
+              />
+              {/* APIDUO:coverage:END */}
               <Combobox
                 options={availableIncomingPathOptions}
                 value=''

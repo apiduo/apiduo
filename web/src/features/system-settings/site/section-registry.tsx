@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { SystemInfoSection } from '../general/system-info-section'
 import { NavAppsSection } from '@/features/nav-apps/admin/nav-apps-section'
+// APIDUO:appearance:BEGIN
+import { AppearanceSettingsSection } from '../integrations/appearance-settings-section'
+// APIDUO:appearance:END
 // APIDUO:artifact-storage:BEGIN
 import { ArtifactStorageSettingsSection } from '../integrations/artifact-storage-settings-section'
 // APIDUO:artifact-storage:END
@@ -102,6 +105,15 @@ const SITE_SECTIONS = [
     build: () => <NavAppsSection />,
   },
   // APIDUO:dynamic-nav:END
+  // APIDUO:appearance:BEGIN
+  {
+    id: 'appearance',
+    titleKey: 'Appearance effects',
+    build: (settings: SiteSettings) => (
+      <AppearanceSettingsSection settings={settings} />
+    ),
+  },
+  // APIDUO:appearance:END
   // APIDUO:artifact-storage:BEGIN
   {
     id: 'artifact-storage',

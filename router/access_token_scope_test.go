@@ -36,6 +36,11 @@ var accessTokenExemptRoutes = []string{
 	"GET /api/home_page_content",
 	"GET /api/ratio_config",
 	"GET /api/user/groups",
+	// APIDUO:appearance:BEGIN
+	// Public by design: drawn on surfaces that render before sign-in,
+	// and the reply is a colour plus three numbers.
+	"GET /api/appearance",
+	// APIDUO:appearance:END
 
 	// Anonymous account entry points.
 	"GET /api/verification",

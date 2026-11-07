@@ -38,6 +38,7 @@ import { Dialog } from '@/components/dialog'
 import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/loading-state'
 import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
+import { ApiduoGlow } from '@/features/apiduo-appearance'
 import { permissionMatrixToScopes } from '@/lib/admin-permissions'
 
 import { getAccessTokenCatalog } from '../api'
@@ -179,7 +180,9 @@ export function AgentKeysCard() {
       <Card
         data-card-hover='false'
         data-apiduo={apiduoBlockMark('security:agent-keys')}
+        data-ap-surface=''
       >
+        <ApiduoGlow />
         <CardHeader>
           <CardTitle>{t('Agent keys')}</CardTitle>
           <CardDescription>

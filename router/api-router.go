@@ -49,6 +49,12 @@ func SetApiRouter(router *gin.Engine) {
 		// APIDUO:agent-key:END
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
+		// APIDUO:appearance:BEGIN
+		// Public by design: the effect is drawn on apiduo's own surfaces, some of
+		// which render before sign-in. The reply carries a colour and three
+		// numbers, so there is nothing here to keep from an anonymous visitor.
+		apiRouter.GET("/appearance", controller.GetApiduoAppearance)
+		// APIDUO:appearance:END
 		// APIDUO:dynamic-nav:BEGIN
 		// Stored in the existing option table (CustomNavApps), so no schema
 		// change is involved. Reads are authenticated: entries may point at

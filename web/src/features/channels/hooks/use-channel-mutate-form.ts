@@ -94,9 +94,14 @@ export function useChannelMutateForm(props: UseChannelMutateFormParams) {
 
         const response = await updateChannel(props.currentRow.id, {
           ...payloadWithKeyMode,
+          /* APIDUO:multi-key-min-active:BEGIN */
           ...(canEditSensitive && props.isMultiKeyChannel
-            ? { multi_key_mode: data.multi_key_type }
+            ? {
+                multi_key_mode: data.multi_key_type,
+                min_active_keys: data.min_active_keys,
+              }
             : {}),
+          /* APIDUO:multi-key-min-active:END */
         })
         if (!response.success) {
           throw createServerError(response, t(ERROR_MESSAGES.UPDATE_FAILED))

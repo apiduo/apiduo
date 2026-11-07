@@ -29,7 +29,12 @@ export const channelInfoSchema = z.object({
   multi_key_disabled_reason: z.record(z.string(), z.string()).optional(),
   multi_key_disabled_time: z.record(z.string(), z.number()).optional(),
   multi_key_polling_index: z.number().default(0),
-  multi_key_mode: z.enum(['random', 'polling']).default('random'),
+  /* APIDUO:multi-key-sticky:BEGIN */
+  multi_key_mode: z.enum(['random', 'polling', 'sticky']).default('random'),
+  /* APIDUO:multi-key-min-active:BEGIN */
+  min_active_keys: z.number().int().min(0).optional(),
+  /* APIDUO:multi-key-min-active:END */
+  /* APIDUO:multi-key-sticky:END */
 })
 
 export type ChannelInfo = z.infer<typeof channelInfoSchema>
@@ -430,7 +435,9 @@ export interface ChannelFormData {
   other?: string
   // Multi-key specific
   multi_key_mode?: 'single' | 'batch' | 'multi_to_single'
-  multi_key_type?: 'random' | 'polling'
+  /* APIDUO:multi-key-sticky:BEGIN */
+  multi_key_type?: 'random' | 'polling' | 'sticky'
+  /* APIDUO:multi-key-sticky:END */
   batch_add_set_key_prefix_2_name?: boolean
 }
 
@@ -440,7 +447,12 @@ export interface ChannelFormData {
 
 export interface AddChannelRequest {
   mode: 'single' | 'batch' | 'multi_to_single'
-  multi_key_mode?: 'random' | 'polling'
+  /* APIDUO:multi-key-sticky:BEGIN */
+  multi_key_mode?: 'random' | 'polling' | 'sticky'
+  /* APIDUO:multi-key-sticky:END */
+  /* APIDUO:multi-key-min-active:BEGIN */
+  min_active_keys?: number
+  /* APIDUO:multi-key-min-active:END */
   batch_add_set_key_prefix_2_name?: boolean
   channel: Partial<Channel>
 }

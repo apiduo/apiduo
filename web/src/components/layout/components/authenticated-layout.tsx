@@ -28,6 +28,9 @@ import { useAuthStore } from '@/stores/auth-store'
 /* APIDUO:marks:BEGIN */
 import { ApiduoMarkDefs } from '@/features/apiduo-marks/mark-defs'
 /* APIDUO:marks:END */
+/* APIDUO:appearance:BEGIN */
+import { ApiduoAppearanceProvider } from '@/features/apiduo-appearance'
+/* APIDUO:appearance:END */
 
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
@@ -63,7 +66,13 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
-              {props.children ?? <AnimatedOutlet />}
+              {/* APIDUO:appearance:BEGIN */}
+              {/* Publishes the effect as :root variables, so a console edit
+                  retunes every mounted apiduo surface without a re-render. */}
+              <ApiduoAppearanceProvider>
+                {props.children ?? <AnimatedOutlet />}
+              </ApiduoAppearanceProvider>
+              {/* APIDUO:appearance:END */}
             </SidebarInset>
           </div>
         </SidebarProvider>

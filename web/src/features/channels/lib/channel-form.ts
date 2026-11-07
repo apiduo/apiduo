@@ -268,7 +268,12 @@ export const channelFormSchema = z
     other: z.string().optional(),
     // Multi-key options (not sent to backend directly)
     multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
-    multi_key_type: z.enum(['random', 'polling']).optional(),
+    /* APIDUO:multi-key-sticky:BEGIN */
+    multi_key_type: z.enum(['random', 'polling', 'sticky']).optional(),
+    /* APIDUO:multi-key-min-active:BEGIN */
+    min_active_keys: z.number().int().min(0).optional(),
+    /* APIDUO:multi-key-min-active:END */
+    /* APIDUO:multi-key-sticky:END */
     batch_add_set_key_prefix_2_name: z.boolean().optional(),
     key_mode: z.enum(['append', 'replace']).optional(), // For editing multi-key channels
     // Channel extra settings (stored in setting JSON, not sent directly)
@@ -490,6 +495,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   other: '',
   multi_key_mode: 'single',
   multi_key_type: 'random',
+  /* APIDUO:multi-key-min-active:BEGIN */
+  min_active_keys: 0,
+  /* APIDUO:multi-key-min-active:END */
   batch_add_set_key_prefix_2_name: false,
   key_mode: 'append',
   // Channel extra settings
@@ -676,6 +684,9 @@ export function transformChannelToFormDefaults(
     other: channel.other || '',
     multi_key_mode: 'single',
     multi_key_type: channel.channel_info.multi_key_mode || 'random',
+    /* APIDUO:multi-key-min-active:BEGIN */
+    min_active_keys: channel.channel_info.min_active_keys ?? 0,
+    /* APIDUO:multi-key-min-active:END */
     batch_add_set_key_prefix_2_name: false,
     key_mode: 'append', // Default to append mode for editing multi-key channels
     // Channel extra settings
@@ -928,7 +939,12 @@ function normalizeBaseUrl(value: string | undefined): string {
  */
 export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
   mode: 'single' | 'batch' | 'multi_to_single'
-  multi_key_mode?: 'random' | 'polling'
+  /* APIDUO:multi-key-sticky:BEGIN */
+  multi_key_mode?: 'random' | 'polling' | 'sticky'
+  /* APIDUO:multi-key-sticky:END */
+  /* APIDUO:multi-key-min-active:BEGIN */
+  min_active_keys?: number
+  /* APIDUO:multi-key-min-active:END */
   batch_add_set_key_prefix_2_name?: boolean
   channel: Partial<Channel>
 } {
@@ -969,6 +985,10 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     mode,
     multi_key_mode:
       mode === 'multi_to_single' ? formData.multi_key_type : undefined,
+    /* APIDUO:multi-key-min-active:BEGIN */
+    min_active_keys:
+      mode === 'multi_to_single' ? formData.min_active_keys : undefined,
+    /* APIDUO:multi-key-min-active:END */
     batch_add_set_key_prefix_2_name:
       mode === 'batch' ? formData.batch_add_set_key_prefix_2_name : undefined,
     channel,

@@ -1,4 +1,4 @@
-import { type LucideIcon, Database, PanelsTopLeft } from 'lucide-react'
+import { type LucideIcon, Database, PanelsTopLeft, Sparkles } from 'lucide-react'
 
 /**
  * Dashboard section tabs that apiduo added on top of upstream new-api.
@@ -42,6 +42,15 @@ export function apiduoTabMark(section: string): string | undefined {
 const APIDUO_BLOCKS: ReadonlySet<string> = new Set([
   'channel:file-relay',
   'channel:artifact-storage',
+  // The protocol matrix lives inside the upstream advanced-custom dialog: one
+  // tab (bulk editing) and one button (read-only coverage popover). Both are
+  // apiduo surfaces that upstream users would otherwise read as native.
+  'channel:protocol-matrix',
+  'channel:route-coverage',
+  // A third multi-key strategy: apiduo routes one token to one key.
+  'channel:multi-key-sticky',
+  // Pool width for multi-key channels: how many keys stay in rotation.
+  'channel:min-active-keys',
   'security:agent-keys',
   'token:ip-allowlist',
 ])
@@ -76,6 +85,7 @@ export function apiduoBlockMark(block: string): string | undefined {
 const APIDUO_SETTINGS_SECTIONS: ReadonlySet<string> = new Set([
   'nav-apps',
   'artifact-storage',
+  'appearance',
 ])
 
 /**
@@ -91,6 +101,7 @@ const APIDUO_SETTINGS_SECTIONS: ReadonlySet<string> = new Set([
 const APIDUO_SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   'nav-apps': PanelsTopLeft,
   'artifact-storage': Database,
+  appearance: Sparkles,
 }
 
 export function apiduoSettingsSectionIcon(

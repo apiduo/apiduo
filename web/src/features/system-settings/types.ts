@@ -158,6 +158,20 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
+  // APIDUO:appearance:BEGIN
+  // One scalar per field, matching the flat struct on the server. Inline rather
+  // than a separate type so the rows and the form stay in one place.
+  'apiduo_appearance_setting.enabled': boolean
+  'apiduo_appearance_setting.style': string
+  'apiduo_appearance_setting.color': string
+  'apiduo_appearance_setting.speed_ms': number
+  'apiduo_appearance_setting.ring_px': number
+  'apiduo_appearance_setting.tail_deg': number
+  'apiduo_appearance_setting.glow': boolean
+  'apiduo_appearance_setting.holiday': string
+  'apiduo_appearance_setting.holiday_from': string
+  'apiduo_appearance_setting.holiday_to': string
+  // APIDUO:appearance:END
 } & ArtifactStorageSettingKeys
 
 export type AuthSettings = {

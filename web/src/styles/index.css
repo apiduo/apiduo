@@ -32,6 +32,9 @@ For commercial licensing, please contact support@quantumnous.com
 /* APIDUO:marks:BEGIN */
 @import './apiduo-marks.css';
 /* APIDUO:marks:END */
+/* APIDUO:appearance:BEGIN */
+@import './apiduo-appearance.css';
+/* APIDUO:appearance:END */
 
 @layer base {
   :root {
