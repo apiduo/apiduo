@@ -75,6 +75,12 @@
     "OpenAI client → Responses upstream": "OpenAI client → Responses upstream",
     "Token Sticky": "Sticky par jeton",
     "Multi-key: Token sticky": "Multi-clé : Sticky par jeton",
-    "One token sticks to one key, so the upstream prompt cache keeps hitting": "Un jeton reste sur une seule clé, le cache de prompt en amont continue de toucher"
+    "One token sticks to one key, so the upstream prompt cache keeps hitting": "Un jeton reste sur une seule clé, le cache de prompt en amont continue de toucher",
+    "Flowing": "Flux",
+    "Rainbow": "Arc-en-ciel",
+    "Sheen": "Lustre",
+    "Pulse": "Impulsion",
+    "Restore defaults": "Rétablir les valeurs par défaut",
+    "Appearance presets": "Présélections d'apparence"
   }
 }

@@ -116,6 +116,12 @@
     "Standby": "備用",
     "Serve at most this many keys at once, in list order. The rest stay enabled but idle, and take a slot on their own when an active key is disabled. 0 serves every key.": "同時最多使用這麼多個金鑰，依列表順序取。其餘金鑰維持啟用但不參與選路；有金鑰被停用時自動補位。填 0 表示全部參與。",
     "Per endpoint": "整欄",
-    "{{serving}} of {{available}} available keys are in rotation now.": "目前 {{available}} 個可用金鑰中有 {{serving}} 個在輪轉。"
+    "{{serving}} of {{available}} available keys are in rotation now.": "目前 {{available}} 個可用金鑰中有 {{serving}} 個在輪轉。",
+    "Flowing": "流光",
+    "Rainbow": "彩虹",
+    "Sheen": "光澤",
+    "Pulse": "脈衝",
+    "Restore defaults": "恢復預設",
+    "Appearance presets": "外觀預設"
   }
 }

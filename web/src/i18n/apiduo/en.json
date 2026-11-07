@@ -112,6 +112,12 @@
     "Min active keys": "Min active keys",
     "Keep this many keys active; the rest stay on standby and step in when one is disabled. 0 keeps every key active.": "Keep this many keys active; the rest stay on standby and step in when one is disabled. 0 keeps every key active.",
     "Standby": "Standby",
-    "Per endpoint": "Per endpoint"
+    "Per endpoint": "Per endpoint",
+    "Flowing": "Flowing",
+    "Rainbow": "Rainbow",
+    "Sheen": "Sheen",
+    "Pulse": "Pulse",
+    "Restore defaults": "Restore defaults",
+    "Appearance presets": "Appearance presets"
   }
 }

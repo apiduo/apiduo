@@ -75,6 +75,12 @@
     "OpenAI client → Responses upstream": "OpenAI client → Responses upstream",
     "Token Sticky": "Привязка к токену",
     "Multi-key: Token sticky": "Мульти-ключ: Привязка к токену",
-    "One token sticks to one key, so the upstream prompt cache keeps hitting": "Один токен закрепляется за одним ключом, поэтому кэш промптов вышестоящего провайдера продолжает попадать"
+    "One token sticks to one key, so the upstream prompt cache keeps hitting": "Один токен закрепляется за одним ключом, поэтому кэш промптов вышестоящего провайдера продолжает попадать",
+    "Flowing": "Поток",
+    "Rainbow": "Радуга",
+    "Sheen": "Блеск",
+    "Pulse": "Пульс",
+    "Restore defaults": "Сбросить настройки",
+    "Appearance presets": "Пресеты оформления"
   }
 }

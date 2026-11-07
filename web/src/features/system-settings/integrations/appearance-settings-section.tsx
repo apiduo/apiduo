@@ -32,7 +32,6 @@ import {
   type ApiduoAppearance,
   type ApiduoEffectStyle,
 } from '@/features/apiduo-appearance'
-import { APIDUO_EFFECT_STYLES } from '@/features/apiduo-appearance/types'
 import { APIDUO_HOLIDAYS } from '@/features/apiduo-appearance/holidays'
 
 import {
@@ -53,6 +52,30 @@ const TAIL_MIN = 30
 const TAIL_MAX = 300
 
 /** Swatches are mid-luminance so the highlight stays legible on both themes. */
+/** Readable names for the effect styles: the enum value never reaches the UI. */
+const STYLE_LABELS: Record<ApiduoEffectStyle, string> = {
+  flow: 'Flowing',
+  rainbow: 'Rainbow',
+  spotlight: 'Spotlight',
+  sheen: 'Sheen',
+  pulse: 'Pulse',
+  none: 'None',
+}
+
+/** What "Restore defaults" puts back: the values a fresh install starts with. */
+const DEFAULT_APPEARANCE: ApiduoAppearance = {
+  enabled: true,
+  style: 'flow',
+  color: '',
+  speed_ms: 3200,
+  ring_px: 1.5,
+  tail_deg: 120,
+  glow: true,
+  holiday: '',
+  holiday_from: '',
+  holiday_to: '',
+}
+
 const COLOR_SWATCHES = [
   { value: '', labelKey: 'Theme' },
   { value: '#e11d48', labelKey: 'Red' },
@@ -199,11 +222,18 @@ export function AppearanceSettingsSection(props: {
     await queryClient.invalidateQueries({ queryKey: ['apiduo-appearance'] })
   }
 
+  // Reset only touches the form. The stored configuration changes when the
+  // operator saves, so a misclick is undone by reloading the page.
+  const onReset = () => setState(DEFAULT_APPEARANCE)
+
   return (
     <SettingsSection title={t('Appearance effects')}>
       <SettingsPageFormActions
         onSave={onSave}
+        onReset={onReset}
         isSaving={updateOptions.isPending}
+        isResetDisabled={!dirty}
+        resetLabel='Restore defaults'
       />
 
       <div className='space-y-8'>
@@ -226,7 +256,7 @@ export function AppearanceSettingsSection(props: {
         </SettingsFormGrid>
 
         <div className='space-y-3'>
-          <Label>{t('Style')}</Label>
+          <Label>{t('Appearance presets')}</Label>
           <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5'>
             {APPEARANCE_PRESETS.map((preset) => (
               <button
@@ -289,7 +319,7 @@ export function AppearanceSettingsSection(props: {
             <Input
               type='color'
               aria-label={t('Custom colour')}
-              className='h-7 w-9 cursor-pointer p-0.5'
+              className='size-7 cursor-pointer appearance-none rounded-full border border-black/10 bg-transparent p-0 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0'
               value={state.color || '#3b82f6'}
               onChange={(event) => patch({ color: event.target.value })}
             />
@@ -468,12 +498,6 @@ export function AppearanceSettingsSection(props: {
             </div>
           )}
         </div>
-
-        <p className='text-muted-foreground text-[11px]'>
-          {t('Styles available: {{styles}}', {
-            styles: APIDUO_EFFECT_STYLES.join(', '),
-          })}
-        </p>
       </div>
     </SettingsSection>
   )
@@ -544,7 +568,8 @@ function AppearancePreview(props: { appearance: ApiduoAppearance }) {
         </div>
         <div className='text-muted-foreground flex flex-col justify-center gap-1 text-xs'>
           <p>
-            {t('Style')}: <span className='text-foreground'>{style}</span>
+            {t('Style')}:{' '}
+            <span className='text-foreground'>{t(STYLE_LABELS[style])}</span>
           </p>
           <p>
             {t('Highlight colour')}:{' '}

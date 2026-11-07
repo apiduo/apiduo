@@ -79,6 +79,12 @@
     "OpenAI client → Claude upstream": "OpenAI client → Claude upstream",
     "OpenAI client → Gemini upstream": "OpenAI client → Gemini upstream",
     "OpenAI client → Responses upstream": "OpenAI client → Responses upstream",
-    "Token Sticky": "トークン固定"
+    "Token Sticky": "トークン固定",
+    "Flowing": "流れる光",
+    "Rainbow": "レインボー",
+    "Sheen": "光沢",
+    "Pulse": "パルス",
+    "Restore defaults": "既定値に戻す",
+    "Appearance presets": "外観プリセット"
   }
 }
