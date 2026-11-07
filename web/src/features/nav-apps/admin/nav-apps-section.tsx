@@ -1,20 +1,22 @@
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { Reorder, useDragControls } from 'motion/react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { ROLE } from '@/lib/roles'
-
-import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { ApiduoGlow } from '@/features/apiduo-appearance'
+import { SettingsSection } from '@/features/system-settings/components/settings-section'
+import { ROLE } from '@/lib/roles'
+import { cn } from '@/lib/utils'
 
-import { classifyNavAppHref, isClientLink } from '../lib/href'
-import {
-  NAV_APP_ICON_OPTIONS,
-  navAppIcon,
-} from '../lib/icons'
-import { isSameSite } from '../lib/render'
-import { navAppUsesTemplate } from '../lib/template'
 import {
   NAV_APP_MAX_COUNT,
   NAV_APP_ROLE_OPTIONS,
@@ -25,6 +27,10 @@ import {
   navAppPlacementTop,
 } from '../constants'
 import { useAllNavApps, useSaveNavApps } from '../hooks'
+import { classifyNavAppHref, isClientLink } from '../lib/href'
+import { NAV_APP_ICON_OPTIONS, navAppIcon } from '../lib/icons'
+import { DEFAULT_NAV_APP_GROUP_ID, isSameSite } from '../lib/render'
+import { navAppUsesTemplate } from '../lib/template'
 import type {
   NavApp,
   NavAppDisplayType,
@@ -55,6 +61,17 @@ const BUILTIN_NAV_GROUP_LABELS: Record<string, string> = {
 }
 
 /**
+ * Every heading that can appear in the sidebar, including the one holding
+ * entries with no explicit group. `orderSidebarGroups` ranks ids missing from
+ * the stored order last, so leaving the default group out pins custom entries
+ * to the bottom with no way to move them.
+ */
+const SORTABLE_GROUP_IDS: readonly string[] = [
+  ...BUILTIN_NAV_GROUP_IDS,
+  DEFAULT_NAV_APP_GROUP_ID,
+]
+
+/**
  * Draft rows carry a client-only key.
  *
  * The slug cannot serve as the React key: it is edited in place, so using it
@@ -72,6 +89,144 @@ function targetsThisSite(href: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * One row of the sidebar order list.
+ *
+ * Only the handle starts the gesture: custom group rows also hold a text input,
+ * and a draggable container would swallow its text selection. motion's Reorder
+ * is the same primitive the built-in auto-group editor uses, so pointer, touch
+ * and keyboard reordering behave consistently across the console.
+ */
+type SortableGroupRowProps = {
+  id: string
+  index: number
+  custom?: NavAppGroup
+  defaultTitle: string
+  onRename: (slug: string, name: string) => void
+  onRemove: (slug: string) => void
+  onMove: (from: number, to: number) => void
+}
+
+const dragHandleClass =
+  'text-muted-foreground flex size-6 shrink-0 touch-none cursor-grab items-center justify-center rounded active:cursor-grabbing'
+
+function SortableGroupRow(props: SortableGroupRowProps) {
+  const { t } = useTranslation()
+  const dragControls = useDragControls()
+  const { id, custom, index } = props
+  const isDefaultGroup = id === DEFAULT_NAV_APP_GROUP_ID
+  const builtinLabel = BUILTIN_NAV_GROUP_LABELS[id]
+  let label = id
+  if (custom) {
+    label = custom.name
+  } else if (isDefaultGroup) {
+    label = props.defaultTitle.trim() || t('Apps')
+  } else if (builtinLabel) {
+    label = t(builtinLabel)
+  }
+
+  let kindLabel = t('Built-in')
+  if (custom) {
+    kindLabel = custom.slug
+  } else if (isDefaultGroup) {
+    kindLabel = t('Default group')
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    event.preventDefault()
+    props.onMove(index, index + (event.key === 'ArrowUp' ? -1 : 1))
+  }
+
+  return (
+    <Reorder.Item
+      value={id}
+      dragListener={false}
+      dragMomentum={false}
+      dragControls={dragControls}
+      className='bg-background flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm'
+    >
+      <button
+        type='button'
+        className={`${dragHandleClass} -ml-1`}
+        aria-label={t('Drag {{group}} to reorder', { group: label })}
+        title={t('Drag {{group}} to reorder', { group: label })}
+        onPointerDown={(event: PointerEvent<HTMLButtonElement>) =>
+          dragControls.start(event)
+        }
+        onKeyDown={onKeyDown}
+      >
+        <GripVertical className='size-4' aria-hidden='true' />
+      </button>
+
+      {custom ? (
+        <input
+          className='border-input bg-background min-w-0 flex-1 rounded border px-1.5 py-0.5 text-sm'
+          value={custom.name}
+          maxLength={100}
+          onChange={(event) => props.onRename(id, event.target.value)}
+        />
+      ) : (
+        <span className='min-w-0 flex-1 truncate'>{label}</span>
+      )}
+
+      <span className='text-muted-foreground shrink-0 text-[10px]'>
+        {kindLabel}
+      </span>
+
+      {custom ? (
+        <button
+          type='button'
+          className={buttonClass}
+          onClick={() => props.onRemove(id)}
+          aria-label={t('Delete')}
+        >
+          <Trash2 className='size-3' />
+        </button>
+      ) : null}
+    </Reorder.Item>
+  )
+}
+
+/**
+ * Makes one entry card draggable without moving its (large) form into a child
+ * component. The render prop hands the handle back to the call site, so the
+ * inputs stay exactly where they were and only the handle starts a drag.
+ */
+function SortableEntryCard(props: {
+  value: string
+  label: string
+  children: (handle: ReactNode) => ReactNode
+}) {
+  const { t } = useTranslation()
+  const dragControls = useDragControls()
+  const handle = (
+    <button
+      type='button'
+      className={dragHandleClass}
+      aria-label={t('Drag {{group}} to reorder', { group: props.label })}
+      title={t('Drag {{group}} to reorder', { group: props.label })}
+      onPointerDown={(event: PointerEvent<HTMLButtonElement>) =>
+        dragControls.start(event)
+      }
+    >
+      <GripVertical className='size-4' aria-hidden='true' />
+    </button>
+  )
+
+  return (
+    <Reorder.Item
+      value={props.value}
+      dragListener={false}
+      dragMomentum={false}
+      dragControls={dragControls}
+      className='relative list-none'
+    >
+      {props.children(handle)}
+    </Reorder.Item>
+  )
 }
 
 function NextSlug(apps: NavApp[]): string {
@@ -93,10 +248,8 @@ export function NavAppsSection() {
   const [groupTitle, setGroupTitle] = useState('')
   // Administrator-defined headings.
   const [groups, setGroups] = useState<NavAppGroup[]>([])
-  // Top-level sidebar order, covering both custom and built-in groups.
+  // Top-level sidebar order, covering custom, default and built-in groups.
   const [groupOrder, setGroupOrder] = useState<string[]>([])
-  // Index of the row being dragged, or null.
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
 
   // Seed once. A background refetch (for example on window focus) must not
   // overwrite edits the admin has not saved yet.
@@ -106,21 +259,33 @@ export function NavAppsSection() {
   const revisionRef = useRef('')
   useEffect(() => {
     if (seeded.current) return
-    if (data?.success && data.data) {
-      setDraft(data.data.map(toDraft))
+    // A fresh installation serialises the empty list as `null`. The form still
+    // has to seed its group order then, otherwise the sortable rows are missing
+    // until the first entry is saved.
+    if (data?.success) {
+      setDraft(Array.isArray(data.data) ? data.data.map(toDraft) : [])
       setGroupTitle(data.group_title ?? '')
       const seededGroups = Array.isArray(data.groups) ? data.groups : []
       setGroups(seededGroups)
       // Any custom group missing from the stored order is appended, so a group
       // created by a script still appears in the editor.
-      const storedOrder = Array.isArray(data.group_order) ? data.group_order : []
-      const known = new Set([...storedOrder, ...BUILTIN_NAV_GROUP_IDS])
+      // A duplicated id would give two Reorder.Item nodes the same value and
+      // break the drag gesture, so the stored list is normalised on the way in.
+      const storedOrder = Array.isArray(data.group_order)
+        ? [...new Set(data.group_order)]
+        : []
+      const known = new Set([...storedOrder, ...SORTABLE_GROUP_IDS])
       const merged = [
         ...storedOrder,
-        ...seededGroups.map((group) => group.slug).filter((slug) => !known.has(slug)),
+        ...seededGroups
+          .map((group) => group.slug)
+          .filter((slug) => !known.has(slug)),
       ]
-      for (const builtin of BUILTIN_NAV_GROUP_IDS) {
-        if (!merged.includes(builtin)) merged.push(builtin)
+      // Orders saved before this release have no entry for the default group.
+      // Appending it keeps the familiar bottom position instead of making the
+      // group jump to the top the first time the page is opened.
+      for (const id of SORTABLE_GROUP_IDS) {
+        if (!merged.includes(id)) merged.push(id)
       }
       setGroupOrder(merged)
       revisionRef.current = data.revision ?? ''
@@ -131,7 +296,8 @@ export function NavAppsSection() {
   // Slugs already committed cannot change: they are the identity the sidebar
   // and the frame route use.
   const persistedSlugs = useMemo(
-    () => new Set((data?.success && data.data ? data.data : []).map((a) => a.slug)),
+    () =>
+      new Set((data?.success && data.data ? data.data : []).map((a) => a.slug)),
     [data]
   )
 
@@ -171,6 +337,7 @@ export function NavAppsSection() {
   const moveGroup = (from: number, to: number) => {
     if (from === to) return
     setGroupOrder((current) => {
+      if (to < 0 || to >= current.length) return current
       const next = [...current]
       const [moved] = next.splice(from, 1)
       if (moved === undefined) return current
@@ -179,7 +346,24 @@ export function NavAppsSection() {
     })
   }
 
+  // Client keys, not slugs: a slug is editable and would change identity
+  // mid-edit, which makes a reorder list lose the row it is dragging.
+  const entryKeys = useMemo(() => draft.map((app) => app.clientKey), [draft])
+
+  const reorderEntries = (keys: string[]) => {
+    setDraft((current) => {
+      const byKey = new Map(current.map((entry) => [entry.clientKey, entry]))
+      const next = keys
+        .map((key) => byKey.get(key))
+        .filter((entry): entry is DraftEntry => entry !== undefined)
+      return next.length === current.length ? next : current
+    })
+  }
+
   const patch = (index: number, values: Partial<NavApp>) => {
+    setErrorClientKey((current) =>
+      current && draft[index]?.clientKey === current ? null : current
+    )
     setDraft((current) =>
       current.map((app, position) =>
         position === index ? { ...app, ...values } : app
@@ -199,7 +383,9 @@ export function NavAppsSection() {
 
   const remove = (index: number) => {
     const app = draft[index]
-    if (!window.confirm(t('Delete {{name}}?', { name: app.name || app.slug }))) {
+    if (
+      !window.confirm(t('Delete {{name}}?', { name: app.name || app.slug }))
+    ) {
       return
     }
     setDraft((current) => current.filter((_, position) => position !== index))
@@ -208,7 +394,9 @@ export function NavAppsSection() {
   const add = () => {
     if (draft.length >= NAV_APP_MAX_COUNT) {
       toast.error(
-        t('Navigation entries are limited to {{max}}.', { max: NAV_APP_MAX_COUNT })
+        t('Navigation entries are limited to {{max}}.', {
+          max: NAV_APP_MAX_COUNT,
+        })
       )
       return
     }
@@ -230,11 +418,43 @@ export function NavAppsSection() {
     ])
   }
 
+  // A shortcut for the common case: most sites serve /favicon.ico. The
+  // backend only accepts https icons, so a plain-http target cannot supply one.
+  const applyTargetIcon = (index: number, href: string) => {
+    try {
+      const parsed = new URL(href)
+      if (parsed.protocol !== 'https:') {
+        toast.error(t('Icon URL must be an https address on a public host'))
+        return
+      }
+      patch(index, { icon_url: `${parsed.origin}/favicon.ico` })
+    } catch {
+      toast.error(t('Icon URL must be an https address on a public host'))
+    }
+  }
+
+  // A rejected save used to be a toast and nothing else. On a twelve-field,
+  // multi-row form the operator cannot tell which row is wrong, so the save
+  // button looks dead. Flag the offending row and scroll it into view; editing
+  // that row clears the mark.
+  const [errorClientKey, setErrorClientKey] = useState<string | null>(null)
+
+  const flagInvalidEntry = (app: DraftEntry, message: string) => {
+    setErrorClientKey(app.clientKey)
+    toast.error(message)
+    // Wait one frame so the highlight exists before the scroll measures it.
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`nav-app-row-${app.clientKey}`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+  }
+
   const onSave = async () => {
     const seen = new Set<string>()
     for (const app of draft) {
       if (!slugPattern.test(app.slug)) {
-        toast.error(
+        flagInvalidEntry(app,
           t(
             'Slug must use lowercase letters, digits and hyphens, and start with a letter or digit'
           )
@@ -242,25 +462,49 @@ export function NavAppsSection() {
         return
       }
       if (!app.name.trim()) {
-        toast.error(t('Every entry needs a name'))
+        flagInvalidEntry(app, t('Every entry needs a name'))
         return
       }
       if (app.name_i18n.trim()) {
         let shapeOk = false
         try {
           const parsed = JSON.parse(app.name_i18n) as unknown
-          shapeOk = Boolean(parsed) && typeof parsed === 'object' && !Array.isArray(parsed)
+          shapeOk =
+            Boolean(parsed) &&
+            typeof parsed === 'object' &&
+            !Array.isArray(parsed)
         } catch {
           shapeOk = false
         }
         if (!shapeOk) {
-          toast.error(t('Localized names must be a JSON object of language tag to text'))
+          flagInvalidEntry(app,
+            t('Localized names must be a JSON object of language tag to text')
+          )
+          return
+        }
+      }
+      const iconUrl = app.icon_url?.trim() ?? ''
+      if (iconUrl) {
+        let iconOk = false
+        try {
+          const parsed = new URL(iconUrl)
+          iconOk =
+            parsed.protocol === 'https:' &&
+            !parsed.username &&
+            !parsed.password &&
+            (!parsed.port || parsed.port === '443') &&
+            iconUrl.length <= 512
+        } catch {
+          iconOk = false
+        }
+        if (!iconOk) {
+          flagInvalidEntry(app, t('Icon URL must be an https address on a public host'))
           return
         }
       }
       const hrefKind = classifyNavAppHref(app.href)
       if (!hrefKind) {
-        toast.error(
+        flagInvalidEntry(app,
           t(
             'Target address must be an absolute http(s) URL or a client link such as cherrystudio://'
           )
@@ -268,7 +512,7 @@ export function NavAppsSection() {
         return
       }
       if (hrefKind === 'web' && targetsThisSite(app.href)) {
-        toast.error(
+        flagInvalidEntry(app,
           t('A navigation entry cannot point at this site. Use another host.')
         )
         return
@@ -277,8 +521,10 @@ export function NavAppsSection() {
       // an error. The server rejects this too; catching it here keeps the
       // message next to the row instead of arriving as a failed save.
       if (hrefKind === 'app' && app.display_type === navAppDisplayIframe) {
-        toast.error(
-          t('A client link cannot be embedded. Choose the new tab option instead')
+        flagInvalidEntry(app,
+          t(
+            'A client link cannot be embedded. Choose the new tab option instead'
+          )
         )
         return
       }
@@ -290,7 +536,7 @@ export function NavAppsSection() {
         app.display_type === navAppDisplayIframe &&
         navAppUsesTemplate(app.href)
       ) {
-        toast.error(
+        flagInvalidEntry(app,
           t(
             'A template cannot be embedded. Choose the new tab option or a client link instead'
           )
@@ -298,7 +544,7 @@ export function NavAppsSection() {
         return
       }
       if (seen.has(app.slug)) {
-        toast.error(t('Slug {{slug}} is already in use', { slug: app.slug }))
+        flagInvalidEntry(app, t('Slug {{slug}} is already in use', { slug: app.slug }))
         return
       }
       seen.add(app.slug)
@@ -319,6 +565,10 @@ export function NavAppsSection() {
       sort: index,
       enabled: entry.enabled,
       parent_slug: entry.parent_slug || undefined,
+      // Omitting this silently moved every entry back into the default group
+      // on save, which also made the per-group ordering controls look broken.
+      group_slug: entry.group_slug || undefined,
+      icon_url: entry.icon_url?.trim() || undefined,
     }))
 
     let result
@@ -335,6 +585,7 @@ export function NavAppsSection() {
       return
     }
     if (result.success && Array.isArray(result.data)) {
+      setErrorClientKey(null)
       setDraft(result.data.map(toDraft))
       if (Array.isArray(result.groups)) setGroups(result.groups)
       if (Array.isArray(result.group_order)) setGroupOrder(result.group_order)
@@ -344,7 +595,7 @@ export function NavAppsSection() {
 
   return (
     <SettingsSection title={t('Custom navigation entries')}>
-      <p className='text-xs text-muted-foreground'>
+      <p className='text-muted-foreground text-xs'>
         {t(
           'Add applications to the sidebar or header. Entries are stored in the existing option table, so no database migration is involved. A target is either an absolute http(s) address on another host, or a client link such as cherrystudio://providers/api-keys. Placeholders are substituted when the entry is clicked: {key} and the client payloads {cherryConfig} {aionuiConfig} {deepchatConfig} {aqbotConfig} use the signed-in user’s own API key, {address} and {base_url} use this deployment’s address. Never type a credential into the address itself, because everyone who can see the entry can read it.'
         )}
@@ -352,7 +603,9 @@ export function NavAppsSection() {
 
       <div className='space-y-2'>
         <div className='flex flex-wrap items-center justify-between gap-2'>
-          <span className='text-xs font-medium'>{t('Sidebar order')}</span>
+          <span className='text-xs font-medium' data-apiduo='text'>
+            {t('Sidebar order')}
+          </span>
           <button type='button' className={buttonClass} onClick={addGroup}>
             <Plus className='size-3' />
             {t('Add group')}
@@ -364,71 +617,25 @@ export function NavAppsSection() {
           )}
         </p>
 
-        <div className='space-y-1'>
-          {groupOrder.map((id, index) => {
-            const custom = groups.find((group) => group.slug === id)
-            const builtinLabel = BUILTIN_NAV_GROUP_LABELS[id]
-            return (
-              <div
-                key={id}
-                draggable
-                onDragStart={() => setDragIndex(index)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (dragIndex !== null) moveGroup(dragIndex, index)
-                  setDragIndex(null)
-                }}
-                onDragEnd={() => setDragIndex(null)}
-                className={`bg-background flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm ${
-                  dragIndex === index ? 'opacity-50' : ''
-                }`}
-              >
-                <svg
-                  width='10'
-                  height='10'
-                  viewBox='0 0 10 10'
-                  className='text-muted-foreground shrink-0 cursor-grab'
-                  aria-hidden='true'
-                >
-                  <path
-                    d='M2 3h6M2 5h6M2 7h6'
-                    stroke='currentColor'
-                    strokeWidth='1.2'
-                    strokeLinecap='round'
-                  />
-                </svg>
-
-                {custom ? (
-                  <input
-                    className='border-input bg-background min-w-0 flex-1 rounded border px-1.5 py-0.5 text-sm'
-                    value={custom.name}
-                    maxLength={100}
-                    onChange={(event) => renameGroup(id, event.target.value)}
-                  />
-                ) : (
-                  <span className='min-w-0 flex-1 truncate'>
-                    {builtinLabel ? t(builtinLabel) : id}
-                  </span>
-                )}
-
-                <span className='text-muted-foreground shrink-0 text-[10px]'>
-                  {custom ? custom.slug : t('Built-in')}
-                </span>
-
-                {custom ? (
-                  <button
-                    type='button'
-                    className={buttonClass}
-                    onClick={() => removeGroup(id)}
-                    aria-label={t('Delete')}
-                  >
-                    <Trash2 className='size-3' />
-                  </button>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
+        <Reorder.Group
+          axis='y'
+          values={groupOrder}
+          onReorder={setGroupOrder}
+          className='flex list-none flex-col gap-1 p-0'
+        >
+          {groupOrder.map((id, index) => (
+            <SortableGroupRow
+              key={id}
+              id={id}
+              index={index}
+              custom={groups.find((group) => group.slug === id)}
+              defaultTitle={groupTitle}
+              onRename={renameGroup}
+              onRemove={removeGroup}
+              onMove={moveGroup}
+            />
+          ))}
+        </Reorder.Group>
       </div>
 
       <div className='space-y-1.5'>
@@ -462,7 +669,7 @@ export function NavAppsSection() {
         >
           {save.isPending ? t('Saving...') : t('Save navigation entries')}
         </button>
-        <span className='text-[11px] text-muted-foreground'>
+        <span className='text-muted-foreground text-[11px]'>
           {t('{{count}} of {{max}} used', {
             count: draft.length,
             max: NAV_APP_MAX_COUNT,
@@ -471,314 +678,389 @@ export function NavAppsSection() {
       </div>
 
       {isLoading && (
-        <p className='text-xs text-muted-foreground'>{t('Loading...')}</p>
+        <p className='text-muted-foreground text-xs'>{t('Loading...')}</p>
       )}
 
       {!isLoading && draft.length === 0 && (
-        <p className='rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground'>
+        <p className='text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-xs'>
           {t('No custom entries yet.')}
         </p>
       )}
 
-      {draft.map((app, index) => {
-        const Icon = navAppIcon(app.icon)
-        const slugLocked = persistedSlugs.has(app.slug)
-        const clientLink = isClientLink(app.href)
-        const templated = navAppUsesTemplate(app.href)
-        return (
-          <div
-            key={app.clientKey}
-            data-ap-surface=''
-            className='flex flex-col gap-3 rounded-lg border p-3'
-          >
-            <ApiduoGlow />
-            <div className='flex items-center justify-between gap-2'>
-              <div className='flex min-w-0 items-center gap-2'>
-                <Icon className='size-4 shrink-0 text-muted-foreground' />
-                <span className='truncate text-sm font-medium'>
-                  {app.name || t('Untitled entry')}
-                </span>
-                <span className='shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground'>
-                  {app.display_type === navAppDisplayIframe
-                    ? t('Embedded')
-                    : clientLink
-                      ? t('Client app')
-                      : t('New tab')}
-                </span>
-              </div>
-              <div className='flex shrink-0 items-center gap-1'>
-                <button
-                  type='button'
-                  className={buttonClass}
-                  onClick={() => move(index, -1)}
-                  disabled={index === 0}
-                  aria-label={t('Move up')}
-                >
-                  <ArrowUp className='size-3' />
-                </button>
-                <button
-                  type='button'
-                  className={buttonClass}
-                  onClick={() => move(index, 1)}
-                  disabled={index === draft.length - 1}
-                  aria-label={t('Move down')}
-                >
-                  <ArrowDown className='size-3' />
-                </button>
-                <button
-                  type='button'
-                  className={buttonClass}
-                  onClick={() => remove(index)}
-                  aria-label={t('Delete')}
-                >
-                  <Trash2 className='size-3' />
-                </button>
-              </div>
-            </div>
-
-            <div className='grid gap-3 md:grid-cols-2'>
-              <label className='flex flex-col gap-1'>
-                <span className={labelClass}>{t('Name')}</span>
-                <input
-                  className={fieldClass}
-                  value={app.name}
-                  maxLength={100}
-                  onChange={(event) => patch(index, { name: event.target.value })}
-                />
-              </label>
-
-              <label className='flex flex-col gap-1'>
-                <span className={labelClass}>{t('Slug')}</span>
-                <input
-                  className={fieldClass}
-                  value={app.slug}
-                  disabled={slugLocked}
-                  // A prefilled slug is a starting point, not a suffix. Selecting
-                  // it on focus means the first keystroke replaces it instead of
-                  // producing values like "app-1langfuse".
-                  onFocus={(event) => {
-                    if (!slugLocked) event.currentTarget.select()
-                  }}
-                  onChange={(event) =>
-                    patch(index, {
-                      slug: event.target.value.toLowerCase().replaceAll(/[^a-z0-9-]/g, ''),
-                    })
-                  }
-                />
-              </label>
-
-              <label className='flex flex-col gap-1'>
-                <span className={labelClass}>{t('Group')}</span>
-                <select
-                  className={fieldClass}
-                  value={app.group_slug ?? ''}
-                  onChange={(event) =>
-                    patch(index, { group_slug: event.target.value || undefined })
-                  }
-                >
-                  <option value=''>{t('Default group')}</option>
-                  {groups.map((group) => (
-                    <option key={group.slug} value={group.slug}>
-                      {group.name || group.slug}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className='flex flex-col gap-1 md:col-span-2'>
-                <span className={labelClass}>{t('Parent entry')}</span>
-                <select
-                  className={fieldClass}
-                  value={app.parent_slug ?? ''}
-                  onChange={(event) =>
-                    patch(index, {
-                      parent_slug: event.target.value || undefined,
-                    })
-                  }
-                >
-                  <option value=''>{t('None (top level)')}</option>
-                  {draft
-                    .filter(
-                      (candidate) =>
-                        candidate.slug &&
-                        candidate.slug !== app.slug &&
-                        !candidate.parent_slug
-                    )
-                    .map((candidate) => (
-                      <option key={candidate.clientKey} value={candidate.slug}>
-                        {candidate.name || candidate.slug}
-                      </option>
-                    ))}
-                </select>
-                <span className='text-muted-foreground text-xs'>
-                  {t(
-                    'Nested entries appear under the selected one. The parent must leave its target address empty, because it acts as a group heading.'
-                  )}
-                </span>
-              </label>
-
-              <label className='flex flex-col gap-1 md:col-span-2'>
-                <span className={labelClass}>{t('Localized name (JSON)')}</span>
-                <input
-                  className={fieldClass}
-                  value={app.name_i18n}
-                  placeholder='{"zhCN":"显示名称"}'
-                  onChange={(event) =>
-                    patch(index, { name_i18n: event.target.value })
-                  }
-                />
-              </label>
-
-              <label className='flex flex-col gap-1 md:col-span-2'>
-                <span className={labelClass}>{t('Address')}</span>
-                <input
-                  className={fieldClass}
-                  value={app.href}
-                  placeholder='https://example.com or cherrystudio://providers/api-keys?v=1&data={cherryConfig}'
-                  onChange={(event) => {
-                    const href = event.target.value
-                    patch(index, {
-                      href,
-                      // A client link or a template has no document to frame.
-                      // Switching the display type as the address changes keeps
-                      // the row from holding a combination the server would
-                      // reject on save.
-                      ...((isClientLink(href) || navAppUsesTemplate(href)) &&
-                      app.display_type === navAppDisplayIframe
-                        ? { display_type: navAppDisplayExternal }
-                        : {}),
-                    })
-                  }}
-                />
-              </label>
-
-              <label className='flex flex-col gap-1'>
-                <span className={labelClass}>{t('Icon')}</span>
-                <select
-                  className={fieldClass}
-                  value={app.icon}
-                  onChange={(event) => patch(index, { icon: event.target.value })}
-                >
-                  {NAV_APP_ICON_OPTIONS.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className='flex flex-col gap-1'>
-                <span className={labelClass}>{t('Open as')}</span>
-                <select
-                  className={fieldClass}
-                  value={app.display_type}
-                  onChange={(event) =>
-                    patch(index, {
-                      display_type: event.target.value as NavAppDisplayType,
-                    })
-                  }
-                >
-                  {/* A deep link opens the installed application, not a tab;
-                      labelling it "new tab" would contradict the badge. */}
-                  <option value={navAppDisplayExternal}>
-                    {clientLink ? t('Open in the client app') : t('New tab')}
-                  </option>
-                  <option
-                    value={navAppDisplayIframe}
-                    disabled={clientLink || templated}
+      {draft.length > 0 && (
+        <Reorder.Group
+          axis='y'
+          values={entryKeys}
+          onReorder={reorderEntries}
+          className='flex list-none flex-col gap-3 p-0'
+        >
+          {draft.map((app, index) => {
+            const Icon = navAppIcon(app.icon, app.icon_url)
+            const slugLocked = persistedSlugs.has(app.slug)
+            const clientLink = isClientLink(app.href)
+            const templated = navAppUsesTemplate(app.href)
+            return (
+              <SortableEntryCard
+                key={app.clientKey}
+                value={app.clientKey}
+                label={app.name || t('Untitled entry')}
+              >
+                {(dragHandle) => (
+                  <div
+                    id={`nav-app-row-${app.clientKey}`}
+                    data-ap-surface=''
+                    className={cn(
+                      'flex flex-col gap-3 rounded-lg border p-3 transition-[box-shadow,border-color]',
+                      errorClientKey === app.clientKey &&
+                        'border-destructive/60 ring-destructive/25 ring-2'
+                    )}
                   >
-                    {t('Embedded page')}
-                  </option>
-                </select>
-              </label>
+                    <ApiduoGlow />
+                    <div className='flex items-center justify-between gap-2'>
+                      <div className='flex min-w-0 items-center gap-2'>
+                        {dragHandle}
+                        <Icon className='text-muted-foreground size-4 shrink-0' />
+                        <span className='truncate text-sm font-medium'>
+                          {app.name || t('Untitled entry')}
+                        </span>
+                        <span className='bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px]'>
+                          {app.display_type === navAppDisplayIframe
+                            ? t('Embedded')
+                            : clientLink
+                              ? t('Client app')
+                              : t('New tab')}
+                        </span>
+                      </div>
+                      <div className='flex shrink-0 items-center gap-1'>
+                        <button
+                          type='button'
+                          className={buttonClass}
+                          onClick={() => move(index, -1)}
+                          disabled={index === 0}
+                          aria-label={t('Move up')}
+                        >
+                          <ArrowUp className='size-3' />
+                        </button>
+                        <button
+                          type='button'
+                          className={buttonClass}
+                          onClick={() => move(index, 1)}
+                          disabled={index === draft.length - 1}
+                          aria-label={t('Move down')}
+                        >
+                          <ArrowDown className='size-3' />
+                        </button>
+                        <button
+                          type='button'
+                          className={buttonClass}
+                          onClick={() => remove(index)}
+                          aria-label={t('Delete')}
+                        >
+                          <Trash2 className='size-3' />
+                        </button>
+                      </div>
+                    </div>
 
-              <label className='flex flex-col gap-1'>
-                <span className={labelClass}>{t('Placement')}</span>
-                <select
-                  className={fieldClass}
-                  value={app.placement}
-                  onChange={(event) =>
-                    patch(index, {
-                      placement: event.target.value as NavAppPlacement,
-                    })
-                  }
-                >
-                  <option value={navAppPlacementSide}>{t('Sidebar')}</option>
-                  <option value={navAppPlacementTop}>{t('Top bar')}</option>
-                  <option value={navAppPlacementBoth}>{t('Both')}</option>
-                </select>
-              </label>
+                    <div className='grid gap-3 md:grid-cols-2'>
+                      <label className='flex flex-col gap-1'>
+                        <span className={labelClass}>{t('Name')}</span>
+                        <input
+                          className={fieldClass}
+                          value={app.name}
+                          maxLength={100}
+                          onChange={(event) =>
+                            patch(index, { name: event.target.value })
+                          }
+                        />
+                      </label>
 
-              <label className='flex flex-col gap-1'>
-                <span className={labelClass}>{t('Visible to')}</span>
-                <select
-                  className={fieldClass}
-                  value={app.min_role}
-                  onChange={(event) =>
-                    patch(index, { min_role: Number(event.target.value) })
-                  }
-                >
-                  {NAV_APP_ROLE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {t(option.labelKey)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                      <label className='flex flex-col gap-1'>
+                        <span className={labelClass}>{t('Slug')}</span>
+                        <input
+                          className={fieldClass}
+                          value={app.slug}
+                          disabled={slugLocked}
+                          // A prefilled slug is a starting point, not a suffix. Selecting
+                          // it on focus means the first keystroke replaces it instead of
+                          // producing values like "app-1langfuse".
+                          onFocus={(event) => {
+                            if (!slugLocked) event.currentTarget.select()
+                          }}
+                          onChange={(event) =>
+                            patch(index, {
+                              slug: event.target.value
+                                .toLowerCase()
+                                .replaceAll(/[^a-z0-9-]/g, ''),
+                            })
+                          }
+                        />
+                      </label>
 
-              <label className='flex items-center gap-2 pt-4'>
-                <input
-                  type='checkbox'
-                  checked={app.enabled}
-                  onChange={(event) =>
-                    patch(index, { enabled: event.target.checked })
-                  }
-                />
-                <span className='text-xs'>{t('Enabled')}</span>
-              </label>
-            </div>
+                      <label className='flex flex-col gap-1'>
+                        <span className={labelClass}>{t('Group')}</span>
+                        <select
+                          className={fieldClass}
+                          value={app.group_slug ?? ''}
+                          onChange={(event) =>
+                            patch(index, {
+                              group_slug: event.target.value || undefined,
+                            })
+                          }
+                        >
+                          <option value=''>{t('Default group')}</option>
+                          {groups.map((group) => (
+                            <option key={group.slug} value={group.slug}>
+                              {group.name || group.slug}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-            {templated && (
-              <p className='text-[11px] text-muted-foreground'>
-                {t(
-                  'Placeholders are filled when the entry is clicked, using the signed-in user’s own API key and this deployment’s address, so the stored address never carries a credential.'
-                )}
-              </p>
-            )}
+                      <label className='flex flex-col gap-1 md:col-span-2'>
+                        <span className={labelClass}>{t('Parent entry')}</span>
+                        <select
+                          className={fieldClass}
+                          value={app.parent_slug ?? ''}
+                          onChange={(event) =>
+                            patch(index, {
+                              parent_slug: event.target.value || undefined,
+                            })
+                          }
+                        >
+                          <option value=''>{t('None (top level)')}</option>
+                          {draft
+                            .filter(
+                              (candidate) =>
+                                candidate.slug &&
+                                candidate.slug !== app.slug &&
+                                !candidate.parent_slug
+                            )
+                            .map((candidate) => (
+                              <option
+                                key={candidate.clientKey}
+                                value={candidate.slug}
+                              >
+                                {candidate.name || candidate.slug}
+                              </option>
+                            ))}
+                        </select>
+                        <span className='text-muted-foreground text-xs'>
+                          {t(
+                            'Nested entries appear under the selected one. The parent must leave its target address empty, because it acts as a group heading.'
+                          )}
+                        </span>
+                      </label>
 
-            {clientLink && (
-              <p className='text-[11px] text-muted-foreground'>
-                {t(
-                  'The browser hands this address to the installed application. If nothing opens, the application is missing or the browser blocked the link.'
-                )}
-              </p>
-            )}
+                      <label className='flex flex-col gap-1 md:col-span-2'>
+                        <span className={labelClass}>
+                          {t('Localized name (JSON)')}
+                        </span>
+                        <input
+                          className={fieldClass}
+                          value={app.name_i18n}
+                          placeholder='{"zhCN":"显示名称"}'
+                          onChange={(event) =>
+                            patch(index, { name_i18n: event.target.value })
+                          }
+                        />
+                      </label>
 
-            {app.display_type === navAppDisplayIframe && (
-              <div className='space-y-1'>
-                <p className='text-[11px] text-muted-foreground'>
-                  {t(
-                    'Embedding requires the target to allow being framed (no X-Frame-Options or frame-ancestors restriction). If it stays blank, open it in a new tab.'
-                  )}
-                </p>
-                {isSameSite(app.href) ? (
-                  <p className='text-[11px] text-muted-foreground'>
-                    {t(
-                      'Same site as the console: login cookies count as first-party, so the embedded app normally stays signed in.'
+                      <label className='flex flex-col gap-1 md:col-span-2'>
+                        <span className={labelClass}>{t('Address')}</span>
+                        <input
+                          className={fieldClass}
+                          value={app.href}
+                          placeholder='https://example.com or cherrystudio://providers/api-keys?v=1&data={cherryConfig}'
+                          onChange={(event) => {
+                            const href = event.target.value
+                            patch(index, {
+                              href,
+                              // A client link or a template has no document to frame.
+                              // Switching the display type as the address changes keeps
+                              // the row from holding a combination the server would
+                              // reject on save.
+                              ...((isClientLink(href) ||
+                                navAppUsesTemplate(href)) &&
+                              app.display_type === navAppDisplayIframe
+                                ? { display_type: navAppDisplayExternal }
+                                : {}),
+                            })
+                          }}
+                        />
+                      </label>
+
+                      <div className='flex flex-col gap-1'>
+                        <label className='flex flex-col gap-1'>
+                          <span className={labelClass}>{t('Icon')}</span>
+                          <select
+                            className={fieldClass}
+                            value={app.icon}
+                            onChange={(event) =>
+                              patch(index, { icon: event.target.value })
+                            }
+                          >
+                            {NAV_APP_ICON_OPTIONS.map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className='flex flex-col gap-1'>
+                          <span className={labelClass}>
+                            {t('Custom icon URL')}
+                          </span>
+                          <input
+                            className={fieldClass}
+                            value={app.icon_url ?? ''}
+                            placeholder='https://cdn.example.com/logo.png'
+                            maxLength={512}
+                            onChange={(event) =>
+                              patch(index, { icon_url: event.target.value })
+                            }
+                          />
+                        </label>
+                        <button
+                          type='button'
+                          className={`${buttonClass} self-start`}
+                          onClick={() => applyTargetIcon(index, app.href)}
+                        >
+                          {t('Use the target site icon')}
+                        </button>
+                        <span className='text-muted-foreground text-[11px]'>
+                          {t(
+                            'A custom icon is loaded by every viewer. Use a trusted https address; a broken image falls back to the selected preset.'
+                          )}
+                        </span>
+                      </div>
+
+                      <label className='flex flex-col gap-1'>
+                        <span className={labelClass}>{t('Open as')}</span>
+                        <select
+                          className={fieldClass}
+                          value={app.display_type}
+                          onChange={(event) =>
+                            patch(index, {
+                              display_type: event.target
+                                .value as NavAppDisplayType,
+                            })
+                          }
+                        >
+                          {/* A deep link opens the installed application, not a tab;
+                      labelling it "new tab" would contradict the badge. */}
+                          <option value={navAppDisplayExternal}>
+                            {clientLink
+                              ? t('Open in the client app')
+                              : t('New tab')}
+                          </option>
+                          <option
+                            value={navAppDisplayIframe}
+                            disabled={clientLink || templated}
+                          >
+                            {t('Embedded page')}
+                          </option>
+                        </select>
+                      </label>
+
+                      <label className='flex flex-col gap-1'>
+                        <span className={labelClass}>{t('Placement')}</span>
+                        <select
+                          className={fieldClass}
+                          value={app.placement}
+                          onChange={(event) =>
+                            patch(index, {
+                              placement: event.target.value as NavAppPlacement,
+                            })
+                          }
+                        >
+                          <option value={navAppPlacementSide}>
+                            {t('Sidebar')}
+                          </option>
+                          <option value={navAppPlacementTop}>
+                            {t('Top bar')}
+                          </option>
+                          <option value={navAppPlacementBoth}>
+                            {t('Both')}
+                          </option>
+                        </select>
+                      </label>
+
+                      <label className='flex flex-col gap-1'>
+                        <span className={labelClass}>{t('Visible to')}</span>
+                        <select
+                          className={fieldClass}
+                          value={app.min_role}
+                          onChange={(event) =>
+                            patch(index, {
+                              min_role: Number(event.target.value),
+                            })
+                          }
+                        >
+                          {NAV_APP_ROLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {t(option.labelKey)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className='flex items-center gap-2 pt-4'>
+                        <input
+                          type='checkbox'
+                          checked={app.enabled}
+                          onChange={(event) =>
+                            patch(index, { enabled: event.target.checked })
+                          }
+                        />
+                        <span className='text-xs'>{t('Enabled')}</span>
+                      </label>
+                    </div>
+
+                    {templated && (
+                      <p className='text-muted-foreground text-[11px]'>
+                        {t(
+                          'Placeholders are filled when the entry is clicked, using the signed-in user’s own API key and this deployment’s address, so the stored address never carries a credential.'
+                        )}
+                      </p>
                     )}
-                  </p>
-                ) : (
-                  <p className='text-[11px] text-amber-600 dark:text-amber-500'>
-                    {t(
-                      'Different site from the console: browsers block third-party cookies in frames, so the embedded app may not stay signed in. Put it under the same main domain, or open it in a new tab.'
+
+                    {clientLink && (
+                      <p className='text-muted-foreground text-[11px]'>
+                        {t(
+                          'The browser hands this address to the installed application. If nothing opens, the application is missing or the browser blocked the link.'
+                        )}
+                      </p>
                     )}
-                  </p>
+
+                    {app.display_type === navAppDisplayIframe && (
+                      <div className='space-y-1'>
+                        <p className='text-muted-foreground text-[11px]'>
+                          {t(
+                            'Embedding requires the target to allow being framed (no X-Frame-Options or frame-ancestors restriction). If it stays blank, open it in a new tab.'
+                          )}
+                        </p>
+                        {isSameSite(app.href) ? (
+                          <p className='text-muted-foreground text-[11px]'>
+                            {t(
+                              'Same site as the console: login cookies count as first-party, so the embedded app normally stays signed in.'
+                            )}
+                          </p>
+                        ) : (
+                          <p className='text-[11px] text-amber-600 dark:text-amber-500'>
+                            {t(
+                              'Different site from the console: browsers block third-party cookies in frames, so the embedded app may not stay signed in. Put it under the same main domain, or open it in a new tab.'
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
-          </div>
-        )
-      })}
+              </SortableEntryCard>
+            )
+          })}
+        </Reorder.Group>
+      )}
     </SettingsSection>
   )
 }
