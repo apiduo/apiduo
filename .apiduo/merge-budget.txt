@@ -1,8 +1,11 @@
 # 上游合并面预算：上游文件里我方插入的行、标记块、以及删除的上游行。
-# 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
+# 2026-11-07 登记 option-batch：+2 个不可替代挂接点 / +7 行
+#   （router 注册点必须落在 optionRoute 作用域内；token scope 规则表只能就地加行）。
+# 待登记：image-protocol（3 个入口折叠）在工作区尚未提交，提交时需再 -update（约 +5 块 / +26 行）。
+# 除新增功能外只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	79
-blocks	202
-added	1992
+blocks	204
+added	1999
 deleted	80
