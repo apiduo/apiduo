@@ -40,6 +40,9 @@ const (
 	logWriterMaxBatch        = 50000
 	logWriterMaxInterval     = 60 * time.Second
 	logWriterFlushTimeout    = 60 * time.Second
+	// How long a caller waits for queue space before falling back to the
+	// synchronous insert path.
+	logWriterDefaultEnqueueWait = 1000 // milliseconds
 
 	clickHouseLogInsertStatement = "INSERT INTO logs (" +
 		"id, user_id, created_at, type, content, username, token_name, model_name, " +
@@ -68,14 +71,32 @@ type logWriter struct {
 	// flush so a transient log-database error does not lose the rows.
 	pending []*Log
 
+	// spoolDirty records that the last disk append failed. Those rows then live
+	// only in pending, so the next flush has to write the whole batch again —
+	// otherwise a restart loses whatever never reached the spool.
+	spoolDirty bool
+
 	written  atomic.Int64
 	replayed atomic.Int64
 	failed   atomic.Int64
+	// dropped counts rows handed back to the synchronous path because the queue
+	// stayed full for the whole wait. They are stored, not lost.
+	dropped atomic.Int64
 }
 
 var (
 	apiduoLogWriter   *logWriter
 	apiduoLogWriterMu sync.Mutex
+
+	// logWriterEnqueueWait bounds the queue-full wait. Zero or negative values
+	// fall back to the default so a typo cannot reintroduce the unbounded block.
+	logWriterEnqueueWait = func() time.Duration {
+		ms := common.GetEnvOrDefault("LOG_WRITER_ENQUEUE_WAIT_MS", logWriterDefaultEnqueueWait)
+		if ms <= 0 {
+			ms = logWriterDefaultEnqueueWait
+		}
+		return time.Duration(ms) * time.Millisecond
+	}()
 )
 
 // StartLogWriter enables asynchronous log persistence for the ClickHouse log
@@ -137,8 +158,8 @@ func StartLogWriter() error {
 
 	go writer.run()
 
-	common.SysLog(common.LogText("log writer enabled: dir=%s interval=%s batch=%d queue=%d replayed=%d",
-		dir, writer.interval, batchMax, queueSize, replayed))
+	common.SysLog(common.LogText("log writer enabled: dir=%s interval=%s batch=%d queue=%d enqueue_wait=%s replayed=%d",
+		dir, writer.interval, batchMax, queueSize, logWriterEnqueueWait, replayed))
 	return nil
 }
 
@@ -158,8 +179,8 @@ func ShutdownLogWriter() {
 	<-writer.done
 
 	stats := writer.stats()
-	common.SysLog(common.LogText("log writer stopped: written=%d replayed=%d failed=%d",
-		stats.Written, stats.Replayed, stats.Failed))
+	common.SysLog(common.LogText("log writer stopped: written=%d replayed=%d failed=%d fallback=%d",
+		stats.Written, stats.Replayed, stats.Failed, stats.Dropped))
 	if err := writer.spool.Close(); err != nil {
 		common.SysError(common.LogText("log spool close failed: %s", err.Error()))
 	}
@@ -179,14 +200,40 @@ func enqueueLog(log *Log) (bool, error) {
 		return false, nil
 	}
 
-	// A full queue means the log database has not accepted a batch for minutes.
-	// Blocking here is deliberate: reconciliation must not lose rows, and the
-	// queue is sized to absorb a log-database restart.
+	// Shutdown wins over a free slot. After stop the writer goroutine is gone,
+	// and reporting "handled" here dropped the row on the floor; handing it back
+	// lets the caller fall through to the synchronous insert.
+	select {
+	case <-writer.stop:
+		return false, nil
+	default:
+	}
+
+	select {
+	case writer.ch <- log:
+		return true, nil
+	default:
+	}
+
+	// A full queue means the log database has not accepted a batch for a while.
+	// Wait a bounded amount of time, then hand the row back for a synchronous
+	// insert: blocking without a bound turned a slow log database into a
+	// request outage, and nothing in the writer may lose the row.
+	timer := time.NewTimer(logWriterEnqueueWait)
+	defer timer.Stop()
 	select {
 	case writer.ch <- log:
 		return true, nil
 	case <-writer.stop:
-		return true, common.NewMessage("Log writer stopped")
+		return false, nil
+	case <-timer.C:
+		dropped := writer.dropped.Add(1)
+		if dropped&63 == 1 {
+			common.SysError(common.LogText(
+				"log writer queue full for %s; %d row(s) fell back to the synchronous path",
+				logWriterEnqueueWait, dropped))
+		}
+		return false, nil
 	}
 }
 
@@ -194,6 +241,7 @@ type logWriterStats struct {
 	Written  int64
 	Replayed int64
 	Failed   int64
+	Dropped  int64
 }
 
 func (w *logWriter) stats() logWriterStats {
@@ -201,6 +249,7 @@ func (w *logWriter) stats() logWriterStats {
 		Written:  w.written.Load(),
 		Replayed: w.replayed.Load(),
 		Failed:   w.failed.Load(),
+		Dropped:  w.dropped.Load(),
 	}
 }
 
@@ -265,15 +314,25 @@ func (w *logWriter) flush(final bool) {
 		spoolOffset int64
 		spoolErr    error
 	)
-	if len(batch) > 0 {
-		payload, err := encodeLogBatch(batch)
+	// Normally only the new batch goes to disk: pending is already there from
+	// the run that failed to insert it. After a failed append that is no longer
+	// true — pending never reached the disk — so the whole set has to be
+	// written or a restart would drop those rows for good.
+	spoolRows := batch
+	if w.spoolDirty {
+		spoolRows = rows
+	}
+	if len(spoolRows) > 0 {
+		payload, err := encodeLogBatch(spoolRows)
 		if err != nil {
 			common.SysError(common.LogText("log writer encode failed: %s", err.Error()))
+			w.spoolDirty = true
 		} else {
 			spoolName, spoolOffset, spoolErr = w.spool.Append(payload)
 			if spoolErr != nil {
 				common.SysError(common.LogText("log spool append failed: %s", spoolErr.Error()))
 			}
+			w.spoolDirty = spoolErr != nil
 		}
 	}
 
