@@ -19,6 +19,27 @@ For commercial licensing, please contact support@quantumnous.com
 import type { ApiduoHoliday, ApiduoHolidayId } from './types'
 
 /**
+ * Particle ambience for one holiday.
+ *
+ * Drawn on a full-viewport canvas when the holiday is active; the canvas is
+ * not mounted at all otherwise, so an ordinary day pays nothing for the
+ * feature. Colours are hex because the canvas 2D API predates oklch() string
+ * support; they mirror the chart palette in styles/apiduo-appearance.css and
+ * must be kept in step with it by hand.
+ */
+export type ApiduoParticleMode =
+  | 'confetti'
+  | 'snow'
+  | 'pumpkin'
+  | 'firework'
+  | 'moon'
+
+export type ApiduoHolidayParticles = {
+  mode: ApiduoParticleMode
+  colors: readonly [string, string]
+}
+
+/**
  * One site-wide palette, with a suggested window.
  *
  * The window is a form-filling shortcut only: it is copied into the two date
@@ -33,6 +54,7 @@ export type ApiduoHolidayOption = {
   hintKey: string
   from: string
   to: string
+  particles: ApiduoHolidayParticles
 }
 
 export const APIDUO_HOLIDAYS: readonly ApiduoHolidayOption[] = [
@@ -42,6 +64,7 @@ export const APIDUO_HOLIDAYS: readonly ApiduoHolidayOption[] = [
     hintKey: 'Chinese red and gold',
     from: '02-01',
     to: '02-24',
+    particles: { mode: 'confetti', colors: ['#e64545', '#f5c542'] },
   },
   {
     id: 'mid-autumn',
@@ -49,6 +72,7 @@ export const APIDUO_HOLIDAYS: readonly ApiduoHolidayOption[] = [
     hintKey: 'Moonlight amber',
     from: '09-10',
     to: '09-25',
+    particles: { mode: 'moon', colors: ['#f5ecd7', '#f5c542'] },
   },
   {
     id: 'national-day',
@@ -56,6 +80,7 @@ export const APIDUO_HOLIDAYS: readonly ApiduoHolidayOption[] = [
     hintKey: 'Deep celebration red',
     from: '09-29',
     to: '10-08',
+    particles: { mode: 'firework', colors: ['#e64545', '#f5c542'] },
   },
   {
     id: 'halloween',
@@ -63,6 +88,7 @@ export const APIDUO_HOLIDAYS: readonly ApiduoHolidayOption[] = [
     hintKey: 'Pumpkin orange and violet',
     from: '10-24',
     to: '11-01',
+    particles: { mode: 'pumpkin', colors: ['#ff8c1a', '#7b4bd6'] },
   },
   {
     id: 'christmas',
@@ -70,11 +96,18 @@ export const APIDUO_HOLIDAYS: readonly ApiduoHolidayOption[] = [
     hintKey: 'Pine green and berry red',
     from: '12-18',
     to: '12-27',
+    particles: { mode: 'snow', colors: ['#eef4ff', '#ffffff'] },
   },
 ]
 
 export function holidayById(id: string): ApiduoHolidayOption | undefined {
   return APIDUO_HOLIDAYS.find((holiday) => holiday.id === id)
+}
+
+export function particlesForHoliday(
+  id: ApiduoHolidayId
+): ApiduoHolidayParticles | undefined {
+  return holidayById(id)?.particles
 }
 
 /** Zero-pads to `MM-DD`, the only shape the server stores. */

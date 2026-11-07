@@ -382,3 +382,54 @@ html:not([data-ap-ready]) .ap-pulse {
   --chart-4: oklch(0.7 0.15 30);
   --chart-5: oklch(0.88 0.05 150);
 }
+
+/* ── Holiday ambience: particle canvas + lanterns ─────────────────────────
+ *
+ * The canvas is decorative only: no pointer events, and it sits one notch
+ * below dialogs (z-50 in the design system) so a modal is never rained or
+ * snowed on. Lanterns ride along because they are part of the same holiday
+ * and mounting them separately would cost a second portal for no reason.
+ */
+.ap-particles {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.ap-lanterns {
+  position: fixed;
+  top: 0;
+  left: 0;
+  /* Pushed clear of the header logo: the first lantern would otherwise hang
+   * directly over it and read as a stray glyph rather than a decoration. */
+  display: flex;
+  gap: 64px;
+  padding-left: 250px;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.ap-lanterns span {
+  font-size: 26px;
+  transform-origin: 50% -30px;
+  animation: ap-lantern-sway 3s ease-in-out infinite alternate;
+}
+
+@keyframes ap-lantern-sway {
+  from {
+    transform: rotate(-8deg);
+  }
+  to {
+    transform: rotate(8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-particles,
+  .ap-lanterns {
+    display: none;
+  }
+}

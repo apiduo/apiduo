@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createContext, useContext } from 'react'
 
-import type { ApiduoAppearance } from './types'
+import type { ApiduoAppearance, ApiduoHoliday } from './types'
 
 /**
  * What a surface looks like before the server answers.
@@ -48,4 +48,17 @@ export const ApiduoAppearanceContext = createContext<ApiduoAppearance>(
 /** The live configuration, for components that need to branch on the style. */
 export function useApiduoAppearance(): ApiduoAppearance {
   return useContext(ApiduoAppearanceContext)
+}
+
+/**
+ * The holiday currently being painted, after the date window has been applied.
+ *
+ * Kept in its own context so the particle layer — the only consumer besides
+ * the provider itself — re-renders when the season changes without dragging
+ * every effect surface along.
+ */
+export const ApiduoHolidayContext = createContext<ApiduoHoliday>('')
+
+export function useApiduoHoliday(): ApiduoHoliday {
+  return useContext(ApiduoHolidayContext)
 }

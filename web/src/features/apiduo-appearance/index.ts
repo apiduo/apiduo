@@ -6,6 +6,7 @@ export {
 export {
   DEFAULT_APIDUO_APPEARANCE,
   useApiduoAppearance,
+  useApiduoHoliday,
 } from './context'
 export { ApiduoAppearanceProvider } from './provider'
 export {

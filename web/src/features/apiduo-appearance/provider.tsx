@@ -17,15 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { getApiduoAppearance } from './api'
+import { ApiduoParticles } from './components/apiduo-particles'
 import {
   ApiduoAppearanceContext,
+  ApiduoHolidayContext,
   DEFAULT_APIDUO_APPEARANCE,
 } from './context'
 import { isHolidayActive } from './holidays'
-import type { ApiduoAppearance } from './types'
+import type { ApiduoAppearance, ApiduoHoliday } from './types'
 
 /**
  * Publishes the configuration as CSS variables on `:root`.
@@ -65,6 +67,7 @@ function publish(appearance: ApiduoAppearance) {
   } else {
     document.body.removeAttribute('data-ap-holiday')
   }
+  return active
 }
 
 /**
@@ -149,9 +152,10 @@ export function ApiduoAppearanceProvider(
 
   const appearance = data?.data ?? DEFAULT_APIDUO_APPEARANCE
   const style = appearance.enabled ? appearance.style : 'none'
+  const [activeHoliday, setActiveHoliday] = useState<ApiduoHoliday>('')
 
   useEffect(() => {
-    publish(appearance)
+    setActiveHoliday(publish(appearance))
   }, [appearance])
 
   useSpotlightTracking(style === 'spotlight')
@@ -163,7 +167,10 @@ export function ApiduoAppearanceProvider(
 
   return (
     <ApiduoAppearanceContext value={value}>
-      {props.children}
+      <ApiduoHolidayContext value={activeHoliday}>
+        <ApiduoParticles />
+        {props.children}
+      </ApiduoHolidayContext>
     </ApiduoAppearanceContext>
   )
 }
