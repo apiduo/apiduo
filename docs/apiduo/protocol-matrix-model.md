@@ -663,3 +663,14 @@ chat 非流式 parts 与流式 md 拿到转存后链接，全部通过。完整�
 
 ⚠️ 两个值得记住的口径：`b64_json` 默认不转存（需 `rewrite_paths`，且内联 base64
 要 ≥1024 字符）；`=> url clear` 是把源字段置 `null` 而非删键。
+
+
+### 9.11 部署态验证（2026-11-07 22:57）
+
+`apiduo-v0.0.9` 已发布并部署到 ai-prod 的**独立测试实例** `apiduo-cn-e2e`
+（`127.0.0.1:39048`、独立 MySQL 库 `apiduo_cn_e2e`、独立 ClickHouse 日志库
+`apiduo_cn_e2e_logs`），生产 `apiduo-cn` 仍是 0.0.8 未动。部署态 8 个用例全 200，
+端点分流/载体/回包形状与本地一致。完整记录（含发版失败与 4 个踩坑）见
+`docs/apiduo/image-e2e-2026-11-07.md` 末节。
+
+🔴 纪律：新增标记块要**同步提交** `.apiduo/merge-budget.txt`，否则 CI markercheck 判超支，发版会失败。
