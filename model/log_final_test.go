@@ -3,6 +3,7 @@ package model
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +29,28 @@ func TestReplacingLogTableDDL(t *testing.T) {
 // Only ClickHouse needs FINAL; the other log databases insert once and would
 // reject the keyword.
 func TestLogQueryTable(t *testing.T) {
+	common.SetLogDatabaseType(common.DatabaseTypeSQLite)
+	t.Cleanup(func() { common.SetLogDatabaseType(common.DatabaseTypeSQLite) })
 	assert.Equal(t, "logs", logQueryTable(), "默认（SQLite/MySQL/PG）应返回裸表名")
+
+	common.SetLogDatabaseType(common.DatabaseTypeClickHouse)
+	assert.Equal(t, "logs FINAL", logQueryTable(),
+		"ClickHouse 上必须读 FINAL；漏掉它，重放的重复行会直接进入 sum(quota)")
+}
+
+// The branch functions must hand non-ClickHouse databases back to the upstream
+// query instead of running FINAL against a database that rejects it.
+func TestFinalBranchesSkipNonClickHouse(t *testing.T) {
+	common.SetLogDatabaseType(common.DatabaseTypeSQLite)
+	t.Cleanup(func() { common.SetLogDatabaseType(common.DatabaseTypeSQLite) })
+
+	_, ok, err := sumUsedQuotaFinal(2, 0, 0, "", "", "", 0, "")
+	assert.False(t, ok, "非 ClickHouse 必须交回上游查询")
+	assert.NoError(t, err)
+
+	token, ok := sumUsedTokenFinal(0, 0, "", "", "")
+	assert.False(t, ok, "非 ClickHouse 必须交回上游查询")
+	assert.Zero(t, token)
 }
 
 func TestLogWhereClause(t *testing.T) {
