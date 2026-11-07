@@ -325,6 +325,9 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 
 	// router/relay-router.go
 	"POST /pg/chat/completions": accessTokenSessionRule,
+	// APIDUO:option-batch:BEGIN
+	"PUT /api/option/batch": accessTokenScopeRule("option:write"),
+	// APIDUO:option-batch:END
 }
 
 var (

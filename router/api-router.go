@@ -270,6 +270,10 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.GET("/request_policy", controller.GetRequestPolicy)
 			optionRoute.PATCH("/request_policy", controller.UpdateRequestPolicy)
 			optionRoute.PUT("/", controller.UpdateOption)
+			// APIDUO:option-batch:BEGIN
+			// One settings save is one audit event; see controller/apiduo_option_batch.go.
+			optionRoute.PUT("/batch", controller.UpdateOptionsBatch)
+			// APIDUO:option-batch:END
 			optionRoute.PUT("/passkey/domains", controller.UpdatePasskeyDomains)
 			optionRoute.GET("/model_pricing", controller.GetModelPricingConfig)
 			optionRoute.GET("/model_pricing/issues", controller.GetModelPricingIssues)

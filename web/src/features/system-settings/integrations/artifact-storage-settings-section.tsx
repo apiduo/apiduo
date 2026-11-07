@@ -41,7 +41,7 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useUpdateOption } from '../hooks/use-update-option'
+import { useUpdateOptionsBatch } from '../hooks/use-update-options-batch'
 import {
   ARTIFACT_STORAGE_PROVIDERS,
   parseArtifactStorageTargets,
@@ -153,7 +153,7 @@ export function ArtifactStorageSettingsSection({
   settings,
 }: ArtifactStorageSettingsSectionProps) {
   const { t } = useTranslation()
-  const updateOption = useUpdateOption()
+  const updateOptions = useUpdateOptionsBatch()
 
   const initial = useMemo(() => buildState(settings), [settings])
   const [state, setState] = useState<StorageState>(initial)
@@ -216,29 +216,22 @@ export function ArtifactStorageSettingsSection({
     }
     const next: StorageState = { ...state, targets: usable }
 
-    await updateOption.mutateAsync({
-      key: 'artifact_storage_setting.enabled',
-      value: next.enabled,
-    })
-    await updateOption.mutateAsync({
-      key: 'artifact_storage_setting.targets',
-      value: JSON.stringify(next.targets),
-    })
-    await updateOption.mutateAsync({
-      key: 'artifact_storage_setting.presign_ttl_seconds',
-      value: next.presignTTLSeconds,
-    })
-    await updateOption.mutateAsync({
-      key: 'artifact_storage_setting.max_object_bytes',
-      value: next.maxObjectBytes,
-    })
-    await updateOption.mutateAsync({
-      key: 'artifact_storage_setting.rewrite_paths',
-      value: JSON.stringify(serializeRewritePaths(next.rewritePaths)),
-    })
-    await updateOption.mutateAsync({
-      key: 'artifact_storage_setting.field_names',
-      value: JSON.stringify(serializeRewritePaths(next.fieldNames)),
+    // One save is one action: the server writes a single audit event for the
+    // batch instead of one row per key.
+    await updateOptions.mutateAsync({
+      options: {
+        'artifact_storage_setting.enabled': next.enabled,
+        'artifact_storage_setting.targets': JSON.stringify(next.targets),
+        'artifact_storage_setting.presign_ttl_seconds':
+          next.presignTTLSeconds,
+        'artifact_storage_setting.max_object_bytes': next.maxObjectBytes,
+        'artifact_storage_setting.rewrite_paths': JSON.stringify(
+          serializeRewritePaths(next.rewritePaths)
+        ),
+        'artifact_storage_setting.field_names': JSON.stringify(
+          serializeRewritePaths(next.fieldNames)
+        ),
+      },
     })
     setState(next)
     setBaseline(next)
@@ -253,7 +246,7 @@ export function ArtifactStorageSettingsSection({
     <SettingsSection title={t('Object storage')}>
       <SettingsPageFormActions
         onSave={onSave}
-        isSaving={updateOption.isPending}
+        isSaving={updateOptions.isPending}
       />
 
       <div className='space-y-6'>

@@ -42,7 +42,7 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useUpdateOption } from '../hooks/use-update-option'
+import { useUpdateOptionsBatch } from '../hooks/use-update-options-batch'
 import type { SiteSettings } from '../types'
 
 const SPEED_MIN = 600
@@ -90,6 +90,19 @@ function serialize(state: ApiduoAppearance): string {
 }
 
 /**
+ * Rounds the two continuous fields the way they are stored. Comparing the raw
+ * slider value against a saved integer would otherwise leave the form dirty
+ * forever, and send a "change" that the server rounds back to the same number.
+ */
+function normalize(state: ApiduoAppearance): ApiduoAppearance {
+  return {
+    ...state,
+    speed_ms: Math.round(state.speed_ms),
+    tail_deg: Math.round(state.tail_deg),
+  }
+}
+
+/**
  * The decoration apiduo paints on its own surfaces.
  *
  * The form edits a flat snapshot rather than a preset id. Presets are a way to
@@ -101,7 +114,7 @@ export function AppearanceSettingsSection(props: {
   settings: SiteSettings
 }) {
   const { t } = useTranslation()
-  const updateOption = useUpdateOption()
+  const updateOptions = useUpdateOptionsBatch()
   const queryClient = useQueryClient()
 
   const initial = useMemo(() => buildState(props.settings), [props.settings])
@@ -113,7 +126,7 @@ export function AppearanceSettingsSection(props: {
     setBaseline(initial)
   }, [initial])
 
-  const dirty = serialize(state) !== serialize(baseline)
+  const dirty = serialize(normalize(state)) !== serialize(normalize(baseline))
   const activePreset = matchPreset(state)
 
   const patch = (next: Partial<ApiduoAppearance>) =>
@@ -137,47 +150,50 @@ export function AppearanceSettingsSection(props: {
       toast.info(t('No changes to save'))
       return
     }
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.enabled',
-      value: state.enabled,
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.style',
-      value: state.style,
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.color',
-      value: state.color,
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.speed_ms',
-      value: Math.round(state.speed_ms),
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.ring_px',
-      value: state.ring_px,
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.tail_deg',
-      value: Math.round(state.tail_deg),
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.glow',
-      value: state.glow,
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.holiday',
-      value: state.holiday,
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.holiday_from',
-      value: state.holiday_from,
-    })
-    await updateOption.mutateAsync({
-      key: 'apiduo_appearance_setting.holiday_to',
-      value: state.holiday_to,
-    })
-    setBaseline(state)
+    const next = normalize(state)
+    const base = normalize(baseline)
+    // Only the fields the operator actually touched: an unchanged field must
+    // not reach the audit trail as if it had been rewritten.
+    const options: Record<string, string | boolean | number> = {}
+    if (next.enabled !== base.enabled) {
+      options['apiduo_appearance_setting.enabled'] = next.enabled
+    }
+    if (next.style !== base.style) {
+      options['apiduo_appearance_setting.style'] = next.style
+    }
+    if (next.color !== base.color) {
+      options['apiduo_appearance_setting.color'] = next.color
+    }
+    if (next.speed_ms !== base.speed_ms) {
+      options['apiduo_appearance_setting.speed_ms'] = next.speed_ms
+    }
+    if (next.ring_px !== base.ring_px) {
+      options['apiduo_appearance_setting.ring_px'] = next.ring_px
+    }
+    if (next.tail_deg !== base.tail_deg) {
+      options['apiduo_appearance_setting.tail_deg'] = next.tail_deg
+    }
+    if (next.glow !== base.glow) {
+      options['apiduo_appearance_setting.glow'] = next.glow
+    }
+    if (next.holiday !== base.holiday) {
+      options['apiduo_appearance_setting.holiday'] = next.holiday
+    }
+    if (next.holiday_from !== base.holiday_from) {
+      options['apiduo_appearance_setting.holiday_from'] = next.holiday_from
+    }
+    if (next.holiday_to !== base.holiday_to) {
+      options['apiduo_appearance_setting.holiday_to'] = next.holiday_to
+    }
+
+    if (Object.keys(options).length === 0) {
+      setBaseline(next)
+      toast.info(t('No changes to save'))
+      return
+    }
+
+    await updateOptions.mutateAsync({ options })
+    setBaseline(next)
     // The runtime reads /api/appearance, not /api/option. Refreshing that query
     // makes the new look visible in this tab without a reload.
     await queryClient.invalidateQueries({ queryKey: ['apiduo-appearance'] })
@@ -187,7 +203,7 @@ export function AppearanceSettingsSection(props: {
     <SettingsSection title={t('Appearance effects')}>
       <SettingsPageFormActions
         onSave={onSave}
-        isSaving={updateOption.isPending}
+        isSaving={updateOptions.isPending}
       />
 
       <div className='space-y-8'>
