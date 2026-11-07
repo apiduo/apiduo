@@ -2,10 +2,13 @@
 # 2026-11-07 登记 option-batch：+2 个不可替代挂接点 / +7 行
 #   （router 注册点必须落在 optionRoute 作用域内；token scope 规则表只能就地加行）。
 # 2026-11-07 image-protocol 已登记：+5 个不可替代挂接点 / +28 行（三入口折叠）。
+# 2026-11-07 登记 log-final：+3 个挂接点 / +17 行
+#   （SumUsedQuota、SumUsedToken 各一个 CH 分支，migrateClickHouseLogDB 一个迁移调用；
+#    去重逻辑本体在新增的 model/log_final.go，不计入）。
 # 除新增功能外只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	79
-blocks	209
-added	2027
+blocks	212
+added	2044
 deleted	80
