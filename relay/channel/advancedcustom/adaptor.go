@@ -39,6 +39,13 @@ type Adaptor struct {
 	converted bool
 	route     dto.AdvancedCustomRoute
 	converter string
+	// APIDUO:image-protocol:BEGIN
+	imageProtocolHandled bool
+	imageClientModel     string
+	imageUpstreamPath    string
+	imageRequestCount    int
+	imageStream          bool
+	// APIDUO:image-protocol:END
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
@@ -173,6 +180,11 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if err := a.resolve(nil, info); err != nil {
 		return "", err
 	}
+	// APIDUO:image-protocol:BEGIN
+	if target, ok := a.imageProtocolURL(info); ok {
+		return target, nil
+	}
+	// APIDUO:image-protocol:END
 	return a.routeURL(info)
 }
 
@@ -273,6 +285,12 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		return nil, errors.New("advanced custom converter routes cannot be used with pass-through request body")
 	}
 
+	// APIDUO:image-protocol:BEGIN
+	if resp, handled, err := a.doImageProtocolRequest(c, info); handled {
+		return resp, err
+	}
+	// APIDUO:image-protocol:END
+
 	if info.RelayMode == relayconstant.RelayModeAudioTranscription ||
 		info.RelayMode == relayconstant.RelayModeAudioTranslation ||
 		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
@@ -316,6 +334,12 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	if err := a.resolve(c, info); err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
+
+	// APIDUO:image-protocol:BEGIN
+	if usage, apiErr, handled := a.doImageProtocolResponse(c, resp, info); handled {
+		return usage, apiErr
+	}
+	// APIDUO:image-protocol:END
 
 	switch a.converter {
 	case dto.AdvancedCustomConverterSGLangRerank:

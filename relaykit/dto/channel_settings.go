@@ -132,6 +132,10 @@ type ChannelOtherSettings struct {
 	UpstreamModelUpdateLastRemovedModels  []string              `json:"upstream_model_update_last_removed_models,omitempty"`  // 上次检测到的可删除模型
 	UpstreamModelUpdateIgnoredModels      []string              `json:"upstream_model_update_ignored_models,omitempty"`       // 手动忽略的模型
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
+	// APIDUO:image-protocol:BEGIN
+	// 图像多端点协议：三个入口折叠成 canonical，由上游脚本选端点与载体。
+	ImageProtocol *ImageProtocolConfig `json:"image_protocol,omitempty"`
+	// APIDUO:image-protocol:END
 	// APIDUO:advanced-async:BEGIN Task API routes for type 58 channels that
 	// submit work and poll for the result instead of answering synchronously.
 	AdvancedAsync *AdvancedAsyncConfig `json:"advanced_async,omitempty"`

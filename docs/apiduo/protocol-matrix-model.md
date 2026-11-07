@@ -439,3 +439,227 @@ web/src/features/protocol-matrix/
 
 UI 已落地：矩阵标签页（勾选 + 每格选转换器）、覆盖弹层（只读，看哪格会 404）。
 两者都是 `advanced_routes` 的投影，不新增字段。
+
+
+## 9. 图像多端点协议：以 generations JSON 为 canonical（2026-11-07）
+
+### 9.1 为什么重做
+
+§7.2 那版「edits multipart → generations JSON」只覆盖了一个格子，而且用
+`upstreamPath` 后缀猜要不要折叠。真实需求是**三个下游入口 × 两种上游端点布局**，
+按 skill `openai-image-adapter` 的分层，中间必须有唯一一份 canonical：
+
+```
+/images/generations ─┐
+/images/edits       ─┼─ 折叠 ①② ─→ canonical ─→ 上游脚本 ③ ─→ upstream
+/chat/completions   ─┘   {model,prompt,image?,…}      ↑
+                              ← ⑤ 响应 ← ⑥ 按入口回包 ─┘
+```
+
+**配置面只有主端点**，从端点由脚本按 canonical 有没有 image 推导（skill §3.4.1）。
+路由结构 `AdvancedCustomRoute` 表达不了「同一入口按请求体内容分流」，
+所以端点选择放在脚本层，绕开 `MatchPathForModel` 的 first-match 限制。
+
+### 9.2 配置
+
+渠道 `settings` 里的 `image_protocol`（默认不配置 = 完全不介入）：
+
+```json
+{
+  "image_protocol": {
+    "enabled": true,
+    "upstream": "seedream",
+    "primary_path": "/v1/images/generations",
+    "edit_path": "",
+    "allow_url_fetch": false
+  },
+  "advanced_custom": { "advanced_routes": [ "... 三个入口各一条 converter:none 路由 ..." ] }
+}
+```
+
+| upstream | 端点布局 | 有 image 时 |
+|---|---|---|
+| `seedream` | 单端点，image 为 `str \| list<str>` | 仍走主端点，JSON，删 mask |
+| `gpt-image-2` | generations 不收 image；edits 收 multipart 文件 | 推导 `/v1/images/edits`，编码成 multipart |
+
+`edit_path` 是覆盖开关（推不出来才填）。推导规则：末段 `generations` → `edits`，
+**scheme / host / query 全部保留**；末段不是 `generations` 直接报配置错，不猜路径。
+
+### 9.3 实测（假上游，2026-11-07）
+
+两场景各 8 个格子，全部 200。`G`=generations 入口，`E`=edits 入口，`C`=chat 入口；
+`t2i` 文生图、`i2i` 图生图、`multi` 两张垫图。
+
+| 场景 | 无图 | 有图 | 多图 | chat 回包 |
+|---|---|---|---|---|
+| seedream | `generations` + JSON | `generations` + JSON，image str | `generations` + JSON，image 数组 | `chat.completion` |
+| gpt-image-2 | `generations` + JSON | `edits` + multipart 1 文件 | `edits` + multipart 2 个 `image[]` | `chat.completion` |
+
+三个 400 已验证：mask 无 image / 无图无 prompt / URL 未开下载。
+`chat` 回包里 `choices[0].message.content` 是 `image_url` parts 数组，`b64_json` 转 data URI。
+
+#### `image` 判定规则（需求口径，实测 2026-11-07）
+
+| 客户端给的 `image` | 判定 | 上游看到 |
+|---|---|---|
+| 不传 / `null` / `""` / `[]` / `["", " "]` | **文生图** | 键被删除 |
+| `"ref"` | 图生图 | 字符串 |
+| `["ref"]` | **图生图**（长度 1 也算） | **仍是数组** `["ref"]` |
+| `["a","b"]` | 图生图 | 数组 |
+
+`hasImage()` 只看归一后有没有引用，不看键在不在。形状**原样保留**：
+长度 1 的数组不压成字符串（skill 技巧 6「无损优先」），`planSeedream` 和
+`foldEditsMultipart` 都不再改写形状；表单里用 `image[]` 这个 key 上传单个文件
+也保持数组。场景2 下 `["ref"]` 会正确分流到 `/v1/images/edits`。
+
+⚠️ **与 skill §2.1 的口径差异**：skill 把 `image: ""` 判 400（当作客户端主动写的
+空值），这里按需求口径归一化为文生图（删键）。这是有意的取舍，不是漏实现。
+
+**默认关闭等价**：去掉 `image_protocol` 后，generations 仍按 `dto.ImageRequest` 重建
+（丢 `seed`、注入 `n:1`），chat 仍原生转发 `messages` 并原样回包 —— 与改造前一字不差。
+
+### 9.4 对抗审查留下的结论
+
+1. **需求里场景2 第 2、3 条写的 `=> /v1/images/generations` 是「canonical 中心」的简写**，
+   不是字面打 generations。上游 generations 不收 image，按字面实现必然失败；
+   已与需求方确认按 canonical 分流。
+2. **edits 入口的「文生图」做不到，也不需要**：上游 `openai.ConvertImageRequest`
+   在 edits 模式下强制要求 multipart 里有图片文件（`image is required`）。
+   需求写「前期可以先不支持」与此一致。当前返回的是上游的 500，尚未改成 4xx。
+3. **「透传就行」不成立**：`converter:none` 会重建 body。协议层直接从原始 body 折叠，
+   vendor extras（`seed`、`sequential_image_generation`…）原样保留。
+4. **`image` 三态载体**：URL / data URI / 裸 base64。seedream 只把裸 b64 补成 data URI；
+   gpt-image-2 的 edits 需要文件，data URI 与裸 b64 本地解码，http(s) 必须显式开
+   `allow_url_fetch`，且拒绝回环/私网 IP、10s 超时、20 MiB 上限。默认零出站连接。
+5. **seedream 的 mask 不转发**（skill §3.7）；之前版本把 mask 转 data URI 下传是错的，已修。
+6. **未做的三件事**（都是取舍，不是遗漏）：
+   - `size` 档位换算（`1024x1024` → `2K`）属上游方言，未经实测不擅自改写；
+   - `response_format` 归一化的上游行为未按格子取证（skill §3.8：未测 ≠ 不支持）；
+   - 错误信封重铸（401/403 → 502、429 保留 Retry-After）是破坏性变更，skill §3.9 标为待定。
+8. **`image` 判定以需求口径为准**：长度 1 的数组是图生图，长度 0 / 为空是文生图；
+   空串不再 400 而是归一化（见 §9.3 的表）。
+
+7. **「1-n 张垫图」目前只验证到 n=2 的编码与保序**，真实上游的多图尺寸/张数上限
+   没有取证卡，不能当成已支持。
+
+### 9.5 代码落点
+
+| 文件 | 作用 |
+|---|---|
+| `relaykit/dto/apiduo_image_protocol.go` | 配置结构 + 校验 |
+| `relay/channel/advancedcustom/apiduo_image_canonical.go` | 三个折叠 ①② + canonical 校验归一化 |
+| `relay/channel/advancedcustom/apiduo_image_script.go` | 上游脚本 ③：选端点、载体、编码 |
+| `relay/channel/advancedcustom/apiduo_image_response.go` | ⑤⑥ + chat 按张计费 |
+| `relay/channel/advancedcustom/apiduo_image_adaptor.go` | 挂接块的全部实现 |
+| `apiduo_image_protocol_test.go` | 12 组判别式单测 |
+
+上游文件只留 3 个不可替代挂接点（字段、URL、请求、响应），块内各一次调用；
+`.apiduo/merge-budget.txt` 已登记 +5 块 / +26 行。
+
+**chat 入口不用改 TextHelper**：调研确认响应形状由 `adaptor.DoResponse` 掌控，
+`TextHelper` 只强转 `usage.(*dto.Usage)`。按张计费靠
+`info.PriceData.AddOtherRatio("n", count)` + `info.UpdateImageCount()`，
+`text_quota.go:362/374` 会 `ApplyOtherRatiosToDecimal` 吃到这个乘子。
+
+**legacy fallback**：未启用协议层时，§7.2 的 edits 路径后缀折叠仍生效，
+保证已提交的渠道配置不被破坏；新代码一律走协议层。
+
+
+### 9.6 本地端到端复验与计费修复（2026-11-07 21:00）
+
+完整记录见 `docs/apiduo/image-e2e-2026-11-07.md`：三渠道同时在线（seedream /
+gpt-image-2 / 默认关闭），24 格功能矩阵全 200，四个 400、chat 回包内容、
+默认关闭等价全部实测通过。
+
+**本轮查出并修掉两个计费 bug**（此前只做了代码推断，没落库验证）：
+
+| | images 入口 | chat 入口 |
+|---|---|---|
+| 修复前 | `quota=38` | `quota=75` |
+| 修复后 | `quota=38` | `quota=38` |
+
+1. `finishImageChatResponse` 返回的 usage 是 `1/1`，而 ImageHelper 是 `1/0`；
+   TextHelper 按 token 计价，多一个 completion token 正好翻倍。改成 `1/0`。
+2. `n` 乘子原用「响应 data 长度」，ImageHelper 用「请求 n」；且非 UsePrice 时
+   `PrepareImageBillingForRequest` 把 quantity 固定为 1。改为缓存 canonical 的请求 n，
+   只调 `UpdateImageCount()`，不再无条件 `AddOtherRatio`。
+
+修复后 images n=1/n=2 与 chat n=1/n=2/图生图共 5 个请求全部 `quota=38`。
+
+
+### 9.7 空 `data[]` 的口径修正（2026-11-07 21:43）
+
+§9.6 曾把「上游 200 + 空 `data[]`」统一升格为 502，**这是过度处理，已撤销**。
+
+需求方口径：**入口只负责回包形状完整，不替上游判定业务成败**。chat 入口只要
+`choices[0].message.content` 存在即可，`content: []` 也是合法回包；images 入口
+原样透传 `{"data":[]}`。skill §5.5 自己也把「200 但没图必须变 4xx/5xx」标为
+「产品取舍，不是定律」，这里采用需求方口径。
+
+实现上同时带来一个好处：`doImageProtocolResponse` 恢复为「只在 chat 时接管」，
+不再读 `resp.Body` 再还回去，正常路径与上游零差异（此前那段前置检查会改变
+`resp.Body` 类型并引入额外内存拷贝）。
+
+实测（v7）：chat → 200 `chat.completion` + `content=[]`；images → 200 `{"data":[]}`；
+24 格矩阵仍全 200，计费仍 `38/38`。单测 `TestEmptyImageDataKeepsChatContentShape` 锁住形状。
+
+
+### 9.8 chat 回包：Markdown 图片 + 流式 SSE（2026-11-07 21:47）
+
+需求口径：chat 入口返回图片用 **Markdown 包装**，`content` 是字符串而不是
+`image_url` parts；`stream:true` 也要「拼装为 chat」，不能拒绝。
+
+- 非流式：`content = "![image](url)"`，多图一行一个，`b64_json` 转 `data:` URI 后嵌入。
+- 流式：`chat.completion.chunk` 三帧（md delta → `finish_reason=stop` → `[DONE]`），
+  自己写 `Content-Type: text/event-stream`（`IOCopyBytesGracefully` 会把上游的
+  `application/json` 复制回来覆盖掉，不能用）。
+- 空 `data[]`：`content: ""`，字段仍在（沿用 §9.7 口径）。
+- `TextHelper` 在 stream 下没有特殊分支，无需改上游分发。
+
+⚠️ 与 skill §2.2「chat 回 `image_url` parts」有意不同，采用需求方口径
+（多数 chat 客户端只认 string content）。SSE 只有「完整结果一帧」，不涉及
+partial images（skill §6 范围外）。
+
+实测：单图 / 双图 / 双图流式均正确；计费非流式·流式·images 三入口 `38/38/38`；
+24 格矩阵全 200。详见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
+
+
+### 9.9 chat 最终口径（2026-11-07 21:55，取代 §9.8 的非流式部分）
+
+| 项 | 口径 |
+|---|---|
+| chat 非流式 | **不用 md**，`content` 是 `image_url` parts 数组（skill §2.2 形状） |
+| chat 流式 | **用 md**，`delta.content` 是 Markdown 字符串 |
+| 请求字段 | 只认 OpenAI 标准字段（`messages[].content` 的 text / image）；`n`、`size`、`temperature`、`tools`、`stream` 等一律不往下传 |
+| 文生/图生判定 | `prompt` 非空且无 `image` → 文生图；有 `image` → 图生图；皆空 → 400 |
+| 空 `data[]` | 非流式 `content: []`、流式 `delta.content: ""`，均不升格 5xx |
+
+`canonicalFromChat` 只产出 `model` / `prompt` / `image?`。响应侧附加字段仍按入口
+carry over（不参与判定）。计费因 `n` 不再下传而恒用请求数 1，实测非流式 / 流式
+均 `quota=38`，与 images 入口一致。
+
+实测与复现见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
+
+
+### 9.10 chat 严格识别 + 对象存储转存验证（2026-11-07 22:00）
+
+**chat 图片只认标准形态**（需求指定）：
+
+```json
+{"type":"image_url","image_url":{"url":"...","detail":"high"}}
+```
+
+`readChatContent` 只取 `image_url.url`，`detail` 等忽略；`input_image` / `image` /
+裸字符串 / 顶层 `url` 一律不当图片（避免误判成垫图走错端点）。text 只认 `type:"text"`。
+实测标准形态认图、非标准不当图、只有标准图片无 text 仍能图生图（prompt 允许为空）。
+单测 `TestChatOnlyRecognisesStandardImageURLPart`。
+
+**对象存储转存**由 `service.RewriteResponseArtifactsInPlace` 在 `DoResponse` 之前介入
+（`relay/compatible_handler.go:174` / `image_handler.go:160` / `claude_handler.go:151`），
+与本协议层是串行的两段：上游响应先被改写成存储链接，再由 ⑥ 按入口包装。
+实测 data URI / 内联 base64 转存、公开链接与 presign、失败降级、幂等 key、
+chat 非流式 parts 与流式 md 拿到转存后链接，全部通过。完整矩阵与 7 条风险见
+`docs/apiduo/image-e2e-2026-11-07.md` 末节。
+
+⚠️ 两个值得记住的口径：`b64_json` 默认不转存（需 `rewrite_paths`，且内联 base64
+要 ≥1024 字符）；`=> url clear` 是把源字段置 `null` 而非删键。

@@ -114,7 +114,8 @@ func foldEditsMultipart(form *multipart.Form) ([]byte, error) {
 			if len(refs) == 0 {
 				continue // 空 part = 没传，键不出现
 			}
-			if field == "image" && len(refs) > 1 {
+			// 客户端用 image[] 这个 key 就表示「我要数组」，哪怕只有一个文件。
+			if field == "image" && (len(refs) > 1 || strings.HasSuffix(key, "[]")) {
 				body[field] = refs
 			} else {
 				body[field] = refs[0]
