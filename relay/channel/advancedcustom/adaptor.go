@@ -282,7 +282,15 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		if info.RelayMode == relayconstant.RelayModeImagesEdits {
 			if body, handled, err := foldEditsRequestForJSONUpstream(c, a.route.UpstreamPath); handled {
 				if err != nil {
-					return nil, err
+					// 折叠失败一律是客户端的问题（不是图片、太大、表单解析不了）：
+					// 必须回 4xx。包成普通 error 会被上层记成 500 do_request_failed，
+					// 客户端看到一个可重试的服务端错误，就会一直重试同一个坏请求。
+					return nil, types.NewOpenAIError(
+						err,
+						types.ErrorCodeInvalidRequest,
+						http.StatusBadRequest,
+						types.ErrOptionWithSkipRetry(),
+					)
 				}
 				// 折叠后是 JSON，得让 SetupApiRequestHeader 带上 json 的 Content-Type
 				// （否则会把客户端的 multipart boundary 一起发上去）。发完立刻还原：
