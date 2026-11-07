@@ -11,6 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	// APIDUO:discount:BEGIN
+	"github.com/QuantumNous/new-api/pkg/apiduo/discount"
+	// APIDUO:discount:END
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -119,6 +122,12 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if ok {
 		actualGroupRatio = userGroupRatio
 	}
+	// APIDUO:discount:BEGIN
+	// 音频路径自己算了一遍组倍率，这里必须同步折扣，否则语音请求永远按组价扣。
+	if rate, hit := discount.Resolve(discount.Parse(relayInfo.UserSetting.ApiduoDiscounts), relayInfo.UsingGroup, modelName, common.GetTimestamp()); hit {
+		actualGroupRatio = rate
+	}
+	// APIDUO:discount:END
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{

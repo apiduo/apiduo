@@ -60,6 +60,9 @@ export function usePricingData(enabled = true) {
         vendor_icon: vendor?.icon,
         vendor_description: vendor?.description,
         group_ratio: data.group_ratio,
+        // APIDUO:discount:BEGIN
+        user_discount_ratios: data.user_discount_ratios,
+        // APIDUO:discount:END
       }
     })
   }, [data])

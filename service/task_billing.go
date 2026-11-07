@@ -405,21 +405,28 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		return false
 	}
 
-	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
-	} else {
-		finalGroupRatio = groupRatio
-	}
-
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
 	otherMultiplier := 1.0
 	if priceData := taskBillingContextPriceData(task.PrivateData.BillingContext); priceData != nil {
 		otherMultiplier = priceData.OtherRatioMultiplier()
 	}
+
+	// APIDUO:discount:BEGIN
+	// 优先使用创建时冻结的组倍率，和预扣同一口径（个人折扣已包含在里面）；
+	// 没有快照的老任务才按当前配置重算，不补折扣。
+	snapshot := taskBillingContextPriceData(task.PrivateData.BillingContext)
+	var finalGroupRatio float64
+	if snapshot != nil && (snapshot.GroupRatioInfo.GroupRatio > 0 || snapshot.GroupRatioInfo.HasSpecialRatio) {
+		finalGroupRatio = snapshot.GroupRatioInfo.GroupRatio
+	} else {
+		groupRatio := ratio_setting.GetGroupRatio(group)
+		if userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group); hasUserGroupRatio {
+			finalGroupRatio = userGroupRatio
+		} else {
+			finalGroupRatio = groupRatio
+		}
+	}
+	// APIDUO:discount:END
 
 	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * otherMultiplier（饱和转换，防止溢出成负数）
 	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)

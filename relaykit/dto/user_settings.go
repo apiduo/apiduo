@@ -1,5 +1,10 @@
 package dto
 
+// APIDUO:discount:BEGIN
+import "encoding/json"
+
+// APIDUO:discount:END
+
 type UserSetting struct {
 	NotifyType                       string  `json:"notify_type,omitempty"`                          // QuotaWarningType 额度预警类型
 	QuotaWarningThreshold            float64 `json:"quota_warning_threshold,omitempty"`              // QuotaWarningThreshold 额度预警阈值
@@ -18,6 +23,10 @@ type UserSetting struct {
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
+	// APIDUO:discount:BEGIN
+	// ApiduoDiscounts 个人模型折扣规则，有序数组，数组顺序即优先级。原始 JSON 保存，解析失败只丢弃折扣。
+	ApiduoDiscounts json.RawMessage `json:"apiduo_discounts,omitempty"`
+	// APIDUO:discount:END
 }
 
 var (

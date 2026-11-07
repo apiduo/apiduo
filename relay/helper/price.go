@@ -9,6 +9,9 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	// APIDUO:discount:BEGIN
+	"github.com/QuantumNous/new-api/pkg/apiduo/discount"
+	// APIDUO:discount:END
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -58,6 +61,15 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		// normal group ratio
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
+
+	// APIDUO:discount:BEGIN
+	// 个人折扣按模型匹配，命中即覆盖最终组倍率；与 group_group_ratio 同为「覆盖、不相乘」。
+	if rate, ok := discount.Resolve(discount.Parse(relayInfo.UserSetting.ApiduoDiscounts), relayInfo.UsingGroup, relayInfo.GetBillingModelName(), common.GetTimestamp()); ok {
+		groupRatioInfo.GroupRatio = rate
+		groupRatioInfo.GroupSpecialRatio = rate
+		groupRatioInfo.HasSpecialRatio = true
+	}
+	// APIDUO:discount:END
 
 	return groupRatioInfo
 }

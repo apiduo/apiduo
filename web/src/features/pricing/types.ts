@@ -79,6 +79,10 @@ export type PricingModel = {
   supported_endpoint_types?: string[]
   key?: string
   group_ratio?: Record<string, number>
+  // APIDUO:discount:BEGIN
+  /** 该用户在该组下每个模型的折后倍率，值为最终倍率（覆盖，不相乘） */
+  user_discount_ratios?: Record<string, Record<string, number>>
+  // APIDUO:discount:END
   /** Billing mode (e.g. "tiered_expr") used to flag dynamic pricing */
   billing_mode?: string
   /** Raw expression describing dynamic / tiered billing */
@@ -127,6 +131,10 @@ export type PricingData = {
   data: PricingModel[]
   vendors: PricingVendor[]
   group_ratio: Record<string, number>
+  // APIDUO:discount:BEGIN
+  /** 个人折扣展开表，组 → 模型 → 最终倍率 */
+  user_discount_ratios?: Record<string, Record<string, number>>
+  // APIDUO:discount:END
   usable_group: Record<string, { desc: string; ratio: number }>
   supported_endpoint: Record<string, string>
   auto_groups: string[]

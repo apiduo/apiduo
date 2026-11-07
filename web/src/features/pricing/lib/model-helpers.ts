@@ -71,6 +71,14 @@ export function getDisplayGroupRatio(
     selectedGroup !== FILTER_ALL &&
     modelEnableGroups.includes(selectedGroup)
   ) {
+    // APIDUO:discount:BEGIN
+    const discountByGroup = model.user_discount_ratios?.[selectedGroup]
+    const discountRate =
+      discountByGroup?.[model.model_name] ?? discountByGroup?.['*']
+    if (typeof discountRate === 'number' && discountRate > 0) {
+      return discountRate
+    }
+    // APIDUO:discount:END
     return getConfiguredGroupRatio(groupRatio, selectedGroup)
   }
 

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>折扣规则表单 · 体验原型</title>
+<style>
+:root{
+  --bg:#ffffff;--page:#f5f5f7;--surface:#f2f2f7;--raised:#ffffff;
+  --ink:#1c1c1e;--ink2:#5f5f66;--ink3:#8e8e93;
+  --line:rgba(0,0,0,.11);--line2:rgba(0,0,0,.20);
+  --accent:#5b5bd6;--accent-soft:#eeedfe;--on-accent:#ffffff;--ok:#0f6e56;--ok-soft:#e1f5ee;
+  --warn:#854f0b;--warn-soft:#faeeda;--danger:#a32d2d;--danger-soft:#fcebeb;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --spring:cubic-bezier(.22,1,.36,1);
+  --sheet-spring:cubic-bezier(.34,1.3,.64,1);
+}
+html.dark{
+  --bg:#1c1c1e;--page:#101012;--surface:#2c2c2e;--raised:#242426;
+  --ink:#f5f5f7;--ink2:#c7c7cc;--ink3:#a8a8ad;
+  --line:rgba(255,255,255,.14);--line2:rgba(255,255,255,.28);
+  --accent:#a9a6f5;--accent-soft:#34335c;--on-accent:#17171a;--ok:#5dcaa5;--ok-soft:#123a30;
+  --warn:#ef9f27;--warn-soft:#3a2b12;--danger:#f09595;--danger-soft:#3d1d1d;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.page{max-width:760px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px}
+.sub{font-size:12px;color:var(--ink2);margin:0 0 20px}
+.card{background:var(--bg);border:.5px solid var(--line);border-radius:14px;overflow:hidden;animation:sheet .3s var(--sheet-spring) both}
+@keyframes sheet{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:none}}
+.hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:.5px solid var(--line)}
+.hd .who{font-size:14px;font-weight:600}
+.hd .meta{font-size:11px;color:var(--ink3)}
+.badge{font-size:11px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:2px 7px;margin-left:2px}
+.dirty{margin-left:auto;font-size:11px;color:var(--warn);background:var(--warn-soft);border-radius:5px;padding:3px 8px;opacity:0;transition:opacity .2s}
+.dirty.on{opacity:1}
+.bd{padding:16px 18px}
+.sect{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.sect h2{font-size:13px;font-weight:600;margin:0}
+.sect .tip{margin-left:auto;font-size:11px;color:var(--ink3)}
+.hint{font-size:11.5px;color:var(--ink2);margin:0 0 12px}
+.src{display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--ink2);background:var(--surface);border-radius:8px;padding:8px 10px;margin-bottom:14px}
+.src code{font-family:var(--mono);font-size:10.5px;color:var(--ink)}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.5fr) 76px 112px 52px 20px;gap:8px;align-items:center}
+.lbl{font-size:11px;color:var(--ink3);padding-bottom:6px;border-bottom:.5px solid var(--line)}
+.rows{transition:transform .35s var(--spring)}
+.rows.reflow{animation:reflow .35s var(--spring)}
+@keyframes reflow{from{transform:translateY(-6px)}to{transform:none}}
+.row{position:relative;padding:7px 0 7px 24px;border-bottom:.5px solid var(--line);transition:opacity .25s var(--spring),background .25s var(--spring)}
+.row::before{content:attr(data-n);position:absolute;left:0;top:9px;width:18px;text-align:right;font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
+.row.dead{opacity:.48}
+.row.err{background:var(--danger-soft);border-radius:6px}
+.cell{position:relative;min-width:0}
+.cell::before{display:none}
+select,input{width:100%;min-width:0;max-width:100%;font-family:var(--font);font-size:12px;color:var(--ink);background:var(--raised);border:.5px solid var(--line2);border-radius:7px;padding:6px 8px;outline:none;transition:border-color .2s,box-shadow .2s}
+select:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+input.mono{font-family:var(--mono)}
+input.bad{border-color:var(--danger);background:var(--danger-soft)}
+.tagnote{font-size:10.5px;color:var(--warn);margin-top:3px;line-height:1.35}
+.danger-note{font-size:10.5px;color:var(--danger);margin-top:3px;line-height:1.35}
+.mv{display:flex;gap:2px}
+.mv button,.del{border:.5px solid var(--line);background:transparent;color:var(--ink2);border-radius:5px;width:22px;height:24px;font-size:12px;cursor:pointer;padding:0;transition:transform .15s var(--spring),background .15s}
+.mv button:hover:not(:disabled),.del:hover{background:var(--surface);transform:translateY(-1px)}
+.mv button:active:not(:disabled){transform:scale(.9)}
+.mv button:disabled{opacity:.3;cursor:default}
+.del{width:20px;border:none;font-size:15px;color:var(--ink3)}
+.add{width:100%;border:.5px dashed var(--line2);background:transparent;color:var(--accent);border-radius:8px;padding:8px;margin:10px 0 16px;font-size:12px;cursor:pointer;transition:background .2s}
+.add:hover{background:var(--accent-soft)}
+.prev{background:var(--surface);border-radius:10px;padding:12px 14px}
+.prev h3{font-size:11px;font-weight:600;color:var(--ink3);margin:0 0 9px}
+.try{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;margin-bottom:10px}
+.try label{font-size:10.5px;color:var(--ink3);display:block;margin-bottom:3px}
+.result{grid-column:1/-1;font-size:12px;color:var(--ink2);line-height:1.6;background:var(--bg);border:.5px solid var(--line);border-radius:7px;padding:7px 10px;margin-top:2px}
+.result b{color:var(--ink);font-weight:600}
+.result .hitline{color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.chip{font-size:11px;background:var(--bg);border:.5px solid var(--line);border-radius:5px;padding:3px 7px;color:var(--ink2)}
+.chip b{color:var(--ink);font-weight:600}
+.foot{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:.5px solid var(--line)}
+.btn{border:.5px solid var(--line2);background:transparent;color:var(--ink);border-radius:8px;padding:7px 16px;font-size:12px;cursor:pointer;transition:transform .15s var(--spring)}
+.btn:active{transform:scale(.96)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.note{font-size:11px;color:var(--ink3);margin-top:14px;line-height:1.7}
+kbd{font-family:var(--mono);font-size:10.5px;background:var(--surface);border:.5px solid var(--line);border-radius:4px;padding:1px 4px}
+@media(max-width:640px){
+  .page{padding:14px 10px 40px}
+  .bd{padding:13px 12px}
+  .hd{padding:12px}
+  .lbl{display:none}
+  .row{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px 8px;padding:11px 9px 11px 26px;margin-bottom:8px;border:.5px solid var(--line);border-radius:9px;background:var(--raised);position:relative}
+  .row .cell::before{display:block;content:attr(data-l);font-size:10px;color:var(--ink3);margin-bottom:2px}
+  .row .cell.g-group{grid-column:1;grid-row:1}
+  .row .cell.g-models{grid-column:2;grid-row:1}
+  .row .cell.g-rate{grid-column:1;grid-row:2}
+  .row .cell.g-until{grid-column:2;grid-row:2}
+  .row .cell.g-del{position:static;grid-column:1;grid-row:3;justify-self:start}
+  .row .cell.g-mv{grid-column:2;grid-row:3;justify-self:end}
+  .row .tagnote,.row .danger-note{grid-column:1/-1;grid-row:4}
+  .try{grid-template-columns:1fr 1fr}
+  .try .result{grid-column:1/-1}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+@media(prefers-reduced-transparency:reduce){
+  .card,.row{background:var(--bg)}
+}
+@media(prefers-contrast:more){
+  :root{--line:rgba(0,0,0,.5);--line2:rgba(0,0,0,.8)}
+  html.dark{--line:rgba(255,255,255,.5);--line2:rgba(255,255,255,.85)}
+  select,input,.row{border-width:1px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>折扣规则 · 表单体验原型</h1>
+  <p class="sub">同一张表：顺序即规则（第一条命中即停）、动态分组、即时校验、死行预警、试算器</p>
+
+  <div class="card" id="card">
+    <div class="hd">
+      <div><div class="who">编辑用户 · 张伟 <span class="badge">apiduo</span></div><div class="meta">user.group = vip · 一次保存全部生效</div></div>
+      <span class="dirty" id="dirty">未保存更改</span>
+    </div>
+    <div class="bd">
+      <div class="sect"><h2>折扣规则</h2><span class="tip">从上往下，第一条命中即停</span></div>
+      <p class="hint">分组和模型可写多个，逗号分隔；* 表示全部。到期留空 = 永久。<strong>顺序就是优先级，具体的放前面、兜底放最后。</strong></p>
+      <div class="src" id="src"></div>
+
+      <div class="grid lbl"><span>分组</span><span>模型</span><span>折扣</span><span>到期</span><span>顺序</span><span></span></div>
+      <div class="rows" id="rows"></div>
+      <button class="add" id="add">+ 添加一行</button>
+
+      <div class="prev">
+        <h3>试算 · 自己选一个组合，看命中哪一行</h3>
+        <div class="try">
+          <div><label>使用分组</label><select id="tg"></select></div>
+          <div><label>模型</label><select id="tm"></select></div>
+          <div class="result" id="result"></div>
+        </div>
+        <div class="chips" id="chips"></div>
+      </div>
+    </div>
+    <div class="foot"><button class="btn" id="cancel">取消</button><button class="btn primary" id="save">保存</button></div>
+  </div>
+  <div class="note" id="footnote"></div>
+</div>
+
+<script>
+(function(){
+  var G=[['default','1.00',1],['vip','1.00',1],['svip','1.00',1],['auto','—',0],['team-a','1.00',0],['team-b','0.90',0],['team-c','0.80',0],['internal','1.00',0]];
+  var MODELS=['gpt-4o','claude-3.7','gemini-2.5','deepseek-r1','*'];
+  var R=[
+    {g:'vip',m:'gpt-4o',r:'7',u:'2026-12-31'},
+    {g:'vip,svip',m:'claude-3.7,gemini-2.5',r:'8.5',u:''},
+    {g:'vip',m:'*',r:'8',u:''},
+    {g:'svip',m:'*',r:'9',u:''},
+    {g:'*',m:'*',r:'9.5',u:''}
+  ];
+  var params=new URLSearchParams(location.search);
+  if(params.get('theme')==='dark')document.documentElement.classList.add('dark');
+  var dirty=false;
+  var $=function(id){return document.getElementById(id);};
+  function markDirty(){dirty=true;$('dirty').classList.add('on');}
+
+  function groupsOf(s){return s.split(',').map(function(x){return x.trim();}).filter(Boolean);}
+  function modelsOf(s){return s.split(',').map(function(x){return x.trim();}).filter(Boolean);}
+  function usable(name){
+    if(name==='*')return true;
+    for(var i=0;i<G.length;i++)if(G[i][0]===name)return !!G[i][2];
+    return false;
+  }
+  function rate(x){var n=parseFloat(x.r);return isNaN(n)?null:n/10;}
+  function rowError(x){
+    var n=parseFloat(x.r);
+    if(x.r===''||isNaN(n)||n<=0||n>10)return '折扣要填 1–10 折';
+    if(groupsOf(x.g).some(function(g){return !usable(g);}))return '此用户用不到该分组，配置永不命中';
+    return '';
+  }
+  function covers(x,g,m){
+    var gs=groupsOf(x.g),ms=modelsOf(x.m);
+    return (gs.indexOf(g)>=0||gs.indexOf('*')>=0)&&(ms.indexOf(m)>=0||ms.indexOf('*')>=0);
+  }
+  function hit(g,m){
+    for(var i=0;i<R.length;i++){
+      var x=R[i];
+      if(rowError(x))continue;
+      if(x.u && Date.parse(x.u+'T23:59:59') < Date.now())continue;
+      if(covers(x,g,m))return {i:i,v:rate(x)};
+    }
+    return {i:-1,v:null};
+  }
+  function deadRows(){
+    var realModels=MODELS.filter(function(v){return v!=='*';});
+    return R.map(function(x,i){
+      if(rowError(x))return false;
+      var gs=groupsOf(x.g),ms=modelsOf(x.m);
+      var pg=gs.indexOf('*')>=0?G.map(function(v){return v[0];}):gs.filter(function(v){return v!=='*';});
+      var pm=ms.indexOf('*')>=0?realModels:ms.filter(function(v){return v!=='*';});
+      if(!pg.length||!pm.length)return false;
+      for(var a=0;a<pg.length;a++)for(var b=0;b<pm.length;b++){
+        if(hit(pg[a],pm[b]).i===i)return false;
+      }
+      return true;
+    });
+  }
+  function opts(list,sel){
+    return list.map(function(v){return '<option value="'+v+'"'+(v===sel?' selected':'')+'>'+v+'</option>';}).join('');
+  }
+  function render(keepFocus){
+    var ae=document.activeElement, af=ae&&ae.getAttribute?ae.getAttribute('data-f'):null, ai=ae&&ae.getAttribute?ae.getAttribute('data-i'):null, pos=null;
+    try{pos=ae&&ae.selectionStart;}catch(e){}
+    var dead=deadRows();
+    $('rows').innerHTML=R.map(function(x,i){
+      var err=rowError(x),bad=err.indexOf('折扣')===0;
+      var unusable=err.indexOf('此用户')===0;
+      var cls='row grid'+(dead[i]?' dead':'')+(err?' err':'');
+      return '<div class="'+cls+'" data-i="'+i+'" data-n="'+(i+1)+'">'
+        +'<div class="cell g-group" data-l="分组"><input class="mono" data-f="g" data-i="'+i+'" value="'+x.g+'" list="glist" placeholder="vip / vip,svip / *">'+(x.g.indexOf(',')>=0?'<div class="tagnote">多组：'+x.g+'</div>':'')+'</div>'
+        +'<div class="cell g-models" data-l="模型"><input class="mono" data-f="m" data-i="'+i+'" value="'+x.m+'" list="mlist"></div>'
+        +'<div class="cell g-rate" data-l="折扣"><input class="mono'+(bad?' bad':'')+'" data-f="r" data-i="'+i+'" value="'+x.r+'" inputmode="decimal"></div>'
+        +'<div class="cell g-until" data-l="到期"><input type="date" data-f="u" data-i="'+i+'" value="'+x.u+'"></div>'
+        +'<div class="cell g-mv mv"><button data-act="up" data-i="'+i+'"'+(i===0?' disabled':'')+'>↑</button><button data-act="down" data-i="'+i+'"'+(i===R.length-1?' disabled':'')+'>↓</button></div>'
+        +'<div class="cell g-del"><button class="del" data-act="del" data-i="'+i+'">×</button></div>'
+        +(err?'<div class="'+(bad?'danger-note':'tagnote')+'" style="grid-column:1/-1">'+(unusable?'⚠ ':'')+err+(dead[i]&&!err?' · 被前面的行完全盖住，永不命中':'')+'</div>':'')
+        +(dead[i]&&!err?'<div class="tagnote" style="grid-column:1/-1">被前面的行完全盖住，永不命中</div>':'')
+        +'</div>';
+    }).join('');
+    if(keepFocus&&af!=null){var el=document.querySelector('[data-f="'+af+'"][data-i="'+ai+'"]');if(el){el.focus();var cp=(pos==null||(pos===0&&el.value))?el.value.length:pos;try{el.setSelectionRange(cp,cp);}catch(e){}}}
+    if(!keepFocus){$('rows').classList.remove('reflow');void $('rows').offsetWidth;$('rows').classList.add('reflow');}
+    renderPreview();
+    renderSrc();
+  }
+  function renderSrc(){
+    var n=G.filter(function(x){return x[2];}).length;
+    $('src').innerHTML='数据源 <code>GET /api/group/</code> · 全站 '+G.length+' 个组（动态）　|　张伟可用 <b>'+n+'</b> 个（按 targetUserId 算，不是登录者）　|　分组可敲多个（vip,svip），拼错或不可用即时报警';
+  }
+  function renderPreview(){
+    var g=$('tg').value,m=$('tm').value,h=hit(g,m);
+    $('result').innerHTML=h.i<0
+      ? '未命中任何规则 → <b>按组价</b>'
+      : '命中<b class="hitline">第 '+(h.i+1)+' 行</b> → <b>'+h.v.toFixed(2)+'</b>';
+    var qs=[['vip','gpt-4o'],['vip','claude-3.7'],['svip','gpt-4o'],['svip','claude-3.7'],['default','gpt-4o']];
+    $('chips').innerHTML=qs.map(function(p){
+      var z=hit(p[0],p[1]);
+      return '<span class="chip">'+p[0]+'/'+p[1]+' <b>'+(z.i<0?'按组价':z.v.toFixed(2))+'</b></span>';
+    }).join('');
+  }
+  $('tg').innerHTML=opts(G.map(function(x){return x[0];}),'vip');
+  $('tm').innerHTML=opts(MODELS.slice(0,4),'gpt-4o');
+  $('tg').onchange=renderPreview;
+  $('tm').onchange=renderPreview;
+
+  $('rows').addEventListener('input',function(e){
+    var f=e.target.getAttribute('data-f'),i=+e.target.getAttribute('data-i');
+    if(!f)return;
+    R[i][f]=e.target.value;markDirty();
+    render(true);
+  });
+  $('rows').addEventListener('change',function(e){
+    if(e.target.type==='date'){markDirty();renderPreview();}
+  });
+  $('rows').addEventListener('click',function(e){
+    var act=e.target.getAttribute('data-act');if(!act)return;
+    var i=+e.target.getAttribute('data-i');
+    if(act==='del'){R.splice(i,1);}
+    else if(act==='up'&&i>0){var t=R[i];R[i]=R[i-1];R[i-1]=t;}
+    else if(act==='down'&&i<R.length-1){var t2=R[i];R[i]=R[i+1];R[i+1]=t2;}
+    markDirty();render();
+  });
+  $('add').onclick=function(){R.push({g:'*',m:'*',r:'9',u:''});markDirty();render();};
+  $('save').onclick=function(){
+    var errs=R.map(rowError).filter(Boolean);
+    $('footnote').textContent=errs.length?'保存被拦下：'+errs.length+' 行有问题（见红色提示）':'已保存 · 全部规则生效';
+    dirty=false;$('dirty').classList.remove('on');
+  };
+  $('cancel').onclick=function(){$('footnote').textContent=dirty?'脏态拦截：还有未保存的更改，请先保存或确认放弃':'已取消';};
+  window.addEventListener('beforeunload',function(e){if(dirty){e.preventDefault();e.returnValue='';}});
+
+  if(params.get('dirty')==='1'){R[0].r='6.5';markDirty();}
+  if(params.get('error')==='1'){R[1].r='0';R[4].g='team-c';markDirty();}
+  if(params.get('dead')==='1'){R[1]={g:'vip',m:'gpt-4o',r:'8',u:''};markDirty();}
+  render();
+  $('footnote').textContent='顺序即规则：从上往下第一条命中即停，把具体的拖到前面、兜底放最后；顺序错了会被死行检测标灰。↑↓ 调整行序带弹簧过渡（damping 1.0 / response .35）；改动即时重算，无提交按钮；三档无障碍降级已内置。';
+  $('footnote').innerHTML=$('footnote').textContent;
+})();
+</script>
+<datalist id="glist"><option value="default"><option value="vip"><option value="svip"><option value="auto"><option value="team-a"><option value="team-b"><option value="team-c"><option value="internal"><option value="*"></datalist>
+<datalist id="mlist"><option value="gpt-4o"><option value="claude-3.7"><option value="gemini-2.5"><option value="deepseek-r1"><option value="*"></datalist>
+</body>
+</html>

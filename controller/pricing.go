@@ -5,6 +5,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	// APIDUO:discount:BEGIN
+	"github.com/QuantumNous/new-api/pkg/apiduo/discount"
+	// APIDUO:discount:END
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -64,6 +67,23 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
+	// APIDUO:discount:BEGIN
+	// 个人折扣按「组 × 模型」返回折后倍率，前端只查表；不写 Pricing 元素，避免污染全局缓存。
+	var userDiscountRatios map[string]map[string]float64
+	if exists {
+		if userCache, cacheErr := model.GetUserCache(userId.(int)); cacheErr == nil {
+			rules := discount.Parse(userCache.GetSetting().ApiduoDiscounts)
+			if len(rules) > 0 {
+				groups := make([]string, 0, len(usableGroup))
+				for usable := range usableGroup {
+					groups = append(groups, usable)
+				}
+				userDiscountRatios = discount.Expand(rules, groups, common.GetTimestamp())
+			}
+		}
+	}
+	// APIDUO:discount:END
+
 	c.JSON(200, gin.H{
 		"success":            true,
 		"data":               pricing,
@@ -73,6 +93,9 @@ func GetPricing(c *gin.Context) {
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(group),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
+		// APIDUO:discount:BEGIN
+		"user_discount_ratios": userDiscountRatios,
+		// APIDUO:discount:END
 	})
 }
 
