@@ -5,10 +5,15 @@
 # 2026-11-07 登记 log-final：+3 个挂接点 / +17 行
 #   （SumUsedQuota、SumUsedToken 各一个 CH 分支，migrateClickHouseLogDB 一个迁移调用；
 #    去重逻辑本体在新增的 model/log_final.go，不计入）。
+# 2026-11-08 登记 discount：+14 个挂接点 / +89 行、删除 10 行
+#   （controller/pricing.go 注入折后倍率表；relay/helper/price.go 命中即覆盖组倍率；
+#    relaykit/dto/user_settings.go 加 ApiduoDiscounts 字段；service/quota.go 音频链路同步；
+#    service/task_billing.go 把组倍率计算搬进标记块以改用冻结快照，故有 10 行删除；
+#    匹配/展开逻辑本体在新增的 pkg/apiduo/discount，不计入）。
 # 除新增功能外只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	79
-blocks	212
-added	2044
-deleted	80
+files	87
+blocks	226
+added	2133
+deleted	90
