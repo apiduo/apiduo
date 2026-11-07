@@ -689,3 +689,24 @@ chat 非流式 parts 与流式 md 拿到转存后链接，全部通过。完整�
 容器内三视角均 401 `The API key doesn't exist`（上次实测 2026-09-13）。
 配置可用但凭据需更新，未发任何真实生成请求。契约要点（`size` 至少 3686400 像素、
 `response_format=url` 返回 TOS 链接）见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
+
+
+### 9.13 真实上游 `flux-3-image` 端到端（2026-11-08 01:25）
+
+用户指定 `bfl.1task.cn` 的 `flux-3-image` 做真实生成验证（火山方舟 Key 失效后的替代路径）。
+渠道 `bfl-flux-3-image`（type 58，`upstream=seedream`，`primary_path=/v1/images/generations`）。
+
+bfl2openai 的 `/v1/images/generations` **支持 `image: string | list<string>`**（首张当画布、
+其余当参考图），正好是 seedream 单端点布局 —— 三入口全部折叠到该端点的 JSON。
+
+真实结果：文生图 200/25.8s、图生图（单元素 image 数组 + 1.6MB data URI 垫图）200/27.3s、
+chat 流式 200（SSE 3 帧、md delta）、chat 非流式 200（1 个 `image_url` part）。
+其中一次 chat 流式撞上游 503 `image service is busy`，重试即通，失败请求 quota=0。
+ClickHouse 实证：4 张成功各 `quota=38`、`usage 1/0`，三入口计费完全一致。
+
+⚠️ chat 入口按 §9.9 口径不下传 `size`，上游走默认更大尺寸 ⇒
+流式单帧 md 达 **4.2 MB**，且真实 MPS 成本更高。这是口径代价，不是 bug。
+
+`git diff 0.0.9..HEAD` 对图像协议文件为空 ⇒ 结论对生产 0.0.12 成立。
+另记：e2e 日志表是 `MergeTree`、生产是 `ReplacingMergeTree`，升级 e2e 必须同步换引擎，
+否则 `logs FINAL` 报 `ILLEGAL_FINAL`。完整记录见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
