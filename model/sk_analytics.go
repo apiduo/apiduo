@@ -122,7 +122,7 @@ func fillSkTokenInfo(rows []*SkQuotaData) error {
 	}
 	// Soft-deleted tokens keep their historical usage, so resolve them too
 	// instead of reporting an anonymous bucket.
-	if err := DB.Unscoped().Model(&Token{}).Select("id, name, key").Where("id IN ?", tokenIDs).Find(&tokens).Error; err != nil {
+	if err := DB.Unscoped().Model(&Token{}).Select("id", "name", commonKeyCol).Where("id IN ?", tokenIDs).Find(&tokens).Error; err != nil {
 		return err
 	}
 
