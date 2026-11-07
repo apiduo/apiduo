@@ -720,3 +720,19 @@ ClickHouse 实证：4 张成功各 `quota=38`、`usage 1/0`，三入口计费完
 - 渠道缓存延迟按需求**只降配置不改代码**：`SYNC_FREQUENCY 60 → 15`（部署机 env）。
   根因是 `AddChannel` 不刷缓存 + 定时全量重载；实测 DB 直写 8.2s 可见。
   ⚠️ 该值不在仓库里，重新部署需带上。详见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
+
+
+### 9.15 flux 多端点 / 多形态 / 多垫图全面验证（2026-11-08 02:05）
+
+分层测试：mock 层 41 个零计费形态用例 + 真实 `bfl.1task.cn` 10 个用例 + 24 并发。
+覆盖三入口、两上游端点布局、`image` 数组 0/1/2/3/5/10/11 张、裸 base64、data URI、
+edits multipart、chat 非流式/流式、`b64_json`/`url` 响应、vendor extras、错误路径。
+
+真实结果：垫 1/5/10 张均 200（10 张 102s），11 张被上游 400 `at most 10 images`
+（零计费）；双端点布局图生图走 `/v1/images/edits` multipart 200；chat 两形态 200；
+9 条成功日志各 `quota=38 / usage 1/0`；2/5/10 张保序 True；24 并发串扰 0。
+
+🔴 **口径修正**：`allow_url_fetch` 只在 **gpt-image-2 布局**（需把 URL 下载成 multipart
+文件）起作用；**seedream 布局下 URL 原样透传**，开关与 SSRF 校验都不触发，SSRF 边界
+转到上游服务。此前「URL 一律 400」的结论只在双端点布局成立。
+详见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
