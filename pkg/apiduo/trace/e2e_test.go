@@ -243,6 +243,36 @@ func TestUnsampledLogHasNoTraceID(t *testing.T) {
 	}
 }
 
+// TestForceSampleKeepsTheSpanItAdvertised pins the error-log path: the id is
+// written before the request finalizes, so ForceSample must lock the sample.
+// Relying on LANGFUSE_ERROR_SAMPLE_RATE alone would let an operator lower the
+// rate and quietly reintroduce dead links on exactly the rows that matter.
+func TestForceSampleKeepsTheSpanItAdvertised(t *testing.T) {
+	s := newSink(t)
+	conf := testConfig(s.server.URL)
+	conf.SampleRate = 0
+	conf.ErrorSampleRate = 0
+	conf.FlushIntervalMS = 30
+	setConfig(conf)
+
+	c := newTestContext(t)
+	Begin(c)
+	id := ForceSample(c)
+	if id == "" {
+		t.Fatal("ForceSample must return the trace id it locked")
+	}
+	// Even a request that ends successfully must now be exported: the id is
+	// already on a log row, so the span has to exist.
+	FinalizeRelay(c, RelayMeta{Model: "m", Success: true, Operation: "chat"})
+	spans := s.waitSpans(t, 1, 2*time.Second)
+	if got, _ := spans[0]["traceId"].(string); got != id {
+		t.Fatalf("exported span must carry the advertised id: want %q got %q", id, got)
+	}
+	if id2 := ForceSample(c); id2 != "" {
+		t.Fatalf("ForceSample must not resurrect a finalized request, got %q", id2)
+	}
+}
+
 // TestSamplingRates pins the counter-based sampling decision.
 func TestSamplingRates(t *testing.T) {
 	conf := &Config{SampleRate: 0, ErrorSampleRate: 100}

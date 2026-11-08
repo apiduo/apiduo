@@ -286,6 +286,9 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
+	// APIDUO:trace:BEGIN
+	apiduoTraceErrorLog(c, requestId, other)
+	// APIDUO:trace:END
 	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
 	needRecordIp := false

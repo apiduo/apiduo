@@ -201,6 +201,21 @@ func FillUsage(c *gin.Context, u Usage) string {
 	return col.traceID
 }
 
+// ForceSample pins this request as sampled and returns its trace id. The
+// error-log path calls it right before persisting the id: once the id is
+// written the span must exist, so the decision cannot stay a random draw
+// that LANGFUSE_ERROR_SAMPLE_RATE might lose. Failures are rare (117 rows in
+// seven days on the production gateway), so forcing the sample costs
+// nothing, and they are exactly the rows an operator opens Langfuse for.
+func ForceSample(c *gin.Context) string {
+	col := fromContext(c)
+	if col == nil || col.finalized {
+		return ""
+	}
+	col.sampled = true
+	return col.traceID
+}
+
 // WrapStreamHandler returns a handler that mirrors SSE frames into the
 // collector before delegating. Generic over the scanner's *StreamResult so
 // this package needs no internal import; type inference makes the call site
