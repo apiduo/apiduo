@@ -352,6 +352,11 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	createdAt := common.GetTimestamp()
 	other := params.Other
 	content := other.setContent(params.Content)
+	// APIDUO:trace:BEGIN
+	if tid := apiduoTraceConsume(c, requestId, userId, params); tid != "" {
+		other.SetAdmin("trace_id", tid)
+	}
+	// APIDUO:trace:END
 	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
 	needRecordIp := false

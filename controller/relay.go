@@ -17,6 +17,9 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
+	// APIDUO:trace:BEGIN
+	apiduotrace "github.com/QuantumNous/new-api/pkg/apiduo/trace"
+	// APIDUO:trace:END
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -72,6 +75,9 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	requestId := c.GetString(common.RequestIdKey)
+	// APIDUO:trace:BEGIN
+	apiduotrace.Begin(c)
+	// APIDUO:trace:END
 	//group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 
@@ -146,6 +152,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if relayFormat != types.RelayFormatOpenAIRealtime {
 			perfmetrics.RecordRelayResult(c.Request.Context(), relayInfo, resultErr)
 		}
+		// APIDUO:trace:BEGIN
+		apiduoTraceFinalize(c, relayInfo, resultErr, relayFormat)
+		// APIDUO:trace:END
 		if recovered != nil {
 			panic(recovered)
 		}

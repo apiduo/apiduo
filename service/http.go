@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strings"
 
+	// APIDUO:trace:BEGIN
+	apiduotrace "github.com/QuantumNous/new-api/pkg/apiduo/trace"
+	// APIDUO:trace:END
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 
@@ -42,6 +45,9 @@ func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
 }
 
 func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
+	// APIDUO:trace:BEGIN
+	apiduotrace.CaptureResponseBody(c, data)
+	// APIDUO:trace:END
 	if c.Writer == nil {
 		return
 	}

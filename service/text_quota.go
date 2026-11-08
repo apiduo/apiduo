@@ -542,6 +542,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	attachQuotaSaturation(ctx, relayInfo, other)
 
+	// APIDUO:trace:BEGIN
+	if tid := apiduoTraceUsage(ctx, summary, relayInfo); tid != "" {
+		other.SetAdmin("trace_id", tid)
+	}
+	// APIDUO:trace:END
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,

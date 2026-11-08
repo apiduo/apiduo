@@ -262,6 +262,10 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/data/sk":      accessTokenScopeRule("log:read"),
 	"GET /api/data/sk/self": accessTokenScopeRule("usage:read"),
 	// APIDUO:sk-analytics:END
+	// APIDUO:trace:BEGIN
+	// Trace jump-link config; same reach as the log page itself.
+	"GET /api/apiduo/trace/config": accessTokenScopeRule("log:read"),
+	// APIDUO:trace:END
 	// APIDUO:capacity-forecast:BEGIN
 	"GET /api/data/series":        accessTokenScopeRule("log:read"),
 	"GET /api/data/series/self":   accessTokenScopeRule("usage:read"),

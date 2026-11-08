@@ -3,6 +3,6 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	97
-blocks	273
-added	2584
+blocks	286
+added	2698
 deleted	94

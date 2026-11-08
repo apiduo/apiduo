@@ -11,6 +11,9 @@ import (
 	"sync"
 	"time"
 
+	// APIDUO:trace:BEGIN
+	apiduotrace "github.com/QuantumNous/new-api/pkg/apiduo/trace"
+	// APIDUO:trace:END
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
@@ -122,6 +125,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	if resp == nil || dataHandler == nil {
 		return
 	}
+
+	// APIDUO:trace:BEGIN
+	dataHandler = apiduotrace.WrapStreamHandler(c, dataHandler)
+	// APIDUO:trace:END
 
 	// Finish the request keepalive before changing headers. The scanner owns
 	// subsequent ping and data writes through its shared write mutex.

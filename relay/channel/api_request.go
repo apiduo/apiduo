@@ -13,6 +13,9 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	appconstant "github.com/QuantumNous/new-api/constant"
+	// APIDUO:trace:BEGIN
+	apiduotrace "github.com/QuantumNous/new-api/pkg/apiduo/trace"
+	// APIDUO:trace:END
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
@@ -60,6 +63,9 @@ func SetupApiRequestHeader(info *common.RelayInfo, c *gin.Context, req *http.Hea
 			req.Set("Accept", "text/event-stream")
 		}
 	}
+	// APIDUO:trace:BEGIN
+	apiduotrace.Propagate(c, req)
+	// APIDUO:trace:END
 }
 
 const clientHeaderPlaceholderPrefix = "{client_header:"

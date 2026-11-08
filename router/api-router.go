@@ -82,6 +82,12 @@ func SetApiRouter(router *gin.Engine) {
 		// Per-user balance + daily series for the retention board.
 		apiRouter.GET("/data/user-balances", middleware.AdminAuth(), controller.GetUserBalanceSeries)
 		// APIDUO:capacity-forecast:END
+		// APIDUO:trace:BEGIN
+		// Trace jump-link config for the log page. AdminAuth because
+		// /api/status is public-by-design and must not leak the internal
+		// Langfuse host.
+		apiRouter.GET("/apiduo/trace/config", middleware.AdminAuth(), controller.GetApiduoTraceConfig)
+		// APIDUO:trace:END
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)

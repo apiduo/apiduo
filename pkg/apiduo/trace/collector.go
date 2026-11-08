@@ -1,0 +1,449 @@
+package trace
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
+
+// contextKey is the gin.Context key holding the per-request Collector.
+// Mirrors the upstream KeyBodyStorage pattern: state lives exactly as long
+// as the request.
+const contextKey = "apiduo_trace_collector"
+
+// ginKeyBodyStorage duplicates common.KeyBodyStorage's literal so this
+// package stays free of internal imports. bodyBytes is satisfied
+// structurally by both memoryStorage and diskStorage.
+const ginKeyBodyStorage = "key_body_storage"
+
+type bodyBytes interface {
+	Bytes() ([]byte, error)
+}
+
+// Usage is the settlement-time data filled by service/text_quota.go. Plain
+// fields because the bridge translates from unexported service types.
+type Usage struct {
+	PromptTokens     int
+	CompletionTokens int
+	Quota            int
+	UseTimeSec       int
+	TokenName        string
+}
+
+// RelayMeta is the request-boundary data passed by controller/relay.go's
+// defer. Built by the controller bridge from *relaycommon.RelayInfo, which
+// this package must not import.
+type RelayMeta struct {
+	UserId        int
+	Model         string
+	Group         string
+	TokenId       int
+	TokenName     string
+	ChannelId     int
+	IsStream      bool
+	Retry         int
+	Format        string
+	Operation     string
+	StartUnixNano int64
+	FirstByteNano int64 // 0 when the request never produced a first byte
+	Success       bool
+	ErrorStatus   int
+	ErrorText     string // masked failure reason; truncated by FinalizeRelay
+}
+
+// RecordConsumeInput is the fallback-path payload built by the model bridge
+// for log writes that happen outside any relay request (async task
+// settlement, MJ, violation fees).
+type RecordConsumeInput struct {
+	RequestID        string
+	UserId           int
+	Model            string
+	Group            string
+	TokenName        string
+	ChannelId        int
+	PromptTokens     int
+	CompletionTokens int
+	Quota            int
+	UseTimeSec       int
+	IsStream         bool
+	Operation        string
+	UnixNano         int64
+}
+
+// Collector is the per-request state machine. All hooks write into it; only
+// the relay defer reads it back (once) to build the Snapshot. Not
+// goroutine-safe beyond the guarantees documented per method: stream frames
+// arrive sequentially under the scanner's write mutex, usage is filled once
+// before the defer runs, and finalize runs exactly once.
+type Collector struct {
+	traceID      string
+	spanID       string
+	parentSpanID string
+	requestID    string
+
+	frames     []byte     // head window, whole frames only
+	framesEnd  *frameTail // tail window, whole frames only
+	frameHead  int        // bytes stored in the head window
+	frameTail  int        // tail window budget in bytes
+	headSealed bool       // first frame that missed the head window seals it
+	frameFull  []byte
+	frameMode  int8 // 0 off, 1 headtail, 2 full
+
+	respBody []byte // non-stream response captured via IOCopyBytesGracefully
+
+	totalFrameBytes int
+	framesTruncated bool
+
+	usage      Usage
+	usageSet   bool
+	finalized  bool
+	hasContent bool
+}
+
+// Begin creates the per-request Collector and stores it on the context.
+// Reads the W3C traceparent header first so agent-side traces and gateway
+// spans land on the same trace tree. No-op when disabled.
+func Begin(c *gin.Context) {
+	if !Enabled() || c == nil || c.Request == nil {
+		return
+	}
+	conf := current()
+	if !conf.Enabled || conf.Host == "" {
+		return
+	}
+	// The request id is the log↔trace join key and the trace id source.
+	// Without one the span would carry an empty trace id and no log row
+	// could ever link to it — skip rather than emit garbage. In production
+	// middleware.RequestId always sets it before Relay runs.
+	requestID := c.GetString("X-Oneapi-Request-Id")
+	if requestID == "" {
+		return
+	}
+	col := &Collector{
+		requestID: requestID,
+		traceID:   TraceID(requestID),
+		spanID:    SpanID(requestID),
+	}
+	if tp, ok := ParseTraceparent(c.Request.Header.Get("traceparent")); ok && tp.TraceID != "" {
+		// Adopt the client's trace id so the agent framework's spans and
+		// this gateway span share one tree. parentSpanId must be set, or
+		// the span becomes the root of a new trace and the tree breaks.
+		col.traceID = tp.TraceID
+		col.parentSpanID = tp.ParentSpanID
+	}
+	switch conf.BodyMode {
+	case BodyOff:
+		col.frameMode = 0
+	case BodyFull:
+		col.frameMode = 2
+		col.frameFull = make([]byte, 0, 8192)
+	default:
+		col.frameMode = 1
+	}
+	c.Set(contextKey, col)
+}
+
+func fromContext(c *gin.Context) *Collector {
+	if c == nil {
+		return nil
+	}
+	v, ok := c.Get(contextKey)
+	if !ok {
+		return nil
+	}
+	col, _ := v.(*Collector)
+	return col
+}
+
+// HasCollector reports whether this context carries a live trace collector.
+// The model fallback hook uses it to avoid double-emitting snapshots for
+// requests that the relay defer already covers.
+func HasCollector(c *gin.Context) bool {
+	return fromContext(c) != nil
+}
+
+// TraceIDForLog returns the trace id that the log's admin metadata should
+// carry: the collector's id when one exists (which honors an incoming
+// traceparent), else the id derived from the request id. The fallback path
+// (RecordConsume without a collector) derives the same way, so a log row and
+// its emitted span always agree.
+//
+// Note the id only means "this request's trace, if it was sampled" — the
+// sampling decision happens later, at the relay defer, so an unsampled
+// request keeps an id whose trace does not exist in Langfuse.
+func TraceIDForLog(c *gin.Context, requestID string) string {
+	if col := fromContext(c); col != nil {
+		return col.traceID
+	}
+	return TraceID(requestID)
+}
+
+// FillUsage records settlement data and returns the trace id so the caller
+// can persist it into the log's admin-only metadata. Returns "" when
+// tracing is off or this request has no collector.
+func FillUsage(c *gin.Context, u Usage) string {
+	col := fromContext(c)
+	if col == nil || col.finalized {
+		return ""
+	}
+	col.usage = u
+	col.usageSet = true
+	return col.traceID
+}
+
+// WrapStreamHandler returns a handler that mirrors SSE frames into the
+// collector before delegating. Generic over the scanner's *StreamResult so
+// this package needs no internal import; type inference makes the call site
+// a single line. Each StreamScannerHandler invocation is one channel
+// attempt, so wrapping resets the frame buffer: retries keep only the last
+// attempt (docs §3.8). Returns h untouched when tracing is off.
+func WrapStreamHandler[T any](c *gin.Context, h func(string, T)) func(string, T) {
+	col := fromContext(c)
+	if col == nil || col.frameMode == 0 {
+		return h
+	}
+	conf := current()
+	col.resetFrames(conf)
+	return func(data string, sr T) {
+		col.appendFrame([]byte(data), conf)
+		h(data, sr)
+	}
+}
+
+func (col *Collector) resetFrames(conf *Config) {
+	if col.frameMode == 1 {
+		if col.framesEnd == nil {
+			col.framesEnd = newFrameTail(conf.TailBytes)
+		} else {
+			col.framesEnd.reset(conf.TailBytes)
+		}
+		col.frames = col.frames[:0]
+		col.frameHead = 0
+		col.frameTail = conf.TailBytes
+		col.headSealed = false
+	} else if col.frameMode == 2 {
+		col.frameFull = col.frameFull[:0]
+	}
+	col.totalFrameBytes = 0
+	col.framesTruncated = false
+	col.hasContent = true
+}
+
+func (col *Collector) appendFrame(frame []byte, conf *Config) {
+	sep := byte('\n')
+	col.totalFrameBytes += len(frame) + 1
+	switch col.frameMode {
+	case 1:
+		// Frames are semantic units: truncation must land on frame
+		// boundaries, or the parser sees half a JSON object. A frame that
+		// does not fit the head window goes to the tail window whole.
+		if !col.headSealed && col.frameHead+len(frame)+1 <= conf.HeadBytes {
+			col.frames = append(col.frames, frame...)
+			col.frames = append(col.frames, sep)
+			col.frameHead += len(frame) + 1
+			return
+		}
+		// Seal on first miss: a frame too large for what is left of the
+		// head window must not let a LATER small frame jump ahead of it in
+		// the head window (that would reorder the conversation).
+		col.headSealed = true
+		col.framesTruncated = true
+		if col.framesEnd != nil && col.frameTail > 0 {
+			col.framesEnd.add(string(frame))
+		}
+	case 2:
+		limit := fullMaxBytes
+		if len(col.frameFull)+len(frame)+1 > limit {
+			col.framesTruncated = true
+			remaining := limit - len(col.frameFull)
+			if remaining > 0 {
+				col.frameFull = append(col.frameFull, frame[:min(remaining, len(frame))]...)
+				col.frameFull = append(col.frameFull, sep)
+			}
+			return
+		}
+		col.frameFull = append(col.frameFull, frame...)
+		col.frameFull = append(col.frameFull, sep)
+	}
+}
+
+// CaptureResponseBody records a complete non-stream response body. Called
+// from service/http.go's IOCopyBytesGracefully, which every major channel
+// uses to write buffered responses.
+func CaptureResponseBody(c *gin.Context, data []byte) {
+	col := fromContext(c)
+	if col == nil || len(data) == 0 || col.frameMode == 0 {
+		return
+	}
+	conf := current()
+	col.respBody = truncateCopy(data, conf)
+	col.hasContent = true
+}
+
+// truncateCopy applies the head/tail window (or full cap) to a one-shot
+// payload such as a request body or a non-stream response.
+func truncateCopy(data []byte, conf *Config) []byte {
+	switch conf.BodyMode {
+	case BodyFull:
+		if len(data) <= fullMaxBytes {
+			return data
+		}
+		out := make([]byte, fullMaxBytes)
+		copy(out, data[:fullMaxBytes])
+		return out
+	default: // headtail (BodyOff callers never reach here)
+		if len(data) <= conf.HeadBytes+conf.TailBytes {
+			return data
+		}
+		out := make([]byte, 0, conf.HeadBytes+conf.TailBytes)
+		out = append(out, data[:conf.HeadBytes]...)
+		out = append(out, data[len(data)-conf.TailBytes:]...)
+		return out
+	}
+}
+
+// requestBody returns the stored request body bytes, or nil. At relay-defer
+// time the storage is still alive (middleware cleanup runs after handler
+// defers, LIFO), but a defensive error path keeps finalize silent if some
+// path already closed it.
+func (col *Collector) requestBody(c *gin.Context) []byte {
+	v, ok := c.Get(ginKeyBodyStorage)
+	if !ok {
+		return nil
+	}
+	bs, ok := v.(bodyBytes)
+	if !ok {
+		return nil
+	}
+	data, err := bs.Bytes()
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// outputBytes assembles the captured response for the snapshot.
+//
+// Two mutually exclusive carriers exist: SSE frames (stream) and respBody
+// (non-stream, written by CaptureResponseBody). An empty frame window means
+// the request was not a stream, so respBody is the answer — without this
+// fallback every non-stream response was silently dropped in headtail mode.
+func (col *Collector) outputBytes() []byte {
+	switch col.frameMode {
+	case 1:
+		var tail []byte
+		if col.framesEnd != nil && col.frameTail > 0 {
+			tail = col.framesEnd.bytes()
+		}
+		if len(col.frames) == 0 {
+			if len(tail) == 0 {
+				return col.respBody
+			}
+			return tail
+		}
+		if col.frameHead == 0 {
+			return tail
+		}
+		out := make([]byte, 0, len(col.frames)+len(tail))
+		out = append(out, col.frames...)
+		out = append(out, tail...)
+		return out
+	case 2:
+		if len(col.frameFull) > 0 {
+			return col.frameFull
+		}
+		return col.respBody
+	default:
+		return col.respBody
+	}
+}
+
+// frameStats reports (droppedBytes, truncated) for the stream window.
+func (col *Collector) frameStats(conf *Config) (int, bool) {
+	if col.frameMode == 0 || col.totalFrameBytes == 0 {
+		return 0, false
+	}
+	switch col.frameMode {
+	case 2:
+		return max(0, col.totalFrameBytes-len(col.frameFull)), col.framesTruncated
+	default:
+		kept := len(col.frames)
+		if col.framesEnd != nil {
+			kept += col.framesEnd.sizeBytes()
+		}
+		return max(0, col.totalFrameBytes-kept), col.framesTruncated
+	}
+}
+
+// frameTail keeps the last N bytes of whole frames. A byte-level ring would
+// slice a JSON frame in half, and every parser downstream would see broken
+// input; eviction is therefore per frame, oldest first.
+type frameTail struct {
+	frames []string
+	size   int
+	budget int
+}
+
+func newFrameTail(budget int) *frameTail {
+	if budget <= 0 {
+		budget = 1
+	}
+	return &frameTail{budget: budget}
+}
+
+func (t *frameTail) reset(budget int) {
+	if budget <= 0 {
+		budget = 1
+	}
+	t.frames = t.frames[:0]
+	t.size = 0
+	t.budget = budget
+}
+
+func (t *frameTail) add(frame string) {
+	t.frames = append(t.frames, frame)
+	t.size += len(frame) + 1
+	// Keep at least one frame even when it alone exceeds the budget: the
+	// newest frame is the one carrying finish_reason and usage.
+	for t.size > t.budget && len(t.frames) > 1 {
+		t.size -= len(t.frames[0]) + 1
+		t.frames = t.frames[1:]
+	}
+}
+
+func (t *frameTail) bytes() []byte {
+	if len(t.frames) == 0 {
+		return nil
+	}
+	out := make([]byte, 0, t.size)
+	for _, f := range t.frames {
+		out = append(out, f...)
+		out = append(out, '\n')
+	}
+	return out
+}
+
+func (t *frameTail) sizeBytes() int {
+	return t.size
+}
+
+// Propagate forwards W3C Trace Context headers to an outbound request.
+//
+// Adopting the client's trace id (Begin) is what keeps the agent tree
+// intact on the Langfuse side; forwarding additionally lets an upstream
+// that speaks OTLP (self-hosted vLLM, an instrumented proxy) join the same
+// trace instead of starting its own.
+//
+// Gated on Enabled() on purpose: with tracing off the outbound request must
+// stay byte-identical to upstream new-api, per the decoupling rules.
+func Propagate(c *gin.Context, dst *http.Header) {
+	if !Enabled() || c == nil || c.Request == nil || dst == nil {
+		return
+	}
+	if tp := c.Request.Header.Get("traceparent"); tp != "" {
+		dst.Set("traceparent", tp)
+	}
+	if ts := c.Request.Header.Get("tracestate"); ts != "" {
+		dst.Set("tracestate", ts)
+	}
+}
