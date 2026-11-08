@@ -25,7 +25,6 @@ import {
   completeAssistantMessage,
   hasChatCompletionChoice,
   isAssistantMessageFinal,
-  isAssistantMessagePending,
   parseRequestErrorDetails,
   updateAssistantMessageWithError,
   updateLastAssistantMessage,
@@ -330,6 +329,7 @@ export function useChatHandler({
       parameterEnabled,
       discardPending,
       scheduleFlush,
+      flush,
       onMessageUpdate,
       finish,
     ]
@@ -347,10 +347,12 @@ export function useChatHandler({
 
     onMessageUpdate((prev) => {
       if (generationRef.current !== generation) {
+        // 只判 isAssistantMessagePending 会漏掉已经进入 streaming 的消息，
+        // 它们会一直停在流式态，结算也就永远不触发。凡是非终态都要收尾。
         return updateLastAssistantMessage(prev, (message) =>
-          isAssistantMessagePending(message)
-            ? completeAssistantMessage(message)
-            : message
+          isAssistantMessageFinal(message)
+            ? message
+            : completeAssistantMessage(message)
         )
       }
       return prev

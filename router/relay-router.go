@@ -71,9 +71,18 @@ func SetRelayRouter(router *gin.Engine) {
 		// 同一套会话鉴权下的多模态入口：路径与对外 /v1 保持一致，只换成 /pg 前缀
 		playgroundRouter.POST("/images/generations", controller.PlaygroundImage)
 		playgroundRouter.POST("/video/generations", controller.PlaygroundVideo)
-		playgroundRouter.GET("/video/generations/:task_id", controller.PlaygroundVideoFetch)
 		// APIDUO:playground-modality:END
 	}
+
+	// APIDUO:playground-modality:BEGIN
+	// 任务查询按 task id 反查库里的渠道，不需要 Distribute 选渠道；
+	// 走上面那个组会在 distributor 里解析 body 失败（GET 没有 body）。
+	playgroundFetchRouter := router.Group("/pg")
+	playgroundFetchRouter.Use(middleware.RouteTag("relay"))
+	playgroundFetchRouter.Use(middleware.SystemPerformanceCheck())
+	playgroundFetchRouter.Use(middleware.UserAuth())
+	playgroundFetchRouter.GET("/video/generations/:task_id", controller.PlaygroundVideoFetch)
+	// APIDUO:playground-modality:END
 	// APIDUO:file-relay:BEGIN
 	registerFileRelayRoutes(router)
 	// APIDUO:file-relay:END

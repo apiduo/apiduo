@@ -22,7 +22,12 @@ import type { VideoTaskStatus } from '../types'
 const VIDEO_ENDPOINT = '/pg/video/generations'
 
 export const VIDEO_DURATIONS = [5, 10] as const
-export const VIDEO_RESOLUTIONS = ['720p', '1080p'] as const
+
+/**
+ * 必须用「宽×高」而不是 720p/1080p：任务插件按 usageSchema 校验 size 枚举，
+ * 传档位名会被判成 plugin_usage_invalid。横竖屏各给一个，覆盖常见比例。
+ */
+export const VIDEO_RESOLUTIONS = ['1280x720', '720x1280'] as const
 
 export interface VideoRequestOptions {
   model: string
@@ -40,9 +45,14 @@ export interface VideoTaskSnapshot {
   requestId: string
 }
 
-function toNumber(value: unknown): number {
-  const num = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(num) ? num : 0
+/** 上游把进度写成 "10%"，直接 Number() 会得到 NaN，进度条就永远停在 0 */
+function parseProgress(value: unknown): number {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const num = Number(value.replace('%', '').trim())
+    return Number.isFinite(num) ? num : 0
+  }
+  return 0
 }
 
 function pickString(
@@ -67,6 +77,7 @@ function normalizeStatus(raw: string): VideoTaskStatus {
   if (value.includes('run') || value.includes('process') || value.includes('progress')) {
     return 'running'
   }
+  // NOT_START / QUEUED / PENDING 都还在排队
   return 'queued'
 }
 
@@ -106,7 +117,7 @@ function parseTask(raw: unknown, fallbackId = ''): VideoTaskSnapshot {
 
   const progress = Math.max(
     0,
-    Math.min(100, toNumber(root.progress) || toNumber(dataNode.progress))
+    Math.min(100, parseProgress(root.progress) || parseProgress(dataNode.progress))
   )
 
   return {
@@ -129,7 +140,8 @@ export async function createVideoTask(
     {
       model: options.model,
       prompt: options.prompt,
-      duration: options.duration,
+      // 对齐 OpenAI video 规范：seconds 是字符串，size 是「宽x高」枚举
+      seconds: String(options.duration),
       size: options.resolution,
     }
   )

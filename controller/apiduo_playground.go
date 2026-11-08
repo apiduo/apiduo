@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
@@ -56,7 +57,12 @@ func respondPlaygroundError(c *gin.Context, newAPIError *types.NewAPIError) {
 
 // PlaygroundImage 走图像 relay：请求体与对外 /v1/images/generations 一致，
 // 计费按张数 × 单价，与正常调用同一套规则。
+//
+// relay_mode 必须显式给：distributor 的 Path2RelayMode 只认 /v1 前缀，
+// /pg/images/generations 会落到 RelayModeUnknown，进而被当成文本请求处理
+// （报 "expected dto.GeneralOpenAIRequest, got *dto.ImageRequest"）。
 func PlaygroundImage(c *gin.Context) {
+	c.Set("relay_mode", relayconstant.RelayModeImagesGenerations)
 	if newAPIError := setupPlaygroundRelay(c, types.RelayFormatOpenAIImage); newAPIError != nil {
 		respondPlaygroundError(c, newAPIError)
 		return
@@ -66,6 +72,7 @@ func PlaygroundImage(c *gin.Context) {
 
 // PlaygroundVideo 走异步任务链路：返回任务 id，前端再轮询 PlaygroundVideoFetch。
 func PlaygroundVideo(c *gin.Context) {
+	c.Set("relay_mode", relayconstant.RelayModeVideoSubmit)
 	if newAPIError := setupPlaygroundRelay(c, types.RelayFormatTask); newAPIError != nil {
 		respondPlaygroundError(c, newAPIError)
 		return
@@ -75,6 +82,7 @@ func PlaygroundVideo(c *gin.Context) {
 
 // PlaygroundVideoFetch 查询任务结果，结算在任务到达终态时由 task_billing 完成。
 func PlaygroundVideoFetch(c *gin.Context) {
+	c.Set("relay_mode", relayconstant.RelayModeVideoFetchByID)
 	if newAPIError := setupPlaygroundRelay(c, types.RelayFormatTask); newAPIError != nil {
 		respondPlaygroundError(c, newAPIError)
 		return

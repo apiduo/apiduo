@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { PlaygroundInput } from '@/features/playground/components/input/playground-input'
 import { usePlaygroundConversation } from '@/features/playground/hooks/use-playground-conversation'
@@ -74,9 +74,13 @@ export function ChatWorkspace({
   onToggleBilling,
 }: ChatWorkspaceProps) {
   const pendingOutcomeRef = useRef<RequestOutcome | null>(null)
+  // 停止时消息内容可能没变（引用相同），messages 不会触发 effect；
+  // 用递增计数强制跑一次结算，否则会偶发「停止后没有金额」。
+  const [settleTick, setSettleTick] = useState(0)
 
   const handleFinish = useCallback((outcome: RequestOutcome) => {
     pendingOutcomeRef.current = outcome
+    setSettleTick((tick) => tick + 1)
   }, [])
 
   const { sendChat, stopGeneration, isGenerating: isRequesting } = useChatHandler({
@@ -107,7 +111,10 @@ export function ChatWorkspace({
     if (!outcome) return
     const last = messages.at(-1)
     if (!last || last.from !== 'assistant') return
-    if (last.status === 'loading' || last.status === 'streaming') return
+    const isFinal = last.status === 'complete' || last.status === 'error'
+    // 正常完成要等消息落成终态；但停止/失败时状态可能来不及收尾，
+    // 这时直接按已有内容估算结算，否则会偶发「点了停止却没有金额」。
+    if (!isFinal && !outcome.stopped && !outcome.failed) return
 
     pendingOutcomeRef.current = null
 
@@ -126,7 +133,7 @@ export function ChatWorkspace({
           : null,
       context: { model: config.model, group: config.group },
     })
-  }, [messages, ledger, config.model, config.group])
+  }, [messages, settleTick, ledger, config.model, config.group])
 
   const handleClear = () => {
     handleEditOpenChange(false)
