@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -58,13 +60,11 @@ func (a *Adaptor) prepareImageProtocol(
 		canonical, err = canonicalFromChat(request)
 
 	case relayconstant.RelayModeImagesEdits:
-		if isJSONRequest(c) {
-			var raw []byte
-			raw, err = readOriginalBody(c)
-			if err == nil {
-				canonical, err = canonicalFromJSON(raw)
-			}
-		} else {
+		// edits 只接受文件流：JSON 载体没有文件本体（image 只能是 URL / data URI /
+		// base64 文本），接受它等于把「文件编辑」降级成「网关代取图」。直接 400，
+		// 让客户端改成 multipart 上传，或改走 generations / chat 入口。
+		err = requireFileStreamEdits(c)
+		if err == nil {
 			var form = c.Request.MultipartForm
 			if form == nil {
 				form, err = common.ParseMultipartFormReusable(c)
@@ -108,6 +108,93 @@ func (a *Adaptor) prepareImageProtocol(
 		a.imageRequestCount = n
 	}
 	return plan, true, nil
+}
+
+// requireFileStreamEdits 守住 edits 这扇门：OpenAI 的 /v1/images/edits 只接受
+// multipart/form-data 的文件流。JSON 请求体里没有文件本体，只有文本引用，
+// 走这条路会让「编辑这张图」退化成「网关替客户端下载 URL」，所以一律 400。
+func requireFileStreamEdits(c *gin.Context) error {
+	if c == nil || c.Request == nil {
+		return errors.New("/v1/images/edits requires a multipart/form-data body")
+	}
+	contentType := strings.TrimSpace(c.Request.Header.Get("Content-Type"))
+	if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+		return nil
+	}
+	return fmt.Errorf(
+		"/v1/images/edits accepts multipart/form-data file uploads only, got %q; "+
+			"upload the image as a file part, or use /v1/images/generations for URL / base64 references",
+		contentType,
+	)
+}
+
+// rejectTextImageFields 扫表单里的 image / mask：非空文本值一律拒绝。
+// 空值不算（HTML 未选文件会提交一个空 part）。
+func rejectTextImageFields(form *multipart.Form) error {
+	if form == nil {
+		return nil
+	}
+	for key, values := range form.Value {
+		field, _ := imageFieldName(key)
+		if field != "image" && field != "mask" {
+			continue
+		}
+		for _, value := range values {
+			if strings.TrimSpace(value) == "" {
+				continue
+			}
+			return fmt.Errorf(
+				"%s must be uploaded as a file part; /v1/images/edits does not accept text references (URL / data URI / base64)",
+				field,
+			)
+		}
+	}
+	return nil
+}
+
+// guardFileStreamEdits 是 ConvertImageRequest 阶段的前置校验。
+//
+// 必须早于 openai 的转换器：它遇到「multipart 里没有文件」会先报 image is required
+// （100% 会被记成可重试的 500），混传文件 + 文本 image 时还会把文本原样写回上游表单。
+// 只约束启用了 image_protocol 的渠道，其余渠道保持原有透传/折叠行为。
+func guardFileStreamEdits(c *gin.Context, info *relaycommon.RelayInfo) error {
+	if c == nil || info == nil || info.RelayMode != relayconstant.RelayModeImagesEdits {
+		return nil
+	}
+	cfg := info.ChannelOtherSettings.ImageProtocol
+	if cfg == nil || !cfg.Enabled {
+		return nil
+	}
+	if err := requireFileStreamEdits(c); err != nil {
+		return editsFileStreamError(err)
+	}
+
+	form := c.Request.MultipartForm
+	if form == nil {
+		parsed, err := common.ParseMultipartFormReusable(c)
+		if err != nil {
+			return editsFileStreamError(fmt.Errorf("parse images/edits form: %w", err))
+		}
+		// 存回去让后面的转换器复用，20 MiB 的图不用解析两遍。
+		c.Request.MultipartForm = parsed
+		c.Request.PostForm = url.Values(parsed.Value)
+		form = parsed
+	}
+	if err := rejectTextImageFields(form); err != nil {
+		return editsFileStreamError(err)
+	}
+	return nil
+}
+
+// editsFileStreamError 把载体拒绝标成 400 且不重试：客户端换个载体就能过，
+// 重试同一个坏请求只会一直 400。
+func editsFileStreamError(err error) error {
+	return types.NewOpenAIError(
+		err,
+		types.ErrorCodeInvalidRequest,
+		http.StatusBadRequest,
+		types.ErrOptionWithSkipRetry(),
+	)
 }
 
 func readOriginalBody(c *gin.Context) ([]byte, error) {

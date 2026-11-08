@@ -3,11 +3,21 @@ package advancedcustom
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"mime"
 	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"net/textproto"
 	"strings"
 	"testing"
+
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/gin-gonic/gin"
 )
 
 var apiduoTestPNG = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
@@ -19,7 +29,7 @@ type apiduoTestPart struct {
 	data        []byte
 }
 
-func apiduoTestForm(t *testing.T, fields [][2]string, parts []apiduoTestPart) *multipart.Form {
+func apiduoTestMultipartBody(t *testing.T, fields [][2]string, parts []apiduoTestPart) (*bytes.Buffer, string) {
 	t.Helper()
 
 	var buf bytes.Buffer
@@ -49,8 +59,19 @@ func apiduoTestForm(t *testing.T, fields [][2]string, parts []apiduoTestPart) *m
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close writer: %v", err)
 	}
+	return &buf, writer.FormDataContentType()
+}
 
-	form, err := multipart.NewReader(&buf, writer.Boundary()).ReadForm(1 << 22)
+func apiduoTestForm(t *testing.T, fields [][2]string, parts []apiduoTestPart) *multipart.Form {
+	t.Helper()
+
+	body, contentType := apiduoTestMultipartBody(t, fields, parts)
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		t.Fatalf("parse content type: %v", err)
+	}
+
+	form, err := multipart.NewReader(body, params["boundary"]).ReadForm(1 << 22)
 	if err != nil {
 		t.Fatalf("read form: %v", err)
 	}
@@ -177,16 +198,30 @@ func TestFoldEditsNormalisesInvalidN(t *testing.T) {
 	}
 }
 
-func TestFoldEditsKeepsTextReference(t *testing.T) {
+func TestFoldEditsRejectsTextImageReference(t *testing.T) {
+	// edits 只接受文件流：URL / data URI / 裸 base64 这类文本引用没有文件本体，必须 400。
+	for _, ref := range []string{
+		"https://cdn.example.com/a.png",
+		"data:image/png;base64,iVBORw0KGgo=",
+		"iVBORw0KGgo=",
+	} {
+		form := apiduoTestForm(t, [][2]string{{"prompt", "p"}, {"image", ref}}, nil)
+		if _, err := foldEditsMultipart(form); err == nil {
+			t.Fatalf("text reference %q must be rejected by /v1/images/edits", ref)
+		} else if !strings.Contains(err.Error(), "file part") {
+			t.Fatalf("error should point at the file-part requirement, got %v", err)
+		}
+	}
+}
+
+func TestFoldEditsRejectsTextMaskReference(t *testing.T) {
 	form := apiduoTestForm(t,
-		[][2]string{{"prompt", "p"}, {"image", " https://cdn.example.com/a.png "}},
-		nil,
+		[][2]string{{"prompt", "p"}, {"mask", "https://cdn.example.com/m.png"}},
+		[]apiduoTestPart{{field: "image", filename: "a.png", data: apiduoTestPNG}},
 	)
 
-	body := apiduoTestDecode(t, form)
-
-	if body["image"] != "https://cdn.example.com/a.png" {
-		t.Fatalf("text reference should be trimmed and kept, got %#v", body["image"])
+	if _, err := foldEditsMultipart(form); err == nil {
+		t.Fatal("mask must be a file part as well")
 	}
 }
 
@@ -211,5 +246,173 @@ func TestFoldEditsFallsBackToDeclaredMime(t *testing.T) {
 	image, ok := body["image"].(string)
 	if !ok || !strings.HasPrefix(image, "data:image/heic;base64,") {
 		t.Fatalf("declared image mime should be used as fallback, got %#v", body["image"])
+	}
+}
+
+// edits 入口只接受文件流：JSON 载体没有文件本体，直接 400。
+func TestPrepareImageProtocolEditsRejectsJSONBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/v1/images/edits",
+		strings.NewReader(`{"model":"m","prompt":"p","image":"https://cdn.example.com/a.png"}`),
+	)
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	adaptor := &Adaptor{}
+	plan, handled, err := adaptor.prepareImageProtocol(c, apiduoImageTestInfo())
+	if !handled {
+		t.Fatal("edits request must be handled by the image protocol")
+	}
+	if err == nil || !strings.Contains(err.Error(), "multipart/form-data") {
+		t.Fatalf("JSON body must be rejected with a file-stream hint, got plan=%v err=%v", plan, err)
+	}
+}
+
+func TestPrepareImageProtocolEditsRejectsTextReference(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body, contentType := apiduoTestMultipartBody(t,
+		[][2]string{{"prompt", "p"}, {"image", "https://cdn.example.com/a.png"}}, nil)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", body)
+	c.Request.Header.Set("Content-Type", contentType)
+
+	adaptor := &Adaptor{}
+	if _, handled, err := adaptor.prepareImageProtocol(c, apiduoImageTestInfo()); !handled {
+		t.Fatal("edits request must be handled by the image protocol")
+	} else if err == nil || !strings.Contains(err.Error(), "file part") {
+		t.Fatalf("URL text reference must be rejected, got %v", err)
+	}
+}
+
+func TestPrepareImageProtocolEditsAcceptsFileUpload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body, contentType := apiduoTestMultipartBody(t,
+		[][2]string{{"prompt", "p"}, {"model", "gpt-image-2"}},
+		[]apiduoTestPart{{field: "image", filename: "a.png", contentType: "image/png", data: apiduoTestPNG}})
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", body)
+	c.Request.Header.Set("Content-Type", contentType)
+
+	adaptor := &Adaptor{}
+	plan, handled, err := adaptor.prepareImageProtocol(c, apiduoImageTestInfo())
+	if !handled || err != nil {
+		t.Fatalf("a file upload must be accepted, handled=%v err=%v", handled, err)
+	}
+	if plan.UpstreamPath != "/v1/images/edits" {
+		t.Fatalf("image edit must target the derived edits endpoint, got %q", plan.UpstreamPath)
+	}
+	if !strings.HasPrefix(plan.ContentType, "multipart/form-data") {
+		t.Fatalf("upstream must receive multipart, got %q", plan.ContentType)
+	}
+	if !bytes.Contains(plan.Body, []byte(`name="image"; filename="image_1.png"`)) {
+		t.Fatalf("uploaded file must be forwarded as a file part: %s", plan.Body)
+	}
+}
+
+func apiduoImageTestInfo() *relaycommon.RelayInfo {
+	return &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeImagesEdits,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				ImageProtocol: &dto.ImageProtocolConfig{
+					Enabled:     true,
+					Upstream:    dto.ImageUpstreamGPTImage2,
+					PrimaryPath: "/v1/images/generations",
+				},
+			},
+		},
+	}
+}
+
+func TestGuardFileStreamEdits(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	adaptorInfo := func(protocol *dto.ImageProtocolConfig) *relaycommon.RelayInfo {
+		info := apiduoImageTestInfo()
+		info.ChannelOtherSettings.ImageProtocol = protocol
+		return info
+	}
+	newContext := func(body []byte, contentType string) *gin.Context {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", contentType)
+		return c
+	}
+	enabled := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGPTImage2}
+	errorStatus := func(t *testing.T, err error) int {
+		t.Helper()
+		var apiErr *types.NewAPIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("guard must classify the rejection as an API error, got %T: %v", err, err)
+		}
+		return apiErr.StatusCode
+	}
+
+	t.Run("JSON body is 400", func(t *testing.T) {
+		c := newContext([]byte(`{"prompt":"p","image":"https://x/a.png"}`), "application/json")
+		err := guardFileStreamEdits(c, adaptorInfo(enabled))
+		if status := errorStatus(t, err); status != http.StatusBadRequest {
+			t.Fatalf("JSON body must be 400, got %d", status)
+		}
+	})
+
+	t.Run("text URL in form is 400", func(t *testing.T) {
+		body, contentType := apiduoTestMultipartBody(t,
+			[][2]string{{"prompt", "p"}, {"image", "https://x/a.png"}}, nil)
+		err := guardFileStreamEdits(newContext(body.Bytes(), contentType), adaptorInfo(enabled))
+		if status := errorStatus(t, err); status != http.StatusBadRequest {
+			t.Fatalf("text reference must be 400, got %d", status)
+		} else if !strings.Contains(err.Error(), "file part") {
+			t.Fatalf("message should name the file-part rule, got %v", err)
+		}
+	})
+
+	t.Run("file upload passes", func(t *testing.T) {
+		body, contentType := apiduoTestMultipartBody(t, [][2]string{{"prompt", "p"}},
+			[]apiduoTestPart{{field: "image", filename: "a.png", contentType: "image/png", data: apiduoTestPNG}})
+		if err := guardFileStreamEdits(newContext(body.Bytes(), contentType), adaptorInfo(enabled)); err != nil {
+			t.Fatalf("file upload must pass, got %v", err)
+		}
+	})
+
+	t.Run("channel without image protocol is untouched", func(t *testing.T) {
+		body, contentType := apiduoTestMultipartBody(t,
+			[][2]string{{"image", "https://x/a.png"}}, nil)
+		if err := guardFileStreamEdits(newContext(body.Bytes(), contentType), adaptorInfo(nil)); err != nil {
+			t.Fatalf("a channel without image_protocol must keep its old behaviour, got %v", err)
+		}
+	})
+}
+
+// image[0] / image[] 都是数组写法：文件不能被静默丢掉。
+func TestFoldEditsAcceptsIndexedImageField(t *testing.T) {
+	form := apiduoTestForm(t, [][2]string{{"prompt", "p"}}, []apiduoTestPart{
+		{field: "image[0]", filename: "a.png", contentType: "image/png", data: apiduoTestPNG},
+	})
+
+	body := apiduoTestDecode(t, form)
+
+	images, ok := body["image"].([]any)
+	if !ok || len(images) != 1 {
+		t.Fatalf("image[0] upload must survive folding as a 1-element array, got %#v", body["image"])
+	}
+	if ref, _ := images[0].(string); !strings.HasPrefix(ref, "data:image/png;base64,") {
+		t.Fatalf("image[0] must be encoded as a data URI, got %#v", images[0])
+	}
+}
+
+func TestFoldEditsRejectsIndexedTextImageField(t *testing.T) {
+	form := apiduoTestForm(t,
+		[][2]string{{"prompt", "p"}, {"image[0]", "https://cdn.example.com/a.png"}}, nil)
+	if _, err := foldEditsMultipart(form); err == nil {
+		t.Fatal("image[0] text reference must also be rejected")
 	}
 }

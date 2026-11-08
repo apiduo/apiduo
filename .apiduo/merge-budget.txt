@@ -16,11 +16,15 @@
 #    pricing 前端六个文件接划线原价与折扣标，其中 price.ts / model-helpers.ts 只新增函数、
 #    不改原函数体；model-card.tsx 与 cached-price-cell.tsx 各有渲染点必须就地插入，
 #    否则卡片视图和表格视图会显示两种价。+215 是累计口径，含同期未提交的其它工作）。
+# 2026-11-08 登记 image-edits-files-only：+1 个挂接点 / +5 行
+#   （edits 只收文件流：relay/channel/advancedcustom/adaptor.go 的 ConvertImageRequest 里
+#    必须早于 openai 转换器拦一道，否则 multipart 无文件会被记成可重试的 500；
+#    校验与错误分类本体在新增的 apiduo_image_adaptor.go，不计入）。
 # 除新增功能外只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 #   注意：-update 会重写本文件并抹掉这些登记注释，更新后必须手工恢复。
 # 格式：<key>	<value>
 files	92
-blocks	242
-added	2348
+blocks	243
+added	2353
 deleted	91

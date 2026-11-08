@@ -168,6 +168,11 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	if converter != relayconvert.ConverterNone {
 		return nil, fmt.Errorf("converter %q does not support image requests", converter)
 	}
+	// APIDUO:image-edits-files-only:BEGIN
+	if err := guardFileStreamEdits(c, info); err != nil {
+		return nil, err
+	}
+	// APIDUO:image-edits-files-only:END
 	return a.convertOpenAICompatibleImageRequest(c, info, request)
 }
 

@@ -19,10 +19,12 @@ import (
 /*
  * 「下游调 edits、上游只有 generations」的载体转换。
  *
- * 背景：edits 是 multipart 开的一个门，语义上和 generations 没有区别——图片既可以
- * 是一个文件，也可以是一段字符串引用（URL / data URI / 裸 base64）。而只提供
- * generations 的上游（火山方舟这类）收的是 JSON。原样把 multipart 打过去，上游
- * 只看到一堆边界符，回 400。
+ * 背景：edits 是 multipart 开的一扇门，而只提供 generations 的上游（火山方舟这类）
+ * 收的是 JSON。原样把 multipart 打过去，上游只看到一堆边界符，回 400。
+ *
+ * edits 只收**文件流**：图片必须有文件本体（multipart 的文件 part）。URL / data URI /
+ * 裸 base64 这类文本引用一律 400——文本引用没有文件本体，接受它就等于让网关替客户端
+ * 去网上取图，语义也不是 edits 的语义。需要 URL 垫图请走 generations / chat 入口。
  *
  * 所以按 openai-image 协议的转换点 ① 做折叠：multipart → canonical JSON，
  * 图片与蒙版转成 data URI（不是裸 base64，裸串常被当成 URL 解析）。
@@ -33,6 +35,8 @@ import (
  *   3. mime 按字节嗅探，客户端声明的 Content-Type 只在嗅探失败时兜底
  *   4. n 非法回落 1；没传就不写（缺省语义属于上游）
  *   5. 其余文本字段原样透传
+ *
+ * 图片字段（image / mask）只认文件 part：非空文本值一律 400（见文件头）。
  */
 
 const (
@@ -97,7 +101,7 @@ func foldEditsMultipart(form *multipart.Form) ([]byte, error) {
 	sort.Strings(keys) // 输出稳定，方便测试与日志比对
 
 	for _, key := range keys {
-		field := strings.TrimSuffix(key, "[]")
+		field, arrayShape := imageFieldName(key)
 
 		if field == "image" || field == "mask" {
 			refs, used, err := foldImageReferences(form, key)
@@ -114,8 +118,8 @@ func foldEditsMultipart(form *multipart.Form) ([]byte, error) {
 			if len(refs) == 0 {
 				continue // 空 part = 没传，键不出现
 			}
-			// 客户端用 image[] 这个 key 就表示「我要数组」，哪怕只有一个文件。
-			if field == "image" && (len(refs) > 1 || strings.HasSuffix(key, "[]")) {
+			// 客户端用 image[] / image[0] 这种 key 就表示「我要数组」，哪怕只有一个文件。
+			if field == "image" && (len(refs) > 1 || arrayShape) {
 				body[field] = refs
 			} else {
 				body[field] = refs[0]
@@ -143,12 +147,37 @@ func foldEditsMultipart(form *multipart.Form) ([]byte, error) {
 	return json.Marshal(body)
 }
 
-// foldImageReferences 收一个字段的图片引用：上传的文件转 data URI，
-// 文本值（URL / data URI）原样收下。
+// imageFieldName 把 image / image[] / image[0] / mask[2] 归一成基础字段名。
+// arrayShape 表示客户端用了数组写法，回包时保持数组形状。
+// 为什么认 image[0]：openai 的转换器按 `image[` 前缀认文件，如果我们只认 image[]，
+// 这类文件会在折叠时被静默丢掉，最后变成「明明传了图却按文生图发出去」。
+func imageFieldName(key string) (string, bool) {
+	if strings.HasSuffix(key, "[]") {
+		return strings.TrimSuffix(key, "[]"), true
+	}
+	if open := strings.Index(key, "["); open > 0 && strings.HasSuffix(key, "]") {
+		return key[:open], true
+	}
+	return key, false
+}
+
+// foldImageReferences 收一个字段的图片文件：只认上传的文件 part，转 data URI。
+// 文本值（URL / data URI / 裸 base64）一律拒绝——edits 只接受文件流。
 func foldImageReferences(form *multipart.Form, key string) ([]string, int, error) {
 	refs := make([]string, 0, 2)
 	used := 0
 
+	field := strings.TrimSuffix(key, "[]")
+	for _, value := range form.Value[key] {
+		if strings.TrimSpace(value) == "" {
+			continue // 空文本 part = 没传（未选文件的表单会带一个空值）
+		}
+		// 接受文本引用会让网关替客户端去公网取图，且 edits 的语义本就是「编辑这张文件」。
+		return nil, used, fmt.Errorf(
+			"%s must be uploaded as a file part; /v1/images/edits does not accept text references (URL / data URI / base64)",
+			field,
+		)
+	}
 	for _, header := range form.File[key] {
 		if header == nil || header.Size <= 0 {
 			continue // 零字节 = 没传
@@ -178,14 +207,6 @@ func foldImageReferences(form *multipart.Form, key string) ([]string, int, error
 		}
 		used += len(data)
 		refs = append(refs, "data:"+mimeType+";base64,"+base64.StdEncoding.EncodeToString(data))
-	}
-
-	for _, value := range form.Value[key] {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		refs = append(refs, trimmed)
 	}
 
 	return refs, used, nil

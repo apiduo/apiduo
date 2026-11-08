@@ -375,7 +375,8 @@ case relayconstant.RelayModeImagesEdits:
 ### 7.2 载体折叠：edits 的 multipart → generations 的 JSON（已实现）
 
 §7 记的缺口补上了。规则来自 `openai-image-adapter` skill 的转换点 ①：
-**edits 只是一扇门，语义和 generations 一样**，图片可以是文件，也可以是一段字符串引用。
+**edits 只是一扇门，语义和 generations 一样**，但载体只有一种——文件流（§9.17 起强制，
+文本引用一律 400）。
 
 实现位置：
 
@@ -391,10 +392,11 @@ case relayconstant.RelayModeImagesEdits:
 |---|---|
 | `image=@a.png` | `image: "data:image/png;base64,…"` |
 | `image[]=@a` + `image[]=@b` | `image: [refA, refB]` |
+| `image[0]=@a.png`（PHP 风格下标） | `image: [refA]`（数组写法保留，文件不丢） |
 | `image=` 空 part / 零字节 | 键不出现（= 文生图） |
 | `mask=@m.png` | `mask: "data:image/png;base64,…"` |
 | `n=2` / `n=abc` / 没传 | `2` / `1` / 键不出现 |
-| `image=https://…`（文本） | 原样当引用 |
+| `image=https://…`（文本） | **400**（edits 只收文件流，见 §9.17） |
 | 其余文本字段 | 原样透传 |
 
 三条容易错的：
@@ -530,6 +532,7 @@ UI 已落地：矩阵标签页（勾选 + 每格选转换器）、覆盖弹层�
 4. **`image` 三态载体**：URL / data URI / 裸 base64。seedream 只把裸 b64 补成 data URI；
    gpt-image-2 的 edits 需要文件，data URI 与裸 b64 本地解码，http(s) **一律下载**
    （没有开关：关掉等于这个功能不可用）。下载层强制防护见 §9.16。
+   注意分工：三态载体是 **generations / chat 入口** 的读法；**edits 入口只收文件流**（§9.17）。
 5. **seedream 的 mask 不转发**（skill §3.7）；之前版本把 mask 转 data URI 下传是错的，已修。
 6. **未做的三件事**（都是取舍，不是遗漏）：
    - `size` 档位换算（`1024x1024` → `2K`）属上游方言，未经实测不擅自改写；
@@ -776,3 +779,43 @@ edits multipart、chat 非流式/流式、`b64_json`/`url` 响应、vendor extra
 2. **20 MiB × 4 并发 = 单请求峰值 80 MiB** 内存，必要时下调上限或并发。
 3. 走 `ProxyFromEnvironment`：生产若配了 `HTTP(S)_PROXY`，下载会经代理。
 4. DNS rebinding 只是缓解（同批 IP 校验+连接），彻底防需要网络层 egress 策略。
+
+### 9.17 edits 只接受文件流（2026-11-08）
+
+`/v1/images/edits` 的语义是「编辑这份文件」，文件本体是唯一合法载体。之前留了两条口子：
+multipart 里 `image` 可以是一段文本（URL / data URI / 裸 base64），JSON 体也能进
+（`isJSONRequest` 分支）。现在两条都关掉：
+
+| 形状 | 改前 | 改后 |
+|---|---|---|
+| `-F image=@a.png` | 200 | **200**（唯一合法形状） |
+| `-F image=https://…` / data URI / 裸 base64 | 下载或原样下传 | **400** `image must be uploaded as a file part` |
+| `-F image=@a.png -F image[]=https://…` | 文本被写进上游表单 | **400**（同上） |
+| JSON body（`{"image":"https://…"}`） | 折叠后下载 | **400** `accepts multipart/form-data file uploads only` |
+| `image=` 空 part / 零字节 | 当作没传 | 不变（文生图由 generations 承担） |
+
+两道闸门，缺一不可：
+
+1. **`ConvertImageRequest` 前置**（`guardFileStreamEdits`，标记块
+   `APIDUO:image-edits-files-only`）：必须早于 `openai.ConvertImageRequest`。后者遇到
+   「multipart 里没有文件」直接报 `image is required`，会被 `ImageHelper` 记成
+   **可重试的 500**；混传时它还会把文本 `image` 原样写回上游表单。
+2. **`DoRequest` 里的 `prepareImageProtocol`**：pass-through 模式绕过转换器，这道仍然拦得住。
+
+错误一律 `400 invalid_request` + skip retry：换个载体就能过，重试同一个坏请求没有意义。
+
+边界：只约束启用了 `image_protocol` 的渠道；未启用的 advancedcustom 渠道保持原行为
+（multipart 文件折叠成 JSON、JSON 透传），不动上游既有语义。
+
+URL 垫图仍然支持，但入口是 `generations` / `chat`（`image_url`）：下载层取回字节后，
+再以文件流发给上游的 edits 端点 —— 见 §9.16。
+
+实测（本地 3299 + 假上游 4020，2026-11-08 12:20）：
+
+| 请求 | 结果 |
+|---|---|
+| JSON `image=https://…` | 400 `accepts multipart/form-data file uploads only` |
+| multipart `image=https://…` | 400 `image must be uploaded as a file part` |
+| multipart 文件 | 200，上游收到 1 个文件 part（431 KB） |
+| 文件 + `image[]=https://…` | 400（不混传） |
+| chat + data URI 垫图 | 200，上游收到 1 个文件 part，`prompt` 正确 |
