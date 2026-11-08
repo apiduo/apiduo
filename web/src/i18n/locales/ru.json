@@ -7684,6 +7684,7 @@
     "Group slug {{slug}} is already in use": "Идентификатор {{slug}} уже используется",
     "Group name is required and must be at most 100 characters": "Название группы обязательно и не длиннее 100 символов",
     "Groups are limited to {{max}}": "Допускается не более {{max}} групп",
-    "Group {{slug}} does not exist": "Группа {{slug}} не существует"
+    "Group {{slug}} does not exist": "Группа {{slug}} не существует",
+    "View trace in Langfuse": "Открыть трассировку в Langfuse"
   }
 }

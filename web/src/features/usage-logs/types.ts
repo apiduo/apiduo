@@ -133,6 +133,10 @@ export interface LogOtherData {
     // Operator identity for audit logs (type=3, admin only)
     admin_username?: string
     admin_id?: number | string
+    // APIDUO:trace:BEGIN apiduo trace 导出派生的 Langfuse trace id，
+    // 后端在 user 视角下剥离 admin_info，普通用户拿不到这个字段
+    trace_id?: string
+    // APIDUO:trace:END
     // APIDUO:agent-audit:BEGIN 客户端声明或 User-Agent 推断出的 Agent
     agent?: string
     /** header = 显式声明，user_agent = 从 UA 推断 */

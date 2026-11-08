@@ -7684,6 +7684,7 @@
     "Group slug {{slug}} is already in use": "グループ ID {{slug}} は既に使われています",
     "Group name is required and must be at most 100 characters": "グループ名は必須で 100 文字以内です",
     "Groups are limited to {{max}}": "グループは {{max}} 個までです",
-    "Group {{slug}} does not exist": "グループ {{slug}} が存在しません"
+    "Group {{slug}} does not exist": "グループ {{slug}} が存在しません",
+    "View trace in Langfuse": "Langfuse でトレースを表示"
   }
 }

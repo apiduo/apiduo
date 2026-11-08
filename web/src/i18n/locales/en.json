@@ -7685,6 +7685,7 @@
     "Group name is required and must be at most 100 characters": "Group name is required and must be at most 100 characters",
     "Groups are limited to {{max}}": "Groups are limited to {{max}}",
     "Group {{slug}} does not exist": "Group {{slug}} does not exist",
+    "View trace in Langfuse": "View trace in Langfuse",
     "Primary endpoint": "Primary endpoint",
     "{{count}} derived": "{{count}} derived",
     "The endpoint the upstream actually speaks. Every other endpoint is derived from it.": "The endpoint the upstream actually speaks. Every other endpoint is derived from it.",

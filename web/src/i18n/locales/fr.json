@@ -7684,6 +7684,7 @@
     "Group slug {{slug}} is already in use": "L'identifiant {{slug}} est déjà utilisé",
     "Group name is required and must be at most 100 characters": "Le nom du groupe est requis et limité à 100 caractères",
     "Groups are limited to {{max}}": "Les groupes sont limités à {{max}}",
-    "Group {{slug}} does not exist": "Le groupe {{slug}} n'existe pas"
+    "Group {{slug}} does not exist": "Le groupe {{slug}} n'existe pas",
+    "View trace in Langfuse": "Voir la trace dans Langfuse"
   }
 }

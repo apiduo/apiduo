@@ -7684,6 +7684,7 @@
     "Group slug {{slug}} is already in use": "Mã nhóm {{slug}} đã được dùng",
     "Group name is required and must be at most 100 characters": "Tên nhóm là bắt buộc và tối đa 100 ký tự",
     "Groups are limited to {{max}}": "Chỉ được tối đa {{max}} nhóm",
-    "Group {{slug}} does not exist": "Nhóm {{slug}} không tồn tại"
+    "Group {{slug}} does not exist": "Nhóm {{slug}} không tồn tại",
+    "View trace in Langfuse": "Xem trace trong Langfuse"
   }
 }

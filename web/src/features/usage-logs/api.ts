@@ -20,6 +20,9 @@ import { api, getFreshAuthHeaders, type ApiRequestConfig } from '@/lib/api'
 import { createServerError } from '@/lib/server-error-message'
 
 import type { UsageLog } from './data/schema'
+// APIDUO:trace:BEGIN
+import type { TraceConfig } from './lib/trace-link'
+// APIDUO:trace:END
 import { buildQueryParams } from './lib/query-params'
 import { parseTaskArtifactsResponse } from './lib/task-artifacts'
 import type {
@@ -141,6 +144,20 @@ export async function exportLogs(
   }
   return result.data?.count ?? 0
 }
+
+// APIDUO:trace:BEGIN Langfuse 跳转链接配置（AdminAuth；/api/status 是公开端点，
+// 不能放内网 host 和 projectId）
+export async function getTraceConfig(): Promise<TraceConfig | null> {
+  try {
+    const res = await api.get<{ success: boolean; data?: TraceConfig }>(
+      '/api/apiduo/trace/config'
+    )
+    return res.data?.data ?? null
+  } catch {
+    return null
+  }
+}
+// APIDUO:trace:END
 
 export async function getUserInfo(
   userId: number

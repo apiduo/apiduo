@@ -67,6 +67,9 @@ import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 import { translateServerText } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
+// APIDUO:trace:BEGIN
+import { ApiduoTraceLink } from '../trace-link'
+// APIDUO:trace:END
 import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
 import type { UsageLog } from '../../data/schema'
 import {
@@ -711,6 +714,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
               mono
             />
           )}
+          {/* APIDUO:trace:BEGIN Langfuse 跳转链接：trace_id 在 admin_info 里，
+              普通用户的日志响应已被后端剥离，天然不可见 */}
+          <ApiduoTraceLink
+            traceId={other?.admin_info?.trace_id}
+            isAdmin={props.isAdmin}
+          />
+          {/* APIDUO:trace:END */}
           {props.log.upstream_request_id && (
             <DetailRow
               label={t('Upstream Request ID')}
