@@ -28,7 +28,11 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 	col.finalized = true
 	conf := current()
 
-	if !shouldSample(conf, m.Success) {
+	// The regular-rate verdict was fixed at Begin so the log row's trace_id
+	// can never point at a span that was never sent. Failures may still be
+	// promoted by the error rate: they are the sample an operator opens
+	// Langfuse for, and a missing jump link is cheaper than a missing trace.
+	if !col.sampled && (m.Success || !shouldSample(conf, false)) {
 		return
 	}
 
@@ -105,13 +109,17 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 // outside a relay request: async task settlement, MJ, violation fees. The
 // model bridge skips it when a relay collector exists (the relay defer
 // already covers that request) so sync requests never double-emit.
-func RecordConsume(in RecordConsumeInput) {
+//
+// Returns the trace id when a span was queued, "" when it was dropped —
+// the caller writes the id into the log only in the first case, so a log
+// link always resolves.
+func RecordConsume(in RecordConsumeInput) string {
 	if !Enabled() || in.RequestID == "" {
-		return
+		return ""
 	}
 	conf := current()
 	if !shouldSample(conf, true) {
-		return
+		return ""
 	}
 	endNano := in.UnixNano
 	if endNano == 0 {
@@ -142,6 +150,7 @@ func RecordConsume(in RecordConsumeInput) {
 		Quota:            in.Quota,
 	}
 	exporterFor(conf).enqueue(sn)
+	return sn.TraceID
 }
 
 // shouldSample applies the independent regular/error rates. Failed

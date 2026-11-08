@@ -98,6 +98,11 @@ type Collector struct {
 	usageSet   bool
 	finalized  bool
 	hasContent bool
+	// sampled is decided once, at Begin, so the log row and the span can
+	// never disagree: a log that carries trace_id always points at a trace
+	// that exists. Deciding at the relay defer instead left 90% of rows (at
+	// a 10% rate) with a link that 404s — a dead link is worse than none.
+	sampled bool
 }
 
 // Begin creates the per-request Collector and stores it on the context.
@@ -123,6 +128,7 @@ func Begin(c *gin.Context) {
 		requestID: requestID,
 		traceID:   TraceID(requestID),
 		spanID:    SpanID(requestID),
+		sampled:   shouldSample(conf, true),
 	}
 	if tp, ok := ParseTraceparent(c.Request.Header.Get("traceparent")); ok && tp.TraceID != "" {
 		// Adopt the client's trace id so the agent framework's spans and
@@ -163,16 +169,15 @@ func HasCollector(c *gin.Context) bool {
 }
 
 // TraceIDForLog returns the trace id that the log's admin metadata should
-// carry: the collector's id when one exists (which honors an incoming
-// traceparent), else the id derived from the request id. The fallback path
-// (RecordConsume without a collector) derives the same way, so a log row and
-// its emitted span always agree.
-//
-// Note the id only means "this request's trace, if it was sampled" — the
-// sampling decision happens later, at the relay defer, so an unsampled
-// request keeps an id whose trace does not exist in Langfuse.
+// carry, or "" when this request will not produce a trace. The id is only
+// handed out once sampling has kept the request, so every link the console
+// renders resolves; the fallback path (RecordConsume without a collector)
+// reports the same verdict through its return value.
 func TraceIDForLog(c *gin.Context, requestID string) string {
 	if col := fromContext(c); col != nil {
+		if !col.sampled {
+			return ""
+		}
 		return col.traceID
 	}
 	return TraceID(requestID)
@@ -180,7 +185,9 @@ func TraceIDForLog(c *gin.Context, requestID string) string {
 
 // FillUsage records settlement data and returns the trace id so the caller
 // can persist it into the log's admin-only metadata. Returns "" when
-// tracing is off or this request has no collector.
+// tracing is off, this request has no collector, or sampling dropped it —
+// the usage is still recorded because a failed unsampled request may be
+// promoted by the error rate at finalize.
 func FillUsage(c *gin.Context, u Usage) string {
 	col := fromContext(c)
 	if col == nil || col.finalized {
@@ -188,6 +195,9 @@ func FillUsage(c *gin.Context, u Usage) string {
 	}
 	col.usage = u
 	col.usageSet = true
+	if !col.sampled {
+		return ""
+	}
 	return col.traceID
 }
 

@@ -221,6 +221,9 @@ BenchmarkDisabled            2.3  ns/op     0 B/op    0 allocs   ← 关闭态
   重活全部压在 `//go:noinline` 的慢路径里
 - 主链路**零序列化、零正则、零 json.Unmarshal**；帧解析、脱敏全部在 worker
 - 采样判定用 `atomic.AddUint64(&n, 1) % 100 < rate`，不用 `math/rand`（全局源有锁）
+- 采样在 `Begin` 判定一次并存进 `collector.sampled`，日志的 `trace_id` 只在采样命中时才写；
+  失败请求允许被 `LANGFUSE_ERROR_SAMPLE_RATE` 追加放行。**不要在 defer 里才判定**——
+  那样 10% 采样率下九成日志会带一个在 Langfuse 里不存在的 id，链接点开就是 404
 - 队列满 `select/default` 直接丢 + 丢弃计数，**绝不等待**——log-writer 那套
   「队列满回退同步」是记账正确性策略，trace 不是账，两个策略永不统一
 

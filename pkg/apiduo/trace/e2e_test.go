@@ -196,6 +196,53 @@ func TestQueueFullDropsFast(t *testing.T) {
 	}
 }
 
+// TestUnsampledLogHasNoTraceID pins the log↔trace invariant: when sampling
+// drops a request, the log must not carry a trace id. Writing one anyway
+// (the pre-fix behaviour) left the console rendering "View trace" links
+// that 404 for every unsampled request — at a 10% rate, nine out of ten.
+// Failures are the exception: the error rate may still promote them, and a
+// missing link beats a missing trace.
+func TestUnsampledLogHasNoTraceID(t *testing.T) {
+	s := newSink(t)
+	conf := testConfig(s.server.URL)
+	conf.SampleRate = 0
+	conf.ErrorSampleRate = 0
+	conf.FlushIntervalMS = 30
+	setConfig(conf)
+
+	c := newTestContext(t)
+	Begin(c)
+	if id := FillUsage(c, Usage{PromptTokens: 1}); id != "" {
+		t.Fatalf("unsampled request must not report a trace id, got %q", id)
+	}
+	FinalizeRelay(c, RelayMeta{Model: "m", Success: true, Operation: "chat"})
+	time.Sleep(120 * time.Millisecond)
+	if got := s.requestCount(); got != 0 {
+		t.Fatalf("unsampled request must not be exported, got %d requests", got)
+	}
+
+	// The same verdict must hold for the fallback (consume-without-collector)
+	// path: the return value is what the log stores.
+	if id := RecordConsume(RecordConsumeInput{RequestID: "r-unsampled", Model: "m"}); id != "" {
+		t.Fatalf("unsampled consume must not report a trace id, got %q", id)
+	}
+
+	// A failure may be promoted by the error rate even when the regular rate
+	// dropped it — the span exists, the log link legitimately does not.
+	conf.ErrorSampleRate = 100
+	setConfig(conf)
+	c2 := newTestContext(t)
+	Begin(c2)
+	if id := FillUsage(c2, Usage{PromptTokens: 1}); id != "" {
+		t.Fatalf("unsampled request must not report a trace id, got %q", id)
+	}
+	FinalizeRelay(c2, RelayMeta{Model: "m", Success: false, Operation: "chat", ErrorStatus: 500})
+	spans := s.waitSpans(t, 1, 2*time.Second)
+	if len(spans) != 1 {
+		t.Fatalf("failed request must still be exported, got %d spans", len(spans))
+	}
+}
+
 // TestSamplingRates pins the counter-based sampling decision.
 func TestSamplingRates(t *testing.T) {
 	conf := &Config{SampleRate: 0, ErrorSampleRate: 100}
