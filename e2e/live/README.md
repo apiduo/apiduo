@@ -40,9 +40,13 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
 | `suites/channel_select.py` | 多渠道选路：优先级分层独占、同优先级权重 3:1 分布、权重全 0 均分、`RetryTimes>0` 时降级到下一优先级、`RetryTimes=0` 不降级 |
 | `suites/channel_affinity.py` | 渠道亲和：同一会话键 12 次全落同一渠道、第二个键各自粘住、关掉开关后恢复分散 |
 | `suites/channel_health.py` | 渠道健康：开关关闭时 500 不禁用、开启后自动禁用（status=3）、批量测试成功自动启用（status=1）、人工禁用不被翻回、死渠道被批量测试判死 |
+| `suites/multi_key_sticky.py` | 多 key 渠道：同一令牌只落一把 key、禁用 key 只重映射它自己的种子、`min_active_keys` 上限与备用补位、polling 轮转对照、重试不重复踩同一把、坏 key 只摘它自己 |
+| `suites/auto_group.py` | 跨分组重试：分组顺序、组内优先级先用完、`cross_group_retry` 开关对照、全组失败时有界收敛、令牌 auto_groups 的四类约束 |
 | `suites/channel_select.py` | 多渠道选路：优先级分层独占、同优先级权重 3:1 分布、权重全 0 均分、`RetryTimes>0` 时降级到下一优先级、`RetryTimes=0` 不降级 |
 | `suites/channel_affinity.py` | 渠道亲和：同一会话键 12 次全落同一渠道、第二个键各自粘住、关掉开关后恢复分散 |
 | `suites/channel_health.py` | 渠道健康：开关关闭时 500 不禁用、开启后自动禁用（status=3）、批量测试成功自动启用（status=1）、人工禁用不被翻回、死渠道被批量测试判死 |
+| `suites/multi_key_sticky.py` | 多 key 渠道：同一令牌只落一把 key、禁用 key 只重映射它自己的种子、`min_active_keys` 上限与备用补位、polling 轮转对照、重试不重复踩同一把、坏 key 只摘它自己 |
+| `suites/auto_group.py` | 跨分组重试：分组顺序、组内优先级先用完、`cross_group_retry` 开关对照、全组失败时有界收敛、令牌 auto_groups 的四类约束 |
 | `suites/discount_pat.py` | 折扣首条命中且不相乘、按次定价对账、审计 before/after、PAT 声明式作用域（未声明路由 fail-closed） |
 | `ui/trace_link.mjs` | 真实 Chrome：日志详情里出现「在 Langfuse 查看」，href 主机/项目/32 位 id/`rel=noopener` 全对 |
 
@@ -65,6 +69,14 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
   默认 codex 规则的 `/v1/responses`，规则就永远匹配不上。`channel_affinity.py` 里给的是完整对象。
 - **自动启用只在批量/定时测试里发生**：单渠道测试 `/api/channel/test/:id` 只测不启，
   所以那条用例必须走 `/api/channel/test`（入队系统任务）。
+- **`auto` 分组要显式放进 `UserUsableGroups`**：令牌分组校验读的就是这张表，
+  只加 `vip` 不加 `auto` 时，请求会在选路之前就被 403 `No permission to access group auto` 挡掉。
+- **第二台假上游用 `-fail-prefix=` 关掉了内容失败**：它代表「总是成功」的那台，
+  否则跨分组用例里两组同时 500，看起来像重试没生效。
+- **多 key 渠道用 `mode: "multi_to_single"` 建**，`key` 按行分隔；断言「这次用的哪把 key」
+  只能看假上游记下的 `auth`（网关自报的 `multi_key_index` 只能用来交叉核对）。
+- **重试预算是按组算的**：`RetryTimes=N` 时每个分组都有 N+1 次机会，两个组全失败就是
+  2×(N+1) 次尝试，然后选路返回 nil。这是设计，不是泄漏。
 - **内存缓存必须开**：`MEMORY_CACHE_ENABLED=true`（生产就是开的）。优先级与权重只在
   `GetRandomSatisfiedChannel` 的缓存选路里生效；不开缓存跑的是「直查库」另一份代码，测了等于没测。
 - **套件顺序不能随便调**：`discount_pat` 会关掉自用模式且只给 `disc-model` 配价，
@@ -74,6 +86,14 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
   默认 codex 规则的 `/v1/responses`，规则就永远匹配不上。`channel_affinity.py` 里给的是完整对象。
 - **自动启用只在批量/定时测试里发生**：单渠道测试 `/api/channel/test/:id` 只测不启，
   所以那条用例必须走 `/api/channel/test`（入队系统任务）。
+- **`auto` 分组要显式放进 `UserUsableGroups`**：令牌分组校验读的就是这张表，
+  只加 `vip` 不加 `auto` 时，请求会在选路之前就被 403 `No permission to access group auto` 挡掉。
+- **第二台假上游用 `-fail-prefix=` 关掉了内容失败**：它代表「总是成功」的那台，
+  否则跨分组用例里两组同时 500，看起来像重试没生效。
+- **多 key 渠道用 `mode: "multi_to_single"` 建**，`key` 按行分隔；断言「这次用的哪把 key」
+  只能看假上游记下的 `auth`（网关自报的 `multi_key_index` 只能用来交叉核对）。
+- **重试预算是按组算的**：`RetryTimes=N` 时每个分组都有 N+1 次机会，两个组全失败就是
+  2×(N+1) 次尝试，然后选路返回 nil。这是设计，不是泄漏。
 
 ## 只跑单个套件
 

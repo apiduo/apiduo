@@ -105,7 +105,7 @@ mkdir -p "$run/sink" "$run/sink2" "$run/trace" "$run/image" "$run/off"
 pids+=($!)
 disown "$!" 2>/dev/null || true
 # 第二台假上游：多渠道选择用例要能分辨「这一请求被送到了哪台」
-"$run/fakes" -upstream "127.0.0.1:$UP2" -sink "127.0.0.1:$SINK2" -dir "$run/sink2" -headers "$E2E_HEADERS2" \
+"$run/fakes" -upstream "127.0.0.1:$UP2" -sink "127.0.0.1:$SINK2" -dir "$run/sink2" -headers "$E2E_HEADERS2" -fail-prefix= \
   >"$run/fakes2.log" 2>&1 &
 pids+=($!)
 disown "$!" 2>/dev/null || true
@@ -174,6 +174,8 @@ suite image "图片协议 + 主端点" "http://127.0.0.1:$GW_IMAGE" image_primar
 suite select "渠道选择/权重/降级" "http://127.0.0.1:$GW_IMAGE" channel_select.py
 suite affinity "渠道亲和（sticky）" "http://127.0.0.1:$GW_IMAGE" channel_affinity.py
 suite health "渠道健康（自动禁用/启用）" "http://127.0.0.1:$GW_IMAGE" channel_health.py
+suite multikey "多 key 渠道（粘性/上限/换 key）" "http://127.0.0.1:$GW_IMAGE" multi_key_sticky.py
+suite autogroup "跨分组重试（auto 分组）" "http://127.0.0.1:$GW_IMAGE" auto_group.py
 suite discount "折扣 + PAT + 审计" "http://127.0.0.1:$GW_IMAGE" discount_pat.py
 
 echo
