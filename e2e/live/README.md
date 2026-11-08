@@ -20,6 +20,10 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
 | 假 Langfuse OTLP sink | 39402 | `SINK` |
 | 假上游（图片，记录式） | 39403 | `IMG_UP` |
 | 网关 · trace 开启 | 39410 | `GW_TRACE` |
+| 假上游 #2（多渠道选路用） | 39404 | `UP2` |
+| 假 sink #2（占位） | 39405 | `SINK2` |
+| 假上游 #2（多渠道选路用） | 39404 | `UP2` |
+| 假 sink #2（占位） | 39405 | `SINK2` |
 | 网关 · 图片/主端点 | 39420 | `GW_IMAGE` |
 | 网关 · trace 关闭 | 39440 | `GW_OFF` |
 
@@ -33,6 +37,8 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
 | `suites/off.py` | 默认关闭时**行为等价**：不导出、日志不写 `trace_id`、`traceparent` 不转发给上游 |
 | `suites/privacy.py` | 普通用户 `/api/log/self` 拿不到 `admin_info`、打 config 接口 403 |
 | `suites/image_primary.py` | 主端点落库去空白、空 `upstream_path` 跟随、显式覆盖保留、三入口落点、载体闸门 400 且**零出站**、chat 不抢图片主端点 |
+| `suites/channel_select.py` | 多渠道选路：优先级分层独占、同优先级权重 3:1 分布、权重全 0 均分、`RetryTimes>0` 时降级到下一优先级、`RetryTimes=0` 不降级 |
+| `suites/channel_select.py` | 多渠道选路：优先级分层独占、同优先级权重 3:1 分布、权重全 0 均分、`RetryTimes>0` 时降级到下一优先级、`RetryTimes=0` 不降级 |
 | `suites/discount_pat.py` | 折扣首条命中且不相乘、按次定价对账、审计 before/after、PAT 声明式作用域（未声明路由 fail-closed） |
 | `ui/trace_link.mjs` | 真实 Chrome：日志详情里出现「在 Langfuse 查看」，href 主机/项目/32 位 id/`rel=noopener` 全对 |
 
@@ -46,6 +52,14 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
 - **中继令牌**：用扁平 JSON 建（`{"name":...}`），套 `{"token":{...}}` 会建成 `status=4`（禁用），
   表现为 401 Invalid token。
 - **渠道生效**：`SYNC_FREQUENCY=1`，脚本已设；判就绪不能用 `/v1/models`（无价模型不列出）。
+- **内存缓存必须开**：`MEMORY_CACHE_ENABLED=true`（生产就是开的）。优先级与权重只在
+  `GetRandomSatisfiedChannel` 的缓存选路里生效；不开缓存跑的是「直查库」另一份代码，测了等于没测。
+- **套件顺序不能随便调**：`discount_pat` 会关掉自用模式且只给 `disc-model` 配价，
+  之后的套件都会撞 `price not configured`。所以它排在最后。
+- **内存缓存必须开**：`MEMORY_CACHE_ENABLED=true`（生产就是开的）。优先级与权重只在
+  `GetRandomSatisfiedChannel` 的缓存选路里生效；不开缓存跑的是「直查库」另一份代码，测了等于没测。
+- **套件顺序不能随便调**：`discount_pat` 会关掉自用模式且只给 `disc-model` 配价，
+  之后的套件都会撞 `price not configured`。所以它排在最后。
 
 ## 只跑单个套件
 

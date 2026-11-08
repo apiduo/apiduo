@@ -38,10 +38,17 @@ func main() {
 	})
 	up.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		var probe struct {
+			Model string `json:"model"`
+		}
+		_ = json.Unmarshal(body, &probe)
+		reqModel := probe.Model
 		// Record what the gateway actually sent upstream so the "disabled means
 		// byte-identical outbound" claim can be checked, not assumed.
 		if f, err := os.OpenFile(*headersPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-			fmt.Fprintf(f, "traceparent=%q tracestate=%q\n", r.Header.Get("traceparent"), r.Header.Get("tracestate"))
+			// model 也记下来：多渠道选择用例要按模型统计「哪台上游被选中了多少次」
+			fmt.Fprintf(f, "model=%q path=%q traceparent=%q tracestate=%q\n",
+				reqModel, r.URL.Path, r.Header.Get("traceparent"), r.Header.Get("tracestate"))
 			f.Close()
 		}
 		var req struct {

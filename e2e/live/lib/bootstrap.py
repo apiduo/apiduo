@@ -101,6 +101,9 @@ def ensure_channel(jwt):
     res = call("POST", "/api/channel/", {"mode": "single", "channel": channel}, jwt)
     if not res.get("success"):
         raise SystemExit(f"create channel failed: {res}")
+    # 内存缓存开启时选路读的是内存里的能力表，SYNC_FREQUENCY=1 也要等一个周期，
+    # 否则紧接着发的第一批请求会 503「No available channel」。
+    time.sleep(2)
 
 
 def ensure_token(jwt):

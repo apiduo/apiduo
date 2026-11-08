@@ -12,12 +12,19 @@ run=$(mktemp -d "${TMPDIR:-/tmp}/apiduo-e2e.XXXXXX")
 TRACE_UP=${TRACE_UP:-39401}
 SINK=${SINK:-39402}
 IMG_UP=${IMG_UP:-39403}
+UP2=${UP2:-39404}
+SINK2=${SINK2:-39405}
 GW_TRACE=${GW_TRACE:-39410}
 GW_IMAGE=${GW_IMAGE:-39420}
 GW_OFF=${GW_OFF:-39440}
 
 export E2E_SINK="http://127.0.0.1:$SINK"
 export E2E_HEADERS="$run/upstream-headers.log"
+export E2E_HEADERS2="$run/upstream-headers-2.log"
+export E2E_UP1="http://127.0.0.1:$TRACE_UP"
+export E2E_UP2="http://127.0.0.1:$UP2"
+export E2E_H1="$E2E_HEADERS"
+export E2E_H2="$E2E_HEADERS2"
 export E2E_SINK_DIR="$run/sink"
 export E2E_IMAGE_LOG="$run/image.log"
 export E2E_PROJECT_ID="e2e-project"
@@ -27,6 +34,18 @@ pids=()
 cleanup() {
   for pid in "${pids[@]:-}"; do
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
+  # 兜底：管道被中断（SIGPIPE）时子进程会漏掉，按端口再收一次。
+  # 这些端口在启动前已确认空闲，所以监听者一定是本轮起的。
+  for port in "$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF"; do
+    orphans=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+    [ -n "$orphans" ] && kill $orphans 2>/dev/null || true
+  done
+  # 兜底：管道被中断（SIGPIPE）时子进程会漏掉，按端口再收一次。
+  # 这些端口在启动前已确认空闲，所以监听者一定是本轮起的。
+  for port in "$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF"; do
+    orphans=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+    [ -n "$orphans" ] && kill $orphans 2>/dev/null || true
   done
   if [ "${KEEP:-0}" = "1" ]; then
     echo "已保留运行目录：$run"
@@ -42,22 +61,52 @@ need_port() {
     exit 1
   fi
 }
-for p in "$TRACE_UP" "$SINK" "$IMG_UP" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF"; do need_port "$p"; done
+for p in "$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF"; do need_port "$p"; done
 
 echo "== 构建 =="
 if [ ! -f "$repo/web/dist/index.html" ]; then
   echo "  web/dist 缺失或损坏，先构建前端（约 60s）"
   (cd "$repo/web" && bun run build)
 fi
-(cd "$repo" && go build -o "$run/apiduo" .)
+build_gateway() {
+  build_gateway() {
+  (cd "$repo" && go build -o "$run/apiduo" .) && return 0
+  # 并行开发时别的进程可能在重写 web/dist，embed 会拿到半成品。
+  # 这不是代码问题，重建前端再试一次即可。
+  echo "  go build 失败（多半是 web/dist 正被重写），重建前端后重试" >&2
+  (cd "$repo/web" && bun run build)
+  (cd "$repo" && go build -o "$run/apiduo" .)
+}
+build_gateway && return 0
+  # 并行开发时别的进程可能在重写 web/dist，embed 会拿到半成品。
+  # 这不是代码问题，重建前端再试一次即可。
+  echo "  go build 失败（多半是 web/dist 正被重写），重建前端后重试" >&2
+  (cd "$repo/web" && bun run build)
+  build_gateway() {
+  (cd "$repo" && go build -o "$run/apiduo" .) && return 0
+  # 并行开发时别的进程可能在重写 web/dist，embed 会拿到半成品。
+  # 这不是代码问题，重建前端再试一次即可。
+  echo "  go build 失败（多半是 web/dist 正被重写），重建前端后重试" >&2
+  (cd "$repo/web" && bun run build)
+  (cd "$repo" && go build -o "$run/apiduo" .)
+}
+build_gateway
+}
+build_gateway
 (cd "$here/fakes" && go build -o "$run/fakes" .)
 
 echo "== 起假服务 =="
-mkdir -p "$run/sink" "$run/trace" "$run/image" "$run/off"
+mkdir -p "$run/sink" "$run/sink2" "$run/trace" "$run/image" "$run/off"
 : > "$E2E_HEADERS"
+: > "$E2E_HEADERS2"
 : > "$E2E_IMAGE_LOG"
 "$run/fakes" -upstream "127.0.0.1:$TRACE_UP" -sink "127.0.0.1:$SINK" -dir "$run/sink" -headers "$E2E_HEADERS" \
   >"$run/fakes.log" 2>&1 &
+pids+=($!)
+disown "$!" 2>/dev/null || true
+# 第二台假上游：多渠道选择用例要能分辨「这一请求被送到了哪台」
+"$run/fakes" -upstream "127.0.0.1:$UP2" -sink "127.0.0.1:$SINK2" -dir "$run/sink2" -headers "$E2E_HEADERS2" \
+  >"$run/fakes2.log" 2>&1 &
 pids+=($!)
 disown "$!" 2>/dev/null || true
 python3 "$here/fakes/image_mock.py" --port "$IMG_UP" --log "$E2E_IMAGE_LOG" >"$run/image-mock.log" 2>&1 &
@@ -65,7 +114,7 @@ pids+=($!)
 disown "$!" 2>/dev/null || true
 
 gw_env() {
-  echo "PORT=$1 GIN_MODE=release SYNC_FREQUENCY=1 ERROR_LOG_ENABLED=true CRITICAL_RATE_LIMIT=5000 CRITICAL_RATE_LIMIT_DURATION=1800"
+  echo "PORT=$1 GIN_MODE=release SYNC_FREQUENCY=1 MEMORY_CACHE_ENABLED=true ERROR_LOG_ENABLED=true CRITICAL_RATE_LIMIT=5000 CRITICAL_RATE_LIMIT_DURATION=1800"
 }
 
 echo "== 起网关实例 =="
@@ -120,6 +169,9 @@ suite trace "trace 端到端" "http://127.0.0.1:$GW_TRACE" trace.py
 suite off "关闭态等价" "http://127.0.0.1:$GW_OFF" off.py
 suite privacy "普通用户隐私" "http://127.0.0.1:$GW_TRACE" privacy.py
 suite image "图片协议 + 主端点" "http://127.0.0.1:$GW_IMAGE" image_primary.py
+# 顺序有意义：discount 会关掉自用模式并只给 disc-model 配价，
+# 之后再跑 select 就会撞「price not configured」。select 必须排在它前面。
+suite select "渠道选择/权重/降级" "http://127.0.0.1:$GW_IMAGE" channel_select.py
 suite discount "折扣 + PAT + 审计" "http://127.0.0.1:$GW_IMAGE" discount_pat.py
 
 echo
