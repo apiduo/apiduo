@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
-import { BillPanel, MoneyChip } from '../components/message-billing'
+import { BillPanelSlot, MoneyChip } from '../components/message-billing'
 import type { BillingLedger } from '../hooks/use-billing-ledger'
 import type { ImageGenerationResult } from '../types'
 import { generateImages, IMAGE_SIZES } from './api'
@@ -52,6 +52,47 @@ const PROMPT_SUGGESTIONS = [
   'Isometric server room, teal and amber lighting',
   'Hand-drawn map of a coastal town, ink on paper',
 ]
+
+interface GeneratedTileProps {
+  src: string
+  alt: string
+  downloadName: string
+}
+
+/**
+ * The shimmer is an overlay sibling, not a background on the <img>: an image
+ * with no decoded pixels paints nothing, so a background on it would be
+ * invisible exactly when it is needed.
+ *
+ * The entrance runs off the image's own animation rather than a `loaded` flag
+ * so it still plays when the bytes come straight from cache — a cached image
+ * that pops in fully sharp looks like a layout bug after five identical ones
+ * that resolved.
+ */
+function GeneratedTile({ src, alt, downloadName }: GeneratedTileProps) {
+  const [loaded, setLoaded] = useState(false)
+
+  return (
+    <div className='group bg-muted/40 relative overflow-hidden rounded-lg'>
+      {loaded ? null : (
+        <div aria-hidden='true' className='apd-shimmer absolute inset-0' />
+      )}
+      <img
+        alt={alt}
+        className='apd-media-in block h-full w-full object-cover'
+        onLoad={() => setLoaded(true)}
+        src={src}
+      />
+      <a
+        className='bg-background/90 absolute right-1.5 bottom-1.5 rounded-md p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100'
+        download={downloadName}
+        href={src}
+      >
+        <DownloadIcon className='size-3.5' />
+      </a>
+    </div>
+  )
+}
 
 export function ImageWorkspace({
   model,
@@ -165,7 +206,7 @@ export function ImageWorkspace({
         ref={scrollRef}
       >
         {results.length === 0 ? (
-          <div className='text-muted-foreground mx-auto flex w-full max-w-4xl flex-col items-center gap-3 py-16 text-center'>
+          <div className='apd-stagger text-muted-foreground mx-auto flex w-full max-w-4xl flex-col items-center gap-3 py-16 text-center'>
             <div className='bg-muted flex size-11 items-center justify-center rounded-xl'>
               <ImageIcon className='size-5' />
             </div>
@@ -192,7 +233,7 @@ export function ImageWorkspace({
               const expanded = expandedBillingKey === result.id
               return (
                 <div
-                  className='border-border/60 bg-background rounded-xl border p-3'
+                  className='apd-rise border-border/60 bg-background rounded-xl border p-3'
                   key={result.id}
                 >
                   <div className='mb-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground'>
@@ -223,48 +264,36 @@ export function ImageWorkspace({
                   </div>
 
                   {result.items.length === 0 && !result.error ? (
-                    <div className='bg-muted/40 flex aspect-video w-full items-center justify-center rounded-lg'>
+                    <div className='bg-muted/40 apd-shimmer flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg'>
                       <Loader2Icon className='text-muted-foreground size-5 animate-spin' />
                     </div>
                   ) : (
                     <div
                       className={cn(
-                        'grid gap-2',
+                        'apd-stagger grid gap-2',
                         result.items.length > 1
                           ? 'grid-cols-2 lg:grid-cols-3'
                           : 'grid-cols-1'
                       )}
                     >
                       {result.items.map((item) => (
-                        <div
-                          className='group bg-muted/40 relative overflow-hidden rounded-lg'
+                        <GeneratedTile
+                          alt={item.revisedPrompt ?? ''}
+                          downloadName={`image-${result.id}.png`}
                           key={item.url}
-                        >
-                          <img
-                            alt={item.revisedPrompt ?? ''}
-                            className='h-full w-full object-cover'
-                            src={item.url}
-                          />
-                          <a
-                            className='bg-background/90 absolute right-1.5 bottom-1.5 rounded-md p-1 opacity-0 transition-opacity group-hover:opacity-100'
-                            download={`image-${result.id}.png`}
-                            href={item.url}
-                          >
-                            <DownloadIcon className='size-3.5' />
-                          </a>
-                        </div>
+                          src={item.url}
+                        />
                       ))}
                     </div>
                   )}
 
-                  {billing && expanded ? (
-                    <BillPanel
-                      billing={billing}
-                      modelName={model}
-                      onCopyCurl={() => onCopyCurl(result.id)}
-                      onOpenRequest={() => onOpenRequest(result.id)}
-                    />
-                  ) : null}
+                  <BillPanelSlot
+                    billing={billing}
+                    modelName={model}
+                    onCopyCurl={() => onCopyCurl(result.id)}
+                    onOpenRequest={() => onOpenRequest(result.id)}
+                    open={expanded}
+                  />
                 </div>
               )
             })}
@@ -331,7 +360,7 @@ export function ImageWorkspace({
                 </Button>
               ) : null}
               <Button
-                className='h-7 text-[11.5px]'
+                className='apd-press h-7 text-[11.5px]'
                 disabled={busy || !prompt.trim()}
                 onClick={handleSubmit}
                 size='sm'

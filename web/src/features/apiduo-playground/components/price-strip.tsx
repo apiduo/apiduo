@@ -26,6 +26,7 @@ import { findModel, resolveGroupRatio } from '../billing/pricing'
 import { formatQuota } from '../billing/quota'
 import type { PricingSnapshot } from '../billing/types'
 import type { PlaygroundMode } from '../types'
+import { RollingValue } from './rolling-value'
 
 interface PriceStripProps {
   pricing: PricingSnapshot | null
@@ -53,7 +54,10 @@ export function PriceStrip({ pricing, model, group, mode }: PriceStripProps) {
 
   if (!info) {
     return (
-      <div className='text-muted-foreground flex min-h-5 flex-wrap items-center gap-1.5 text-[10.5px]'>
+      <div
+        className='apd-fade-up text-muted-foreground flex min-h-5 flex-wrap items-center gap-1.5 text-[10.5px]'
+        key={`${model}-${group}-${mode}`}
+      >
         <span className='font-mono'>{model}</span>
         <span className='bg-muted rounded px-1.5 py-0.5'>
           {t('Pricing not available for this model')}
@@ -68,7 +72,10 @@ export function PriceStrip({ pricing, model, group, mode }: PriceStripProps) {
     const unit = info.quotaType === 1 ? info.modelPrice : info.modelRatio * 2
     const discounted = unit * effective
     return (
-      <div className='text-muted-foreground flex min-h-5 flex-wrap items-center gap-1.5 text-[10.5px]'>
+      <div
+        className='apd-fade-up text-muted-foreground flex min-h-5 flex-wrap items-center gap-1.5 text-[10.5px]'
+        key={`${model}-${group}-${mode}`}
+      >
         <span className='text-foreground font-mono font-semibold'>{model}</span>
         <span>
           {t('Per image')}{' '}
@@ -77,7 +84,10 @@ export function PriceStrip({ pricing, model, group, mode }: PriceStripProps) {
           </span>
         </span>
         {discount != null ? (
-          <span className='rounded bg-emerald-500/12 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-400'>
+          <span
+            className='apd-sheen-host rounded bg-emerald-500/12 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-400'
+            key={`discount-${discount}`}
+          >
             {group} {t('{{rate}}% off', { rate: Math.round((1 - discount) * 100) })}
           </span>
         ) : (
@@ -105,8 +115,9 @@ export function PriceStrip({ pricing, model, group, mode }: PriceStripProps) {
 
   return (
     <div
-      className='text-muted-foreground flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px]'
+      className='apd-fade-up text-muted-foreground flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px]'
       data-apiduo={apiduoBlockMark('playground:pricing')}
+      key={`${model}-${group}-${mode}`}
     >
       <span className='text-foreground font-mono font-semibold'>{model}</span>
       <span>
@@ -124,7 +135,10 @@ export function PriceStrip({ pricing, model, group, mode }: PriceStripProps) {
         /M
       </span>
       {discount != null ? (
-        <span className='rounded bg-emerald-500/12 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-400'>
+        <span
+          className='apd-sheen-host rounded bg-emerald-500/12 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-400'
+          key={`discount-${discount}`}
+        >
           {group} {t('{{rate}}% off', { rate: Math.round((1 - discount) * 100) })}
         </span>
       ) : (
@@ -182,9 +196,10 @@ export function SpendBadge({
       })}
     >
       <span>{t('This session')}</span>
-      <span className='text-foreground font-mono text-[12px] font-semibold tabular-nums'>
-        {formatQuota(quota)}
-      </span>
+      <RollingValue
+        className='text-foreground font-mono text-[12px] font-semibold'
+        value={formatQuota(quota)}
+      />
       <span>· {t('{{count}} requests', { count })}</span>
     </div>
   )

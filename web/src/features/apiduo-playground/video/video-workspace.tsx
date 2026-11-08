@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2Icon, Trash2Icon, VideoIcon } from 'lucide-react'
+import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -25,8 +26,9 @@ import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-import { BillPanel, MoneyChip } from '../components/message-billing'
+import { BillPanelSlot, MoneyChip } from '../components/message-billing'
 import type { BillingLedger } from '../hooks/use-billing-ledger'
+import { useApiduoSpring } from '../hooks/use-motion'
 import type { VideoTask } from '../types'
 import {
   createVideoTask,
@@ -72,6 +74,9 @@ export function VideoWorkspace({
   const [tasks, setTasks] = useState<VideoTask[]>([])
   const [busy, setBusy] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  // Progress arrives in jumps every 2 s; a spring turns each jump into motion
+  // that decelerates into the new value instead of teleporting the bar.
+  const progressSpring = useApiduoSpring('settle')
 
   const patchTask = useCallback((id: string, patch: Partial<VideoTask>) => {
     setTasks((prev) =>
@@ -193,7 +198,7 @@ export function VideoWorkspace({
         ref={scrollRef}
       >
         {tasks.length === 0 ? (
-          <div className='text-muted-foreground mx-auto flex w-full max-w-4xl flex-col items-center gap-3 py-16 text-center'>
+          <div className='apd-stagger text-muted-foreground mx-auto flex w-full max-w-4xl flex-col items-center gap-3 py-16 text-center'>
             <div className='bg-muted flex size-11 items-center justify-center rounded-xl'>
               <VideoIcon className='size-5' />
             </div>
@@ -216,15 +221,16 @@ export function VideoWorkspace({
 
               return (
                 <div
-                  className='border-border/60 bg-background rounded-xl border p-3'
+                  className='apd-rise border-border/60 bg-background rounded-xl border p-3'
                   key={task.id}
                 >
                   <div className='mb-2 flex flex-wrap items-center gap-2'>
                     <span
                       className={cn(
-                        'rounded px-1.5 py-0.5 text-[10px] font-medium capitalize',
+                        'apd-nudge rounded px-1.5 py-0.5 text-[10px] font-medium capitalize',
                         STATUS_STYLE[task.status]
                       )}
+                      key={task.status}
                     >
                       {t(task.status)}
                     </span>
@@ -265,9 +271,11 @@ export function VideoWorkspace({
 
                   {running ? (
                     <div className='bg-muted h-1.5 w-full overflow-hidden rounded-full'>
-                      <div
-                        className='bg-primary h-full rounded-full transition-all duration-500'
-                        style={{ width: `${Math.max(6, task.progress)}%` }}
+                      <motion.div
+                        animate={{ width: `${Math.max(6, task.progress)}%` }}
+                        className='bg-primary h-full rounded-full'
+                        initial={false}
+                        transition={progressSpring}
                       />
                     </div>
                   ) : null}
@@ -280,21 +288,20 @@ export function VideoWorkspace({
 
                   {task.url ? (
                     <video
-                      className='bg-muted mt-2 w-full rounded-lg'
+                      className='apd-fade-up bg-muted mt-2 w-full rounded-lg'
                       controls
                       playsInline
                       src={task.url}
                     />
                   ) : null}
 
-                  {billing && expanded ? (
-                    <BillPanel
-                      billing={billing}
-                      modelName={model}
-                      onCopyCurl={() => onCopyCurl(task.id)}
-                      onOpenRequest={() => onOpenRequest(task.id)}
-                    />
-                  ) : null}
+                  <BillPanelSlot
+                    billing={billing}
+                    modelName={model}
+                    onCopyCurl={() => onCopyCurl(task.id)}
+                    onOpenRequest={() => onOpenRequest(task.id)}
+                    open={expanded}
+                  />
                 </div>
               )
             })}
@@ -355,7 +362,7 @@ export function VideoWorkspace({
 
             <div className='ml-auto flex items-center gap-2'>
               <Button
-                className='h-7 text-[11.5px]'
+                className='apd-press h-7 text-[11.5px]'
                 disabled={busy || !prompt.trim()}
                 onClick={() => void handleSubmit()}
                 size='sm'

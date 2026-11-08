@@ -45,7 +45,7 @@ import type {
 } from '@/features/playground/types'
 
 import type { MessageBilling } from '../hooks/use-billing-ledger'
-import { BillPanel, MoneyChip } from '../components/message-billing'
+import { BillPanelSlot, MoneyChip } from '../components/message-billing'
 
 const MAX_RENDERED_HISTORY_MESSAGES = 24
 
@@ -143,7 +143,7 @@ export function ChatThread({
 
     return (
       <Message
-        className='group flex-row-reverse py-2.5'
+        className='apd-rise group flex-row-reverse py-2.5'
         from={message.from}
         key={message.key}
       >
@@ -187,15 +187,14 @@ export function ChatThread({
                       </div>
                     ) : null}
                   </div>
-                  {billing && billingExpanded ? (
-                    <BillPanel
-                      billing={billing}
-                      modelName={modelName}
-                      onCopyCurl={() => onCopyCurl(message.key)}
-                      onOpenRequest={() => onOpenRequest(message.key)}
-                      vendor={vendor}
-                    />
-                  ) : null}
+                  <BillPanelSlot
+                    billing={billing}
+                    modelName={modelName}
+                    onCopyCurl={() => onCopyCurl(message.key)}
+                    onOpenRequest={() => onOpenRequest(message.key)}
+                    open={billingExpanded}
+                    vendor={vendor}
+                  />
                 </div>
               }
               errorActions={

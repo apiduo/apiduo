@@ -69,6 +69,12 @@ export interface QuotaBreakdown {
   cacheTokens: number
   /** 计算式文本，供对账单直接展示 */
   formula: string
+  /**
+   * 按次计价的模型（多用于生图/生视频）没有 token 维度，也没有模型倍率；
+   * 对账单照搬 token 那套行会显示成 `输入 0 / 输出 0 / 倍率 ×0.00`，
+   * 看着像哪里算错了。带上口径，UI 才知道该藏哪些行。
+   */
+  pricingMode?: 'per-token' | 'per-call'
 }
 
 export interface RequestLogRecord {

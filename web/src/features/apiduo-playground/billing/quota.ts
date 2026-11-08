@@ -73,6 +73,7 @@ export function computeChatQuota(
       baseTokens: 0,
       cacheTokens: 0,
       formula: `按次计费 ${model.modelPrice} × ${quotaPerUnit().toLocaleString()} × ${effective.toFixed(2)} = ${quota.toLocaleString()} 额度`,
+      pricingMode: 'per-call',
     }
   }
 
@@ -108,6 +109,7 @@ export function computeChatQuota(
     baseTokens,
     cacheTokens,
     formula,
+    pricingMode: 'per-token',
   }
 }
 
@@ -146,6 +148,7 @@ export function computeImageQuota(
     baseTokens: 0,
     cacheTokens: 0,
     formula: `${unitPrice} × ${images} 张 × ${effective.toFixed(2)} = ${quota.toLocaleString()} 额度`,
+    pricingMode: model.quotaType === 1 ? 'per-call' : 'per-token',
   }
 }
 

@@ -1,0 +1,410 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/*
+ * Playground motion.
+ *
+ * Everything here settles on a spring, not a fixed-duration ease. The
+ * difference is not cosmetic: a spring is described by "how fast does this
+ * approach its target", so when the user interrupts — clicks another tab
+ * mid-transition, collapses the bill while it is still opening — the motion
+ * continues from where the eye already is. A `transition: 300ms` restarts from
+ * 0 % and reads as a flicker.
+ *
+ *   --apd-ease-settle   ζ 1.00, response 0.35 s   critical, no overshoot
+ *   --apd-ease-pop      ζ 0.78, response 0.42 s   ~2 % overshoot, "it landed"
+ *   --apd-ease-sheet    ζ 0.80, response 0.30 s   Apple's sheet pair
+ *
+ * The three curves are sampled from the closed-form solution of a damped
+ * oscillator and written as `linear()`. The cubic-bezier above each one is a
+ * fallback for browsers without `linear()` — a shade snappier, and the layout
+ * is identical, because nothing here relies on the curve to stay readable.
+ */
+
+:root {
+  --apd-ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --apd-ease-pop: cubic-bezier(0.34, 1.3, 0.64, 1);
+  --apd-ease-sheet: cubic-bezier(0.22, 1.1, 0.36, 1);
+
+  /* Every delay below is a stagger step, not a choreography. Past ~28 ms the
+   * last row of a bill arrives late enough that scanning feels laggy. */
+  --apd-step: 26ms;
+}
+
+@supports (transition-timing-function: linear(0, 0.5, 1)) {
+  :root {
+    --apd-ease-settle: linear(
+      0, 0.0251, 0.0858, 0.1657, 0.2536, 0.3424, 0.4275, 0.5065, 0.5781,
+      0.6417, 0.6975, 0.7459, 0.7875, 0.823, 0.853, 0.8783, 0.8996, 0.9173,
+      0.932, 0.9443, 0.9544, 0.9627, 0.9696, 0.9752, 0.9799, 0.9836, 0.9867,
+      0.9892, 0.9913, 0.993, 0.9943, 0.9954, 0.9963, 0.997, 0.998, 1
+    );
+    --apd-ease-pop: linear(
+      0, 0.0259, 0.0913, 0.1804, 0.2814, 0.3856, 0.487, 0.5815, 0.6666,
+      0.7411, 0.8048, 0.858, 0.9013, 0.9358, 0.9625, 0.9827, 0.9973, 1.0075,
+      1.0141, 1.0179, 1.0196, 1.0199, 1.0191, 1.0176, 1.0157, 1.0137, 1.0116,
+      1.0096, 1.0078, 1.0061, 1.0047, 1.0035, 1.0025, 1.0017, 1.0011, 1.0006,
+      1.0002, 1, 0.9998, 0.9997, 0.9996, 1
+    );
+    --apd-ease-sheet: linear(
+      0, 0.0259, 0.0908, 0.1789, 0.2786, 0.3813, 0.481, 0.5738, 0.6575,
+      0.7309, 0.7937, 0.8463, 0.8895, 0.9241, 0.9513, 0.9721, 0.9876, 0.9987,
+      1.0062, 1.0111, 1.0138, 1.015, 1.0151, 1.0144, 1.0132, 1.0118, 1.0103,
+      1.0087, 1.0072, 1.0059, 1.0047, 1.0037, 1.0028, 1.002, 1.0014, 1.0006,
+      1, 0.9998, 1
+    );
+  }
+}
+
+/* ── Entrances ─────────────────────────────────────────────────────────────
+ *
+ * `scale(0.994)` rather than a visible zoom: a message that grows 0.6 % reads
+ * as "it arrived", while anything larger makes a 24-message thread feel like it
+ * is breathing every time you scroll.
+ */
+@keyframes apd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.994);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes apd-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes apd-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+  62% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes apd-nudge {
+  0% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.055);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ── Settlement ────────────────────────────────────────────────────────────
+ *
+ * One ring, once. The bill is the reason people open this page, so the moment
+ * a log lands deserves a confirmation the eye can catch peripherally — but a
+ * loop would turn "settled" into decoration and steal attention from the next
+ * request.
+ */
+@keyframes apd-halo {
+  from {
+    box-shadow: 0 0 0 0
+      color-mix(in oklch, var(--apiduo-ink) 45%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 7px
+      color-mix(in oklch, var(--apiduo-ink) 0%, transparent);
+  }
+}
+
+/* A single pass of light across a badge. Used only where money is saved, and
+ * only on the frame the discount first applies. */
+@keyframes apd-sheen {
+  from {
+    transform: translateX(-140%) skewX(-14deg);
+  }
+  to {
+    transform: translateX(240%) skewX(-14deg);
+  }
+}
+
+/* ── Waiting ───────────────────────────────────────────────────────────────
+ *
+ * A shimmer that travels is a progress cue; a static grey block is a broken
+ * image. Same pixels, different answer to "is anything happening".
+ */
+@keyframes apd-shimmer {
+  from {
+    background-position: -60% 0;
+  }
+  to {
+    background-position: 160% 0;
+  }
+}
+
+/* Generated media arrives out of focus and slightly too large, then resolves.
+ * A hard cut from "nothing" to "fully sharp" makes a 1024 px image feel like it
+ * was always there; the 0.55 s resolve is long enough to read as "developing"
+ * and short enough that a second image in the grid does not wait on it.
+ */
+@keyframes apd-media-in {
+  from {
+    opacity: 0;
+    filter: blur(9px) saturate(0.85);
+    transform: scale(1.025);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}
+
+@keyframes apd-breathe {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── Primitives ────────────────────────────────────────────────────────────
+ */
+
+.apd-rise {
+  animation: apd-rise 520ms var(--apd-ease-settle) both;
+}
+
+.apd-fade-up {
+  animation: apd-fade-up 380ms var(--apd-ease-settle) both;
+}
+
+.apd-pop-in {
+  animation: apd-pop-in 420ms var(--apd-ease-pop) both;
+}
+
+.apd-nudge {
+  animation: apd-nudge 440ms var(--apd-ease-pop);
+}
+
+.apd-halo {
+  animation: apd-halo 760ms var(--apd-ease-pop) both;
+}
+
+.apd-breathe {
+  animation: apd-breathe 1.9s ease-in-out infinite;
+}
+
+.apd-media-in {
+  animation: apd-media-in 550ms var(--apd-ease-settle) both;
+}
+
+.apd-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 24%,
+    color-mix(in oklch, var(--foreground) 9%, transparent) 46%,
+    transparent 68%
+  );
+  background-size: 220% 100%;
+  animation: apd-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Press feedback fires on `:active`, i.e. while the finger is still down.
+ * Anything that waits for `click` is a lag, not a response. 0.972 is the
+ * largest scale that does not shift neighbouring text at these sizes. */
+.apd-press {
+  transition:
+    transform 90ms ease-out,
+    background-color 160ms ease-out,
+    border-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.apd-press:active:not(:disabled) {
+  transform: scale(0.972);
+}
+
+/* Staggered rows: `--apd-step` per child, capped by `:nth-child` so an
+ * unusually long bill does not end up with a second-long cascade. */
+.apd-stagger > * {
+  animation: apd-fade-up 340ms var(--apd-ease-settle) both;
+}
+
+.apd-stagger > :nth-child(1) {
+  animation-delay: calc(var(--apd-step) * 0);
+}
+.apd-stagger > :nth-child(2) {
+  animation-delay: calc(var(--apd-step) * 1);
+}
+.apd-stagger > :nth-child(3) {
+  animation-delay: calc(var(--apd-step) * 2);
+}
+.apd-stagger > :nth-child(4) {
+  animation-delay: calc(var(--apd-step) * 3);
+}
+.apd-stagger > :nth-child(5) {
+  animation-delay: calc(var(--apd-step) * 4);
+}
+.apd-stagger > :nth-child(6) {
+  animation-delay: calc(var(--apd-step) * 5);
+}
+.apd-stagger > :nth-child(7) {
+  animation-delay: calc(var(--apd-step) * 6);
+}
+.apd-stagger > :nth-child(n + 8) {
+  animation-delay: calc(var(--apd-step) * 7);
+}
+
+/* The sheen needs a clipping host; the badge itself must not clip its own
+ * text, so the pseudo-element carries the gradient and the host only hides
+ * overflow that the gradient creates. */
+.apd-sheen-host {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.apd-sheen-host::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--background) 78%, transparent),
+    transparent
+  );
+  animation: apd-sheen 900ms var(--apd-ease-settle) 120ms both;
+}
+
+/* Tab indicator: a single element that travels between the three modes.
+ * `translate` and `scale` only — the element never participates in layout, so
+ * moving it cannot reflow the header. */
+.apd-tab-pill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--background);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.07);
+  transform-origin: left center;
+  transition:
+    transform 380ms var(--apd-ease-settle),
+    width 380ms var(--apd-ease-settle),
+    opacity 160ms ease-out;
+  pointer-events: none;
+}
+
+/* On a dark surface `--background` is darker than the `bg-muted/60` track, so a
+ * pill painted with it reads as a hole instead of a raised control. Lift it
+ * towards the foreground instead, and keep a hairline so the edge survives on
+ * OLED-level blacks. */
+.dark .apd-tab-pill {
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+/* ── Degradation ───────────────────────────────────────────────────────────
+ *
+ * Reduced motion keeps every state change, drops every displacement. Opacity
+ * is left alone (a fade is not vestibular motion) except where the animation
+ * was the only thing making an element visible.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .apd-rise,
+  .apd-fade-up,
+  .apd-pop-in,
+  .apd-nudge,
+  .apd-halo,
+  .apd-stagger > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .apd-press,
+  .apd-tab-pill {
+    transition: none !important;
+  }
+
+  .apd-press:active:not(:disabled) {
+    transform: none;
+  }
+
+  .apd-breathe,
+  .apd-shimmer,
+  .apd-media-in,
+  .apd-sheen-host::after {
+    animation: none !important;
+  }
+
+  .apd-shimmer {
+    background-image: none;
+    background-color: var(--muted);
+  }
+}
+
+/* Reduced transparency: the halo is a translucent ring by design, so it has no
+ * useful opaque form. Drop it rather than paint a solid outline that was never
+ * part of the language. */
+@media (prefers-reduced-transparency: reduce) {
+  .apd-halo {
+    animation: none !important;
+  }
+
+  .apd-sheen-host::after {
+    animation: none !important;
+    opacity: 0;
+  }
+}
+
+/* More contrast: hairlines and shimmer go from "subtle" to "visible". */
+@media (prefers-contrast: more) {
+  .apd-shimmer {
+    background-image: linear-gradient(
+      100deg,
+      transparent 24%,
+      color-mix(in oklch, var(--foreground) 22%, transparent) 46%,
+      transparent 68%
+    );
+  }
+
+  .apd-tab-pill {
+    box-shadow: 0 0 0 1px var(--border);
+  }
+}

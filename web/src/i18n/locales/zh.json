@@ -7762,6 +7762,7 @@
     "cURL copied": "cURL 已复制",
     "{{count}} images": "{{count}} 张",
     "{{count}} requests": "{{count}} 次请求",
-    "{{rate}}% off": "省 {{rate}}%"
+    "{{rate}}% off": "省 {{rate}}%",
+    "Billed per request, not per token": "按次计价，不按 token"
   }
 }

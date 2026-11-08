@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -38,7 +39,9 @@ import { RequestDrawer } from './components/request-drawer'
 import { ChatWorkspace } from './chat/chat-workspace'
 import { ImageWorkspace } from './image/image-workspace'
 import { useBillingLedger } from './hooks/use-billing-ledger'
+import { useApiduoSpring } from './hooks/use-motion'
 import { buildOfficialCurl } from './lib/official-curl'
+import './styles/motion.css'
 import { VideoWorkspace } from './video/video-workspace'
 import type { PlaygroundMode } from './types'
 
@@ -119,6 +122,8 @@ export function ApiduoPlayground() {
     if (visibleModels.some((model) => model.value === config.model)) return
     updateConfig('model', visibleModels[0].value)
   }, [visibleModels, config.model, updateConfig])
+
+  const workspaceSpring = useApiduoSpring('settle')
 
   const handleModeChange = useCallback(
     (next: PlaygroundMode) => {
@@ -213,7 +218,19 @@ export function ApiduoPlayground() {
         />
       </div>
 
-      <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+      {/*
+        One motion.div keyed by mode, not three siblings that get swapped. The
+        key change is what makes the workspace arrive with a spring; the point
+        is that switching feels like moving within one surface rather than
+        loading a different page.
+      */}
+      <motion.div
+        animate={{ opacity: 1, y: 0 }}
+        className='flex min-h-0 flex-1 flex-col overflow-hidden'
+        initial={{ opacity: 0, y: 6 }}
+        key={mode}
+        transition={workspaceSpring}
+      >
         {mode === 'chat' ? (
           <ChatWorkspace
             clearMessages={clearMessages}
@@ -258,7 +275,7 @@ export function ApiduoPlayground() {
             onToggleBilling={handleToggleBilling}
           />
         ) : null}
-      </div>
+      </motion.div>
 
       <RequestDrawer
         billing={drawerKey ? (ledger.billingByKey[drawerKey] ?? null) : null}
