@@ -104,7 +104,7 @@ def main():
     if not RELAY:
         raise SystemExit("E2E_RELAY_KEY is required (run via run_all.sh)")
     at = admin()
-    api(at, "PUT", "/api/option/", json={"key": "performance_setting.monitor_disk_threshold", "value": "100"})
+    api(at, "PUT", "/api/option/", json={"key": "performance_setting.monitor_disk_threshold", "value": "99"})
 
     names = ["e2e-primary", "e2e-norm", "e2e-chatok", "e2e-chatprimary", "e2e-explicit"]
     drop(at, names)

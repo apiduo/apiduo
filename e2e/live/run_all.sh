@@ -172,6 +172,8 @@ suite image "图片协议 + 主端点" "http://127.0.0.1:$GW_IMAGE" image_primar
 # 顺序有意义：discount 会关掉自用模式并只给 disc-model 配价，
 # 之后再跑 select 就会撞「price not configured」。select 必须排在它前面。
 suite select "渠道选择/权重/降级" "http://127.0.0.1:$GW_IMAGE" channel_select.py
+suite affinity "渠道亲和（sticky）" "http://127.0.0.1:$GW_IMAGE" channel_affinity.py
+suite health "渠道健康（自动禁用/启用）" "http://127.0.0.1:$GW_IMAGE" channel_health.py
 suite discount "折扣 + PAT + 审计" "http://127.0.0.1:$GW_IMAGE" discount_pat.py
 
 echo

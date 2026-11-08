@@ -115,11 +115,25 @@ def counts(model):
     return out
 
 
+def ensure_disk_headroom(jwt):
+    """本地盘常年 98%，阈值不放开（默认 95）会被 503 全站拦掉。
+
+    每个套件自己设一次并回读：不要依赖上一个套件留下的实例状态。
+    """
+    call("PUT", "/api/option/", {"key": "performance_setting.monitor_disk_threshold", "value": "99"}, jwt)
+    st, res = call("GET", "/api/option/", None, jwt)
+    opts = {d.get("key"): d.get("value") for d in (res.get("data") or []) if isinstance(d, dict)}
+    got = opts.get("performance_setting.monitor_disk_threshold")
+    if got != "99":
+        raise SystemExit(f"disk threshold did not stick: {got!r}")
+
+
 def main():
     if not RELAY:
         raise SystemExit("E2E_RELAY_KEY is required (run via run_all.sh)")
     jwt = admin_token()
     drop(jwt)
+    ensure_disk_headroom(jwt)
     set_retry(jwt, 0)
     check("基线 RetryTimes=0", True)
 

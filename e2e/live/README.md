@@ -38,7 +38,11 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
 | `suites/privacy.py` | 普通用户 `/api/log/self` 拿不到 `admin_info`、打 config 接口 403 |
 | `suites/image_primary.py` | 主端点落库去空白、空 `upstream_path` 跟随、显式覆盖保留、三入口落点、载体闸门 400 且**零出站**、chat 不抢图片主端点 |
 | `suites/channel_select.py` | 多渠道选路：优先级分层独占、同优先级权重 3:1 分布、权重全 0 均分、`RetryTimes>0` 时降级到下一优先级、`RetryTimes=0` 不降级 |
+| `suites/channel_affinity.py` | 渠道亲和：同一会话键 12 次全落同一渠道、第二个键各自粘住、关掉开关后恢复分散 |
+| `suites/channel_health.py` | 渠道健康：开关关闭时 500 不禁用、开启后自动禁用（status=3）、批量测试成功自动启用（status=1）、人工禁用不被翻回、死渠道被批量测试判死 |
 | `suites/channel_select.py` | 多渠道选路：优先级分层独占、同优先级权重 3:1 分布、权重全 0 均分、`RetryTimes>0` 时降级到下一优先级、`RetryTimes=0` 不降级 |
+| `suites/channel_affinity.py` | 渠道亲和：同一会话键 12 次全落同一渠道、第二个键各自粘住、关掉开关后恢复分散 |
+| `suites/channel_health.py` | 渠道健康：开关关闭时 500 不禁用、开启后自动禁用（status=3）、批量测试成功自动启用（status=1）、人工禁用不被翻回、死渠道被批量测试判死 |
 | `suites/discount_pat.py` | 折扣首条命中且不相乘、按次定价对账、审计 before/after、PAT 声明式作用域（未声明路由 fail-closed） |
 | `ui/trace_link.mjs` | 真实 Chrome：日志详情里出现「在 Langfuse 查看」，href 主机/项目/32 位 id/`rel=noopener` 全对 |
 
@@ -56,10 +60,20 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
   `GetRandomSatisfiedChannel` 的缓存选路里生效；不开缓存跑的是「直查库」另一份代码，测了等于没测。
 - **套件顺序不能随便调**：`discount_pat` 会关掉自用模式且只给 `disc-model` 配价，
   之后的套件都会撞 `price not configured`。所以它排在最后。
+- **每个渠道类套件自己重设磁盘水位并回读**：不要依赖上一个套件留下的实例状态。
+- **亲和规则要写全字段**：配置是按字段合并进结构体的，`rules` 里省略 `path_regex` 会继承
+  默认 codex 规则的 `/v1/responses`，规则就永远匹配不上。`channel_affinity.py` 里给的是完整对象。
+- **自动启用只在批量/定时测试里发生**：单渠道测试 `/api/channel/test/:id` 只测不启，
+  所以那条用例必须走 `/api/channel/test`（入队系统任务）。
 - **内存缓存必须开**：`MEMORY_CACHE_ENABLED=true`（生产就是开的）。优先级与权重只在
   `GetRandomSatisfiedChannel` 的缓存选路里生效；不开缓存跑的是「直查库」另一份代码，测了等于没测。
 - **套件顺序不能随便调**：`discount_pat` 会关掉自用模式且只给 `disc-model` 配价，
   之后的套件都会撞 `price not configured`。所以它排在最后。
+- **每个渠道类套件自己重设磁盘水位并回读**：不要依赖上一个套件留下的实例状态。
+- **亲和规则要写全字段**：配置是按字段合并进结构体的，`rules` 里省略 `path_regex` 会继承
+  默认 codex 规则的 `/v1/responses`，规则就永远匹配不上。`channel_affinity.py` 里给的是完整对象。
+- **自动启用只在批量/定时测试里发生**：单渠道测试 `/api/channel/test/:id` 只测不启，
+  所以那条用例必须走 `/api/channel/test`（入队系统任务）。
 
 ## 只跑单个套件
 
