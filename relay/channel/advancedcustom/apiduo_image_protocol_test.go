@@ -1,10 +1,21 @@
 package advancedcustom
 
 import (
+	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
@@ -150,12 +161,148 @@ func TestEditPathDerivationKeepsQueryAndRejectsUnknown(t *testing.T) {
 	}
 }
 
-func TestImageURLFetchIsOffByDefault(t *testing.T) {
-	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGPTImage2}
-	canonical := protocolCanonical(t,
-		`{"model":"m","prompt":"p","image":"https://cdn.example.com/a.png"}`)
-	if _, err := planImageRequest(canonical, cfg); err == nil {
-		t.Fatal("no outbound connection may happen while allow_url_fetch is off")
+// allowLoopbackForTest 只把回环放进白名单，用来指向 httptest；其余段仍按生产规则拒。
+func allowLoopbackForTest(t *testing.T) {
+	t.Helper()
+	previous := imageRefAllowAddress
+	imageRefAllowAddress = func(ip net.IP) error {
+		if ip.IsLoopback() {
+			return nil
+		}
+		return previous(ip)
+	}
+	t.Cleanup(func() { imageRefAllowAddress = previous })
+}
+
+// 下载层是 SSRF 的唯一闸门（已无 allow_url_fetch 开关），这些段必须默认拒绝。
+func TestImageRefRejectsNonPublicAddresses(t *testing.T) {
+	blocked := []string{
+		"http://127.0.0.1/a.png",
+		"http://10.0.0.1/a.png",
+		"http://172.16.0.1/a.png",
+		"http://192.168.1.1/a.png",
+		"http://169.254.169.254/latest/meta-data/", // 云元数据
+		"http://100.64.0.1/a.png",                  // CGNAT
+		"http://224.0.0.1/a.png",                   // 多播
+		"http://0.0.0.0/a.png",
+		"http://localhost/a.png",
+		"http://img.localtest.me/a.png", // 解析回 127.0.0.1 的别名
+		"file:///etc/passwd",
+		"ftp://example.com/a.png",
+	}
+	for _, raw := range blocked {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			t.Fatalf("%s: %v", raw, err)
+		}
+		if err := validateImageRefURL(parsed); err == nil {
+			t.Fatalf("%s must be rejected", raw)
+		}
+	}
+}
+
+func TestImageRefDownloadEnforcesSizeLimit(t *testing.T) {
+	allowLoopbackForTest(t)
+	previous := imageMaxRefBytes
+	imageMaxRefBytes = 64
+	t.Cleanup(func() { imageMaxRefBytes = previous })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(bytes.Repeat([]byte{0x89}, 65))
+	}))
+	defer server.Close()
+
+	if _, err := fetchImageRef(context.Background(), server.URL+"/big.png"); err == nil {
+		t.Fatal("oversized image must be rejected")
+	}
+}
+
+// Go 默认跟随重定向且不重验 host：公网 URL 302 到内网就能绕过 SSRF 防线。
+func TestImageRefDownloadRevalidatesRedirects(t *testing.T) {
+	allowLoopbackForTest(t)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(protocolTestPNG)
+	}))
+	defer target.Close()
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		to := strings.Replace(target.URL, "127.0.0.1", "localhost", 1) + "/a.png"
+		http.Redirect(w, r, to, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	if _, err := fetchImageRef(context.Background(), redirector.URL+"/a.png"); err == nil {
+		t.Fatal("redirect to localhost must be rejected")
+	}
+}
+
+func TestImageRefsDownloadConcurrentlyAndKeepOrder(t *testing.T) {
+	allowLoopbackForTest(t)
+	const count = 8
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(120 * time.Millisecond)
+		w.Header().Set("Content-Type", "image/png")
+		// 末尾带索引，用来验证写回顺序而不是完成顺序。
+		index := r.URL.Query().Get("i")
+		_, _ = w.Write(append(append([]byte{}, protocolTestPNG...), index[0]))
+	}))
+	defer server.Close()
+
+	refs := make([]string, count)
+	for i := range refs {
+		refs[i] = fmt.Sprintf("%s/a.png?i=%d", server.URL, i)
+	}
+	started := time.Now()
+	blobs, err := resolveImageRefs(context.Background(), refs)
+	elapsed := time.Since(started)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blobs) != count {
+		t.Fatalf("expected %d blobs, got %d", count, len(blobs))
+	}
+	for i, blob := range blobs {
+		if tail := blob.Data[len(blob.Data)-1]; tail != byte('0'+i) {
+			t.Fatalf("blob %d out of order: tail=%q", i, tail)
+		}
+	}
+	// 4 并发 × 120ms = 2 轮 ≈ 240ms；全串行要 960ms。
+	if elapsed > 700*time.Millisecond {
+		t.Fatalf("downloads look serial: %s", elapsed)
+	}
+}
+
+func TestImageRefsStopOnFirstError(t *testing.T) {
+	allowLoopbackForTest(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "bad") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(protocolTestPNG)
+	}))
+	defer server.Close()
+
+	refs := []string{
+		server.URL + "/ok1.png",
+		server.URL + "/bad.png",
+		server.URL + "/ok3.png",
+		server.URL + "/ok4.png",
+	}
+	started := time.Now()
+	_, err := resolveImageRefs(context.Background(), refs)
+	if err == nil {
+		t.Fatal("404 must fail the request")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Fatalf("error should mention 404, got %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("remaining downloads were not cancelled: %s", elapsed)
 	}
 }
 
@@ -532,5 +679,72 @@ func TestChatOnlyRecognisesStandardImageURLPart(t *testing.T) {
 		if canonical.hasImage() {
 			t.Fatalf("case %d must NOT be treated as an image: %#v", index, part)
 		}
+	}
+}
+
+// response_format 决定上游返回 url 还是 b64_json。走 /v1/images/edits 的
+// multipart 路径也必须把它带过去，否则客户端要 url 却收到默认的大 b64_json。
+func TestGPTImage2FormKeepsResponseFormat(t *testing.T) {
+	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGPTImage2}
+
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{"url", `{"model":"m","prompt":"p","image":"` + protocolTestDataURI() + `","response_format":"url","size":"1024x1024"}`, "url"},
+		{"b64_json", `{"model":"m","prompt":"p","image":"` + protocolTestDataURI() + `","response_format":"b64_json"}`, "b64_json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			canonical := protocolCanonical(t, tc.body)
+			plan, err := planImageRequest(canonical, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(plan.ContentType, "multipart/form-data") {
+				t.Fatalf("expected multipart, got %s", plan.ContentType)
+			}
+			_, params, err := mime.ParseMediaType(plan.ContentType)
+			if err != nil || params["boundary"] == "" {
+				t.Fatalf("bad content type %q: %v", plan.ContentType, err)
+			}
+			reader := multipart.NewReader(bytes.NewReader(plan.Body), params["boundary"])
+			fields := make(map[string]string)
+			for {
+				part, err := reader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if part.FileName() != "" {
+					continue // 文件 part
+				}
+				data, err := io.ReadAll(part)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fields[part.FormName()] = string(data)
+			}
+			if fields["response_format"] != tc.want {
+				t.Fatalf("form response_format = %q, want %q; fields=%#v",
+					fields["response_format"], tc.want, fields)
+			}
+			if fields["prompt"] != "p" {
+				t.Fatalf("prompt missing from form: %#v", fields)
+			}
+		})
+	}
+
+	// 非法值在 canonical 归一化时删键，不该混进 form。
+	canonical := protocolCanonical(t,
+		`{"model":"m","prompt":"p","image":"`+protocolTestDataURI()+`","response_format":"png"}`)
+	plan, err := planImageRequest(canonical, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(plan.Body), `name="response_format"`) {
+		t.Fatal("illegal response_format must not reach the form")
 	}
 }

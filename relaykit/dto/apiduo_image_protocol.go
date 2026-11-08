@@ -29,9 +29,10 @@ type ImageProtocolConfig struct {
 	PrimaryPath string `json:"primary_path,omitempty"`
 	// EditPath 从端点覆盖开关。空值由脚本按末段替换推导。
 	EditPath string `json:"edit_path,omitempty"`
-	// AllowURLFetch 允许把 http(s) 图片引用下载下来转成上传文件。默认关闭：
-	// 关着时遇到 URL 直接报 400，绝不产生出站连接（SSRF 面）。
-	AllowURLFetch bool `json:"allow_url_fetch,omitempty"`
+	// 注意：没有 allow_url_fetch 开关。上游只收 multipart 文件时，
+	// http(s) 垫图必然要下载成字节，关掉等于这个功能不可用；
+	// 防 SSRF 不是靠「关掉下载」，而是下载层强制校验（协议白名单、
+	// 逐跳重定向校验、连接前解析 IP、大小上限、并发上限）。
 }
 
 func (c *ImageProtocolConfig) Validate() error {
