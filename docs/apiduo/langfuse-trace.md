@@ -311,7 +311,9 @@ finish_reason、usage。**采不到**的：agent 内部 planning / 记忆（在�
 
 ```bash
 LANGFUSE_ENABLED=false                              # 总开关
-LANGFUSE_HOST=https://langfuse.example.com          # 自建地址，不带尾斜杠
+LANGFUSE_HOST=https://langfuse.example.com          # 自建地址，不带尾斜杠（上报用）
+LANGFUSE_CONSOLE_URL=https://langfuse.example.com   # 日志页跳转链接的基地址；留空 = 同 HOST。
+                                                    # 上报走内网容器名时必须单列，否则链接不可解析
 LANGFUSE_PUBLIC_KEY=pk-lf-...                       # 只用于 Basic 认证
 LANGFUSE_SECRET_KEY=sk-lf-...                       # 只用于 Basic 认证，永不外发
 LANGFUSE_PROJECT_ID=...                             # 从 Langfuse UI 地址栏取

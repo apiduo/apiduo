@@ -18,7 +18,7 @@ func GetApiduoTraceConfig(c *gin.Context) {
 		"success": true,
 		"data": gin.H{
 			"enabled":     conf.Enabled,
-			"host":        conf.Host,
+			"host":        conf.ConsoleBase(),
 			"project_id":  conf.ProjectID,
 			"body_mode":   conf.BodyModeName(),
 			"sample_rate": conf.SampleRate,

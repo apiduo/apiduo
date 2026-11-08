@@ -18,6 +18,7 @@ package trace
 import (
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -43,7 +44,8 @@ const (
 // setConfig), so readers never need locks.
 type Config struct {
 	Enabled         bool
-	Host            string // Langfuse base URL, no trailing slash
+	Host            string // Langfuse base URL (OTLP export endpoint), no trailing slash
+	ConsoleURL      string // browser-facing base for the jump link; "" = same as Host
 	PublicKey       string // Basic auth user (pk-lf-...)
 	SecretKey       string // Basic auth password, never leaves this process
 	ProjectID       string // for the console jump link
@@ -104,7 +106,8 @@ func envBodyMode(key string) BodyMode {
 func loadFromEnv() *Config {
 	return &Config{
 		Enabled:         envBool("LANGFUSE_ENABLED"),
-		Host:            os.Getenv("LANGFUSE_HOST"),
+		Host:            strings.TrimRight(os.Getenv("LANGFUSE_HOST"), "/"),
+		ConsoleURL:      strings.TrimRight(os.Getenv("LANGFUSE_CONSOLE_URL"), "/"),
 		PublicKey:       os.Getenv("LANGFUSE_PUBLIC_KEY"),
 		SecretKey:       os.Getenv("LANGFUSE_SECRET_KEY"),
 		ProjectID:       os.Getenv("LANGFUSE_PROJECT_ID"),
@@ -197,6 +200,17 @@ func CurrentConfig() Config {
 		return Config{}
 	}
 	return *c
+}
+
+// ConsoleBase is the base URL a browser can reach. The export path may be an
+// internal container name (apiduo-langfuse-web:3000) that resolves only
+// inside the docker network; the jump link must use the public console URL
+// instead, or every click lands on an unresolvable host.
+func (c Config) ConsoleBase() string {
+	if c.ConsoleURL != "" {
+		return c.ConsoleURL
+	}
+	return c.Host
 }
 
 // BodyModeName renders the capture mode for the admin config endpoint.
