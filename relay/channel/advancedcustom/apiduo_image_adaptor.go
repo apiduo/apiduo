@@ -44,6 +44,10 @@ func (a *Adaptor) prepareImageProtocol(
 	if err := cfg.Validate(); err != nil {
 		return nil, true, err
 	}
+	// APIDUO:primary-endpoint:BEGIN
+	// 没显式配 primary_path 时跟随渠道主端点（仅当中心是图片端点）。
+	cfg = cfg.WithPrimaryFallback(info.ChannelOtherSettings.PrimaryEndpoint)
+	// APIDUO:primary-endpoint:END
 
 	var canonical *imageCanonical
 	var err error

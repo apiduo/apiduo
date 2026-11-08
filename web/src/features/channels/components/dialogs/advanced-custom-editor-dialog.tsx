@@ -31,6 +31,9 @@ import {
   // APIDUO:matrix-grid:END
   Info,
   ListTree,
+  // APIDUO:primary-endpoint:BEGIN
+  Network,
+  // APIDUO:primary-endpoint:END
   Plus,
   Send,
   Shuffle,
@@ -87,6 +90,9 @@ import { CoverageSummary } from '@/features/protocol-matrix/components/coverage-
 import { MatrixGrid } from '@/features/protocol-matrix/components/matrix-grid'
 import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
 // APIDUO:matrix-grid:END
+// APIDUO:primary-endpoint:BEGIN
+import { PrimaryEndpointEditor } from '../primary-endpoint-editor'
+// APIDUO:primary-endpoint:END
 
 import {
   ADVANCED_CUSTOM_BALANCE_LABEL,
@@ -123,6 +129,9 @@ import {
   replaceAdvancedCustomForwardingRoutes,
   replaceAdvancedCustomManagementRoute,
 } from '../../lib/advanced-custom'
+// APIDUO:primary-endpoint:BEGIN
+import type { ImageProtocolSettings } from '../../lib/image-protocol-settings'
+// APIDUO:primary-endpoint:END
 import type {
   AdvancedCustomAuthType,
   AdvancedCustomConfig,
@@ -139,10 +148,19 @@ type AdvancedCustomEditorDialogProps = {
   /** 渠道声明的模型清单（逗号分隔），只用于覆盖视图，不写进配置。 */
   channelModels?: string
   // APIDUO:coverage:END
+  // APIDUO:primary-endpoint:BEGIN
+  /** settings.primary_endpoint；空表示还没声明，中心从路由推导。 */
+  primaryEndpoint?: string
+  onPrimaryEndpointChange?: (primary: string) => void
+  /** settings.image_protocol；不传就不渲染协议区块。 */
+  imageProtocol?: ImageProtocolSettings | null
+  onImageProtocolChange?: (next: ImageProtocolSettings | null) => void
+  // APIDUO:primary-endpoint:END
 }
 
 // APIDUO:matrix-grid:BEGIN
 type AdvancedCustomEditorTab =
+  | 'primary'
   | 'forwarding'
   | 'matrix'
   | 'models'
@@ -163,6 +181,9 @@ const catchAllOrderErrorMessage =
   'Catch-all route must be last for the same incoming path'
 const emptyAdvancedRoutes: AdvancedCustomRoute[] = []
 const advancedCustomTabs = new Set<AdvancedCustomEditorTab>([
+  // APIDUO:primary-endpoint:BEGIN
+  'primary',
+  // APIDUO:primary-endpoint:END
   'forwarding',
   // APIDUO:matrix-grid:BEGIN
   'matrix',
@@ -285,6 +306,12 @@ export function AdvancedCustomEditorDialog({
   // APIDUO:coverage:BEGIN
   channelModels,
   // APIDUO:coverage:END
+  // APIDUO:primary-endpoint:BEGIN
+  primaryEndpoint,
+  onPrimaryEndpointChange,
+  imageProtocol,
+  onImageProtocolChange,
+  // APIDUO:primary-endpoint:END
 }: AdvancedCustomEditorDialogProps) {
   const { t } = useTranslation()
   const routeKeyCounterRef = useRef(0)
@@ -299,8 +326,10 @@ export function AdvancedCustomEditorDialog({
       (_, routeIndex) => `advanced-custom-route-initial-${routeIndex}`
     )
   })
+  // APIDUO:primary-endpoint:BEGIN
   const [activeTab, setActiveTab] =
-    useState<AdvancedCustomEditorTab>('forwarding')
+    useState<AdvancedCustomEditorTab>('primary')
+  // APIDUO:primary-endpoint:END
   const [jsonText, setJsonText] = useState(() =>
     stringifyAdvancedCustomConfig(
       parseAdvancedCustomConfig(value) || createAdvancedCustomConfig()
@@ -390,7 +419,9 @@ export function AdvancedCustomEditorDialog({
     setRouteKeys(createRouteKeys(normalized.advanced_routes?.length || 0))
     setJsonText(stringifyAdvancedCustomConfig(normalized))
     setJsonError('')
-    setActiveTab('forwarding')
+    // APIDUO:primary-endpoint:BEGIN
+    setActiveTab('primary')
+    // APIDUO:primary-endpoint:END
     setTemplateConfirmOpen(false)
     const firstForwardingPath = (normalized.advanced_routes || [])
       .map((route) => getRouteIncomingPath(route))
@@ -735,8 +766,20 @@ export function AdvancedCustomEditorDialog({
       >
         <div className='border-b px-4 py-3'>
           {/* APIDUO:matrix-grid:BEGIN */}
-          <TabsList className='grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5'>
+          <TabsList className='grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-6'>
             {/* APIDUO:matrix-grid:END */}
+            {/* APIDUO:primary-endpoint:BEGIN */}
+            <TabsTrigger value='primary'>
+              <Network className='size-4' aria-hidden='true' />
+              <span
+                className='apiduo-text'
+                data-apiduo={apiduoBlockMark('channel:primary-endpoint')}
+              >
+                {t('Primary endpoint')}
+              </span>
+              <Badge variant='outline'>{routeRows.length}</Badge>
+            </TabsTrigger>
+            {/* APIDUO:primary-endpoint:END */}
             <TabsTrigger value='forwarding'>
               <ListTree className='size-4' aria-hidden='true' />
               {t('Forwarding Routes')}
@@ -774,6 +817,27 @@ export function AdvancedCustomEditorDialog({
           </TabsList>
         </div>
 
+        {/* APIDUO:primary-endpoint:BEGIN */}
+        <TabsContent value='primary' className='p-4'>
+          <PrimaryEndpointEditor
+            routes={config.advanced_routes || []}
+            models={channelModels}
+            primaryEndpoint={primaryEndpoint}
+            onPrimaryEndpointChange={onPrimaryEndpointChange}
+            imageProtocol={imageProtocol}
+            onImageProtocolChange={onImageProtocolChange}
+            onChange={(nextRoutes) => {
+              const stamp = Date.now()
+              replaceRoutes(
+                nextRoutes,
+                nextRoutes.map(
+                  (_, index) => `advanced-custom-primary-endpoint-${index}-${stamp}`
+                )
+              )
+            }}
+          />
+        </TabsContent>
+        {/* APIDUO:primary-endpoint:END */}
         {/* APIDUO:matrix-grid:BEGIN */}
         <TabsContent value='matrix' className='p-4'>
           <MatrixGrid

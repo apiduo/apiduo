@@ -531,6 +531,13 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		return fmt.Errorf("channel cannot be empty")
 	}
 
+	// APIDUO:primary-endpoint:BEGIN
+	// 存量渠道收敛：等于主端点的上游路径改写成空值（空 = 跟随主端点），
+	// 让「换主端点只改一个字段」对历史配置也成立。失败交给下面的校验报错。
+	if err := channel.NormalizePrimaryDerivedRoutes(); err != nil {
+		return common.NewMessage("Invalid channel settings format: {{error}}", map[string]any{"error": err.Error()})
+	}
+	// APIDUO:primary-endpoint:END
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return common.NewMessage("Invalid channel settings format: {{error}}", map[string]any{"error": err.Error()})

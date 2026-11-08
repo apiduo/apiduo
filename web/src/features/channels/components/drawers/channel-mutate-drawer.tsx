@@ -197,6 +197,13 @@ import {
   supportsNewAPIUpstream,
 } from '../../lib/channel-plugin-extensions'
 import { getChannelTypeConfig } from '../../lib/channel-type-config'
+// APIDUO:primary-endpoint:BEGIN
+import {
+  readImageProtocol,
+  writeImageProtocol,
+} from '../../lib/image-protocol-settings'
+import { readPrimaryEndpoint, writePrimaryEndpoint } from '../../lib/primary-endpoint'
+// APIDUO:primary-endpoint:END
 import {
   collectInvalidStatusCodeEntries,
   collectNewDisallowedStatusCodeRedirects,
@@ -5321,6 +5328,23 @@ export function ChannelMutateDrawer({
           // APIDUO:coverage:BEGIN
           channelModels={formValues.models}
           // APIDUO:coverage:END
+          // APIDUO:primary-endpoint:BEGIN
+          primaryEndpoint={readPrimaryEndpoint(formValues.settings)}
+          onPrimaryEndpointChange={(primary) => {
+            form.setValue('settings', writePrimaryEndpoint(formValues.settings, primary), {
+              shouldDirty: true,
+              shouldValidate: true,
+            })
+          }}
+          imageProtocol={readImageProtocol(formValues.settings)}
+          onImageProtocolChange={(next) => {
+            form.setValue(
+              'settings',
+              writeImageProtocol(formValues.settings, next),
+              { shouldDirty: true, shouldValidate: true }
+            )
+          }}
+          // APIDUO:primary-endpoint:END
           onOpenChange={setAdvancedCustomEditorOpen}
           onSave={(nextValue) => {
             form.setValue('advanced_custom', nextValue, {

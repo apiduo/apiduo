@@ -290,6 +290,16 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		return nil, errors.New("advanced custom converter routes cannot be used with pass-through request body")
 	}
 
+	// APIDUO:image-edits-passthrough-guard:BEGIN
+	// 透传模式（渠道或全局 PassThroughBodyEnabled）根本不走 ConvertImageRequest，
+	// 那一道载体闸门就失效了：实测高级路由 + 透传的 edits 入口，文本引用会被原样
+	// 转发给上游（bfl 回 422），与「只收文件流」的口径不一致。这里补一道，
+	// multipart 已在转换阶段解析过时直接复用 c.Request.MultipartForm，不重复读盘。
+	if err := guardFileStreamEdits(c, info); err != nil {
+		return nil, err
+	}
+	// APIDUO:image-edits-passthrough-guard:END
+
 	// APIDUO:image-protocol:BEGIN
 	if resp, handled, err := a.doImageProtocolRequest(c, info); handled {
 		return resp, err
@@ -420,6 +430,11 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 	if config == nil {
 		return errors.New("advanced_custom is required")
 	}
+	// APIDUO:primary-endpoint:BEGIN
+	// 空 upstream_path 在校验阶段是「跟随主端点」，不是缺配置：先按 primary 补齐副本，
+	// 校验与匹配都基于补齐后的视图，存储里的空值不必改写。
+	config = config.WithPrimaryFallback(info.ChannelOtherSettings.PrimaryEndpoint)
+	// APIDUO:primary-endpoint:END
 	if err := config.Validate(); err != nil {
 		return err
 	}
@@ -433,6 +448,20 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 		}
 		a.route = route
 		a.converter = route.Converter
+		// APIDUO:primary-endpoint:BEGIN
+		// 路由没写上游路径时跟随渠道主端点（primary_endpoint）。写了的保持原样，
+		// 这就是「主端点 + 派生 + 显式覆盖」三层里的最后一层。
+		if strings.TrimSpace(a.route.UpstreamPath) == "" {
+			primary := info.ChannelOtherSettings.ResolveRouteUpstream("")
+			if primary == "" {
+				return fmt.Errorf(
+					"advanced custom route for %s has no upstream path and the channel declares no primary_endpoint",
+					incomingPath,
+				)
+			}
+			a.route.UpstreamPath = primary
+		}
+		// APIDUO:primary-endpoint:END
 		a.resolved = true
 		return nil
 	}

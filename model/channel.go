@@ -1078,6 +1078,11 @@ func (channel *Channel) ValidateSettings() error {
 	if err := channelOtherSettings.ValidateToolLossPolicy(); err != nil {
 		return err
 	}
+	// APIDUO:primary-endpoint:BEGIN
+	if err := channelOtherSettings.ValidatePrimaryEndpoint(); err != nil {
+		return err
+	}
+	// APIDUO:primary-endpoint:END
 	// APIDUO:advanced-async:BEGIN
 	if err := channelOtherSettings.AdvancedAsync.Validate(); err != nil {
 		return err
@@ -1096,6 +1101,13 @@ func (channel *Channel) ValidateSettings() error {
 			return fmt.Errorf("advanced_custom is required")
 		}
 	}
+	// APIDUO:primary-endpoint:BEGIN
+	// 声明了主端点时，路由的空 upstream_path 是「跟随主端点」而不是缺配置：
+	// 校验与落库都用补齐后的视图，避免把合法配置判成错误。
+	if channelOtherSettings.AdvancedCustom != nil {
+		channelOtherSettings.AdvancedCustom = channelOtherSettings.AdvancedCustom.WithPrimaryFallback(channelOtherSettings.PrimaryEndpoint)
+	}
+	// APIDUO:primary-endpoint:END
 	if channelOtherSettings.AdvancedCustom != nil {
 		if err := channelOtherSettings.AdvancedCustom.Validate(); err != nil {
 			return err

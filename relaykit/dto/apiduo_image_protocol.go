@@ -64,6 +64,29 @@ func (c *ImageProtocolConfig) Validate() error {
 	return nil
 }
 
+// WithPrimaryFallback 在没显式配 primary_path 时让图片协议跟随渠道主端点。
+//
+// 只接受「看着像图片端点」的中心（路径里含 /images/）：
+// 渠道中心可能是 /v1/chat/completions，把它当图片主端点只会把图发错地方，
+// 这种情况保持原来的默认值，比猜更安全。
+//
+// 返回副本，存储里的 image_protocol 不会被改写。
+func (c *ImageProtocolConfig) WithPrimaryFallback(primary string) *ImageProtocolConfig {
+	if c == nil || !c.Enabled {
+		return c
+	}
+	if strings.TrimSpace(c.PrimaryPath) != "" {
+		return c
+	}
+	primary = NormalizePrimaryEndpoint(primary)
+	if primary == "" || !strings.Contains(primary, "/images/") {
+		return c
+	}
+	next := *c
+	next.PrimaryPath = primary
+	return &next
+}
+
 func (c *ImageProtocolConfig) Primary() string {
 	if c == nil || strings.TrimSpace(c.PrimaryPath) == "" {
 		return "/v1/images/generations"
