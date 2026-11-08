@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>apiduo × Langfuse · 方案评审</title>
+<style>
+:root{
+  --bg:#fbfbfd; --card:#ffffff; --ink:#1d1d1f; --muted:#6e6e73; --line:rgba(0,0,0,.08);
+  --soft:rgba(0,0,0,.03); --accent:oklch(.55 .17 268); --accent-soft:oklch(.55 .17 268 / .09);
+  --good:oklch(.58 .15 155); --warn:oklch(.68 .15 75); --bad:oklch(.58 .19 25);
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px -8px rgba(0,0,0,.12);
+  --shadow-lg:0 2px 8px rgba(0,0,0,.06),0 24px 64px -16px rgba(0,0,0,.24);
+  --ease:cubic-bezier(.32,.72,0,1);
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#000; --card:#1c1c1e; --ink:#f5f5f7; --muted:#98989d; --line:rgba(255,255,255,.1);
+    --soft:rgba(255,255,255,.05); --accent:oklch(.72 .15 268); --accent-soft:oklch(.72 .15 268 / .14);
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px -8px rgba(0,0,0,.6);
+    --shadow-lg:0 2px 8px rgba(0,0,0,.6),0 24px 64px -16px rgba(0,0,0,.8);
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,system-ui,"PingFang SC","Hiragino Sans GB",sans-serif;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+
+/* ---------- header ---------- */
+.top{
+  position:sticky;top:0;z-index:40;
+  backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);
+  background:color-mix(in oklab,var(--bg) 78%,transparent);
+  border-bottom:1px solid var(--line);
+}
+.top-in{max-width:1180px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:16px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:-.01em}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);position:relative;flex:0 0 auto}
+.dot::after{content:"";position:absolute;inset:-3px;border-radius:50%;background:var(--accent);opacity:.22}
+.brand .x{color:var(--muted);font-weight:400}
+.tabs{margin-left:auto;display:flex;gap:2px;background:var(--soft);padding:3px;border-radius:11px;flex:0 0 auto}
+@media (max-width:620px){
+  .top-in{flex-wrap:wrap;padding:12px 16px;gap:10px}
+  .tabs{margin-left:0;width:100%}
+  .tab{flex:1;text-align:center;padding:7px 4px;white-space:nowrap}
+}
+.tab{
+  padding:6px 14px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--muted);
+  transition:color .2s var(--ease),background .2s var(--ease);
+}
+.tab[aria-selected="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+@media (prefers-color-scheme:dark){.tab[aria-selected="true"]{background:#3a3a3c}}
+
+/* ---------- layout ---------- */
+main{max-width:1180px;margin:0 auto;padding:36px 24px 100px}
+.view{display:none;animation:fade .42s var(--ease)}
+.view.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+h1{font-size:30px;line-height:1.2;letter-spacing:-.021em;margin:0 0 10px;font-weight:600}
+h2{font-size:19px;letter-spacing:-.014em;margin:0 0 4px;font-weight:600}
+h3{font-size:14px;letter-spacing:-.006em;margin:0 0 8px;font-weight:600}
+.lede{color:var(--muted);margin:0 0 28px;max-width:74ch;font-size:15px}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+.pad{padding:22px}
+.grid{display:grid;gap:16px}
+
+/* ---------- arch ---------- */
+.arch-wrap{overflow-x:auto;padding:6px 2px 2px}
+.arch{width:100%;min-width:940px;height:auto;display:block}
+.arch text{font-family:inherit}
+.n-label{font-size:12.5px;fill:var(--ink);font-weight:560}
+.n-sub{font-size:11px;fill:var(--muted)}
+.flow{stroke:var(--muted);stroke-width:1.4;fill:none;opacity:.5}
+.flow-hot{stroke:var(--accent);stroke-width:1.8;fill:none}
+.box{fill:var(--card);stroke:var(--line);stroke-width:1}
+.box-hot{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.2}
+.chip{fill:var(--soft)}
+.tagline{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;fill:var(--muted)}
+.legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:16px;height:2px;border-radius:2px;margin-right:7px;vertical-align:middle}
+
+/* ---------- log table ---------- */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--line)}
+.pill{
+  font-size:12.5px;padding:5px 11px;border-radius:999px;background:var(--soft);
+  color:var(--muted);border:1px solid transparent;transition:.2s var(--ease);
+}
+.pill.on{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in oklab,var(--accent) 26%,transparent);font-weight:560}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:880px}
+th{
+  text-align:left;font-weight:560;font-size:11.5px;letter-spacing:.04em;
+  color:var(--muted);padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;
+}
+td{padding:13px 14px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+tbody tr{transition:background .18s var(--ease);cursor:pointer}
+tbody tr:hover{background:var(--soft)}
+tbody tr:last-child td{border-bottom:0}
+.mono{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.dim{color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:560;padding:2px 8px;border-radius:6px}
+.badge.ok{background:oklch(.58 .15 155 / .12);color:var(--good)}
+.badge.err{background:oklch(.58 .19 25 / .12);color:var(--bad)}
+.badge.stream{background:oklch(.68 .15 75 / .14);color:var(--warn)}
+
+/* apiduo 标识 */
+.ap-mark{
+  display:inline-flex;align-items:center;gap:5px;font-weight:600;
+  background:linear-gradient(92deg,var(--accent),color-mix(in oklab,var(--accent) 55%,oklch(.7 .2 320)));
+}
+@supports (background-clip:text){
+  .ap-mark{background-clip:text;-webkit-background-clip:text;color:transparent}
+}
+.ap-mark::before{
+  content:"";width:5px;height:5px;border-radius:50%;background:var(--accent);
+  flex:0 0 auto;transform:translateY(-.5px);
+}
+.trace-btn{
+  display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:560;
+  padding:4px 10px;border-radius:7px;color:var(--accent);
+  background:var(--accent-soft);border:1px solid color-mix(in oklab,var(--accent) 22%,transparent);
+  transition:transform .16s var(--ease),background .16s var(--ease);
+}
+.trace-btn:hover{background:color-mix(in oklab,var(--accent) 16%,transparent)}
+.trace-btn:active{transform:scale(.96)}
+.trace-btn.locked{color:var(--muted);background:var(--soft);border-color:var(--line)}
+.trace-btn svg{width:11px;height:11px}
+
+/* ---------- sheet ---------- */
+.scrim{
+  position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.3);
+  opacity:0;pointer-events:none;transition:opacity .34s var(--ease);
+  backdrop-filter:blur(2px);
+}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;top:0;right:0;bottom:0;z-index:61;width:min(440px,100vw);
+  background:var(--card);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);
+  transform:translateX(100%);transition:transform .42s var(--ease);
+  display:flex;flex-direction:column;
+}
+.sheet.on{transform:none}
+.sheet-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.sheet-body{padding:6px 20px 20px;overflow-y:auto;flex:1}
+.sheet-foot{padding:14px 20px;border-top:1px solid var(--line);background:var(--soft)}
+.close{margin-left:auto;width:28px;height:28px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:15px;color:var(--muted)}
+.row{display:flex;justify-content:space-between;gap:18px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px;align-items:baseline}
+.row:last-child{border-bottom:0}
+.row .k{color:var(--muted);flex:0 0 auto;font-size:12.5px}
+.row .v{text-align:right;word-break:break-all;font-variant-numeric:tabular-nums;min-width:0;flex:1 1 auto}
+.big-link{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:12px;border-radius:11px;background:var(--accent);color:#fff;font-weight:600;font-size:14px;
+  transition:transform .16s var(--ease),filter .16s var(--ease);
+}
+.big-link:hover{filter:brightness(1.08)}
+.big-link:active{transform:scale(.985)}
+.hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:9px;line-height:1.5}
+
+/* ---------- langfuse mock ---------- */
+.lf{
+  position:fixed;inset:0;z-index:70;display:none;
+  background:#0b0b0d;color:#e8e8ea;overflow-y:auto;
+}
+.lf.on{display:block;animation:lfIn .4s var(--ease)}
+@keyframes lfIn{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+.lf-in{max-width:960px;margin:0 auto;padding:26px 24px 80px}
+.lf-bar{display:flex;align-items:center;gap:12px;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,.09);margin-bottom:24px}
+.lf-logo{font-weight:650;letter-spacing:-.02em;font-size:16px}
+.lf-logo span{color:#a78bfa}
+.lf-back{margin-left:auto;font-size:12.5px;color:#9b9ba3;padding:6px 12px;border:1px solid rgba(255,255,255,.12);border-radius:8px}
+.lf-back:hover{color:#fff;border-color:rgba(255,255,255,.3)}
+.lf-title{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 6px}
+.lf-id{font-family:var(--mono);font-size:12px;color:#8b8b95;word-break:break-all}
+.lf-tags{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 22px}
+.lf-tag{font-size:11.5px;padding:3px 9px;border-radius:6px;background:rgba(255,255,255,.07);color:#c9c9d1}
+.lf-tag.hi{background:rgba(167,139,250,.16);color:#c4b5fd}
+.lf-card{border:1px solid rgba(255,255,255,.09);border-radius:12px;background:#141417;overflow:hidden;margin-bottom:14px}
+.lf-card-h{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:10px;font-size:13px;font-weight:560}
+.lf-card-h .kind{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#a78bfa;background:rgba(167,139,250,.14);padding:2px 7px;border-radius:5px}
+.lf-card-h .dur{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:#8b8b95}
+.lf-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:1px;background:rgba(255,255,255,.07)}
+.lf-m{background:#141417;padding:13px 16px}
+.lf-m dt{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:#8b8b95;margin:0 0 4px}
+.lf-m dd{margin:0;font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums}
+.lf-kv{padding:8px 16px}
+.lf-kv div{display:flex;justify-content:space-between;gap:16px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12.5px}
+.lf-kv div:last-child{border-bottom:0}
+.lf-kv span:first-child{color:#8b8b95}
+.lf-kv span:last-child{font-family:var(--mono);color:#d4d4d8;text-align:right;word-break:break-all}
+.lf-msgs{padding:12px 16px;display:flex;flex-direction:column;gap:9px}
+.lf-msg{display:flex;gap:10px;align-items:flex-start}
+.lf-role{
+  flex:0 0 auto;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+  font-weight:600;padding:3px 7px;border-radius:5px;background:rgba(255,255,255,.08);color:#c4b5fd;margin-top:1px;
+}
+.lf-role.u{background:rgba(96,165,250,.16);color:#93c5fd}
+.lf-role.a{background:rgba(52,211,153,.14);color:#6ee7b7}
+.lf-role.t{background:rgba(251,191,36,.16);color:#fcd34d}
+.lf-msg p{margin:0;font-size:12.5px;line-height:1.62;color:#d4d4d8;word-break:break-word}
+.lf-msg p code{font-family:var(--mono);font-size:11.5px;background:rgba(255,255,255,.07);padding:1px 5px;border-radius:4px}
+.lf-trunc{
+  font-size:11px;color:#a78bfa;background:rgba(167,139,250,.1);border-radius:6px;
+  padding:7px 10px;text-align:center;margin-top:2px;
+}
+.lf-tree{padding:14px 16px;font-family:var(--mono);font-size:12px;line-height:2.05;color:#a1a1aa}
+.lf-tree .n{color:#e4e4e7}
+.lf-tree .mine{color:#c4b5fd;font-weight:600}
+.lf-tree .br{color:#52525b}
+.lf-tree .badge2{font-family:inherit;font-size:10px;background:rgba(167,139,250,.16);color:#c4b5fd;padding:1px 6px;border-radius:4px;margin-left:6px}
+.lf-empty{
+  padding:26px 16px;text-align:center;font-size:12.5px;color:#77777f;line-height:1.7;
+  background:repeating-linear-gradient(135deg,transparent,transparent 7px,rgba(255,255,255,.014) 7px,rgba(255,255,255,.014) 14px);
+}
+.lf-empty b{color:#a1a1aa;font-weight:560}
+.lf-note{
+  font-size:12px;color:#8b8b95;border-left:2px solid #a78bfa;padding:2px 0 2px 12px;margin:18px 0 0;line-height:1.65;
+}
+
+/* ---------- perf ---------- */
+.perf-row{display:grid;grid-template-columns:164px minmax(0,1fr);gap:16px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.perf-row:last-child{border-bottom:0}
+.perf-name{font-size:13.5px;font-weight:560}
+.perf-name small{display:block;font-weight:400;color:var(--muted);font-size:11.5px;margin-top:2px}
+.perf-track{position:relative;height:26px;display:flex;align-items:center;gap:10px}
+.perf-bar{height:10px;border-radius:5px;transform-origin:left;animation:grow .7s var(--ease) both}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.perf-val{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.seg{display:flex;gap:3px;margin:0 0 22px}
+.seg button{flex:1;padding:9px;border-radius:9px;font-size:13px;font-weight:520;color:var(--muted);background:var(--soft);transition:.2s var(--ease)}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.note{font-size:12.5px;color:var(--muted);line-height:1.7}
+.note b{color:var(--ink);font-weight:560}
+.kv2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.kv2 div{background:var(--soft);border-radius:11px;padding:12px 14px}
+.kv2 dt{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.kv2 dd{margin:0;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kv2 dd small{font-size:11.5px;font-weight:400;color:var(--muted);margin-left:3px}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><span class="dot"></span>apiduo<span class="x">×</span>Langfuse</div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-view="arch">架构</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="page">日志页</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="perf">性能账</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<!-- ==================== 架构 ==================== -->
+<section class="view on" id="view-arch">
+  <div class="eyebrow">方案评审 · 2026-11-08</div>
+  <h1>日志页接入 Langfuse Trace</h1>
+  <p class="lede">请求体、流式帧、非流式响应全采，含 agent 的 messages 与 tool_calls。主链路只多一次 memcpy —— SSE 不需要 tee，因为 <code>dataHandler</code> 拿到的已经是帧明文。日志页只多一个链接，且仅管理员可见。</p>
+
+  <div class="card pad">
+    <div class="arch-wrap">
+      <svg class="arch" viewBox="0 0 1080 470" role="img" aria-label="架构数据流">
+        <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- 层标签 -->
+        <text class="tagline" x="0" y="14">① 请求主链路（不碰 I/O）</text>
+        <text class="tagline" x="0" y="176">② 采集与上报（旁路）</text>
+        <text class="tagline" x="0" y="378">③ 展示（仅管理员）</text>
+
+        <!-- ① 主链路 -->
+        <rect class="box" x="0" y="36" width="128" height="58" rx="12"/>
+        <text class="n-label" x="16" y="60">Client</text>
+        <text class="n-sub" x="16" y="78">SDK / curl</text>
+
+        <path class="flow" d="M132 65 H196" marker-end="url(#a)" style="color:var(--muted)"/>
+
+        <rect class="box" x="200" y="36" width="112" height="58" rx="12"/>
+        <text class="n-label" x="216" y="60">nginx</text>
+        <text class="n-sub" x="216" y="78">反代 / 限流</text>
+
+        <path class="flow" d="M316 65 H380" marker-end="url(#a)" style="color:var(--muted)"/>
+
+        <rect class="box" x="384" y="24" width="300" height="82" rx="14"/>
+        <text class="n-label" x="402" y="48">apiduo relay</text>
+        <text class="n-sub" x="402" y="66">controller/relay.go → 62 个 adaptor</text>
+        <text class="n-sub" x="402" y="84" style="fill:var(--muted)">字节流原样转发，不读 body、不 tee 响应</text>
+
+        <path class="flow" d="M688 65 H812" marker-end="url(#a)" style="color:var(--muted)"/>
+        <text class="n-sub" x="700" y="56">转发</text>
+
+        <rect class="box" x="816" y="36" width="150" height="58" rx="12"/>
+        <text class="n-label" x="832" y="60">上游渠道</text>
+        <text class="n-sub" x="832" y="78">40+ provider</text>
+
+        <!-- ② 挂接点 -->
+        <path class="flow-hot" d="M470 110 V150" marker-end="url(#a)" style="color:var(--accent)"/>
+
+        <rect class="box" x="300" y="154" width="180" height="56" rx="11"/>
+        <text class="n-label" x="316" y="176">stream_scanner / …</text>
+        <text class="n-sub" x="316" y="194">帧采集 · append 进 collector</text>
+
+        <rect class="box" x="490" y="154" width="170" height="56" rx="11"/>
+        <text class="n-label" x="506" y="176">text_quota.go</text>
+        <text class="n-sub" x="506" y="194">结算点 · usage 字段填充</text>
+
+        <rect class="box" x="670" y="154" width="170" height="56" rx="11" style="stroke:var(--accent);stroke-width:1.2"/>
+        <text class="n-label" x="686" y="176">relay.go defer</text>
+        <text class="n-sub" x="686" y="194">唯一上报点 · 快照入队</text>
+
+        <path class="flow-hot" d="M430 214 V244" marker-end="url(#a)" style="color:var(--accent)"/>
+        <path class="flow" d="M632 214 V244" marker-end="url(#a)" style="color:var(--muted)"/>
+
+        <rect class="box" x="330" y="246" width="390" height="64" rx="12" style="fill:var(--soft)"/>
+        <text class="n-label" x="346" y="269">collector（挂 gin.Context）→ defer 一次快照 → worker</text>
+        <text class="n-sub" x="346" y="289" style="font-family:var(--mono)">失败/panic 也有 trace · 快照即边界 · 内容不落盘</text>
+
+        <path class="flow-hot" d="M724 279 H812" marker-end="url(#a)" style="color:var(--accent)"/>
+        <text class="n-sub" x="734" y="270">OTLP</text>
+
+        <rect class="box" x="816" y="240" width="150" height="78" rx="12"/>
+        <text class="n-label" x="832" y="264">Langfuse</text>
+        <text class="n-sub" x="832" y="282">web + worker</text>
+        <text class="n-sub" x="832" y="300" style="fill:var(--muted)">PG · Redis · S3</text>
+
+        <!-- 队列示意 -->
+        <rect class="chip" x="330" y="322" width="390" height="26" rx="7"/>
+        <text class="n-sub" x="342" y="339" style="font-family:var(--mono)">queue 2048 · 满则丢 · 批量 200 / 5s · worker 侧解析</text>
+
+        <!-- ClickHouse 复用 -->
+        <path class="flow" d="M891 318 V352" marker-end="url(#a)" style="color:var(--muted)"/>
+        <rect class="box" x="770" y="356" width="242" height="46" rx="10"/>
+        <text class="n-sub" x="786" y="377">ClickHouse 复用现有实例 · 独立 database</text>
+        <text class="n-sub" x="786" y="393" style="fill:var(--muted)">apiduo_cn_logs 旁边开一个 langfuse 库</text>
+
+        <!-- ③ 展示 -->
+        <rect class="box" x="0" y="386" width="176" height="56" rx="11"/>
+        <text class="n-label" x="16" y="408">日志页</text>
+        <text class="n-sub" x="16" y="426">usage-logs 详情弹窗</text>
+
+        <path class="flow" d="M180 414 H300" marker-end="url(#a)" style="color:var(--muted)"/>
+        <rect class="box" x="304" y="386" width="212" height="56" rx="11"/>
+        <text class="n-label" x="320" y="408">GET /api/apiduo/trace/config</text>
+        <text class="n-sub" x="320" y="426">AdminAuth · 不返回 secret</text>
+
+        <path class="flow" d="M520 414 H604" marker-end="url(#a)" style="color:var(--muted)"/>
+        <text class="n-sub" x="534" y="405">拼 URL</text>
+        <rect class="box" x="608" y="386" width="150" height="56" rx="11" style="fill:var(--accent-soft);stroke:var(--accent)"/>
+        <text class="n-label" x="624" y="408">↗ trace 页</text>
+        <text class="n-sub" x="624" y="426">新窗口打开</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--accent)"></i>旁路新增</span>
+      <span><i style="background:var(--muted);opacity:.5"></i>既有链路</span>
+      <span>主链路不改 I/O 形态：不读 body、不 tee 响应、不序列化</span>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(238px,1fr));margin-top:16px">
+    <div class="card pad">
+      <h3>关联键不落库</h3>
+      <p class="note">OTEL 要 32 位 hex，NewAPI 的 request_id 是 39 位。取 <b>sha256(request_id)[:16]</b> 派生，写进 <b>other.admin_info</b>，不动 ClickHouse 表结构。</p>
+    </div>
+    <div class="card pad">
+      <h3>collector 状态机 + 唯一上报点</h3>
+      <p class="note">各挂接点只向 collector 写状态（帧 append、usage 填充），<b>relay defer 统一 finalize</b>——成功、失败、panic 全覆盖，失败请求也有 trace。异步任务结算无 defer，走 <b>RecordConsumeLog</b> 兜底快照。</p>
+    </div>
+    <div class="card pad">
+      <h3>权限两道闸</h3>
+      <p class="note"><b>SetAdmin</b> 让普通用户拿不到 trace_id；链接由 <b>props.isAdmin</b> 门控。Langfuse 没有行级隔离，这道闸不能省。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 日志页 ==================== -->
+<section class="view" id="view-page">
+  <div class="eyebrow">改造后的界面</div>
+  <h1>日志页只多一列</h1>
+  <p class="lede">点表格任意一行打开详情，详情底部是「在 Langfuse 打开」。非管理员看不到这个入口。</p>
+
+  <div class="card" style="overflow:hidden">
+    <div class="toolbar">
+      <button class="pill on">全部</button>
+      <button class="pill">消耗</button>
+      <button class="pill">错误</button>
+      <button class="pill" style="margin-left:auto">
+        <span class="ap-mark" data-apiduo="text">Trace 已开启 · 10% 采样</span>
+      </button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th><th>模型</th><th>令牌</th><th>Tokens</th>
+            <th>额度</th><th>耗时</th><th>状态</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-req="20261108123841012345678a1b2c3d4e5f6a7b8" data-trace="7d4e81b0c3a95f26e8d417ab6029c4f1" data-model="gpt-4o-mini" data-pin="3240" data-pout="412" data-quota="8800" data-time="1.83" data-ttft="210" data-ch="12" data-grp="default" data-tok="prod-key-01">
+            <td class="mono dim">12:38:41</td>
+            <td><b>gpt-4o-mini</b></td>
+            <td class="mono">prod-key-01</td>
+            <td class="mono">3,240 / 412</td>
+            <td class="mono">8,800</td>
+            <td class="mono">1.83s</td>
+            <td><span class="badge ok">200</span> <span class="badge stream">stream</span></td>
+            <td><button class="trace-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 17 17 7M9 7h8v8"/></svg>Trace</button></td>
+          </tr>
+          <tr data-req="20261108123807098765432f3a1c9d7e4b5028c6" data-trace="0a93c7e5b182f46d97c3a08e51b6d7f2" data-model="claude-sonnet-4" data-pin="18420" data-pout="1284" data-quota="146200" data-time="6.42" data-ttft="480" data-ch="7" data-grp="claude" data-tok="prod-key-01">
+            <td class="mono dim">12:38:07</td>
+            <td><b>claude-sonnet-4</b></td>
+            <td class="mono">prod-key-01</td>
+            <td class="mono">18,420 / 1,284</td>
+            <td class="mono">146,200</td>
+            <td class="mono">6.42s</td>
+            <td><span class="badge ok">200</span> <span class="badge stream">stream</span></td>
+            <td><button class="trace-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 17 17 7M9 7h8v8"/></svg>Trace</button></td>
+          </tr>
+          <tr data-req="20261108123755011112222a7b3c4d5e6f708192" data-trace="" data-model="deepseek-v3" data-pin="890" data-pout="0" data-quota="0" data-time="0.42" data-ttft="0" data-ch="21" data-grp="default" data-tok="test-key">
+            <td class="mono dim">12:37:55</td>
+            <td><b>deepseek-v3</b></td>
+            <td class="mono">test-key</td>
+            <td class="mono dim">— / —</td>
+            <td class="mono dim">0</td>
+            <td class="mono">0.42s</td>
+            <td><span class="badge err">429</span></td>
+            <td><button class="trace-btn locked" title="失败请求 v1 不上报"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 17 17 7M9 7h8v8"/></svg>Trace</button></td>
+          </tr>
+          <tr data-req="20261108123712055544433b8e2d9f71c4a036e8" data-trace="3f6b20d8a49c715e02d8f4b6c1e93a57" data-model="gpt-4o" data-pin="1280" data-pout="0" data-quota="19200" data-time="3.11" data-ttft="0" data-ch="12" data-grp="default" data-tok="prod-key-02">
+            <td class="mono dim">12:37:12</td>
+            <td><b>gpt-4o</b></td>
+            <td class="mono">prod-key-02</td>
+            <td class="mono">1,280 / 0</td>
+            <td class="mono">19,200</td>
+            <td class="mono">3.11s</td>
+            <td><span class="badge ok">200</span></td>
+            <td><button class="trace-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 17 17 7M9 7h8v8"/></svg>Trace</button></td>
+          </tr>
+          <tr data-req="20261108123648111222333d5f0a7c93e2b8f1d4" data-trace="b5e0c3d17a8624f9e1c58d20bf7a03c6" data-model="gemini-2.5-pro" data-pin="9240" data-pout="2260" data-quota="61200" data-time="4.08" data-ttft="330" data-ch="18" data-grp="gemini" data-tok="prod-key-01">
+            <td class="mono dim">12:36:48</td>
+            <td><b>gemini-2.5-pro</b></td>
+            <td class="mono">prod-key-01</td>
+            <td class="mono">9,240 / 2,260</td>
+            <td class="mono">61,200</td>
+            <td class="mono">4.08s</td>
+            <td><span class="badge ok">200</span> <span class="badge stream">stream</span></td>
+            <td><button class="trace-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 17 17 7M9 7h8v8"/></svg>Trace</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">表格本身没有改动，只是多了一个操作入口。真机上 Trace 按钮只在 <b>isAdmin</b> 为真时渲染——这里为了演示，登录态默认是管理员。</p>
+</section>
+
+<!-- ==================== 性能 ==================== -->
+<section class="view" id="view-perf">
+  <div class="eyebrow">第一原则 · 不影响原有系统性能</div>
+  <h1>三档方案的开销</h1>
+  <p class="lede">数字来自本机实测（M1 Max / go1.26），不是估算。三档差的不是实现难度，是同一件事：<b>这段数据要不要跨出请求的生命周期</b>。</p>
+
+  <div class="card pad" style="margin-bottom:16px">
+    <div class="seg" role="group">
+      <button aria-pressed="true" data-mode="off">关闭态</button>
+      <button aria-pressed="false" data-mode="on">开启态 A 档</button>
+      <button aria-pressed="false" data-mode="b">B 档</button>
+      <button aria-pressed="false" data-mode="c">C 档</button>
+    </div>
+    <div id="perfList"></div>
+    <p class="note" style="margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line)">
+      条形按<b>线性刻度</b>绘制。差距只有 32 倍，不需要对数压缩——A 档短到看不见，正是它真实的样子。
+    </p>
+  </div>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
+    <div class="card pad">
+      <h3>C 档 · 全内容采集（推荐）</h3>
+      <p class="note">请求体 + 流式帧 + 非流式响应全采。关键在于 SSE <b>不需要 tee</b>——<code>StreamScannerHandler</code> 的 <code>dataHandler</code> 已经拿到去掉 <code>data:</code> 前缀的帧明文，包一层即可，每个 chunk 零额外系统调用。</p>
+    </div>
+    <div class="card pad">
+      <h3>截断是真正的分水岭</h3>
+      <p class="note">全量 500 KB 要 <b>+11.6 μs</b>、512 MB 千并发；截成头 32 K + 尾 16 K 只要 <b>+0.6 μs</b>、48 MB。<b>开销降 20 倍，内存降 10 倍</b>，代价是长回答标 <code>truncated</code>。</p>
+    </div>
+    <div class="card pad">
+      <h3>我之前算错了一百倍</h3>
+      <p class="note">上一版把 SSE tee 估成「每 chunk 1 μs、1000 chunk ≈ 1 ms」，于是判定 C 档违反第一原则。<b>错在把本来就要发生的 write 算成了新增成本。</b>实测是 11.6 μs，不是 1 ms。</p>
+    </div>
+  </div>
+
+  <div class="card pad" style="margin-top:16px">
+    <h3>C 档还在第一原则之内吗</h3>
+    <p class="note">全量 11.6 μs 是 A 档的 32 倍，但这个倍数没意义，要看绝对值：摊到一次 3–8 秒的流式请求上是 <b>0.0002%</b>。<b>真正的成本不是 CPU，是 buffer 内存</b>——512 MB 千并发。所以默认截断到头 32 K + 尾 16 K，把内存压到 48 MB，CPU 顺手降到 0.6 μs。这不是性能妥协，是内存账。</p>
+  </div>
+</section>
+
+</main>
+
+<!-- 详情 sheet -->
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet-head">
+    <div>
+      <h2 style="margin:0">日志详情</h2>
+      <div class="mono dim" style="font-size:12px;margin-top:2px" id="shTime">12:38:41</div>
+    </div>
+    <button class="close" id="shClose" aria-label="关闭">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="row"><span class="k">Request ID</span><span class="v mono" id="shReq">—</span></div>
+    <div class="row"><span class="k">Trace ID</span><span class="v mono" id="shTrace">—</span></div>
+    <div class="row"><span class="k">模型</span><span class="v" id="shModel">—</span></div>
+    <div class="row"><span class="k">Tokens</span><span class="v mono" id="shTokens">—</span></div>
+    <div class="row"><span class="k">额度</span><span class="v mono" id="shQuota">—</span></div>
+    <div class="row"><span class="k">耗时 / 首字</span><span class="v mono" id="shTimeCost">—</span></div>
+    <div class="row"><span class="k">渠道</span><span class="v mono" id="shCh">—</span></div>
+    <div class="row"><span class="k">分组</span><span class="v" id="shGrp">—</span></div>
+    <div class="row"><span class="k">令牌</span><span class="v mono" id="shTok">—</span></div>
+  </div>
+  <div class="sheet-foot">
+    <button class="big-link" id="openTrace">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 17 17 7M9 7h8v8"/></svg>
+      在 Langfuse 打开
+    </button>
+    <div class="hint">仅管理员可见 · 新窗口打开 Langfuse</div>
+  </div>
+</aside>
+
+<!-- Langfuse mock -->
+<div class="lf" id="lf">
+  <div class="lf-in">
+    <div class="lf-bar">
+      <div class="lf-logo">langfuse<span>.</span></div>
+      <button class="lf-back" id="lfBack">← 返回 apiduo</button>
+    </div>
+
+    <h2 class="lf-title" id="lfTitle">chat gpt-4o-mini</h2>
+    <div class="lf-id" id="lfId">trace_8f3a91c47d2e05b6a1c8f4e9d7b2036a</div>
+    <div class="lf-tags" id="lfTags">
+      <span class="lf-tag hi">generation</span>
+      <span class="lf-tag">gpt-4o-mini</span>
+      <span class="lf-tag">default</span>
+      <span class="lf-tag">success</span>
+    </div>
+
+    <div class="lf-card">
+      <div class="lf-card-h">
+        <span class="kind">generation</span>
+        <span id="lfGenName">chat gpt-4o-mini</span>
+        <span class="dur" id="lfDur">1.83s</span>
+      </div>
+      <dl class="lf-metrics" id="lfMetrics"></dl>
+    </div>
+
+    <div class="lf-card">
+      <div class="lf-card-h">Metadata</div>
+      <div class="lf-kv" id="lfKv"></div>
+    </div>
+
+    <div class="lf-card">
+      <div class="lf-card-h">Input <span class="dur" id="lfInMeta">3 messages · 1 tool</span></div>
+      <div class="lf-msgs" id="lfInput"></div>
+    </div>
+
+    <div class="lf-card">
+      <div class="lf-card-h">Output <span class="dur" id="lfOutMeta">finish · stop</span></div>
+      <div class="lf-msgs" id="lfOutput"></div>
+    </div>
+
+    <div class="lf-card">
+      <div class="lf-card-h">Trace 树 <span class="dur" id="lfTreeMeta">traceparent 接入</span></div>
+      <div class="lf-tree" id="lfTree"></div>
+    </div>
+
+    <p class="lf-note">
+      这条 trace 的 id 由 apiduo 的 request_id 派生（sha256 前 16 字节），
+      所以日志页不需要存任何额外字段就能拼出这个链接。
+    </p>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  /* tabs */
+  $$('.tab').forEach(t => t.addEventListener('click', () => {
+    $$('.tab').forEach(x => x.setAttribute('aria-selected', String(x === t)));
+    $$('.view').forEach(v => v.classList.toggle('on', v.id === 'view-' + t.dataset.view));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
+
+  /* sheet */
+  const scrim = $('#scrim'), sheet = $('#sheet');
+  let current = null;
+
+  function fmt(n) { return Number(n).toLocaleString('en-US'); }
+
+  function openSheet(tr) {
+    current = tr;
+    const d = tr.dataset;
+    $('#shReq').textContent = d.req;
+    $('#shTrace').textContent = d.trace ? d.trace : '未上报（失败请求）';
+    $('#shModel').textContent = d.model;
+    $('#shTokens').textContent = d.pin === '0' ? '— / —' : fmt(d.pin) + ' / ' + fmt(d.pout);
+    $('#shQuota').textContent = fmt(d.quota);
+    $('#shTimeCost').textContent = d.time + 's' + (d.ttft !== '0' ? ' / ' + d.ttft + 'ms' : '');
+    $('#shCh').textContent = '#' + d.ch;
+    $('#shGrp').textContent = d.grp;
+    $('#shTok').textContent = d.tok;
+    $('#shTime').textContent = '12:38:41 · ' + d.model;
+    const btn = $('#openTrace');
+    btn.disabled = !d.trace;
+    btn.style.opacity = d.trace ? '1' : '.45';
+    btn.style.pointerEvents = d.trace ? 'auto' : 'none';
+    scrim.classList.add('on');
+    sheet.classList.add('on');
+    sheet.setAttribute('aria-hidden', 'false');
+  }
+  function closeSheet() {
+    scrim.classList.remove('on');
+    sheet.classList.remove('on');
+    sheet.setAttribute('aria-hidden', 'true');
+  }
+
+  $$('tbody tr').forEach(tr => tr.addEventListener('click', () => openSheet(tr)));
+  scrim.addEventListener('click', closeSheet);
+  $('#shClose').addEventListener('click', closeSheet);
+
+  /* langfuse mock */
+  const CONTENT = {
+    'gpt-4o-mini': {
+      toolName: 'weather_lookup',
+      tool: 'weather_lookup {"city":"北京","date":"2026-11-09"}',
+      messages: [
+        ['system', 'You are a helpful assistant with tools.'],
+        ['user', '帮我查一下北京明天的天气，然后据此写一首七言绝句。'],
+        ['assistant', '好的，我先查一下天气。']
+      ],
+      output: '北京明天多云转晴，4～13℃，北风 3 级。\n\n朔风初歇霁光开，\n万里晴空一碧裁。\n莫道霜华催木叶，\n此心元自向春来。'
+    },
+    'claude-sonnet-4': {
+      toolName: 'code_search',
+      tool: 'code_search {"query":"RelayInfo.StreamStatus"}',
+      messages: [
+        ['system', 'You are a senior Go engineer reviewing a codebase.'],
+        ['user', '看一下 StreamStatus 这个结构在重试时会不会残留脏状态？把相关调用链列出来。'],
+        ['assistant', '我搜一下定义和所有写入点。']
+      ],
+      output: 'StreamStatus 在 InitChannelMeta 里被置空，所以重试不会继承上一次的 finalized 标记。但 ReceivedResponseCount 是在 RelayInfo 上累加的，跨 attempt 不会重置，统计口径需要注意。'
+    },
+    'gpt-4o': {
+      messages: [
+        ['system', 'You are a concise technical writer.'],
+        ['user', '用三句话解释 OTEL 里 traceparent 的作用。']
+      ],
+      output: 'traceparent 是跨进程传递 trace 上下文的 W3C 标准头。它携带 trace-id、父 span-id 和采样标志，让下游服务把新 span 挂到同一条链路上。网关透传它，整条 agent → 网关 → 上游的调用才会在追踪系统里连成一棵树。'
+    },
+    'gemini-2.5-pro': {
+      toolName: 'calc',
+      tool: 'calc {"expr":"9240 / 3.2"}',
+      messages: [
+        ['system', 'You can use tools.'],
+        ['user', '算一下 9240 除以 3.2，并把结果保留两位小数。'],
+        ['assistant', '我用计算器算一下。']
+      ],
+      output: '9240 ÷ 3.2 = 2887.50'
+    },
+    default: {
+      messages: [['user', '你好']],
+      output: '你好，有什么可以帮你的？'
+    }
+  };
+
+  const lf = $('#lf');
+  function openLF() {
+    if (!current) return;
+    const d = current.dataset;
+    closeSheet();
+    $('#lfTitle').textContent = 'chat ' + d.model;
+    $('#lfGenName').textContent = 'chat ' + d.model;
+    $('#lfId').textContent = d.trace;
+    $('#lfDur').textContent = d.time + 's';
+    $('#lfTags').innerHTML = [
+      '<span class="lf-tag hi">generation</span>',
+      '<span class="lf-tag">' + d.model + '</span>',
+      '<span class="lf-tag">' + d.grp + '</span>',
+      '<span class="lf-tag">success</span>'
+    ].join('');
+    const cost = (Number(d.quota) / 500000).toFixed(4);
+    $('#lfMetrics').innerHTML = [
+      ['Input tokens', fmt(d.pin)],
+      ['Output tokens', fmt(d.pout)],
+      ['Latency', d.time + 's'],
+      ['TTFT', d.ttft === '0' ? '—' : d.ttft + 'ms'],
+      ['Cost', '$' + cost]
+    ].map(([k, v]) => '<div class="lf-m"><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
+    const C = CONTENT[d.model] || CONTENT.default;
+    const trunc = d.model === 'claude-sonnet-4';
+    $('#lfInMeta').textContent = C.messages.length + ' messages' + (C.tool ? ' · 1 tool' : '');
+    $('#lfOutMeta').textContent = trunc ? 'truncated · stop' : 'finish · stop';
+    $('#lfInput').innerHTML = C.messages.map(([role, text]) =>
+      '<div class="lf-msg"><span class="lf-role ' + role + '">' + role + '</span><p>' + text + '</p></div>'
+    ).join('') + (C.tool
+      ? '<div class="lf-msg"><span class="lf-role t">tool</span><p><code>' + C.tool + '</code></p></div>'
+      : '');
+    $('#lfOutput').innerHTML =
+      '<div class="lf-msg"><span class="lf-role a">assistant</span><p>' + C.output.replace(/\n/g, '<br>') + '</p></div>' +
+      (trunc ? '<div class="lf-trunc">SSE 原始 96.2 KB · 已截断为头 32 KB + 尾 16 KB · dropped 49,356 bytes</div>' : '');
+    $('#lfTree').innerHTML =
+      '<div><span class="br">└─</span> <span class="n">agent.run</span> <span class="br">workflow · 8.4s</span></div>' +
+      '<div>&nbsp;&nbsp;&nbsp;<span class="br">├─</span> <span class="n">plan</span> <span class="br">llm · 1.2s</span></div>' +
+      '<div>&nbsp;&nbsp;&nbsp;<span class="br">└─</span> <span class="mine">chat ' + d.model + '</span><span class="badge2">this request</span></div>' +
+      '<div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="br">└─</span> <span class="n">tool ' + (C.toolName || '—') + '</span> <span class="br">' + d.time + 's</span></div>' +
+      '<div style="margin-top:8px;font-size:11px;color:#8b8b95;font-family:inherit">traceparent 由客户端传入，网关只负责透传并挂到同一 trace 下</div>';
+
+    $('#lfKv').innerHTML = [
+      ['channel_id', d.ch],
+      ['group', d.grp],
+      ['token_name', d.tok],
+      ['is_stream', d.ttft !== '0' ? 'true' : 'false'],
+      ['retry_index', '0'],
+      ['apiduo.request_id', d.req]
+    ].map(([k, v]) => '<div><span>' + k + '</span><span>' + v + '</span></div>').join('');
+    lf.classList.add('on');
+    lf.scrollTop = 0;
+  }
+  $('#openTrace').addEventListener('click', openLF);
+  $('#lfBack').addEventListener('click', () => lf.classList.remove('on'));
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (lf.classList.contains('on')) lf.classList.remove('on');
+    else if (sheet.classList.contains('on')) closeSheet();
+  });
+
+  /* perf chart */
+  const DATA = {
+    off: [
+      ['关闭态（生产默认）', 'if !enabled.Load() { return }', 2.3, 'ns', 'var(--muted)', '', ''],
+      ['空循环基线', '对照', 0.33, 'ns', 'var(--line)', '', '']
+    ],
+    on: [
+      ['A 档 · 仅元数据', 'atomic + 一次入队', 360, 'ns', 'var(--good)', '0.21% 单核', '1×'],
+      ['关闭态', '对照', 2.3, 'ns', 'var(--muted)', '', ''],
+      ['空循环基线', '对照', 0.33, 'ns', 'var(--line)', '', '']
+    ],
+    b: [
+      ['A 档 · 仅元数据', '不带内容', 360, 'ns', 'var(--good)', '', '1×'],
+      ['C 档 · 截断 32KB', '头 32K + 尾 16K', 600, 'ns', 'var(--accent)', '0.35% 单核', '≈2×'],
+      ['C 档 · 全量 500KB', '不截断', 11600, 'ns', 'var(--warn)', '6.8% 单核', '≈32×']
+    ],
+    c: [
+      ['A 档 · 仅元数据', '只看延迟与成本', 360, 'ns', 'var(--good)', '', '1×'],
+      ['C 档 · 全量累积', '1000 chunk × 500B', 11600, 'ns', 'var(--warn)', '6.8% 单核 · 512MB/千并发', '≈32×'],
+      ['只计长度不存内容', '极端省法', 410, 'ns', 'var(--muted)', '', '']
+    ]
+  };
+  const MAX = 12000;
+  function render(mode) {
+    const rows = DATA[mode];
+    $('#perfList').innerHTML = rows.map(([name, sub, ns, unit, color, tag, mult]) => {
+      // 线性刻度：换掉截断后差距只剩 32 倍，不需要对数，线性更诚实
+      const pct = Math.max(1.2, ns / MAX * 100);
+      const label = ns >= 1000000 ? (ns / 1e6).toFixed(1) + ' ms'
+                  : ns >= 1000 ? (ns / 1000).toFixed(1) + ' μs'
+                  : (ns < 10 ? ns.toFixed(2) : Math.round(ns)) + ' ns';
+      return '<div class="perf-row">' +
+        '<div class="perf-name">' + name + '<small>' + sub + '</small></div>' +
+        '<div class="perf-track">' +
+          '<div class="perf-bar" style="width:' + pct + '%;background:' + color + '"></div>' +
+          '<span class="perf-val">' + label + (tag ? ' · ' + tag : '') +
+          (mult ? ' <b style="color:var(--ink);font-weight:600">' + mult + '</b>' : '') + '</span>' +
+        '</div></div>';
+    }).join('');
+  }
+  $$('.seg button').forEach(b => b.addEventListener('click', () => {
+    $$('.seg button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    render(b.dataset.mode);
+  }));
+  render('off');
+})();
+</script>
+</body>
+</html>

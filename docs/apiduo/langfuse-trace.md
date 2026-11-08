@@ -1,0 +1,1011 @@
+# Langfuse Trace 接入日志页 · 方案
+
+> 结论：可以做，但**主要工作量在 relay 侧的上报，不在日志页**。
+> 最终形态：**全内容采集**——请求体 / 流式帧 / 非流式响应 / agent messages 全采，
+> 默认 headtail 截断（头 32K + 尾 16K）。性能结论见 §3.5 实测：截断模式 +0.6 μs/请求。
+> 决策过程（A 档 → B 档 → C 档翻案，中间因 SSE 成本误估走过弯路）见 §12。
+> 日志页只加一行「在 Langfuse 打开」链接，且仅对管理员可见。
+>
+> 与 2026-11-03《NewAPI LLM 可观测性解决方案》v2.1 的关系见 **§12**——那份方案的
+> 两条设计原则仍然成立，但具体锚点与四个技术前提已被代码演进推翻，不能照抄。
+
+---
+
+## 0. 第一原则：不影响原有系统性能
+
+这条是**硬约束**，优先级高于功能完整性、成本、工期。任何触碰 relay 主链路字节流的设计
+直接出局，不进入"优化一下也许行"的讨论。
+
+### 0.1 "旁路"能挪走什么，挪不走什么
+
+**能异步化的只有"处理"（序列化、脱敏、发送），"抓取"必须发生在数据经过挂接点的那一刻。**
+不能异步地接一桶已经流过去的水。
+
+但抓取成本取决于那份数据是不是**本来就已经在内存里**——这决定了三类采集点的成本差：
+
+| 采集对象 | 数据来源 | 抓取成本 | 判定 |
+|---|---|---|---|
+| 元数据 | 结算函数里的现成字段 | 2.3 ns（关闭）/ 360 ns（开启） | 无条件做 |
+| **请求体** | `KeyBodyStorage` 已缓存，`memoryStorage.Bytes()` **零拷贝返回引用** | 跨请求生命周期需一次 memcpy，中位 body 几 KB ≈ 0.4 μs | **低采样下可做** |
+| **非流式响应体** | relay 已完整 `ReadAll` 过一次 | 同上 | **低采样下可做** |
+| **流式响应内容** | **`StreamScannerHandler` 的 `dataHandler` 已经拿到解码后的帧明文** | append 到 buffer；500 KB ≈ **+11.6 μs**（实测） | **可做，见 §3.6** |
+
+关键区别：**请求体和非流式响应体是"复用一次已经发生过的读取"，流式内容是"新增一次读取"。**
+前者不改变主链路的 I/O 形态，后者会。
+
+所以修正此前的判断：**"内容采集出局"是错的。** 三档都可行，差别只是成本量级（见 §3.6 实测）。
+
+> **更正**：此前把 SSE tee 估成「每 chunk 1 μs、1000 chunk ≈ 1 ms」是错的。
+> 那个数字把「write 系统调用」算进去了，而真实写本来就要发生，采集只多一次 memcpy。
+> 实测 1000 chunk × 500 B 全量累积是 **+11.6 μs**，低两个数量级。
+
+### 0.1.1 成本分水岭是截断，不是"流式 vs 非流式"
+
+（曾设想 B 档做折中：元数据 + 请求体 + 非流式响应、流式出局。实测推翻——
+流式采集只 +11.6 μs，而流式恰是 LLM 主场景，B 档没有存在价值，已取消。）
+
+| 策略 | 额外 CPU | 折合 5859 QPS | buffer 内存（千并发） |
+|---|---|---|---|
+| 全量（平均 500 KB） | +11.6 μs | 6.8% 单核 | ~512 MB |
+| **头 32 KB + 尾 16 KB** | **+0.6 μs** | **0.35% 单核** | **~48 MB** |
+| 只计长度不存内容 | +0.05 μs | 0.03% 单核 | 0 |
+
+32 KB 是拐点：开销降 20 倍，内存降 10 倍。代价是长回答会被截断（标记 `truncated`）。
+
+如果确实需要全量：`LANGFUSE_BODY_MODE=full`，但要知道那是 6.8% 单核 + 512 MB 的账，
+且必须配 `sync.Pool` 复用 buffer，否则 GC 会先崩。
+
+### 0.1.2 真正零成本的唯一路径
+
+让**客户端自己产生 trace**（OpenAI SDK + Langfuse SDK），网关只透传 trace id 并给链接。
+网关侧零成本、零内存、零带宽。代价是要求调用方改造，且只对自有 Agent / 内网客户端有效。
+
+### 0.2 量化验收标准（不达标即回退）
+
+| 项 | 标准 | 验证方式 |
+|---|---|---|
+| 关闭态 | 主链路**零新增堆分配**，P99 与改动前无差异 | `go build -gcflags=-m` 确认不逃逸；`go test -bench` 对比空函数 |
+| 关闭态指令数 | 只有一次 `atomic.Bool.Load` + 分支 | 已实测 **2.3 ns / 0 alloc**（§3.4） |
+| 开启态（headtail 全开） | `/api/perf-metrics` 的 P99 相对基线波动 < **0.5%** | 直接复用项目已有指标做前后对照 |
+| 峰值压测 | 5859 QPS（历史实测峰值）下成功率不变、GC pause 无增长 | 见 §9 |
+| 队列满 | 直接丢，**绝不出现任何等待** | 代码审查 + 丢弃计数断言 |
+
+> 为什么敢定 0.5% 而不是"3~5%"：§3.5 实测——采集路径 +0.6 μs，摊在 3–8s 的流式请求上是
+> 10⁻⁷ 量级；真正可测的影响只剩 GC 抖动（§3.9 内存账已把它压到 74 MB 上界）。
+
+---
+
+## 1. 问题拆解
+
+"把 langfuse trace 集成到日志页"这句话背后其实是两件事，必须分开算账：
+
+| 子问题 | 现状 | 工作量 |
+|---|---|---|
+| A. 日志行 ↔ trace 的关联键 | **已存在**：`Log.RequestId`（`model/log.go:75`，已有 `idx_logs_request_id` 索引） | 0 |
+| B. trace 在哪里产生 | **不存在**：全仓无 langfuse / otel / traceparent，apiduo 从未向任何 observability 后端发过数据 | 95% |
+| C. 日志页展示入口 | 详情弹窗 `details-dialog.tsx:707` 已在展示 `request_id`，且有现成的 `props.isAdmin` | 5% |
+
+所以这不是"加个链接"的需求，而是**给网关补一层 LLM observability 埋点**，然后把结果挂到已有日志上。
+
+再往下一层：既然要发，就别写"Langfuse 集成"，要写 **OTLP 导出**。
+Langfuse 自 v3.22 起就是标准 OTel 后端，同一份导出换 endpoint 就能对接 Phoenix / Tempo / Jaeger。
+Langfuse 只是其中一个 consumer，专有属性（`langfuse.*`）在别的后端里被忽略，无副作用。
+
+---
+
+## 2. 数据契约
+
+三条硬约束决定了设计：
+
+1. OTEL 的 traceId 必须是 **32 位 hex**。
+2. `common.NewRequestId()`（`common/utils.go:256`）产出 39 位（14 时间戳 + 9 纳秒 + 8 hex + 8 随机），**不能直接当 traceId**。
+3. Langfuse 的 trace 页面 URL 需要 **projectId**，不是 API key。
+
+因此：
+
+```
+traceId = hex( sha256(request_id)[:16] )   // 32 chars，确定性派生
+```
+
+- 派生逻辑放在 `pkg/apiduo/trace/id.go`，**单点定义**，上报侧和展示侧都从 `log.other` 读结果，不在前端复刻哈希。
+- 异步任务（兜底路径）的 trace_id 用**提交时**的 request_id 派生（从 task 记录取），不是轮询结算时的——同一个任务提交与结算必须是同一条 trace。
+- traceId 写入日志的 `other.admin_info`（走 `LogOther.SetAdmin`），**不落库到新列**：
+  - 绕开 ClickHouse `logs` 表加列（现为 `ReplacingMergeTree`，加列要 ALTER，且 GORM 对 CH 的 AutoMigrate 有限制）
+  - 走 admin 可见性，普通用户拿不到（见 §6）
+  - 体积开销 32 字节/行，可忽略
+
+日志页链接形如：
+
+```
+{LANGFUSE_HOST}/project/{LANGFUSE_PROJECT_ID}/traces/{traceId}
+```
+
+> 若自建版本路由不同，退化用 `{host}/trace/{traceId}`（会 302 到 project 路由）。上线前实测一次。
+
+---
+
+## 3. 架构
+
+### 3.1 四层流水线：采集 → 快照 → 处理 → 导出
+
+```
+主链路（per-request 生命周期）              离线（与请求无关）
+┌─────────────────────────────┐    ┌──────────────────────────────┐
+│ ① collect  collector 状态机 │    │ ③ pipeline  worker 池        │
+│   挂 gin.Context，随请求生灭 │    │   SSE 帧解析（按 relayFormat）│
+│   流式帧 append（无锁）      │──► │   脱敏 / 组装 OTLP JSON      │
+│   usage 填充（结算点）       │快照│   批量 200 / 5s              │
+│   ② snapshot 在 relay defer │──► │ ④ sink  OTLP → Langfuse      │
+│   一次快照，从此与主链路无关 │    │   失败重试 1 次，超时 3s      │
+└─────────────────────────────┘    └──────────────────────────────┘
+```
+
+核心是②：**快照是唯一的隔离边界**。快照之前，collector 可以引用主链路的任何数据
+（BodyStorage、SSE buffer、RelayInfo 字段）；快照之后，主链路对这份数据负零责任——
+worker 想多慢就多慢，请求早已结束。两个内存世界在这一点完成交割。
+
+### 3.2 collector 状态机（主链路上唯一的可变对象）
+
+所有挂接点不再"各自上报"，而是向同一个 per-request collector 写状态。
+collector 挂在 `gin.Context`（`c.Set`，与上游 `KeyBodyStorage` 同模式），随请求生灭：
+
+```
+        Relay() 开头                relay 过程                    relay defer
+           │                        │                              │
+读 traceparent ──► 创建 collector   │                              │
+存入 ctx         │                  │                              │
+                  ├─ stream_scanner: dataHandler 帧 append ──► 累积 buffer
+                  ├─ compatible_handler: 非流式体 append ────► 累积 buffer
+                  └─ text_quota 结算: usage / TTFT / 重试次数 ──► 字段填充
+                                                 │
+                                        finalize：一次性快照
+                                        · body 此刻仍存活（见 3.4 ②），memcpy 入快照
+                                        · SSE buffer 所有权转移入快照
+                                        · 采样判定 + 入队（元数据队列 / 内容队列）
+```
+
+**为什么上报点从结算点挪到 relay defer**——三个理由，全是结构性的：
+
+1. **defer 全覆盖**：成功、失败、panic（`recovered` 分支）都走 `controller/relay.go:140`
+   的那个 defer，`perfmetrics.RecordRelayResult` 就在那。失败请求不再没有 trace——
+   而失败恰恰是排障时最想看内容的场景。
+2. **结算点语义降级为"字段填充"**：`text_quota.go` 不再决定"何时上报"，只写 usage。
+   时序天然正确：结算先于 defer，defer 时 usage 已就位。
+3. **body 生命周期安全**（见 3.4 ②）：defer 时 body storage 必然存活，
+   快照可以在那一刻从容 memcpy，不需要提前拷贝占用峰值内存。
+
+### 3.3 挂接点（后端 7 + 前端 3）
+
+| # | 文件 | 动作（1–2 行，全在标记块内） | 语义 |
+|---|---|---|---|
+| 1 | `controller/relay.go` `Relay()` 开头 | 读 `traceparent` → 存 collector（与挂接点 5 同文件） | trace 接续 |
+| 2 | `relay/helper/stream_scanner.go` | `dataHandler = wrap(handler)` | 流式帧采集 |
+| 3 | `relay/compatible_handler.go` | 复用已读 body 字节 | 非流式采集 |
+| 4 | `service/text_quota.go` | collector 填 usage 字段 | 字段填充 |
+| 5 | `controller/relay.go` defer | `finalize + 入队` | **唯一上报点** |
+| 6 | `model/log.go`（RecordConsumeLog） | 构元数据快照入队 | 兜底上报：任务结算 / MJ / 违规扣费等**无 relay defer 的路径** |
+| 7 | `router/api-router.go` | +1 行配置路由 | AdminAuth |
+| 8–10 | 前端 3 处（弹窗 / api / i18n） | 链接渲染 | 仅管理员 |
+
+挂接点 6 的存在理由：异步任务结算是后台轮询线程，`task_billing.go` 那条路没有
+relay defer 也没有流式响应，走 `model/log.go` 直接构快照（只有元数据 + 提交时的
+request_id，从 task 记录取）。
+
+### 3.4 三条生命周期不变量（架构公理，违反任何一条就是 bug）
+
+**① 快照即边界。** 入队后主链路不再触碰快照数据；快照前的所有引用必须在 finalize
+内完成拷贝或所有权转移。推论：worker 持有的 buffer 与主链路零共享，无锁、无竞态。
+
+**② body 的安全窗口。** `CleanupBodyStorage` 在 `middleware/body_cleanup.go` 的 defer
+里执行；Go 的 defer 是 LIFO，**中间件 defer 晚于 handler（Relay）defer**。所以 relay
+defer 时 body storage 必然存活。防御式补充：finalize 若发现 body 已 Close
+（`Bytes()` 返回 `ErrStorageClosed`），降级为元数据快照，不报错。
+
+**③ 内容不落盘。** trace 队列**绝不复用 log-writer 的 spool**——spool 会把数据写盘，
+内容一旦落盘就把泄露面从内存扩大到磁盘（还有磁盘增长问题）。优雅停机只 drain
+内存队列（上限 5s），超时直接丢。观测数据丢得起，这是与记账日志的本质区别。
+
+### 3.5 主链路开销（实测，M1 Max / go1.26）
+
+```
+BenchmarkBaselineEmpty       0.33 ns/op     0 B/op    0 allocs   ← 空循环基线
+BenchmarkDisabled            2.3  ns/op     0 B/op    0 allocs   ← 关闭态
+开启态 · 仅元数据             144–364 ns     128 B/op  1 alloc
+开启态 · headtail 截断        +0.6 μs        ≤48 KB buffer
+开启态 · 全量 500 KB          +11.6 μs       ≤500 KB buffer
+```
+
+设计规则（写死，不随实现漂移）：
+
+- `Record` 入口必须可内联，关闭态只是一次 `atomic.Bool.Load`；
+  重活全部压在 `//go:noinline` 的慢路径里
+- 主链路**零序列化、零正则、零 json.Unmarshal**；帧解析、脱敏全部在 worker
+- 采样判定用 `atomic.AddUint64(&n, 1) % 100 < rate`，不用 `math/rand`（全局源有锁）
+- 队列满 `select/default` 直接丢 + 丢弃计数，**绝不等待**——log-writer 那套
+  「队列满回退同步」是记账正确性策略，trace 不是账，两个策略永不统一
+
+### 3.6 内容采集与截断
+
+三个采集点，全部是"复用一次已经发生的读取"：
+
+| 数据 | 位置 | 方式 |
+|---|---|---|
+| 请求体 | finalize 时读 `GetBodyStorage(c)` | `Bytes()` 零拷贝引用 → 快照时一次 memcpy |
+| 流式响应 | `StreamScannerHandler` 包 `dataHandler` | 帧明文 append 到 per-request buffer |
+| 非流式响应 | `compatible_handler` 读 body 处 | 复用已 `ReadAll` 的字节 |
+
+SSE 不需要 tee：`dataHandler` 拿到的 `data` 已是去掉 `data: ` 前缀的帧明文
+（`relay/helper/stream_scanner.go:120`，12 个渠道文件共用这个入口）。
+包装 ResponseWriter / io.MultiWriter 的方案已被否定。
+
+截断策略 `headtail`（默认）：头 32 KB + 尾 16 KB，置 `truncated=true`、`dropped_bytes=N`。
+SSE 流的头部有 role / model / 首 delta，尾部有 `finish_reason` 和 usage，信息密度最高；
+中间是重复文本 delta。三种模式：`off`（纯元数据）/ `headtail`（默认）/ `full`（上限 2 MB，
+接受 6.8% 单核 + 512 MB/千并发的账，须配 `sync.Pool`）。
+
+### 3.7 agent 与 trace 树
+
+**采样必须尊重 traceparent 的 sampled flag**（W3C 语义）：
+
+```
+traceparent: 00-{trace-id 32hex}-{parent-span-id 16hex}-{flags 2hex}
+                                                          ^^^^
+                                        flags bit0 = sampled；父未采样，子默认不采
+```
+
+| 情况 | 行为 |
+|---|---|
+| 带 `traceparent` 且 sampled=1 | 用客户端 trace-id，**parentSpanId 设为客户端 span-id**，正常采样 |
+| 带 `traceparent` 且 sampled=0 | 沿用客户端 trace-id（保树完整），本 span 的采样决策独立做 |
+| 不带 | `sha256(request_id)[:16]` 派生 trace-id，parentSpanId 空 |
+| 转发上游 | 透传 `traceparent` / `tracestate`（当前网关把它们弄丢了，上游 OTEL 链是断的） |
+
+不设 parentSpanId，span 会挂成新 trace 的根——agent 树就断了。这是树正确性的两个必要条件之一。
+
+能采到的 agent 数据：`messages[]`（role / content / tool_calls / tool_results）、
+`tools[]` 定义、采样参数、text delta、`delta.tool_calls[]`（含 name / arguments 分片）、
+finish_reason、usage。**采不到**的：agent 内部 planning / 记忆（在客户端进程里），
+只能靠 traceparent 接续。
+
+### 3.8 失败请求与重试语义
+
+**失败请求默认全采**（挂接点 5 在 defer，天然覆盖）。理由：失败是少数（正常 <5%），
+全采不构成量级压力；而排障场景里"失败请求到底发了什么、上游回了什么"价值最高。
+`LANGFUSE_ERROR_SAMPLE_RATE` 独立于常规采样率，默认 100。
+
+**重试（auto 跨渠道）语义**：一个请求 N 个 attempt，collector 的 SSE buffer
+**只保留最后一个 attempt**——每次重试前 reset（与 `InitChannelMeta` 重置 converter
+的既有惯例同构）。RetryIndex / 尝试次数进元数据。要全 attempt 内容属于 `full` 模式的
+诊断特性，v1 不做。
+
+半截流（上游中断、客户端断连）：buffer 里有什么发什么，元数据标 `status=interrupted`。
+这恰是断流诊断的核心样本。
+
+### 3.9 内存账（最坏场景上界）
+
+之前的账只算了 per-request buffer，漏了**队列自身的驻留内存**。补全：
+
+| 项 | 规模 | 上界 |
+|---|---|---|
+| 元数据队列 | 2048 × ~128 B | 256 KB |
+| 内容快照队列 | 512 × ≤48 KB | **25 MB** |
+| per-request buffer（千并发） | ≤48 KB × 1000 | 48 MB |
+| 全量模式（可选） | ≤500 KB × 1000 + 队列 256 MB | 768 MB（需显式开启） |
+
+合计 headtail 默认配置最坏 **~74 MB**，可控。两条派生规则：
+
+- 内容队列与元数据队列**分离**：元数据队列绝不能被大快照挤占（否则低流量站点
+  连元数据 trace 都丢）
+- `sync.Pool` 池化 per-request buffer 列为**条件触发**：默认不池化
+  （中位请求 SSE 总量仅几 KB，分配速率 ~13 MB/s @1667 QPS，可接受）；
+  线上 GC profile 显示压力再启用，避免一开始就背生命周期管理的复杂度
+
+---
+
+## 4. 配置项
+
+全部走环境变量（`common.GetEnvOrDefault` 风格），不新增系统设置页表单项：
+
+```bash
+LANGFUSE_ENABLED=false                              # 总开关
+LANGFUSE_HOST=https://langfuse.example.com          # 自建地址，不带尾斜杠
+LANGFUSE_PUBLIC_KEY=pk-lf-...                       # 只用于 Basic 认证
+LANGFUSE_SECRET_KEY=sk-lf-...                       # 只用于 Basic 认证，永不外发
+LANGFUSE_PROJECT_ID=...                             # 从 Langfuse UI 地址栏取
+LANGFUSE_SAMPLE_RATE=10                             # 0-100，常规采样
+LANGFUSE_ERROR_SAMPLE_RATE=100                      # 失败请求采样（独立，默认全采，见 §3.8）
+LANGFUSE_BODY_MODE=headtail                         # off / headtail / full（§3.6）
+LANGFUSE_BODY_HEAD_BYTES=32768                      # headtail 头部上限
+LANGFUSE_BODY_TAIL_BYTES=16384                      # headtail 尾部上限
+LANGFUSE_TIMEOUT_SECONDS=3
+LANGFUSE_QUEUE_META=2048                            # 元数据队列深度
+LANGFUSE_QUEUE_CONTENT=512                          # 内容队列深度（×48KB 上限 = 25MB 上界，§3.9）
+```
+
+运行时改 env 需重启；所有开关读取后缓存进 atomic 变量（§3.5 内联早退依赖它）。
+
+认证头：`Authorization: Basic base64(pk:sk)`，同时带 `x-langfuse-ingestion-version: 4`（不带这个头，v4 数据可能延迟 10 分钟才可见）。
+
+端点：`POST {LANGFUSE_HOST}/api/public/otel/v1/traces`，`Content-Type: application/json`（OTLP/HTTP JSON，不用引 protobuf 依赖，也不必引完整 otel SDK）。
+
+> 直接用 JSON 手写 OTLP payload，比引 `go.opentelemetry.io/otel` + `otlptracehttp` 更轻，且完全可控。代价是 payload 结构要自己维护——每请求 1 个 span、字段固定（§3.2 span 结构），结构漂移风险低。
+
+---
+
+## 5. 代码落点
+
+新增文件的完整清单见 §13.1（trace 包 10 个文件 + controller 1 个 + 前端 2 个）。本节只列上游文件的修改：
+
+| 文件 | 动作 | 说明 |
+|---|---|---|
+| `controller/relay.go`（两处，同文件） | 修改（标记块） | +2 行：`Relay()` 开头读 `traceparent`；defer 内 finalize |
+| `relay/helper/stream_scanner.go` | 修改（标记块） | 1 行：包 `dataHandler`，流式帧 append |
+| `relay/compatible_handler.go` | 修改（标记块） | 1 行：非流式体 append |
+| `service/text_quota.go` | 修改（标记块） | 1–2 行：usage 填充 + trace_id 写 `other`（见下） |
+| `controller/relay.go` | 修改（标记块） | 1 行：defer 内 finalize（**唯一上报点**） |
+| `model/log.go` | 修改（标记块） | 1 行：兜底快照（无 relay defer 的路径） |
+| `router/api-router.go` | 修改（标记块） | 1 行：配置路由（AdminAuth） |
+| `web/.../dialogs/details-dialog.tsx` | 修改（`//#region apiduo`） | 3 行：条件渲染链接 |
+| `web/src/features/usage-logs/api.ts` | 修改（`//#region apiduo`） | 6 行：`getTraceConfig()` |
+
+**依赖方向（对齐 `pkg/apiduo/discount` 先例）**：trace 包**零内部 import**
+（不引 `model`/`service`/`common`/`relay`），配置用 `os.Getenv` 直读。因此：
+
+- `LogOther.SetAdmin("trace_id", ...)` 这种碰 `model` 类型的动作**由挂接点调用方完成**
+  （`text_quota.go` 本来就 import model）：结算点写日志前把 trace_id 塞进 `other`
+- collector 本体只存 string / int，不持有任何上游类型；finalize 的入参是裸字段
+- 后果：失败请求的 trace 在 Langfuse 有，但日志页无入口——失败请求不写消费日志，
+  本来就不出现在那个列表里，一致
+
+标记块命名：`// APIDUO:trace:BEGIN` / `END`，需登记进 `.apiduo/merge-budget.txt`。
+
+---
+
+## 6. 权限与安全（对抗审查）
+
+这一节是我最在意的部分，四条都不能省：
+
+1. **链接只给管理员。**
+   Langfuse 没有按用户的行级隔离——同一个实例里所有人的 trace 都在。如果普通用户拿到链接和 projectId，改一下 URL 就能看别人的请求元数据。`details-dialog.tsx` 已有 `props.isAdmin`，直接用它门控。
+
+2. **配置接口必须鉴权，不能塞 `/api/status`。**
+   `/api/status` 是**未登录可访问**的公开接口。把 `LANGFUSE_HOST` 放进去等于公开内网地址和 projectId。改为独立的 `GET /api/apiduo/trace/config` + `middleware.AdminAuth()`，且**永远不返回 secret key**。
+
+3. **traceId 走 `SetAdmin`，不走 `SetPublic`。**
+   `formatLogOtherJSON` 在 user 视角会剥掉 `admin_info`（`model/log_other.go:246`），这正好是我们要的可见性。
+
+4. **不采集内容。**
+   元数据模式不含 prompt / completion / 请求头 / IP。`userId` 会外发，但 Langfuse 在内网自建，且这是追踪的必要维度；若认为 `userId` 也算 PII，可退化为哈希。
+
+另外两个容易被忽略的：
+
+- **`RecordConsumeLog` 在 `LogConsumeEnabled=false` 时直接 return**（`model/log.go:345`）。意味着兜底路径（异步任务结算）关掉消费日志就没有 trace；但同步请求的 relay defer 路径**不受影响**——这是 finalize 放 defer 而非结算点的额外红利。
+- **内容不落盘是硬约束**（§3.4 ③）：trace 队列不复用 log-writer 的 spool；停机只 drain 5s 超时即丢。谁想给 trace 加磁盘缓冲，先读这一条。
+- **采集内容不出内网**：Langfuse 自建于 apiduo.cn 内网，内容经 https 直发，不经过任何第三方；脱敏（§3.6）是纵深防御层而非唯一防线。
+- **失败请求不写 consume log**，所以 4xx/5xx 不会有 trace。v1 接受这个缺口，v2 再挂到 error log 上。
+
+---
+
+## 7. Langfuse 自身的部署账
+
+这是最容易被低估的部分。自建 Langfuse v3/v4 **不是单容器**：
+
+| 组件 | 能否复用现有 | 说明 |
+|---|---|---|
+| ClickHouse | ✅ 可复用实例 | 独立 database（如 `langfuse`）。你现有的是 25.8，满足 ≥24.3 要求 |
+| PostgreSQL | ❌ 需新建 | 不能拿 MySQL 顶，Langfuse 用了 PG 特性 |
+| Redis | ❌ 需新建（或复用现有缓存实例的独立 db） | |
+| S3 / MinIO | ❌ 需新建 | v3 起强制 S3 兼容存储（事件上传） |
+| langfuse-web + langfuse-worker | 新增 2 容器 | web 是 Next.js，内存胃口不小 |
+
+净增量：约 **4–5 个容器，常驻 2–4 GB 内存**。上 ai-prod 前必须先看这台机器的余量，否则会和 apiduo 抢内存。
+
+如果觉得这账不划算，有两个更轻的替代（两者都仍是 OTLP，换 endpoint 就行）：
+
+- **Arize Phoenix**：单容器，可用 SQLite/PG，功能弱一些但够看 trace。
+- **Langfuse Cloud**：零运维，但数据出境，与"自建"的初衷冲突。
+
+---
+
+## 8. 分阶段
+
+| 阶段 | 内容 | 验收 |
+|---|---|---|
+| P0 | 确认 Langfuse 部署形态与机器余量；跑通 `curl` 手发一条 OTLP 到 `/api/public/otel/v1/traces` | Langfuse UI 能看见这条 trace |
+| P1 | trace 包 + collector + 7 个挂接点 + 配置接口；默认关闭 | 单测：payload 结构、traceId 稳定性、队列满丢弃、**失败请求也产 trace**（defer 路径）、body 已 Close 时降级 |
+| P2 | 内容采集：三采集点 + headtail 截断 + SSE 三格式解析 + 脱敏 | 截断正确性（头尾保留、dropped_bytes 准确）；半截流标 interrupted |
+| P3 | 前端链接 + admin 门控 + agent 树（traceparent） | e2e：发真实请求 → 日志详情点链接 → 命中同一 traceId；带 traceparent 的请求在 Langfuse 成树 |
+| P4 | 采样调优、丢弃告警、压测、部署实录 | §0.2 三项 + **最坏内存场景**（§3.9：全大请求 + 队列满载 ≤74 MB）+ Langfuse ingestion 吞吐压测 |
+
+按解耦规范 v2，P1 需要额外提供**开启态最小 e2e**，不能只测关闭态的等价行为。
+
+---
+
+## 9. 验证方法
+
+```bash
+# 1) 手工验 OTLP 通路（先于写代码，确认 endpoint 和认证没问题）
+AUTH=$(printf '%s:%s' "$LANGFUSE_PUBLIC_KEY" "$LANGFUSE_SECRET_KEY" | base64)
+curl -sS "$LANGFUSE_HOST/api/public/otel/v1/traces" \
+  -H "Authorization: Basic $AUTH" \
+  -H 'Content-Type: application/json' \
+  -H 'x-langfuse-ingestion-version: 4' \
+  --data @payload.json
+
+# 2) 派生一致性（前后端不能漂移）
+go test ./pkg/apiduo/trace/ -run TestTraceIDStable
+```
+
+### 9.1 性能验证（第一原则的落地证据，不能省）
+
+```go
+// pkg/apiduo/trace/bench_test.go
+func BenchmarkRecordDisabled(b *testing.B) {
+	enabled.Store(false)
+	ctx, info, biz, other := benchFixtures()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		Record(ctx, info, biz, other)
+	}
+}
+func BenchmarkRecordEnabled(b *testing.B) {
+	enabled.Store(true)
+	// drain goroutine 必须在跑，否则 queue 很快填满、测出来的是丢弃路径
+	go drainQueue()
+	...
+}
+```
+
+期望结果（不达标就说明实现跑偏了）：
+
+| 场景 | 目标 | 含义 |
+|---|---|---|
+| Disabled | **0 allocs/op、< 2 ns/op** | 关闭态确实只是一次 atomic load |
+| Enabled（元数据） | ≤ 1 alloc/op、< 150 ns/op | 只有一次逃逸 |
+| Enabled（headtail 采集 1000 帧） | ≤ 3 allocs/op、< 5 μs | buffer 预分配后 append 零再分配 |
+| 队列满 | 0 alloc、纳秒级 | 丢弃路径不能有额外分配 |
+| finalize（body 48KB memcpy） | 1 alloc、< 15 μs | 快照是一次拷贝 |
+| **失败路径**（defer + 无 usage） | 与 Enabled 同量级 | panic recover 分支不额外分配 |
+
+### 9.2 线上对照（比 benchmark 更有说服力）
+
+项目已有 `/api/perf-metrics`，直接用同一套口径做前后对照，不用自建压测：
+
+```bash
+# 改动前，先抓 24h 基线并留档
+curl -sS 'http://127.0.0.1:3000/api/perf-metrics?hours=24' > /tmp/perf-baseline.json
+
+# 灰度：先 1% 跑 1h，再 10% 跑 24h，最后再决定要不要更高
+# 每一步对比 avg_ttft_ms / avg_latency_ms / success_rate 三项
+```
+
+判据：三项指标的波动必须落在这段时间的正常抖动范围内（建议用改动前 7 天的日间波动区间做参照），
+而不是跟单个数字比。CPU profile 里 `apiduoTrace` 的占比应 < 0.1%。
+
+### 9.3 Langfuse 端吞吐（别只压自己，把后端也压一遍）
+
+网关 10% 采样 @ 1667 QPS ≈ 167 traces/s × ~40 KB ≈ 6.7 MB/s 入库。
+自建 Langfuse（web + worker 单副本）的 ingestion 瓶颈在 worker → ClickHouse/S3 批量写。
+灰度前用合成 payload 直打 `/api/public/otel/v1/traces` 压 30 分钟：
+目标 ≥ 500 traces/s 且 Langfuse UI 检索延迟 < 3s。不达标就降采样率或加 worker 副本，
+**不要**在网关侧堆积（队列满丢弃是设计行为，不是故障）。
+
+---
+
+## 10. 明确不做
+
+- 不做 langfuse 侧的内容回写（只单向推送）
+- 不做 Langfuse iframe 内嵌（跨域 + 鉴权 + 性能三重问题，Langfuse UI 也不支持嵌入）
+- 不做反向拉取（Langfuse API → 日志页渲染 span 树），成本和收益不成比例
+- 不做失败请求 trace（v1）。若将来要补，唯一正确位置是 `controller/relay.go` 的 defer
+  （`perfmetrics.RecordRelayResult` 就在那里，能拿到 `newAPIError`），不要塞进消费日志链路
+- 不在主链路上做任何序列化、正则、加锁统计（见 §3.3）
+- 不为"更精确的 input token"去读 body——那会直接违反第一原则
+- 不给普通用户开链接（见 §6.1）
+
+---
+
+## 11. 已定与待拍板
+
+**已随方案确定**（无需再议）：
+
+- 采集范围：全内容（C 档），headtail 默认截断
+- 采样率：常规 10%、失败 100%（§3.8；实际值灰度时按 Langfuse 吞吐压测调）
+- 内容不落盘、队列满即丢、主链路零序列化（§3.4/§3.5 架构公理）
+
+**仍待拍板**（不影响开工，P4 前定即可）：
+
+1. **Langfuse 部署形态** —— 复用现有 ClickHouse + 新增 PG/Redis/MinIO（4–5 容器、2–4 GB 常驻），
+   还是先用 Phoenix 单容器把链路跑通？与 apiduo 自身性能无关（独立进程），只看机器内存余量。
+2. **`langfuse.user.id`** —— 明文 userId（可直接下钻）还是哈希（更保守）。内网自建前提下建议明文。
+
+## 12. 与 2026-11-03《NewAPI LLM 可观测性解决方案》v2.1 的对照
+
+那份方案（下称 v2.1）写于仓库重置前一天，基于旧仓 `jushenzhidao/apiduo`。
+它的**两条设计原则完全正确**，应当继承；但**具体实现锚点和技术前提已被代码演进推翻**，
+逐条核实如下（全部对照当前工作区代码）。
+
+### 12.1 依然成立、必须继承的部分
+
+| v2.1 主张 | 现状印证 |
+|---|---|
+| 观测不得影响主链路，旁路永不反压 | 正确。但 trace 的丢弃策略要比 log-writer 更激进（见 §3.3） |
+| 挂接点选"统一入口 + 请求边界唯一"，不选局部 handler | 正确，且代码已是这个形态：`perfmetrics.RecordRelayResult` 的注释写着 "samples one finished relay exactly once, at the request boundary, regardless of how many channel attempts it took" |
+| 可插拔 sink，便于退役 | 正确，`pkg/perf_metrics` 的 `Store` 接口就是范例 |
+| 默认关闭 + 行为等价 | 已是项目规范 |
+| 内容采集要两处挂接（body 入口 + 响应出口） | 正确。这也是"元数据模式"换不来的能力 |
+
+### 12.2 已被当前代码推翻的部分
+
+| v2.1 的说法 | 当前事实 | 影响 |
+|---|---|---|
+| 锚点 `relay/controller/relay.go` 的 `Relay()` | **该路径不存在**。现为 `controller/relay.go:72` 的 `Relay(c, relayFormat types.RelayFormat)`，多了一个参数 | 锚点必须重选；但"选 Relay 统一入口"的原则未变 |
+| 挂接点 1 需自己 `io.ReadAll` + `io.NopCloser` 重建 body，且"不能用 TeeReader" | **上游已内建**：`common.BodyStorage`（内存/磁盘双模式、`NewReader` 独立游标、可并发回放）+ `common.GetRequestBody(c)` 带 `KeyRequestBody` 缓存 | 那套 buffer 池化、大 body 落盘、sync.Pool 的工程量**不用再写** |
+| "TTFT 采不到，需在挂接点 2 自己扫描 SSE 首帧" | **已在采**：`pkg/perf_metrics` 从 `FirstResponseTime - StartTime` 直接得出，含 `HasTtft` 判定 | 省掉 SSE 帧解析这一整块风险最高的实现 |
+| "NewAPI 自带 Prometheus `/metrics`" | `prometheus/client_golang` 在 `go.mod` 里是 **indirect**，`router/` 内**没有** `/metrics` 注册。指标走 `/api/perf-metrics/{,summary}` + 前端 `features/performance-metrics` 页面 | v2.1 的 P1「抓 /metrics + Grafana 大盘」不成立，要么自己加端点，要么改用现有 API |
+| "Langfuse 复用 ClickHouse，**存储栈零新增**" | **错**。ClickHouse 可复用（独立 database），但 Langfuse v3/v4 强制要求 **PostgreSQL + Redis + S3/MinIO**，一个都省不掉 | 资源账要按 §7 重算，不能按"零新增"立项 |
+| `// OBS:BEGIN/END` 标记 + CI diff 白名单 | 已被 `tools/markercheck` + `.apiduo/merge-budget.txt` 取代，判据也从"路径白名单"升级为"**有没有改上游既有文件的内容**" | 标记名、校验工具、预算登记方式全部要换 |
+
+### 12.3 v2.1 没有覆盖的部分（这也是你最初的问题）
+
+- **全篇没有"日志页面"三个字。** 它解决"数据怎么进 Langfuse"，不解决"从日志页怎么跳到那条 trace"。
+  §4.2 只写了"两边用 trace_id / 请求 ID 关联"，没有说关联键怎么生成、放在哪、谁能看见。
+- **没有权限设计。** Langfuse 无行级隔离，同一实例里全站 trace 都在。v2.1 没考虑
+  "普通用户拿到链接就能看别人"这个问题。本方案 §6 的 `props.isAdmin` + `SetAdmin` 就是补这个洞。
+- **没有具体协议细节。** OTLP endpoint、Basic 认证、`x-langfuse-ingestion-version: 4`
+  这些落地必需的东西，本方案 §4 补齐。
+
+### 12.4 v2.1 比本方案强的地方（要承认）
+
+**内容采集。** 如果目标包含"在 Langfuse 里复盘每次对话的 prompt/completion"，那 v2.1 的两处挂接
+（body 入口 + 响应出口 ring buffer）是唯一路径，本方案的元数据模式做不到。代价是：
+
+- 要处理 SSE 流式 tee（`io.MultiWriter` + 有界 ring buffer，前 N KB + 尾 M KB）
+- 要在 worker 侧做脱敏 / 截断 / 采样分级
+- 引入 WAL 的运维复杂度（多实例隔离、滚动重启 drain、磁盘增长监控）
+- 工作量约为元数据模式的 3–5 倍，且是唯一会碰到 relay 主链路字节流的地方
+
+**所以真正的分叉不是"新旧方案二选一"，而是：你到底要不要内容。**
+
+而在"第一原则是不影响性能"（§0.1）之下，这个问题被切成了三档：
+
+| 档 | 内容范围 | 主链路成本（实测） | 结论 |
+|---|---|---|---|
+| A | 仅元数据 | 2.3 ns（关）/ 360 ns（开） | 可做 |
+| B | + 请求体 + 非流式响应 | +0.4 μs | 被 C 覆盖，取消 |
+| C | + 流式响应内容 | **+11.6 μs（全量）/ +0.6 μs（截断）** | **可做，推荐** |
+
+v2.1 的结论是对的：内容可以采。**是我此前把 SSE tee 的成本估高了两到三个数量级**——
+错在把「本来就要发生的 write」算成了新增成本。实测之后 C 档成为推荐方案。
+
+| 目标 | 路线 |
+|---|---|
+| 只想从日志页点进 Langfuse 看延迟/成本/渠道归因 | 本方案 §3（元数据），保留 v2.1 的原则，丢掉它的重工程量 |
+| 要复盘 prompt/completion | v2.1 的两处挂接必须做，本方案退化为它的"展示层" |
+| 两者都要 | 分两期：先元数据打通链路和展示，再补内容采集 sink |
+
+### 12.5 融合后的最终形态（2026-11-08 优化版）
+
+```
+middleware(RequestId 旁) ── 读 traceparent ─┐
+                                             ▼
+controller/relay.go ── Relay() ──► collector（挂 gin.Context，随请求生灭）
+                                        │  stream_scanner 包 dataHandler：流式帧 append
+                                        │  compatible_handler：非流式体 append
+                                        │  text_quota 结算：usage 字段填充
+                                        ▼
+                      relay defer（controller/relay.go:140，perfmetrics 旁）
+                                        │  finalize：一次快照（body memcpy + buffer 转移）
+                                        │  采样判定 + 入队（元数据队列 / 内容队列分离）
+                                        ▼
+                      pkg/apiduo/trace worker：解析 / 脱敏 / 组装 OTLP → Langfuse
+                                        ▲
+                      model/log.go 兜底快照（任务结算 / MJ / 违规：无 relay defer 的路径）
+```
+
+与旧版的差别：上报点从"结算点 + 兜底点各自入队"统一为 **collector 状态机 + relay defer
+唯一 finalize**；失败请求因此天然有 trace；body 生命周期由 defer 顺序保证（§3.4 ②）。
+
+已废弃不再采用：`io.ReadAll` 重建 body、SSE 首帧扫描采 TTFT、自建 WAL、Prometheus 抓取、
+`relay/controller/` 路径、`// OBS:` 标记前缀。
+
+---
+
+## 13. 改造清单（供决定是否开工）
+
+### 13.1 新增文件（不动上游）
+
+| 文件 | 行数（估） | 职责 |
+|---|---|---|
+| `pkg/apiduo/trace/config.go` | ~70 | env 读取、`enabled` / `bodyMode` 原子量 |
+| `pkg/apiduo/trace/id.go` | ~35 | `TraceID(reqId)` / `SpanID` / `parseTraceparent` |
+| `pkg/apiduo/trace/snapshot.go` | ~55 | 入队结构体，固定字段无 map |
+| `pkg/apiduo/trace/collect.go` | ~110 | 请求体引用、SSE 累积、headtail 截断 |
+| `pkg/apiduo/trace/payload.go` | ~180 | OTLP/HTTP JSON，含 input/output |
+| `pkg/apiduo/trace/exporter.go` | ~200 | 有界队列、批量 flush、丢弃计数、优雅停机 |
+| `pkg/apiduo/trace/redact.go` | ~90 | worker 侧脱敏，规则热加载 |
+| `pkg/apiduo/trace/parse_sse.go` | ~140 | 按 relayFormat 把帧还原成 text / tool_calls |
+| `pkg/apiduo/trace/trace.go` | ~90 | 对外 API：`Record` / `WrapStreamHandler` / `RecordLog` |
+| `pkg/apiduo/trace/*_test.go` | ~320 | payload、id、截断、脱敏、三格式解析、队列丢弃 |
+| `controller/apiduo_trace.go` | ~35 | `GET /api/apiduo/trace/config`（AdminAuth） |
+| `web/src/features/usage-logs/components/trace-link.tsx` | ~50 | 链接组件，`data-apiduo="text"` |
+| `web/src/features/usage-logs/components/__tests__/trace-link.test.tsx` | ~40 | admin 门控、无配置时隐藏 |
+
+**合计约 1,300 行**（含测试），全部新文件，不参与上游 merge。
+
+### 13.2 修改上游文件（全部在标记块内，每处 1–2 行）
+
+| 文件 | 改动 | 说明 |
+|---|---|---|
+| `controller/relay.go`（两处，同文件） | +2 行 | `Relay()` 开头读 `traceparent`；defer 内 finalize——后端挂接文件 7→6 |
+| `relay/helper/stream_scanner.go` | +1 行 | 包 `dataHandler`，流式帧 append 进 collector |
+| `relay/compatible_handler.go` | +1 行 | 非流式体 append 进 collector |
+| `service/text_quota.go` | +1 行 | usage 字段填充（不再是上报点） |
+| `controller/relay.go`（两处，同文件） | +2 行 | `Relay()` 开头读 `traceparent` + defer 内 finalize（**唯一上报点**，成功/失败/panic 全覆盖） |
+| `model/log.go` | +1 行 | 兜底快照（任务结算 / MJ / 违规，无 relay defer 的路径） |
+| `router/api-router.go` | +1 行 | 配置路由（AdminAuth） |
+| `web/.../dialogs/details-dialog.tsx` | +3 行 | 条件渲染链接 |
+| `web/src/features/usage-logs/api.ts` | +6 行 | 取配置 |
+| `web/src/i18n/locales/*.json` | 7 × +2 键 | |
+
+上游净增约 **20 行**。预算登记约 `files +13 / blocks +8 / added +1300`（以 `markercheck -cost` 实测为准）。
+
+### 13.3 不做的事
+
+- 不包装 `ResponseWriter`（不需要 tee，`dataHandler` 已给明文）
+- 不给 trace 加磁盘缓冲 / spool（§3.4 ③，内容不落盘）
+- 不复用 `pkg/perf_metrics` 的 Store 接口（它是纯内存聚合，语义不同；只对齐代码形态）
+- 不在主链路 `json.Unmarshal` / 正则脱敏 / 序列化
+- 不改 `pkg/perf_metrics` 的数据结构
+- 不给 `common.BodyStorage` 加 refcount
+- 不动 ClickHouse `logs` 表结构
+
+### 13.4 回滚
+
+| 层级 | 动作 | 耗时 |
+|---|---|---|
+| L1 | `LANGFUSE_ENABLED=false` + 重启 | 秒级 |
+| L2 | `LANGFUSE_BODY_MODE=off`，退回纯元数据 | 秒级 |
+| L3 | 删掉 8 个标记块里的调用（后端 7 + 前端 1） | 分钟级 |
+| L4 | 删 `pkg/apiduo/trace/` 与路由，回到纯上游 | 分钟级 |
+
+L4 之后 diff 为零。
+
+### 13.5 工期
+
+| 阶段 | 内容 | 工作量 |
+|---|---|---|
+| P1 | collector + 7 挂接点 + 元数据链路 + 配置接口 + 单测（含失败路径） | 2 天 |
+| P2 | 内容采集（三采集点）+ headtail 截断 + 三格式解析 + 脱敏 | 2 天 |
+| P3 | traceparent + agent 树 + 前端链接 + e2e | 1 天 |
+| P4 | benchmark + 最坏内存压测 + Langfuse 吞吐压测 + 灰度 1% → 10% → 100% | 1 天 |
+
+Langfuse 部署另算 0.5–1 天。
+
+
+---
+
+## 14. 合并负担评估（上游同步成本，2026-11-08 实测）
+
+> 判据沿用解耦规范 v2：**侵入度 = 改了多少上游既有文件的内容**。新增文件零合并负担
+> （上游不可能碰自己没有的路径），真正的合并面只有标记块里的插入行。
+
+### 14.1 侵入面总账
+
+| 类别 | 规模 | 合并负担 |
+|---|---|---|
+| 新增 `pkg/apiduo/trace/` 等 13 个文件 | ~1,300 行 | **零**（上游无此路径，永不冲突） |
+| 后端标记块 | 6 个文件、7 个块、~16 行 | 低（见 14.2 实测频率） |
+| 前端标记块 | 2 个文件、~9 行 | 低 |
+| i18n 7 个 locale | 各 +2 键 | **中**（频率最高，但解法机械） |
+| markercheck 预算 | blocks 226→~234（+3.5%）；added（仅上游文件插入行）+~25（+1%） | — |
+
+### 14.2 挂接点文件的实测改动频率（upstream/main 最近 500 次提交）
+
+| 文件 | 命中次数 | 冲突风险 | 说明 |
+|---|---|---|---|
+| `i18n/locales/zh.json` / `en.json` | **90 / 89** | **最高** | 每 5–6 次上游提交改一次。缓解：键追加文件尾部，冲突时两边保留，机械解 |
+| `router/api-router.go` | 23 | 低 | 路由组尾部加 1 行，三方合并基本自动过 |
+| `controller/relay.go` | 22 | 低 | 上游改的是函数中段逻辑；插行点在 `Relay()` 开头与 defer，是稳定区 |
+| `details-dialog.tsx` | 16 | 低 | request_id 行下方插入，上下文稳定 |
+| `service/text_quota.go` | 11 | 低 | 结算函数尾部 1 行 |
+| `model/log.go` | 10 | 低 | `RecordConsumeLog` 内 1 行 |
+| `relay/helper/stream_scanner.go` | 6 | 低 | **函数签名区全历史仅改 5 次**，非常稳定 |
+| `relay/compatible_handler.go` | 6 | 低 | |
+| `usage-logs/api.ts` | 2 | 极低 | |
+
+反直觉结论：**最大的合并摩擦源是 i18n，不是后端挂接点。** 后端 6 个文件里频率最高的
+`controller/relay.go` 也只有 4.4%（22/500），且我们插行的位置（函数头/defer）恰是该文件
+最稳定的区域——上游的 22 次改动集中在请求处理中段。
+
+### 14.3 最坏情况剧本
+
+上游重构 `StreamScannerHandler` 签名（如 `dataHandler` 加参数）：
+
+1. rebase 时标记块附近冲突 → **这是设计意图，不是事故**：强制人工 review 挂接点
+2. 解法：标记块整体平移到新签名下方，包装行适配新参数，通常 5 分钟内完成
+3. `go run ./tools/markercheck` 闸门兜底：任何越出标记块的改动 exit 1，
+   不存在"冲突悄悄解错"的可能
+
+对比参照：本仓现有 226 个标记块、两轮上游同步的实践，最坏情况就是标记块内冲突
+（手动挪一行），从未出现挂接函数被删的情况。
+
+### 14.4 如果上游将来原生支持 OTLP
+
+退出路径（v2.1 §7.6 的思想仍然成立）：删 `pkg/apiduo/trace/` 与 8 个标记块 = diff 归零。
+采集点都在我们自己的 collector 里，不污染任何上游结构，上游若出自己的方案可直接切换。
+
+---
+
+## 15. 落地状态（2026-11-08 P1+P2 后端已实现，未提交）
+
+### 15.1 已落地
+
+**新增 `pkg/apiduo/trace/`（7 文件）**：config / id / snapshot / collector / payload / exporter / trace。
+- 关闭态实测 **2.2 ns / 0 alloc**（Begin），FillUsage/Finalize/Wrap ~14 ns / 0 alloc
+- collector 挂 gin.Context；tailRing 环形尾窗 O(n)；headtail 截断；binaryPlaceholder 保护非文本体
+- 双队列（meta 2048 / content 512）分离；worker 按 tick/批量/深度三种触发 flush；满即丢并计数
+- OTLP/HTTP JSON 手写 payload，langfuse.* + gen_ai.* 双属性族
+
+**桥接新文件 4 个**（上游标记块因此每处只有 1 行）：
+- `controller/apiduo_trace_relay.go`（RelayInfo→RelayMeta 翻译 + nil info 分支）
+- `service/apiduo_trace_usage.go`（textQuotaSummary→Usage）
+- `model/apiduo_trace_bridge.go`（RecordConsumeLogParams→兜底快照 + HasCollector 去重）
+- `controller/apiduo_trace.go`（GET /api/apiduo/trace/config，AdminAuth + log:read scope）
+
+**上游标记块 11 个**：relay.go×3（import/Begin/defer finalize）、stream_scanner×2、http.go×2、
+text_quota×1、log.go×1、api-router×1、access_token_routes×1。
+预算 95 files / 254 blocks / 2395 added / 91 deleted 已登记，markercheck GATE_PASS。
+
+### 15.2 测试与验证
+
+- 单测 + 开启态 e2e（httptest 假 Langfuse sink）全绿；`go test -race` 干净
+- traceId 派生字节级钉死；traceparent 采样位/parentSpanId 语义有测试
+- 队列满丢弃不阻塞（worker 卡死在 HTTP 时 50 次入队 <1s）
+- 受影响包回归：relay/helper / model / service / controller 全过
+- router 包有**预存在**失败（discounts 路由未登记 access-token 规则，0.0.13 欠账，与本改动无关）
+
+### 15.3 落地过程中修掉的实现 bug（写代码才暴露的）
+
+1. **worker 小批量永不 flush**：ticker 分支原只置标志不触发，单条 span 会无限滞留。
+   改为 ticked 标志参与 flush 判定。
+2. **`info.ChannelId` 是嵌入指针提升字段**：`RelayInfo` 内嵌 `*ChannelMeta`，渠道选择前
+   `cm` 为 nil，直接读 `info.ChannelId` = 解引用 nil（controller 测试抓到）。改用
+   `info.GetChannelID()`。**以后碰 RelayInfo 的 ChannelType/UpstreamModelName 等提升字段都要走
+   nil-safe getter。**
+3. **flushInterval 测试竞态**：包级 var 被泄漏 worker 并发读；挪进 Config（FlushIntervalMS）。
+4. 新 AdminAuth 路由必须同步登记 `middleware/access_token_routes.go` 的 scope 规则表，
+   否则 router 的覆盖测试红。
+
+### 15.4 未落地（下一期）
+
+- P3 前端：日志详情链接组件 + `GET /api/apiduo/trace/config` 消费 + i18n
+- worker 侧 SSE 帧解析（openai/claude/gemini delta 还原）与脱敏正则
+- 优雅停机 drain（main.go 钩子，v1 接受停机丢弃）
+- Langfuse 真实实例验证 payload 映射（P0 curl 冒烟）
+
+---
+
+## 16. 第二轮落地（P3 前端 + 内容管线 + 充分性测试）
+
+### 16.1 本轮新增
+
+**前端（P3）**
+- `web/src/features/usage-logs/lib/trace-link.ts`：`buildTraceUrl` 纯函数（**拓展点**：
+  换 Phoenix/Tempo 只改这里；路由模板单点定义）
+- `components/trace-link.tsx`：`ApiduoTraceLink`，`data-apiduo="text"`，颜色用 `--apidup-ink`
+  （`--primary` 对比度不足，红线）
+- `api.ts` `getTraceConfig()`、`types.ts` `admin_info.trace_id`、详情弹窗挂载、i18n ×7
+- **权限模型**：后端 `formatLogOtherJSON(user)` 已剥 `admin_info` ⇒ 普通用户拿不到 trace_id，
+  前端自然不渲染；`isAdmin` 是第二道锁，不是第一道
+
+**内容管线**
+- `parser.go` 注册表 + `parser_openai/claude/gemini.go`：帧 → `{text, tool_calls, finish_reason}`
+  （**拓展点**：新上游格式 = 1 个文件 + `RegisterParser`，不动别处）
+- `redact.go`：API key / Bearer / 身份证 / 手机 / 银行卡 / 邮箱，默认开
+  （`LANGFUSE_REDACT=false` 可关）；规则表即配置
+- `formatOutput`：先解析再脱敏；认不出的格式保留原始帧（文档承诺的 fallback）
+- traceparent **上游透传**：`trace.Propagate` + `SetupApiRequestHeader` 挂接（enabled 才透传，
+  默认态出站请求与上游逐字节一致）
+
+### 16.2 对抗审查抓到的 3 个真缺陷（写测试才暴露）
+
+1. **截断劈帧**：headtail 原来按字节切，SSE 帧被拦腰斩断，解析器拿到半截 JSON 直接失明。
+   改为**帧级窗口**：head 整帧进入，放不下就 seal，后续整帧进 tail；tail 按整帧淘汰，
+   单帧超预算保完整帧（不切 JSON）。
+2. **head 乱序**：首帧超 head 预算时 head 空着，后续小帧却进 head ⇒ 输出顺序颠倒。
+   用 `headSealed` 锁：第一次放不下即封口，之后全走 tail。
+3. **trace_id 双写覆盖**：同步请求同时走 text_quota（写 collector id，含 traceparent）和
+   model 兜底（写派生 id），**后者覆盖前者** ⇒ 带 traceparent 的请求日志链接指向不存在的 trace。
+   新增 `TraceIDForLog`（collector 优先），兜底路径只在无 collector 时派生。
+4. **空 request_id 产出垃圾 span**：`TraceID("")=""` ⇒ traceId 为空的 span 无法关联任何日志。
+   `Begin` 现在直接跳过（生产必有 request_id，middleware.RequestId 保证）。
+
+### 16.3 测试矩阵（本轮）
+
+| 层 | 内容 |
+|---|---|
+| 单元 | parser ×3（含 tool_call 分片合并、未知格式拒绝）、redact（key/手机/身份证/邮箱/银行 + 不误伤正文）、帧级截断、headSealed、
+tail 淘汰、帧尾窗口保整帧 |
+| 集成 | 开启态 e2e（假 sink 收 OTLP）、**日志 trace_id == span traceId**（含/不含 traceparent）、兜底路径、
+队列满不阻塞、采样率、批量单请求 |
+| 防御 | Propagate 关闭态零改动、空 request_id 不建 collector、Redact=false 透传 |
+| 前端 | buildTraceUrl 全分支、组件 admin 门控、无 id 隐藏、配置失败 fail closed、disabled 隐藏、`rel="noopener noreferrer"` |
+| 闸门 | `go test -race` 干净、`go build ./...`、`bun run typecheck`(1518 文件)、`bun run build`(67MB)、markercheck |
+
+### 16.4 可拓展点（写给别人看的）
+
+| 想改什么 | 改哪里 | 不用碰 |
+|---|---|---|
+| 换 OTLP 后端（Phoenix/Tempo） | `LANGFUSE_HOST` + `buildTraceUrl` 模板 | 采集、队列、parser |
+| 支持新上游流格式 | 新 `parser_xxx.go` + `RegisterParser` | exporter、payload、config |
+| 加脱敏规则 | `redact.go` 的 `redactRules` | 其余全部 |
+| 换队列/批量策略 | `exporter.go` 常量 + `Config.FlushIntervalMS` | 采集点 |
+| 加新挂接点（如某渠道特例） | 新桥接文件 + 1 行标记块 | 已有挂接点 |
+
+### 16.5 未落地
+
+- 优雅停机 drain（main.go 钩子；v1 停机即丢，文档已声明）
+- 真机 Langfuse 冒烟（P0 curl 验证属性映射，`x-langfuse-ingestion-version: 4`）
+- 前端全量 vitest 未跑通：工作区有**并行会话的在途改动**（`route-hub*`，16:11 后新增 4 文件），
+  其半成品测试会让全量跑挂起；本轮只跑 `usage-logs` 范围。markercheck 的 1 处残留违规
+  （`advanced-custom-editor-dialog.tsx` 的 3 行 route-hub import）属该会话，不属本功能。
+
+---
+
+## 17. 本地端到端实测（2026-11-08 18:4x–19:0x）
+
+真进程、真 HTTP、真浏览器，零外部依赖：假上游 + 假 Langfuse OTLP sink。
+
+### 17.1 测试环境
+
+| 组件 | 端口 | 作用 |
+|---|---|---|
+| 网关（真二进制） | 39110 | SQLite 空库 + `/api/setup` 建 root |
+| 假上游 | 39101 | OpenAI 兼容：SSE 5 帧含 tool_calls 分片、非流式、按关键字回 500；记录收到的 `traceparent` |
+| 假 Langfuse | 39102 | 收 `/api/public/otel/v1/traces`，落盘 body 与请求头 |
+| 浏览器 | — | 真 Chrome（puppeteer-core，`--no-proxy-server`） |
+
+驱动脚本当前放在 `/tmp/trace-e2e/`（`fakes/`、`drive.py`、`privacy.py`、`off.py`、`fe.mjs`）；
+要长期保留就挪进 `e2e/`，脚本里的绝对路径一并改成相对项目根。
+
+关键 env：`LANGFUSE_ENABLED=true`、`SAMPLE_RATE=100`、`ERROR_SAMPLE_RATE=100`、
+`FLUSH_INTERVAL_MS=300`、`BODY_MODE=headtail`、两个限流 `*_ENABLE=false`。
+
+### 17.2 结果
+
+| 套件 | 断言 | 结果 |
+|---|---|---|
+| 后端 E2E（`drive.py`） | 36 | **36/36** |
+| 隐私（`privacy.py`） | 10 | **10/10** |
+| 关闭态等价（`off.py`） | 7 | **7/7** |
+| 真实浏览器（`fe.mjs`） | 5 | **5/5** |
+
+覆盖的事实（不再只是单测）：
+
+- 非流式 / 流式 / 带 `traceparent` / 上游 500 四条请求 → **四条 span**，一对一
+- 流式输出被还原成 `{"text","tool_calls","finish_reason"}`，tool_call 的
+  `name` 与分片 `arguments` 拼回 `{"city":"北京"}`，不再是原始 SSE 信封
+- 注入的 `sk-live-…` 在导出内容里变成 `[REDACTED:api_key]`
+- 客户端 `traceparent` 的 trace-id **被采纳**，`parentSpanId` 等于客户端 span-id
+- 日志 `admin_info.trace_id` 与 span 的 `traceId` **逐一相等**（驱动从 span 侧反查，避免历史行干扰）
+- 非管理员 `/api/log/self` 的 `other` 里**没有 `admin_info`**，也没有顶层 `trace_id`；
+  `/api/apiduo/trace/config` 对非管理员 403（不泄露内网 host）
+- 关闭态：0 导出、0 trace_id、**上游收到的 `traceparent` 为空**（出站与上游逐字节一致）
+- 浏览器：管理员登录 → 日志页 → 详情弹窗出现「在 Langfuse 中查看 Trace」，
+  href = `{host}/project/{project_id}/traces/{32 hex}`，`rel="noopener noreferrer"`、`target=_blank`
+
+### 17.3 本地 E2E 抓到的 4 个缺陷（单测与 code review 都没抓到）
+
+1. **`Enabled()` 永远为假（最严重）**：热路径是一个裸 `atomic.Bool`，而它只在
+   `current()` 的 `sync.Once` 里被赋值。`Begin` 先查 `Enabled()` 再读配置 ⇒ 新进程里
+   谁都没触发过 `current()`，开关永远是关的；**访问一次 `/api/apiduo/trace/config`
+   反而会让它从下个请求开始生效**（因为那次调用顺路读了配置）。修：`init()` 里
+   `armFromEnv()`，进程启动即武装（`TestArmFromEnvOpensGate` 钉住）。
+2. **失败请求丢 input**：`HasContent` 被定义成 `hasContent || usageSet`，而失败请求既没有
+   帧也没有结算 ⇒ 恒假 ⇒ payload 里 input/output 一起被跳过。**失败恰恰是最想看
+   「我们发了什么」的场景**。修：队列路由按「真的有没有字节」判定，input/output 各自
+   按长度写（`TestFailedRequestKeepsInputAndLevel`、`TestHasContentFollowsBytes`）。
+3. **失败 span 在 Langfuse 里看着像成功**：只设了 OTLP `status.code=2`，没有
+   `langfuse.observation.level` 与 `status_message`。修：失败时补 `level=ERROR` +
+   脱敏后的原因（`MaskSensitiveErrorWithStatusCode`，按 400 字符截断且不劈 UTF-8），
+   OTLP `status.message` 同步带上。
+4. **并行提交吞掉共享注册表里的标记块**：另一会话的提交重写了
+   `middleware/access_token_routes.go`，把我加的 `GET /api/apiduo/trace/config` 规则删了，
+   路由覆盖测试立刻红。→ 每次 rebase/合并后必须 `grep APIDUO:trace:BEGIN` 数块，
+   数量应为 **18**（后端 13 + 前端 5）。
+
+### 17.4 本机环境坑（下次复现直接用）
+
+- **端口冲突是跨协议族的**：Go 的 `:39100` 绑在 `*:39100`（IPv6 双栈），另一个进程绑
+  `127.0.0.1:39100`（IPv4）时**两个都"成功"**，curl 走 IPv4 命中别人（返回 uvicorn 的
+  `{"detail":"Not Found"}`）。`lsof -nP -iTCP:PORT` 会同时列出两行。
+- 磁盘 >95% 会全站 503 `system_disk_overloaded`：`PUT /api/option/`
+  `performance_setting.monitor_disk_threshold=99` 临时放宽。
+- `/api/token/{id}/key` 返回的是**不带 `sk-` 前缀**的裸 key，客户端要自己加。
+- 新建用户的 `quota` 字段不生效，要 `POST /api/user/manage` `{"action":"add_quota"}`。
+- 断言必须按「本次请求的 request_id」收敛，否则库里的历史行会制造假阳性。
+
+---
+
+## 18. 真实 Langfuse 实测（ai-prod，2026-11-08 19:30–20:20）
+
+假 sink 只能证明「我们发了自认为正确的 JSON」。真实后端才能回答「Langfuse 认不认这些属性」——
+认不出的属性会被**静默丢弃**，而 span 本身看起来毫无问题。
+
+### 18.1 环境
+
+| 组件 | 位置 | 说明 |
+|---|---|---|
+| Langfuse | `langfuse.1task.cn`（`127.0.0.1:39196`） | 自建 v3.225.15，project `apiduo`，此前零流量 |
+| 测试网关 | ai-prod 容器 `trace-e2e-gw` | `127.0.0.1:39197`，挂在 `apiduo-langfuse_default` 网络 |
+| 假上游 | ai-prod 容器 `trace-e2e-fakes` | `http://trace-e2e-fakes:39101`（容器内解析） |
+| 数据 | `/www/data/apiduo/trace-e2e/` | 二进制 + SQLite，`bin/apiduo` 换文件 + restart 即升级 |
+
+网关用 **静态编译产物**跑在 `alpine` 里（`CGO_ENABLED=0`，sqlite 驱动是纯 Go），
+`LANGFUSE_HOST=http://apiduo-langfuse-web:3000` 走容器网络直连，不经过公网与 nginx。
+
+### 18.2 结果
+
+| 套件 | 断言 | 结果 |
+|---|---|---|
+| 远程驱动（`remote.py`，跑在服务器上） | 16 | 16/16 |
+| 真实 Langfuse API 反查（`verify_langfuse.py`） | 36 | **36/36** |
+| 真实 UI（headless Chrome 打开 trace 页） | 6 | 5/6（见 18.4） |
+
+真实后端确认的事实：
+
+- `admin_info.trace_id` == Langfuse `trace.id`，**日志里的跳转链接点开就是那条 trace**
+- `langfuse.observation.model.name` / `gen_ai.usage.*` 都映射成功（21/13/34、27/19/46）
+- 流式输出还原成 `{text, tool_calls, finish_reason}`，tool_call 分片拼回完整 JSON
+- 非流式回答同样出现在 Output（表现为 `finish_reason + text`）
+- 密钥脱敏在 UI 里可见：`[REDACTED:api_key]`
+- 失败请求：`level=ERROR`（树里红点）+ `statusMessage="status_code=500, upstream exploded on purpose"`
+  + **`?level=ERROR` 可查询**（41 条 error observation，是过滤器不是靠人眼扫）
+- 客户端 `traceparent`：span 的 `parentObservationId` == 客户端 span-id；
+  同一 trace 下累积了 **4 条 generation**（多次网关调用一棵树），UI 树里能看到 7 个 observation
+
+### 18.3 这轮抓到的 3 个缺陷（前两个假 sink 抓不到）
+
+1. **非流式响应完全丢失**。`outputBytes()` 在 headtail 模式只读 SSE 帧窗口，
+   而非流式响应写在 `respBody` —— 帧窗口为空时直接返回 nil，整个补全被丢掉。
+   本地假 sink 那一轮其实已经有迹象（那条 span 只有 input 没有 output），但我当时只断言了流式。
+   ⇒ 修：空帧窗口回落 `respBody`；`TestNonStreamResponseBodyIsCaptured` + 驱动补非流式断言。
+2. **完成态被当成空流解析**。解析器只读 `choices[].delta`，完成响应是 `choices[].message`，
+   于是输出成了 `{"finish_reason":"stop","text":""}` —— **比不解析更糟**（真实答案在原始体里被丢弃）。
+   ⇒ 修：解析器同时支持 `delta` 与 `message`；`parseOutput` 增加认领门槛：
+   **解析不出文本也没有 tool_calls 就回退原始体**（只拿到 finish_reason 不算解析成功）。
+3. **自定义属性不可筛选**。Langfuse 只把 `langfuse.trace.metadata.*` / `langfuse.observation.metadata.*`
+   放进顶层 metadata；裸 `apiduo.*` 全部沉到 `metadata.attributes`，**UI 里无法过滤**。
+   「哪个渠道慢」正是核心用法，等于白采。
+   ⇒ 修：五个运维要筛的维度另发一份 `langfuse.trace.metadata.{request_id,channel_id,group,token_name,format}`，
+   `apiduo.*` 保留给原始报文与直读 OTLP 的场景。
+
+### 18.4 已知取舍（真实 UI 观察）
+
+- **`statusMessage` 在 v3.225 的 Preview 面板不渲染**（DOM 里没有该文本），API 里有、v4 UI 有。
+  失败可见性靠 `ERROR` 级别（红点）+ `?level=ERROR` 过滤，够用；要看到文案需升 v4。
+- **带 traceparent 时 trace 级 input/output 为空**：Langfuse 的 trace 级字段取自 **root observation**，
+  而我们的 span 是客户端 span 的子节点。客户端自己的 root span 到达后自然补上；
+  在那之前列表页这两列为空，点进 observation 才有内容。
+  想立刻有列表预览可以加 `langfuse.trace.input/output`（已废弃，v4 移除），代价是内容翻倍入库——
+  **当前不做**，等真实需求。
+- Langfuse worker 日志里有 `otel-ingestion-queue` 等 socket timeout（环境侧 Redis/CH 压力），
+  但 trace 全部落库；网关侧 4 条请求零重试、零 5xx。
+
+### 18.5 复现
+
+```bash
+# 上传（本机 → 服务器）
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o apiduo-linux .
+gzip -9 -c apiduo-linux > apiduo-linux.gz && scp apiduo-linux.gz ai-prod:/www/data/apiduo/trace-e2e/
+# 服务器上
+gunzip -c apiduo-linux.gz > bin/apiduo && docker restart trace-e2e-gw
+cd /www/data/apiduo/trace-e2e && E2E_UPSTREAM=http://trace-e2e-fakes:39101 python3 remote.py
+LANGFUSE_HOST=http://127.0.0.1:39196 python3 verify_langfuse.py <request_id:trace_id>...
+```
+
+⚠️ 上传 41 MB 走家用上行约 10 分钟；容器内二进制建议用**目录挂载**（`bin/`）而不是单文件挂载，
+换版本只需替换文件 + `docker restart`。Linux 下假服务的监听地址必须显式 `0.0.0.0`，
+绑 `127.0.0.1` 时端口发布与容器间访问都不通。
