@@ -869,3 +869,17 @@ URL、JSON 透传。已把闸门扩到全部 advancedcustom 渠道（见 §9.17 
 4. 并发用例每请求传不同长度的图片，用 part `bytes` 判断有没有串包。
 
 用例脚本：`/tmp/apiduo-img-test/matrix_edits_20261108.py`（临时件，未入库）。
+
+### 9.19 生产双端点与转存实测（2026-11-08 13:45）
+
+本地矩阵只证明了逻辑；这轮在生产临时建渠道（跑完删除）把两条没跑过的路径补上：
+
+1. **gpt-image-2 双端点**：`image_protocol=gpt-image-2` + `edit_path=/v1/images/edits`，
+   图生图（edits 入口文件 / generations 入口 data URI / chat 图片）全部 200，文生图仍走主端点。
+2. **对象存储转存**：渠道级 `artifact_storage` + `rewrite_paths: ["$.data[*].b64_json => url clear"]`。
+   bfl 返回的 `b64_json` 在回包前被换成 MinIO 链接（同 key `test/response/2026/11/08/<sha16>.png`），
+   `b64_json` 置 null；对象 HTTP GET **200 / image/png**；chat 入口拿到的也是 MinIO 链接。
+
+⚠️ 两个操作细节：临时渠道必须同时写 `abilities` 行（否则 503 model_not_found），
+且计费需要 `ModelPrice`（否则 400 price not configured）；两者都在验证后删除。
+详见 `image-e2e-2026-11-07.md` 同名小节。
