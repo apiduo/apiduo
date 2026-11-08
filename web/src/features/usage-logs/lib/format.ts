@@ -476,6 +476,18 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   // User management
   'user.create': 'Created user {{username}} (role {{role}})',
   'user.update': 'Updated user {{username}} (ID: {{id}})',
+  // APIDUO:discount:BEGIN
+  // 折扣是资金敏感操作，文案必须能看出「改的是谁的折扣」，
+  // 只显示路由模板会让运营无法在列表里分辨。
+  'user.discount_update':
+    'Updated model discounts for {{username}} (ID: {{id}})',
+  // APIDUO:audit-denied:BEGIN
+  // 权限不足的访问：审计列表要能一眼看出「谁在试哪个接口」，
+  // 只显示 action=access.denied 对运营没有意义。
+  'access.denied':
+    'Denied access to {{method}} {{route}} (insufficient privileges)',
+  // APIDUO:audit-denied:END
+  // APIDUO:discount:END
   'user.delete': 'Deleted user {{username}} (ID: {{id}})',
   'user.account_delete': 'Account deletion',
   'user.manage': 'Performed {{action}} on user {{username}} (ID: {{id}})',

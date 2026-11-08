@@ -47,11 +47,43 @@ describe('getGroupDiscountInfo', () => {
     expect(info?.offPercent).toBeCloseTo(1 - 0.7 / 0.9, 6)
   })
 
-  it('未选分组、选全部、分组不可用时都不展示折扣', () => {
+  it('分组不可用时不展示折扣', () => {
     const model = makeModel({ user_discount_ratios: { vip: { 'gpt-4o': 0.7 } } })
-    expect(getGroupDiscountInfo(model)).toBeNull()
-    expect(getGroupDiscountInfo(model, 'all')).toBeNull()
     expect(getGroupDiscountInfo(model, 'team-x')).toBeNull()
+  })
+
+  it('选「全部」时按折扣后最低价归因，不再返回 null', () => {
+    // 默认视图就是「全部」。这里返回 null 会让标价停在跨组组价上，
+    // 而用户实付更低——标价与账单对不上。
+    const model = makeModel({ user_discount_ratios: { vip: { 'gpt-4o': 0.7 } } })
+    for (const filter of [undefined, 'all']) {
+      const info = getGroupDiscountInfo(model, filter)
+      expect(info).not.toBeNull()
+      expect(info?.baseRatio).toBe(0.9)
+      expect(info?.effectiveRatio).toBe(0.7)
+    }
+  })
+
+  it('最便宜的组本身没有折扣时不画划线价', () => {
+    // default 组组价 1.0、vip 组折扣后 0.7：最便宜的是 vip 的折扣价，应展示。
+    // 反过来若 vip 折扣后 0.95 而 default 组价 1.0，最便宜仍来自折扣，也展示。
+    // 只有当最便宜的是「没折扣的组价」时，划线价才是凭空造出来的。
+    const model = makeModel({
+      enable_groups: ['default', 'vip'],
+      group_ratio: { default: 1, vip: 0.9 },
+      user_discount_ratios: { vip: { 'gpt-4o': 0.95 } },
+    })
+    // default 组价 1.0 比 vip 的 0.95 更贵，最便宜来自折扣 → 仍展示
+    const info = getGroupDiscountInfo(model, 'all')
+    expect(info?.effectiveRatio).toBe(0.95)
+
+    const cheaperBase = makeModel({
+      enable_groups: ['default', 'vip'],
+      group_ratio: { default: 0.8, vip: 0.9 },
+      user_discount_ratios: { vip: { 'gpt-4o': 0.85 } },
+    })
+    // default 组价 0.8 才是最低，用户在该组没有折扣 → 不画
+    expect(getGroupDiscountInfo(cheaperBase, 'all')).toBeNull()
   })
 
   it('命中 * 兜底行时按兜底倍率算', () => {
@@ -68,14 +100,43 @@ describe('getGroupDiscountInfo', () => {
     expect(getGroupDiscountInfo(model, 'vip')?.effectiveRatio).toBe(0.6)
   })
 
-  it('折扣不低于组价时不标折扣（避免划线与现价相同）', () => {
+  it('折扣与组价相等时不标（避免 -0% 的空标签）', () => {
     const same = makeModel({ user_discount_ratios: { vip: { 'gpt-4o': 0.9 } } })
     expect(getGroupDiscountInfo(same, 'vip')).toBeNull()
+  })
 
+  it('折扣高于组价时标为涨价，而不是静默', () => {
+    // 0.95 > 组倍率 0.9：用户实际在付更贵的价。
+    // 返回 null 会让页面按更贵的价展示却不给任何解释，账单来了才发现。
     const higher = makeModel({
       user_discount_ratios: { vip: { 'gpt-4o': 0.95 } },
     })
-    expect(getGroupDiscountInfo(higher, 'vip')).toBeNull()
+    const info = getGroupDiscountInfo(higher, 'vip')
+    expect(info).not.toBeNull()
+    expect(info?.isIncrease).toBe(true)
+    expect(info?.offPercent).toBeLessThan(0)
+    expect(info?.offPercent).toBeCloseTo(1 - 0.95 / 0.9, 6)
+  })
+
+  it('免费模型不标折扣（划线价与现价同为 0）', () => {
+    // 0 元模型挂「-44%」既没信息量，又自相矛盾：划掉的价和现价一样。
+    for (const model of [
+      makeModel({ model_ratio: 0, user_discount_ratios: { vip: { '*': 0.5 } } }),
+      makeModel({
+        model_ratio: 0,
+        model_price: 0,
+        user_discount_ratios: { vip: { '*': 0.5 } },
+      }),
+    ]) {
+      expect(getGroupDiscountInfo(model, 'vip')).toBeNull()
+    }
+  })
+
+  it('降价时 isIncrease 为 false', () => {
+    const model = makeModel({ user_discount_ratios: { vip: { 'gpt-4o': 0.7 } } })
+    const info = getGroupDiscountInfo(model, 'vip')
+    expect(info?.isIncrease).toBe(false)
+    expect(info?.offPercent).toBeGreaterThan(0)
   })
 
   it('非法倍率（0、负数、非有限值、>=1）不生效', () => {

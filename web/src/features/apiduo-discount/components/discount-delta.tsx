@@ -59,13 +59,24 @@ export function DiscountDelta({
     false
   )
 
+  // 涨价要显式提示：折扣倍率高于组倍率时用户其实在付更贵的价，
+  // 如果只画一条更低的划线价而不标方向，会被误读成「有优惠」。
+  const percent = Math.round(Math.abs(info.offPercent) * 100)
+
   // 独占一行：卡片的宽度装不下「现价 + 单位 + 划线价 + 折扣标」四段，
   // 挤在一行会把主价格的字号压下去，层级反而乱。
   return (
     <div className='flex flex-wrap items-center gap-1'>
       <s className='text-muted-foreground text-xs font-normal'>{original}</s>
-      <span className='bg-primary/10 text-primary rounded px-1 py-px text-[10px] leading-4 font-medium'>
-        -{Math.round(info.offPercent * 100)}%
+      <span
+        className={
+          info.isIncrease
+            ? 'bg-destructive/10 text-destructive rounded px-1 py-px text-[10px] leading-4 font-medium'
+            : 'bg-primary/10 text-primary rounded px-1 py-px text-[10px] leading-4 font-medium'
+        }
+      >
+        {info.isIncrease ? '+' : '-'}
+        {percent}%
       </span>
     </div>
   )

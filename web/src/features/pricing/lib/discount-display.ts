@@ -24,8 +24,10 @@ import { formatPriceAtRatio } from './price'
 export type DiscountedPrice = {
   /** 划线原价：用该组配置的 group_ratio 计算，不含个人折扣 */
   original: string
-  /** 折后价相对划线原价降了多少，0.3 表示 -30% */
+  /** 相对划线原价的变动，0.3 表示 -30%，负数表示涨价 */
   offPercent: number
+  /** 折扣倍率高于组倍率：用户其实在付更贵的价，需要红色感叹提示 */
+  isIncrease: boolean
 }
 
 /**
@@ -61,6 +63,7 @@ export function buildDiscountedPrices(
       false
     ),
     offPercent: info.offPercent,
+    isIncrease: info.isIncrease,
   }))
 }
 // APIDUO:discount:END

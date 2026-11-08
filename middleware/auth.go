@@ -63,6 +63,10 @@ func authHelper(c *gin.Context, minRole int) {
 		return
 	}
 	if user.Role < minRole {
+		// APIDUO:audit-denied:BEGIN
+		// 角色不足也要留痕：这是「有人在试权限」的唯一证据。
+		recordDeniedAccessAudit(c, user, minRole)
+		// APIDUO:audit-denied:END
 		abortWithWebMessage(c, http.StatusForbidden, "AUTH_INSUFFICIENT_PRIVILEGE", common.NewMessage("Unauthorized, insufficient privileges"))
 		return
 	}

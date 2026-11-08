@@ -1,30 +1,8 @@
 # 上游合并面预算：上游文件里我方插入的行、标记块、以及删除的上游行。
-# 2026-11-07 登记 option-batch：+2 个不可替代挂接点 / +7 行
-#   （router 注册点必须落在 optionRoute 作用域内；token scope 规则表只能就地加行）。
-# 2026-11-07 image-protocol 已登记：+5 个不可替代挂接点 / +28 行（三入口折叠）。
-# 2026-11-07 登记 log-final：+3 个挂接点 / +17 行
-#   （SumUsedQuota、SumUsedToken 各一个 CH 分支，migrateClickHouseLogDB 一个迁移调用；
-#    去重逻辑本体在新增的 model/log_final.go，不计入）。
-# 2026-11-08 登记 discount：+14 个挂接点 / +89 行、删除 10 行
-#   （controller/pricing.go 注入折后倍率表；relay/helper/price.go 命中即覆盖组倍率；
-#    relaykit/dto/user_settings.go 加 ApiduoDiscounts 字段；service/quota.go 音频链路同步；
-#    service/task_billing.go 把组倍率计算搬进标记块以改用冻结快照，故有 10 行删除；
-#    匹配/展开逻辑本体在新增的 pkg/apiduo/discount，不计入）。
-# 2026-11-08 登记 discount-ui：+5 个文件 / +16 个挂接点 / +215 行、删除 1 行
-#   （router/api-router.go 两个管理员折扣接口；users-mutate-drawer.tsx 只留一个挂载点，
-#    加载/保存/表格全在新增的 features/apiduo-discount；controller/pricing.go 改按组展开；
-#    pricing 前端六个文件接划线原价与折扣标，其中 price.ts / model-helpers.ts 只新增函数、
-#    不改原函数体；model-card.tsx 与 cached-price-cell.tsx 各有渲染点必须就地插入，
-#    否则卡片视图和表格视图会显示两种价。+215 是累计口径，含同期未提交的其它工作）。
-# 2026-11-08 登记 image-edits-files-only：+1 个挂接点 / +5 行
-#   （edits 只收文件流：relay/channel/advancedcustom/adaptor.go 的 ConvertImageRequest 里
-#    必须早于 openai 转换器拦一道，否则 multipart 无文件会被记成可重试的 500；
-#    校验与错误分类本体在新增的 apiduo_image_adaptor.go，不计入）。
-# 除新增功能外只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
+# 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
-#   注意：-update 会重写本文件并抹掉这些登记注释，更新后必须手工恢复。
 # 格式：<key>	<value>
-files	92
-blocks	243
-added	2353
-deleted	91
+files	97
+blocks	273
+added	2584
+deleted	94

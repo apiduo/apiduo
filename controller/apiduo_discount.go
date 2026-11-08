@@ -23,6 +23,7 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/apiduo/discount"
 	"github.com/QuantumNous/new-api/service"
@@ -108,6 +109,8 @@ func UpdateUserDiscounts(c *gin.Context) {
 	}
 
 	settings := user.GetSetting()
+	// 改前快照：审计要能回答「从几折改成几折」，只记路由和用户 ID 不够。
+	beforeRules := discount.Parse(settings.ApiduoDiscounts)
 	if len(rules) == 0 {
 		// 空规则等于取消折扣，让 key 从 setting 里消失，避免留下 "[]"。
 		settings.ApiduoDiscounts = nil
@@ -124,6 +127,44 @@ func UpdateUserDiscounts(c *gin.Context) {
 		common.ApiErrorT(c, "Update failed")
 		return
 	}
+
+	// APIDUO:discount:BEGIN
+	// 手动埋点并跳过中间件的 generic 兜底。
+	// 折扣是资金敏感操作：「谁在什么时候动了哪个用户」还不够，
+	// 必须能回答「把哪条规则从几折改成了几折」，否则事后无法定责。
+	authMethod := "session"
+	if c.GetBool("use_access_token") {
+		authMethod = "access_token"
+	}
+	model.RecordOperationAuditLog(
+		c.GetInt("id"), c.GetInt("role"),
+		"PUT /api/user/:id/discounts",
+		c.ClientIP(),
+		"user.discount_update",
+		map[string]any{
+			"id":       user.Id,
+			"username": user.Username,
+			"before":   beforeRules,
+			"after":    rules,
+		},
+		&model.AuditAdminInfo{
+			AdminID:       c.GetInt("id"),
+			AdminUsername: c.GetString("username"),
+			AdminRole:     c.GetInt("role"),
+			AuthMethod:    authMethod,
+		},
+		&model.AuditRequestInfo{
+			Method:  c.Request.Method,
+			Route:   c.FullPath(),
+			Path:    c.FullPath(),
+			Status:  http.StatusOK,
+			Success: true,
+			Params:  map[string]string{"id": strconv.Itoa(user.Id)},
+		},
+		c,
+	)
+	common.SetContextKey(c, constant.ContextKeyAuditLogged, true)
+	// APIDUO:discount:END
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

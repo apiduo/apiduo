@@ -92,6 +92,7 @@ export function ModelPriceCell(props: {
     value: string
     original?: string
     offPercent?: number
+    isIncrease?: boolean
   }>
   // APIDUO:discount:END
   const providerCaption = dynamic?.providerCount
@@ -261,7 +262,12 @@ export function ModelPriceCell(props: {
     metrics = metrics.map((metric, index) => {
       const price =
         discountedPrices[Math.min(index, discountedPrices.length - 1)]
-      return { ...metric, original: price.original, offPercent: price.offPercent }
+      return {
+        ...metric,
+        original: price.original,
+        offPercent: price.offPercent,
+        isIncrease: price.isIncrease,
+      }
     })
   }
   // APIDUO:discount:END
@@ -293,8 +299,15 @@ export function ModelPriceCell(props: {
                 </s>
               )}
               {typeof metric.offPercent === 'number' && (
-                <span className='bg-primary/10 text-primary ml-1.5 rounded px-1 py-px align-[1px] text-[10px] leading-4 font-medium'>
-                  -{Math.round(metric.offPercent * 100)}%
+                <span
+                  className={
+                    metric.isIncrease
+                      ? 'bg-destructive/10 text-destructive ml-1.5 rounded px-1 py-px align-[1px] text-[10px] leading-4 font-medium'
+                      : 'bg-primary/10 text-primary ml-1.5 rounded px-1 py-px align-[1px] text-[10px] leading-4 font-medium'
+                  }
+                >
+                  {metric.isIncrease ? '+' : '-'}
+                  {Math.round(Math.abs(metric.offPercent) * 100)}%
                 </span>
               )}
               {/* APIDUO:discount:END */}

@@ -70,11 +70,14 @@ describe('ModelPriceCell 折扣展示', () => {
     expect(screen.queryByText(/^-\d+%$/)).toBeNull()
   })
 
-  it('未选中具体分组时不渲染折扣元素', () => {
+  it('未选中具体分组时也按折扣后最低价渲染', () => {
+    // 默认视图就是「全部」。折扣要在这个视图里生效，否则标价停在
+    // 跨组组价上，而用户实付更低——标价与账单对不上。
     const { container } = render(
       <ModelPriceCell model={discountedModel} options={{ tokenUnit: 'M' }} />
     )
-    expect(container.querySelectorAll('s')).toHaveLength(0)
-    expect(screen.queryByText(/^-\d+%$/)).toBeNull()
+    // 按量计费有输入/输出两列，两列都该带划线价与折扣标
+    expect(container.querySelectorAll('s')).toHaveLength(2)
+    expect(screen.queryAllByText(/^-\d+%$/)).toHaveLength(2)
   })
 })
