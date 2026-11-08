@@ -470,8 +470,7 @@ UI 已落地：矩阵标签页（勾选 + 每格选转换器）、覆盖弹层�
     "enabled": true,
     "upstream": "seedream",
     "primary_path": "/v1/images/generations",
-    "edit_path": "",
-    "allow_url_fetch": false
+    "edit_path": ""
   },
   "advanced_custom": { "advanced_routes": [ "... 三个入口各一条 converter:none 路由 ..." ] }
 }
@@ -529,8 +528,8 @@ UI 已落地：矩阵标签页（勾选 + 每格选转换器）、覆盖弹层�
 3. **「透传就行」不成立**：`converter:none` 会重建 body。协议层直接从原始 body 折叠，
    vendor extras（`seed`、`sequential_image_generation`…）原样保留。
 4. **`image` 三态载体**：URL / data URI / 裸 base64。seedream 只把裸 b64 补成 data URI；
-   gpt-image-2 的 edits 需要文件，data URI 与裸 b64 本地解码，http(s) 必须显式开
-   `allow_url_fetch`，且拒绝回环/私网 IP、10s 超时、20 MiB 上限。默认零出站连接。
+   gpt-image-2 的 edits 需要文件，data URI 与裸 b64 本地解码，http(s) **一律下载**
+   （没有开关：关掉等于这个功能不可用）。下载层强制防护见 §9.16。
 5. **seedream 的 mask 不转发**（skill §3.7）；之前版本把 mask 转 data URI 下传是错的，已修。
 6. **未做的三件事**（都是取舍，不是遗漏）：
    - `size` 档位换算（`1024x1024` → `2K`）属上游方言，未经实测不擅自改写；
@@ -732,7 +731,48 @@ edits multipart、chat 非流式/流式、`b64_json`/`url` 响应、vendor extra
 （零计费）；双端点布局图生图走 `/v1/images/edits` multipart 200；chat 两形态 200；
 9 条成功日志各 `quota=38 / usage 1/0`；2/5/10 张保序 True；24 并发串扰 0。
 
-🔴 **口径修正**：`allow_url_fetch` 只在 **gpt-image-2 布局**（需把 URL 下载成 multipart
-文件）起作用；**seedream 布局下 URL 原样透传**，开关与 SSRF 校验都不触发，SSRF 边界
-转到上游服务。此前「URL 一律 400」的结论只在双端点布局成立。
-详见 `docs/apiduo/image-e2e-2026-11-07.md` 末节。
+🔴 **口径修正（2026-11-08 已再改）**：当时发现 `allow_url_fetch` 只在 gpt-image-2
+布局（URL 下载成 multipart 文件）起作用；seedream 布局下 URL 原样透传，SSRF 边界转到
+上游服务。该开关**已彻底移除** —— 见 §9.16：URL 一律下载，下载层强制校验。
+
+
+### 9.16 移除 `allow_url_fetch` + 下载层加固（2026-11-08 12:05）
+
+#### 为什么删掉这个开关
+
+上游只收 multipart 文件时（`/v1/images/edits`），http(s) 垫图**必然**要下载成字节；
+开关关掉等于「这个功能不可用」，不是安全能力。防 SSRF 不能靠关功能，只能靠下载层
+强制校验。所以 `ImageProtocolConfig.AllowURLFetch` 整个字段删除，旧配置里多出的
+`allow_url_fetch` 会被 JSON 反序列化忽略（不报错）。
+
+#### 下载层加固（改前 → 改后）
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| HTTP client | **每张图 new 一个** `&http.Client{}` | 包级复用：`MaxIdleConns=16`、`MaxIdleConnsPerHost=8`、`IdleConnTimeout=30s`、HTTP/2 |
+| 重定向 | Go 默认跟最多 10 跳，**不重验 host** ⇒ 公网 URL 302 到内网即绕过 | 最多 3 跳，**每一跳重跑 `validateImageRefURL`** |
+| DNS rebinding | 校验时解析一次、连接时再解析一次 | `DialContext` 里解析一次，**校验与连接用同一批 IP** |
+| 地址段 | 回环 / 私网 / 链路本地 / 未指定 | 再加多播、CGNAT `100.64/10`、`0.0.0.0/8`、`192.0.0.0/24`、文档段、`240.0.0.0/4`、`100::/64`、`2001:db8::/32` |
+| 协议 | 只判 host | 只允许 `http` / `https`（`file:` / `ftp:` 直接拒） |
+| 大小 | 20 MiB（`io.LimitReader`） | 不变，改为 `var` 以便单测调小 |
+| 超时 | 整请求 10s | 整请求 10s + 连接 5s + TLS 握手 5s + 响应头 10s |
+| 请求头 | 无 | `Accept: image/*` |
+| 多图 | **串行** `for` 循环，10 张最坏 100s | **并发 4**（`imageRefDownloadWorkers`），保序写回，首错 `cancel()` 其余 |
+
+并发策略：信号量限流 + `sync.WaitGroup` + `sync.Once` 记首个错误 + `context.WithCancel`；
+结果按索引写回 `blobs[index]`，顺序与客户端给的一致（不按完成顺序）。
+
+#### 实测
+
+- 私网/回环/云元数据/localhost 别名（含 `::1`）：全部 400 `resolves to a non-public address`，**无开关可关**。
+- 公网 URL ×3（同一张 84 KB PNG）：默认下载 → `/v1/images/edits` multipart → **200 / 27.7s**，
+  `response_format=url` 生效（`data[0].keys=['url']`）。
+- 单测：8 张 × 120ms，并发耗时 **0.25s**（串行需 0.96s）；重定向到 `localhost` 被拒；
+  65 B > 64 B 上限被拒；4 张里 1 张 404 → **0.30s** 返回且其余被取消。
+
+#### 仍未覆盖 / 取舍
+
+1. **没有 URL 白名单**：客户端可以传任意公网 URL，只能保证不碰内网；要收紧得加域名白名单。
+2. **20 MiB × 4 并发 = 单请求峰值 80 MiB** 内存，必要时下调上限或并发。
+3. 走 `ProxyFromEnvironment`：生产若配了 `HTTP(S)_PROXY`，下载会经代理。
+4. DNS rebinding 只是缓解（同批 IP 校验+连接），彻底防需要网络层 egress 策略。
