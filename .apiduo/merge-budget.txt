@@ -2,7 +2,14 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	97
-blocks	287
-added	2701
-deleted	94
+#
+# 2026-11-08 Playground 多模态（对话/生图/生视频 + 计费对账）：
+#   files +1 router/relay-router.go、blocks +3、added +14、deleted +2
+#   只保留了不可替代的挂接点：/pg 的三条路由必须写在路由组里，
+#   路由文件把上游 Playground 换成 ApiduoPlayground（删 2 行）。
+#   controller 侧全部落在新文件 controller/apiduo_playground.go，前端整套在
+#   web/src/features/apiduo-playground/，两者都不参与本预算。
+files	98
+blocks	290
+added	2715
+deleted	96

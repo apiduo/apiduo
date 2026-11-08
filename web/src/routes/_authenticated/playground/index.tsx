@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { Main } from '@/components/layout'
-import { Playground } from '@/features/playground'
+/* APIDUO:playground-shell:BEGIN */
+// apiduo 的 Playground：三模式（对话 / 生图 / 生视频）+ 每次请求的计费对账。
+// 上游实现保留在 features/playground 不动，这里只换入口。
+import { ApiduoPlayground } from '@/features/apiduo-playground'
+/* APIDUO:playground-shell:END */
 import { isSidebarModuleEnabled } from '@/lib/nav-modules'
 
 export const Route = createFileRoute('/_authenticated/playground/')({
@@ -34,7 +38,9 @@ export const Route = createFileRoute('/_authenticated/playground/')({
 function PlaygroundPage() {
   return (
     <Main className='p-0'>
-      <Playground />
+      {/* APIDUO:playground-shell:BEGIN */}
+      <ApiduoPlayground />
+      {/* APIDUO:playground-shell:END */}
     </Main>
   )
 }

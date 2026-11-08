@@ -58,6 +58,14 @@ const APIDUO_BLOCKS: ReadonlySet<string> = new Set([
   // 用户编辑抽屉里的「模型折扣」表格：按分组 × 模型配个人价，
   // 是 apiduo 加的计费能力，不标会被当成上游字段。
   'user:model-discounts',
+  // Playground 的计费对账：金额 chip、对账单、请求详情都是 apiduo 加的，
+  // 上游 Playground 只有耗时。不标会被当成上游行为。
+  'playground:billing',
+  'playground:pricing',
+  // 三模式（对话 / 生图 / 生视频）切换是结构性改造，不是上游的分支。
+  'playground:modes',
+  'playground:image',
+  'playground:video',
 ])
 
 /**

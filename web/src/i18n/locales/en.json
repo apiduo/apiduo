@@ -6872,6 +6872,8 @@
     "Updated successfully": "Updated successfully",
     "Updated system setting {{key}}": "Updated system setting {{key}}",
     "Updated user {{username}} (ID: {{id}})": "Updated user {{username}} (ID: {{id}})",
+    "Updated model discounts for {{username}} (ID: {{id}})": "更新用户 {{username}}（ID: {{id}}）的模型折扣",
+    "Denied access to {{method}} {{route}} (insufficient privileges)": "权限不足：拒绝访问 {{method}} {{route}}",
     "Updates have not been checked yet.": "Updates have not been checked yet.",
     "Updates with the system": "Updates with the system",
     "Updating all channel balances. This may take a while. Please refresh to see results.": "Updating all channel balances. This may take a while. Please refresh to see results.",
