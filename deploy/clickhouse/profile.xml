@@ -1,0 +1,47 @@
+<clickhouse>
+  <!-- ==================================================================
+       用户 profile 覆盖：把「日志噪音源头」和「查询开销」一起收住
+       ==================================================================
+       放在 users.d 而不是 config.d，有两个原因：
+
+       1) query_profiler_* / memory_profiler_step / max_memory_usage 都是
+          用户级 setting。写进 config.d 顶层会让 SYSTEM RELOAD CONFIG
+          直接报 CANNOT_LOAD_CONFIG（UNKNOWN_ELEMENT_IN_CONFIG），
+          而那种状态下 ClickHouse 一旦重启就起不来。
+       2) users.d 支持热重载（SYSTEM RELOAD USERS），但注意：
+          对**已建立的长连接无效** —— 应用侧连接池不重连，session 还是
+          旧 profile。要彻底生效仍需重启，TTL 是兜底。
+
+       占位符 __MAX_MEMORY_USAGE__ 由 install.sh 按实例规模替换。
+       ================================================================== -->
+  <profiles>
+    <default>
+      <!-- 只记录 >1s 的查询：去掉每条日志 INSERT 带来的 query_log 写放大，
+           同时保留慢查询排障能力。 -->
+      <log_queries>1</log_queries>
+      <log_queries_min_query_duration_ms>1000</log_queries_min_query_duration_ms>
+      <!-- 不记录线程级和 setting 级明细：query_log 体积能降一个数量级，
+           定位问题时用 EXPLAIN 复现比翻这些列更快。 -->
+      <log_query_threads>0</log_query_threads>
+      <log_query_settings>0</log_query_settings>
+
+      <!-- 单查询内存上限。按实例内存调整：一般取「实例内存 / 4」。 -->
+      <max_memory_usage>__MAX_MEMORY_USAGE__</max_memory_usage>
+
+      <!-- 应用侧已是批量写入，服务端不再二次缓冲，避免 spool 与
+           async insert 两层排队难以判断背压在哪。 -->
+      <async_insert>0</async_insert>
+
+      <!-- 关掉查询级 profiler。它的采样会写进 system.trace_log，
+           而 trace_log 默认没有 TTL —— 这是历史上日志表失控的第一层原因。
+           默认值是 1000000000 ns（1 秒一次），长查询会持续产生记录。 -->
+      <query_profiler_real_time_period_ns>0</query_profiler_real_time_period_ns>
+      <query_profiler_cpu_time_period_ns>0</query_profiler_cpu_time_period_ns>
+
+      <!-- 查询级内存采样也关掉，与 config.d 里的
+           total_memory_profiler_step=0 形成双保险：前者管用户查询，
+           后者管后台 merge / mutation（后者才是历史真凶）。 -->
+      <memory_profiler_step>0</memory_profiler_step>
+    </default>
+  </profiles>
+</clickhouse>

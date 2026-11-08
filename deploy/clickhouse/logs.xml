@@ -1,0 +1,88 @@
+<clickhouse>
+  <!-- ==================================================================
+       系统日志表：TTL 与日志级别的唯一真相来源
+       ==================================================================
+       为什么必须写在这里，而不是只靠 ALTER TABLE ... MODIFY TTL：
+
+       ClickHouse 启动时会比对「表的实际定义」与「config.d 里的定义」，
+       不一致就把旧表 rename 成 xxx_0 再按 config 重建 —— ALTER 上去的
+       TTL 随之丢失，留下一堆 _0 空壳表。实测某实例连续跑 10 天累积
+       22.6 亿行 trace_log（46.8 GiB），业务数据只有 976 KiB。
+
+       所以：config.d 定义「未来所有新表」，install.sh 负责把「已存在的表」
+       用 ALTER 对齐到同一组数值，两者必须一致。check-tables.sh 会逐表比对。
+
+       为什么不照抄默认值：ClickHouse 25.x 的 config.xml 里，这些表的定义
+       只有 partition_by / flush_interval_milliseconds / max_size_rows，
+       没有 <ttl>。max_size_rows 是内存缓冲上限（满了落盘），不是保留行数，
+       名字极具迷惑性。
+
+       TTL 取值的判断方法：先问「这条记录以后能不能帮我定位问题」，
+       再乘实际日增量，确认磁盘扛得住。数值由 install.sh 用
+       ttl 命令行参数替换下面的占位符（见 install.sh 帮助）。
+       ================================================================== -->
+
+  <!-- trace_log 的真正生产大户不是 query profiler，而是内存采样：
+       默认 total_memory_profiler_step=4194304（每分配 4 MiB 记一次调用栈），
+       后台 merge 大 part 时被触发上百万次，query_id 形如
+       <uuid>::202611_1_9714_207（后缀是 merge 的 part range）。
+       设为 0 = 关闭全局内存采样。注意：这个参数只在启动时读入，
+       SYSTEM RELOAD CONFIG 对它无效，必须重启进程。 -->
+  <total_memory_profiler_step>0</total_memory_profiler_step>
+
+  <!-- trace_log：profiler 关掉后日常近零增长，仅在人工 SET query_profiler_*=1
+       抓调用栈时产生。留长只是为了让「上周那次卡顿」还能回看。 -->
+  <trace_log>
+    <ttl>event_date + INTERVAL __TTL_TRACE__ DAY</ttl>
+  </trace_log>
+
+  <!-- text_log：ClickHouse 自身运行日志。默认 config.xml 里是
+       <level>trace</level>，会把 merge 内部细节（"Selected 1 merge ranges"
+       之类）全记下来 —— 实测 1.5 小时 239 万行、占 94%。
+       降到 information：保留启动、配置重载、建表以及全部 Warning/Error，
+       丢掉 Debug/Trace 噪音。降级后 3 分钟仅 +17 行。 -->
+  <text_log>
+    <level>information</level>
+    <ttl>event_date + INTERVAL __TTL_TEXT__ DAY</ttl>
+  </text_log>
+
+  <!-- query_log：只记耗时 > 1s 的慢查询（见 profile.xml 的
+       log_queries_min_query_duration_ms），日增 1~2k 行，
+       是排查「为什么慢」最值钱的表。 -->
+  <query_log>
+    <ttl>event_date + INTERVAL __TTL_QUERY__ DAY</ttl>
+  </query_log>
+
+  <!-- error_log：错误极少但价值最高，留一年。 -->
+  <error_log>
+    <ttl>event_date + INTERVAL __TTL_ERROR__ DAY</ttl>
+  </error_log>
+
+  <!-- part_log：merge / 分区变更历史，排查「磁盘为什么涨」「part 为什么多」。 -->
+  <part_log>
+    <ttl>event_date + INTERVAL __TTL_PART__ DAY</ttl>
+  </part_log>
+
+  <!-- processors_profile_log：算子级性能，只在抓慢查询时产生。 -->
+  <processors_profile_log>
+    <ttl>event_date + INTERVAL __TTL_PROFILE__ DAY</ttl>
+  </processors_profile_log>
+
+  <!-- query_metric_log：单查询的内存 / IO 指标，量极小。 -->
+  <query_metric_log>
+    <ttl>event_date + INTERVAL __TTL_QUERY_METRIC__ DAY</ttl>
+  </query_metric_log>
+
+  <!-- metric_log：每秒采样的服务指标，是这套表里唯一有真实体量的
+       （实测日增约 300 MB）。30 天约 9 GB；再长性价比低，
+       历史趋势交给 Prometheus 更合适。 -->
+  <metric_log>
+    <ttl>event_date + INTERVAL __TTL_METRIC__ DAY</ttl>
+  </metric_log>
+
+  <!-- asynchronous_metric_log：异步采样，压缩率极高
+       （实测 51 万行只占 400 KB），日增约 50 MB。 -->
+  <asynchronous_metric_log>
+    <ttl>event_date + INTERVAL __TTL_ASYNC_METRIC__ DAY</ttl>
+  </asynchronous_metric_log>
+</clickhouse>
