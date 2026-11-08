@@ -21,6 +21,9 @@ import { memo, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
+// APIDUO:discount:BEGIN
+import { DiscountDelta } from '@/features/apiduo-discount/components/discount-delta'
+// APIDUO:discount:END
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { getLobeIcon } from '@/lib/lobe-icon'
@@ -244,6 +247,14 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             / {tokenUnitLabel}
           </span>
         </span>
+        {/* APIDUO:discount:BEGIN */}
+        <DiscountDelta
+          model={props.model}
+          type={price.type}
+          tokenUnit={tokenUnit}
+          options={{ showRechargePrice, priceRate, usdExchangeRate, selectedGroup: props.selectedGroup }}
+        />
+        {/* APIDUO:discount:END */}
       </div>
     ))
   } else {
@@ -262,6 +273,14 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             / {t('request')}
           </span>
         </span>
+        {/* APIDUO:discount:BEGIN */}
+        <DiscountDelta
+          model={props.model}
+          type='input'
+          tokenUnit={tokenUnit}
+          options={{ showRechargePrice, priceRate, usdExchangeRate, selectedGroup: props.selectedGroup }}
+        />
+        {/* APIDUO:discount:END */}
       </div>
     )
   }

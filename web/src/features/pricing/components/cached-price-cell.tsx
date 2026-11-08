@@ -21,6 +21,9 @@ import { useTranslation } from 'react-i18next'
 
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
+// APIDUO:discount:BEGIN
+import { DiscountDelta } from '@/features/apiduo-discount/components/discount-delta'
+// APIDUO:discount:END
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { useBillingTime } from '../hooks/use-billing-time'
 import {
@@ -143,6 +146,14 @@ export function CachedPriceCell(props: {
   return (
     <div className='max-w-full min-w-0'>
       <span className='font-mono text-sm tabular-nums'>{cachedPrice}</span>
+      {/* APIDUO:discount:BEGIN */}
+      <DiscountDelta
+        model={model}
+        type='cache'
+        tokenUnit={tokenUnit}
+        options={{ showRechargePrice, priceRate, usdExchangeRate, selectedGroup }}
+      />
+      {/* APIDUO:discount:END */}
       <div className='text-muted-foreground/50 text-[10px]'>
         / {tokenUnitLabel}
       </div>

@@ -30,6 +30,9 @@ import {
   getDynamicPricingSummary,
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
+// APIDUO:discount:BEGIN
+import { buildDiscountedPrices } from '../lib/discount-display'
+// APIDUO:discount:END
 import { isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { taskUsageUnitLabel } from '../lib/task-price-display'
@@ -83,7 +86,14 @@ export function ModelPriceCell(props: {
       currency,
     ]
   )
-  let metrics: Array<{ label: string; value: string }>
+  // APIDUO:discount:BEGIN
+  let metrics: Array<{
+    label: string
+    value: string
+    original?: string
+    offPercent?: number
+  }>
+  // APIDUO:discount:END
   const providerCaption = dynamic?.providerCount
     ? t('{{count}} providers', { count: dynamic.providerCount })
     : ''
@@ -233,6 +243,28 @@ export function ModelPriceCell(props: {
       caption = `${currencyLabel} / ${t('request')}`
     }
   }
+  // APIDUO:discount:BEGIN
+  // 划线原价只在静态价格路径展示：dynamic（billing_expr）的条目是多维的，
+  // 用 index 映射到 input/output 会错位。
+  const discountedPrices = dynamic
+    ? null
+    : buildDiscountedPrices(
+        props.model,
+        isTokenBasedModel(props.model) ? ['input', 'output'] : ['input'],
+        tokenUnit,
+        options.showRechargePrice,
+        options.priceRate,
+        options.usdExchangeRate,
+        options.selectedGroup
+      )
+  if (discountedPrices) {
+    metrics = metrics.map((metric, index) => {
+      const price =
+        discountedPrices[Math.min(index, discountedPrices.length - 1)]
+      return { ...metric, original: price.original, offPercent: price.offPercent }
+    })
+  }
+  // APIDUO:discount:END
   return (
     <span className='block w-full max-w-full min-w-0 space-y-1.5'>
       <span
@@ -254,6 +286,18 @@ export function ModelPriceCell(props: {
               title={metric.value}
             >
               {metric.value}
+              {/* APIDUO:discount:BEGIN */}
+              {metric.original && (
+                <s className='text-muted-foreground ml-1.5 text-xs font-normal'>
+                  {metric.original}
+                </s>
+              )}
+              {typeof metric.offPercent === 'number' && (
+                <span className='bg-primary/10 text-primary ml-1.5 rounded px-1 py-px align-[1px] text-[10px] leading-4 font-medium'>
+                  -{Math.round(metric.offPercent * 100)}%
+                </span>
+              )}
+              {/* APIDUO:discount:END */}
             </span>
           </span>
         ))}

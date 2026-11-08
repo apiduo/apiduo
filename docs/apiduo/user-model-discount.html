@@ -243,7 +243,36 @@ td code{font-size:11.5px}
   <div class="callout red">
     <strong>本次实现中真实踩到并修掉的三处：</strong> ① 规则里一旦有 <code>*/*</code> 兜底，「未命中回落组价」就不再可能 —— 测试必须拆成「无兜底回落」和「有兜底覆盖」两条，否则会写出自相矛盾的期望；② <code>service/quota.go</code> 的音频路径确实自己算了一遍组倍率，不补折扣就永远按组价扣；③ <code>service/task_billing.go</code> 原本在结算时重算组倍率，改为优先读预扣快照，否则改配置或跨零点会与预扣不一致。
   </div>
-  <p><strong>未做：</strong> 编辑用户抽屉里的表格 UI（React 组件 + 表单校验，是剩下最大的一块）；广场的「原价划线 + 折扣标」视觉。后端与取价逻辑已就绪，前端接上即可。</p>
+  <p><strong>两条「待优化项」评估后都不做，依据如下：</strong></p>
+  <table>
+    <thead><tr><th>候选优化</th><th>实测收益</th><th>为什么不做</th></tr></thead>
+    <tbody>
+      <tr><td>把解析结果缓存进 <code>RelayInfo</code>，重试时不重复 Unmarshal</td><td>同一请求连调 5 次：<code>25.2µs → 0.47µs</code>（54 倍，零分配）</td><td>只在<strong>重试</strong>时生效，而一次重试请求本身要几百 ms，省下的 16µs 是 0.003%；代价是 <code>dto</code> 与 <code>price.go</code> 多 9 行上游侵入（已实测触发合并面超预算）。<strong>已回退。</strong></td></tr>
+      <tr><td>给 <code>Expand</code> 加 TTL 缓存</td><td>每次 <code>/api/pricing</code> 可省 <code>Parse 4µs + Expand 1.85µs</code></td><td>整条响应的序列化成本是 <strong>135.8µs / 74KB</strong>（300 个模型），6µs 只占 <strong>4.4%</strong>，其中 <code>Expand</code> 仅 1.4%。加缓存要引入 60 秒旧价窗口与内存回收，收益在噪声级别。</td></tr>
+    </tbody>
+  </table>
+  <div class="callout">
+    <strong>如果以后真要压 <code>/api/pricing</code>，优先修的不是折扣。</strong> <code>filterPricingByUsableGroups</code> 每次请求都要复制 300 个 <code>Pricing</code> 结构体（约 60KB），比折扣的 6µs 大一个量级；但那是上游代码，改动会增加合并面。当前前端有 5 分钟缓存，这个接口不是热路径。
+  </div>
+  <p><strong>前端已接上：编辑抽屉里的表格 + 广场的划线价。</strong></p>
+  <table>
+    <thead><tr><th>部分</th><th>实现</th></tr></thead>
+    <tbody>
+      <tr><td>抽屉区块</td><td>新增 <code>web/src/features/apiduo-discount/</code>：行号、分组/模型输入 + 候选补全、折扣（单位「折」）、到期（空=永久）、↑↓ 排序、即时校验、死行标灰、实际生效预览、任意组合试算。<strong>上游只留一个挂载点</strong>（<code>users-mutate-drawer.tsx</code> 里 4 行），加载/保存/表格全在新文件。</td></tr>
+      <tr><td>保存时机</td><td>与用户字段<strong>同一次点击</strong>：<code>updateUser</code> 成功后调 <code>ref.flush()</code>，折扣存失败<strong>不关抽屉</strong>并提示，避免「以为存上了」。</td></tr>
+      <tr><td>读写接口</td><td><code>GET/PUT /api/user/:id/discounts</code>（管理员）。GET 顺带返回 <code>usable_groups</code>——按被编辑的用户算，不是按当前登录的管理员算。PUT 走 <code>Normalize</code> 校验后<strong>先读 setting 再只改一个 key</strong>，<code>UpdateUserSetting</code> 自带 <code>PublishUserAuthCache</code>，改完立刻生效。</td></tr>
+      <tr><td>广场展示</td><td><code>formatPriceAtRatio</code> 用「不含折扣的组倍率」算划线原价，<code>formatPrice</code> 仍走 <code>getDisplayGroupRatio</code> 出折后价，同一套格式参数 ⇒ 两个数字只差倍率。折扣标显示<strong>相对划线价</strong>的降幅（0.7 / 0.9 ⇒ −22%，不是 −30%），三个数字自洽。</td></tr>
+      <tr><td><strong>三个渲染点，不是一处</strong></td><td>表格走 <code>ModelPriceCell</code>；<strong>卡片视图和缓存价列各自在 JSX 里算价格，根本不经过它</strong>。所以折扣抽成 <code>DiscountDelta</code> 单独插入，否则同一模型在卡片和表格里显示两种价，用户会以为折扣丢了。实测：带 <code>?view=table</code> 时有划线价，不带时原来没有。</td></tr>
+      <tr><td>只在选定分组时展示</td><td>选「全部」时广场展示的是跨组最低价，折扣无法归因到某一个组，因此不显示划线价——否则会出现「划线价比现价还低」的错乱。</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>前端测试（本次实跑）：</strong> 折扣模块 <strong>39 个</strong>（命中/死行/日期边界/折转换/校验分级 27 个 + 表格交互 12 个）、价格展示 <strong>14 个</strong>（含「划线原价 == 折扣前价格」与「折后价 / 原价 == 0.7/0.9」两条硬断言）；定价模块全量 <strong>301 个</strong>通过；<code>bun run typecheck</code> 1,514 文件通过。</p>
+  <p><strong>真实浏览器验证：</strong> 起真实服务 → 登录取真实会话 → 打开用户编辑抽屉，断言 <code>data-apiduo="text"</code> 已挂、两行规则回填 <code>vip / gpt-4o 7 折</code> 与 <code>vip / * 8 折</code>、预览显示「vip gpt-4o 0.70 第 1 行 / 其他模型 0.80 第 2 行」；390 窄屏 <code>scrollWidth == clientWidth == 390</code> 无横向溢出。</p>
+
+  <div class="callout red">
+    <strong>这一轮踩到的三个坑：</strong> ① <code>&lt;input type="date"&gt;</code> 空值时 Chrome 会画出「年/月/日」占位，把模型列挤到只剩一半，必须用透明文字 + 覆盖「永久」并用 <code>group-focus-within:hidden</code> 在聚焦时让位；② 抽屉里的日期框在深色模式需要 <code>[color-scheme:dark]</code>，否则日历图标是黑的；③ <code>markercheck -update</code> 会<strong>重写整个预算文件、抹掉所有登记注释</strong>，更新后必须手工恢复——已把这条写进预算文件本身的注释里；④ 用 <code>(cmd &amp;)</code> 起的后台进程会随命令结束被杀（<code>ERR_CONNECTION_REFUSED</code>），必须走任务化后台。
+  </div>
 
   <div class="callout red">
     <strong>三条不能砍：</strong> ① 管理员编辑用户走 <code>EditWithTx</code>，更新的是 <code>username/display_name/group/remark</code> <strong>白名单字段，不碰 setting</strong>；<code>UpdateUserSetting</code> 也是「先读现有 setting → 只改表单字段 → 写回」，折扣不会被通知设置冲掉。真正的风险是<strong>回滚</strong>：旧版本 <code>GetSetting()</code> 不认识这个 key，回滚后改一次设置就会把它 marshal 掉；② <code>groupRatio</code> 有 5 个计算点散在三处，音频计费和任务结算各补一行，漏了会静默按组价扣；③ 覆盖 <code>GroupRatio</code> 时顺手同步 <code>HasSpecialRatio</code> / <code>GroupSpecialRatio</code>（各 1 行），否则日志里的 <code>user_group_ratio</code> 和实扣对不上。

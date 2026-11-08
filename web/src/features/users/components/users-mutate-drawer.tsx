@@ -71,6 +71,12 @@ import {
   normalizeAdminPermissions,
   type AdminPermissionMatrix,
 } from '@/lib/admin-permissions'
+// APIDUO:discount:BEGIN
+import {
+  UserDiscountSection,
+  type UserDiscountSectionRef,
+} from '@/features/apiduo-discount/components/user-discount-section'
+// APIDUO:discount:END
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -119,6 +125,10 @@ export function UsersMutateDrawer({
   // Matrix as loaded from the server; an unchanged matrix is not resubmitted so
   // routine edits of an administrator do not require step-up verification.
   const loadedPermissions = useRef<AdminPermissionMatrix | undefined>(undefined)
+
+  // APIDUO:discount:BEGIN
+  const discountRef = useRef<UserDiscountSectionRef>(null)
+  // APIDUO:discount:END
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -238,6 +248,15 @@ export function UsersMutateDrawer({
         : await createUser(payload, proofToken)
 
       if (result.success) {
+        // APIDUO:discount:BEGIN
+        if (isUpdate && currentRow) {
+          const discountResult = await discountRef.current?.flush(currentRow.id)
+          if (discountResult && !discountResult.success) {
+            handleServerError(discountResult, t('Failed to save discounts'))
+            return
+          }
+        }
+        // APIDUO:discount:END
         toast.success(
           isUpdate
             ? t(SUCCESS_MESSAGES.USER_UPDATED)
@@ -548,6 +567,17 @@ export function UsersMutateDrawer({
                     )}
                   </SideDrawerSection>
                 )}
+
+              {/* APIDUO:discount:BEGIN */}
+              <SideDrawerSection>
+                <UserDiscountSection
+                  ref={discountRef}
+                  userId={currentRow?.id}
+                  groups={groups}
+                  enabled={open && isUpdate}
+                />
+              </SideDrawerSection>
+              {/* APIDUO:discount:END */}
 
               {/* Binding Information (Read-only) */}
               {isUpdate && (

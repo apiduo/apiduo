@@ -53,6 +53,9 @@ const APIDUO_BLOCKS: ReadonlySet<string> = new Set([
   'channel:min-active-keys',
   'security:agent-keys',
   'token:ip-allowlist',
+  // 用户编辑抽屉里的「模型折扣」表格：按分组 × 模型配个人价，
+  // 是 apiduo 加的计费能力，不标会被当成上游字段。
+  'user:model-discounts',
 ])
 
 /**

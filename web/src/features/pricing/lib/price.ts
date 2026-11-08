@@ -274,3 +274,47 @@ export function formatRequestPrice(
     abbreviate: false,
   })
 }
+
+// APIDUO:discount:BEGIN
+/**
+ * 按显式指定的组倍率格式化价格。
+ *
+ * 与 formatPrice / formatRequestPrice 的唯一区别是不走 getDisplayGroupRatio，
+ * 因此可以传入「不含个人折扣」的 baseRatio 来渲染划线原价，
+ * 与折后价（走 getDisplayGroupRatio）形成对照。
+ *
+ * 内部件与上面两个函数逐字一致（同样的 recharge、同样的位数），
+ * 保证同一份数据算出的原价和折后价只有倍率差异，不含格式误差。
+ */
+export function formatPriceAtRatio(
+  model: PricingModel,
+  type: PriceType,
+  tokenUnit: TokenUnit,
+  ratio: number,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  showCurrencySymbol = false
+): string {
+  const isRequest = model.quota_type === QUOTA_TYPE_VALUES.REQUEST
+
+  let priceInUSD = isRequest
+    ? (model.model_price || 0) * ratio
+    : calculateTokenPrice(model, type, ratio)
+
+  priceInUSD = applyRechargeRate(
+    priceInUSD,
+    showWithRecharge,
+    priceRate,
+    usdExchangeRate
+  )
+
+  const price = isRequest ? priceInUSD : priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
+  return formatBillingCurrencyFromUSD(price, {
+    showSymbol: showCurrencySymbol,
+    digitsLarge: 4,
+    digitsSmall: isRequest ? 4 : 6,
+    abbreviate: false,
+  })
+}
+// APIDUO:discount:END

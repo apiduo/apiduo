@@ -215,6 +215,10 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
 				adminRoute.GET("/:id", controller.GetUser)
+				// APIDUO:discount:BEGIN
+				adminRoute.GET("/:id/discounts", controller.GetUserDiscounts)
+				adminRoute.PUT("/:id/discounts", controller.UpdateUserDiscounts)
+				// APIDUO:discount:END
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
 				adminRoute.PUT("/", controller.UpdateUser)

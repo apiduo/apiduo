@@ -206,3 +206,68 @@ func BenchmarkExpandWorstCase(b *testing.B) {
 		_ = Expand(fixture(), groups, ts)
 	}
 }
+
+func TestNormalizeTrimsAndDedupes(t *testing.T) {
+	got, err := Normalize([]Rule{
+		{Groups: " vip , , svip , vip ", Models: " gpt-4o , gpt-4o ", Rate: 0.8},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].Groups != "vip,svip" {
+		t.Fatalf("组未去重: %q", got[0].Groups)
+	}
+	if got[0].Models != "gpt-4o" {
+		t.Fatalf("模型未去重: %q", got[0].Models)
+	}
+}
+
+func TestNormalizeRoundsRateToTwoDecimals(t *testing.T) {
+	// 前端「7.5 折」除以 10 会带浮点尾巴，不收敛就会被判成 >= 1 或存成脏值。
+	got, err := Normalize([]Rule{{Groups: "vip", Models: "*", Rate: 0.750000001}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got[0].Rate != 0.75 {
+		t.Fatalf("rate 未收敛: %v", got[0].Rate)
+	}
+}
+
+func TestNormalizeRejectsInvalidRules(t *testing.T) {
+	cases := []struct {
+		name  string
+		rules []Rule
+	}{
+		{"空分组", []Rule{{Groups: "  ", Models: "*", Rate: 0.8}}},
+		{"空模型", []Rule{{Groups: "vip", Models: "", Rate: 0.8}}},
+		{"倍率为 0", []Rule{{Groups: "vip", Models: "*", Rate: 0}}},
+		{"倍率为 1", []Rule{{Groups: "vip", Models: "*", Rate: 1}}},
+		{"倍率为负", []Rule{{Groups: "vip", Models: "*", Rate: -0.5}}},
+		{"到期为负", []Rule{{Groups: "vip", Models: "*", Rate: 0.8, Until: -1}}},
+	}
+	for _, tc := range cases {
+		if _, err := Normalize(tc.rules); err == nil {
+			t.Fatalf("%s 应被拒绝", tc.name)
+		}
+	}
+}
+
+func TestNormalizeRejectsTooManyRules(t *testing.T) {
+	rules := make([]Rule, MaxRules+1)
+	for i := range rules {
+		rules[i] = Rule{Groups: "vip", Models: "*", Rate: 0.8}
+	}
+	if _, err := Normalize(rules); err == nil {
+		t.Fatalf("超过 %d 条应被拒绝", MaxRules)
+	}
+}
+
+func TestNormalizeAllowsEmptyList(t *testing.T) {
+	got, err := Normalize(nil)
+	if err != nil {
+		t.Fatalf("空列表表示清除折扣，不应报错: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("期望空切片，得到 %+v", got)
+	}
+}

@@ -6,6 +6,8 @@ package discount
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"strings"
 )
 
@@ -120,4 +122,57 @@ func matchAny(list, target string) bool {
 		}
 	}
 	return false
+}
+
+// Normalize 校验并规范化待写入的规则。
+//
+// 前端传来的数据不能直接落库：条数、倍率区间、空列都要在服务端再判一次，
+// 并把 rate 收敛到两位小数，避免 7.5 折变成 0.7500000001 之后被判成 >= 1。
+func Normalize(rules []Rule) ([]Rule, error) {
+	if len(rules) > MaxRules {
+		return nil, fmt.Errorf("规则最多 %d 条", MaxRules)
+	}
+
+	out := make([]Rule, 0, len(rules))
+	for index, rule := range rules {
+		groups := normalizeList(rule.Groups)
+		models := normalizeList(rule.Models)
+		if groups == "" || models == "" {
+			return nil, fmt.Errorf("第 %d 条规则的分组和模型不能为空", index+1)
+		}
+		if rule.Until < 0 {
+			return nil, fmt.Errorf("第 %d 条规则的到期时间不能为负", index+1)
+		}
+
+		rate := math.Round(rule.Rate*100) / 100
+		if rate <= 0 || rate >= 1 {
+			return nil, fmt.Errorf("第 %d 条规则的折扣要在 0 和 1 之间（不含）", index+1)
+		}
+
+		out = append(out, Rule{
+			Groups: groups,
+			Models: models,
+			Rate:   rate,
+			Until:  rule.Until,
+		})
+	}
+	return out, nil
+}
+
+// normalizeList 去掉逗号分隔列表里的空白与重复项。
+func normalizeList(list string) string {
+	seen := make(map[string]struct{}, 4)
+	parts := make([]string, 0, 4)
+	for part := range strings.SplitSeq(list, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if _, ok := seen[part]; ok {
+			continue
+		}
+		seen[part] = struct{}{}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ",")
 }

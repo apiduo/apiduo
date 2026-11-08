@@ -10,10 +10,17 @@
 #    relaykit/dto/user_settings.go 加 ApiduoDiscounts 字段；service/quota.go 音频链路同步；
 #    service/task_billing.go 把组倍率计算搬进标记块以改用冻结快照，故有 10 行删除；
 #    匹配/展开逻辑本体在新增的 pkg/apiduo/discount，不计入）。
+# 2026-11-08 登记 discount-ui：+5 个文件 / +16 个挂接点 / +215 行、删除 1 行
+#   （router/api-router.go 两个管理员折扣接口；users-mutate-drawer.tsx 只留一个挂载点，
+#    加载/保存/表格全在新增的 features/apiduo-discount；controller/pricing.go 改按组展开；
+#    pricing 前端六个文件接划线原价与折扣标，其中 price.ts / model-helpers.ts 只新增函数、
+#    不改原函数体；model-card.tsx 与 cached-price-cell.tsx 各有渲染点必须就地插入，
+#    否则卡片视图和表格视图会显示两种价。+215 是累计口径，含同期未提交的其它工作）。
 # 除新增功能外只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
+#   注意：-update 会重写本文件并抹掉这些登记注释，更新后必须手工恢复。
 # 格式：<key>	<value>
-files	87
-blocks	226
-added	2133
-deleted	90
+files	92
+blocks	242
+added	2348
+deleted	91
