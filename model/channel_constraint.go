@@ -106,6 +106,14 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 			return true
 		}
 		// APIDUO:advanced-async:END
+		// APIDUO:primary-endpoint:BEGIN
+		// 图片协议自己接管 generations / edits：这两个入口的语义在协议层定死，
+		// 不看转发路由表。否则「启用了协议但没写路由」的渠道会被选择器过滤掉，
+		// 客户端拿到 503 而协议层其实完全能处理。
+		if ch.GetOtherSettings().ImageProtocol.ServesPath(filter.RequestPath) {
+			return true
+		}
+		// APIDUO:primary-endpoint:END
 		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
 		if filter.TaskPluginKey == "" {

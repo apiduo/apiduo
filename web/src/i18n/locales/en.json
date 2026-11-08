@@ -7715,8 +7715,8 @@
     "GPT Image 2 dual endpoint": "GPT Image 2 dual endpoint",
     "Primary path": "Primary path",
     "Edit path override": "Edit path override",
-    "Derived from the primary path when empty": "Derived from the primary path when empty",
-    "Leave the primary path empty to follow the primary endpoint (only when it looks like an image endpoint).": "Leave the primary path empty to follow the primary endpoint (only when it looks like an image endpoint).",
+    "Derived from the image primary path when empty": "Derived from the image primary path when empty",
+    "Leave this empty to follow the channel primary endpoint (only when it looks like an image endpoint).": "Leave this empty to follow the channel primary endpoint (only when it looks like an image endpoint).",
     "Stored as primary_endpoint: derived routes may leave their upstream path empty.": "Stored as primary_endpoint: derived routes may leave their upstream path empty."
   }
 }

@@ -99,3 +99,49 @@ func TestPrepareImageProtocolFollowsChannelPrimary(t *testing.T) {
 		t.Fatalf("primary path must follow the primary, got %q", plan.UpstreamPath)
 	}
 }
+
+// 启用图片协议后，generations / edits 由协议层接管，即使路由表里没写这两个入口，
+// resolve 也必须放行——否则 GetRequestURL 会在 DoRequest 之前就报不支持，协议跑不到。
+func TestResolveAllowsImageProtocolPathsWithoutRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, path := range []string{"/v1/images/generations", "/v1/images/edits"} {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, path, nil)
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+			Routes: []dto.AdvancedCustomRoute{{IncomingPath: "/v1/chat/completions", UpstreamPath: "/v1/chat/completions"}},
+		})
+		info.RelayMode = relayconstant.RelayModeImagesGenerations
+		info.RequestURLPath = path
+		info.ChannelOtherSettings.PrimaryEndpoint = "/v1/images/custom-gen"
+		info.ChannelOtherSettings.ImageProtocol = &dto.ImageProtocolConfig{
+			Enabled:  true,
+			Upstream: dto.ImageUpstreamSeedream,
+		}
+
+		adaptor := &Adaptor{}
+		if err := adaptor.resolve(c, info); err != nil {
+			t.Fatalf("%s must resolve through the image protocol: %v", path, err)
+		}
+		if adaptor.route.UpstreamPath != "/v1/images/custom-gen" {
+			t.Fatalf("%s must fall back to the primary, got %q", path, adaptor.route.UpstreamPath)
+		}
+	}
+
+	// chat 不在协议接管的范围内：没写路由仍然是错误。
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+		Routes: []dto.AdvancedCustomRoute{{IncomingPath: "/v1/images/edits"}},
+	})
+	info.ChannelOtherSettings.PrimaryEndpoint = "/v1/images/custom-gen"
+	info.ChannelOtherSettings.ImageProtocol = &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamSeedream}
+	adaptor := &Adaptor{}
+	if err := adaptor.resolve(c, info); err == nil {
+		t.Fatal("chat must still require a declared route")
+	}
+}

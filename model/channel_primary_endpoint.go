@@ -23,28 +23,33 @@ func (channel *Channel) NormalizePrimaryDerivedRoutes() error {
 		// 解析不了的设置交给后面的 ValidateSettings 报错，这里不抢先下结论。
 		return nil
 	}
-	primary := dto.NormalizePrimaryEndpoint(settingString(settings["primary_endpoint"]))
-	if primary == "" {
-		return nil
-	}
-	custom, ok := settings["advanced_custom"].(map[string]any)
-	if !ok {
-		return nil
-	}
-	routes, ok := custom["advanced_routes"].([]any)
-	if !ok {
-		return nil
-	}
-
 	changed := false
-	for _, item := range routes {
-		route, ok := item.(map[string]any)
-		if !ok {
-			continue
+	// 主端点本身也收敛：去掉首尾空白，空串就删键。否则存储里会留下
+	// " /v1/xxx " 这种读得懂但写不对的形态，页面回显也会带着空格。
+	rawPrimary := settingString(settings["primary_endpoint"])
+	primary := dto.NormalizePrimaryEndpoint(rawPrimary)
+	if primary != rawPrimary {
+		if primary == "" {
+			delete(settings, "primary_endpoint")
+		} else {
+			settings["primary_endpoint"] = primary
 		}
-		if strings.TrimSpace(settingString(route["upstream_path"])) == primary {
-			route["upstream_path"] = ""
-			changed = true
+		changed = true
+	}
+	if primary != "" {
+		if custom, ok := settings["advanced_custom"].(map[string]any); ok {
+			if routes, ok := custom["advanced_routes"].([]any); ok {
+				for _, item := range routes {
+					route, ok := item.(map[string]any)
+					if !ok {
+						continue
+					}
+					if strings.TrimSpace(settingString(route["upstream_path"])) == primary {
+						route["upstream_path"] = ""
+						changed = true
+					}
+				}
+			}
 		}
 	}
 	if !changed {

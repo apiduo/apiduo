@@ -166,9 +166,12 @@ export function PrimaryEndpointEditor(props: {
                 <span className='truncate'>
                   {t(getAdvancedCustomIncomingPathLabel(primary))}
                 </span>
-                <span className='text-muted-foreground truncate font-mono text-xs'>
-                  {primary}
-                </span>
+                {/* 未知端点的「友好名」就是路径本身，别把同一串显示两遍。 */}
+                {t(getAdvancedCustomIncomingPathLabel(primary)) === primary ? null : (
+                  <span className='text-muted-foreground truncate font-mono text-xs'>
+                    {primary}
+                  </span>
+                )}
               </span>
             ) : (
               <SelectValue placeholder={t('Choose the primary endpoint')} />
@@ -179,9 +182,11 @@ export function PrimaryEndpointEditor(props: {
               {hubOptions.map((path) => (
                 <SelectItem key={path} value={path}>
                   <span>{t(getAdvancedCustomIncomingPathLabel(path))}</span>
-                  <span className='text-muted-foreground ml-2 font-mono text-xs'>
-                    {path}
-                  </span>
+                  {t(getAdvancedCustomIncomingPathLabel(path)) === path ? null : (
+                    <span className='text-muted-foreground ml-2 font-mono text-xs'>
+                      {path}
+                    </span>
+                  )}
                 </SelectItem>
               ))}
             </SelectGroup>

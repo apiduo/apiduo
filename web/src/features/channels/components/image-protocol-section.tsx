@@ -99,14 +99,14 @@ export function ImageProtocolSection(props: {
             <p className='text-sm'>{t('Edit path override')}</p>
             <Input
               value={props.config?.edit_path || ''}
-              placeholder={t('Derived from the primary path when empty')}
+              placeholder={t('Derived from the image primary path when empty')}
               onChange={(event) => patch({ edit_path: event.target.value })}
             />
           </div>
 
           <p className='text-muted-foreground text-xs sm:col-span-2'>
             {t(
-              'Leave the primary path empty to follow the primary endpoint (only when it looks like an image endpoint).'
+              'Leave this empty to follow the channel primary endpoint (only when it looks like an image endpoint).'
             )}
           </p>
         </div>

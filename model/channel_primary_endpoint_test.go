@@ -43,6 +43,9 @@ func TestNormalizePrimaryDerivedRoutes(t *testing.T) {
 	if _, ok := settings["keep_me"]; !ok {
 		t.Fatal("unknown settings keys must survive normalization")
 	}
+	if got, _ := settings["primary_endpoint"].(string); got != "/v1/images/generations" {
+		t.Fatalf("primary endpoint must be trimmed on save, got %q", got)
+	}
 
 	// 幂等：再跑一次不应再改。
 	before := channel.OtherSettings
@@ -62,6 +65,23 @@ func TestNormalizePrimaryDerivedRoutesSkipsWithoutPrimary(t *testing.T) {
 	}
 	if channel.OtherSettings != original {
 		t.Fatalf("settings without primary must stay untouched, got %s", channel.OtherSettings)
+	}
+}
+
+func TestNormalizePrimaryDerivedRoutesDropsBlankPrimary(t *testing.T) {
+	channel := &Channel{OtherSettings: `{"primary_endpoint": "   ", "keep_me": 1}`}
+	if err := channel.NormalizePrimaryDerivedRoutes(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	var settings map[string]any
+	if err := common.UnmarshalJsonStr(channel.OtherSettings, &settings); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if _, ok := settings["primary_endpoint"]; ok {
+		t.Fatalf("blank primary must be dropped, got %#v", settings["primary_endpoint"])
+	}
+	if _, ok := settings["keep_me"]; !ok {
+		t.Fatal("other keys must survive")
 	}
 }
 

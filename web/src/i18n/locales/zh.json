@@ -7716,10 +7716,10 @@
     "Upstream layout": "上游布局",
     "Seedream single endpoint": "Seedream 单端点",
     "GPT Image 2 dual endpoint": "GPT Image 2 双端点",
-    "Primary path": "主端点路径",
+    "Primary path": "图片主端点路径",
     "Edit path override": "从端点覆盖",
-    "Derived from the primary path when empty": "留空时按主端点末段推导",
-    "Leave the primary path empty to follow the primary endpoint (only when it looks like an image endpoint).": "主端点留空时跟随主端点（仅当中心看起来是图片端点）。",
+    "Derived from the image primary path when empty": "留空时按图片主端点末段推导。",
+    "Leave this empty to follow the channel primary endpoint (only when it looks like an image endpoint).": "留空时跟随渠道主端点（仅当它看起来是图片端点）。",
     "Stored as primary_endpoint: derived routes may leave their upstream path empty.": "已存为 primary_endpoint：派生路由的上游路径可以留空。"
   }
 }

@@ -465,6 +465,25 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 		a.resolved = true
 		return nil
 	}
+	// APIDUO:primary-endpoint:BEGIN
+	// 图片协议自己接管 generations / edits：这两个入口的语义在协议层定死，不依赖路由表。
+	// 这里必须放行——选择器放行之后，GetRequestURL 会在 DoRequest 之前再解析一次路由，
+	// 解析不出来就是 500，协议根本没机会跑。真实 URL 由 prepareImageProtocol 的 plan 决定，
+	// 这里给的只是预检用的落点。
+	if protocol := info.ChannelOtherSettings.ImageProtocol; protocol.ServesPath(incomingPath) {
+		primary := protocol.WithPrimaryFallback(info.ChannelOtherSettings.PrimaryEndpoint).Primary()
+		if strings.TrimSpace(primary) != "" {
+			a.route = dto.AdvancedCustomRoute{
+				IncomingPath: incomingPath,
+				UpstreamPath: primary,
+				Converter:    relayconvert.ConverterNone,
+			}
+			a.converter = relayconvert.ConverterNone
+			a.resolved = true
+			return nil
+		}
+	}
+	// APIDUO:primary-endpoint:END
 	return fmt.Errorf("advanced custom channel does not support request path %s for model %s", incomingPath, info.OriginModelName)
 }
 

@@ -83,3 +83,28 @@ func TestImageProtocolFollowsPrimaryOnlyForImageEndpoints(t *testing.T) {
 		t.Fatalf("disabled protocol must ignore the primary, got %q", got)
 	}
 }
+
+func TestImageProtocolServesPath(t *testing.T) {
+	enabled := &ImageProtocolConfig{Enabled: true, Upstream: ImageUpstreamSeedream}
+	for _, path := range []string{"/v1/images/generations", "/v1/images/edits", "/v1/images/edits/"} {
+		if !enabled.ServesPath(path) {
+			t.Fatalf("%q must be served by the image protocol", path)
+		}
+	}
+	if enabled.ServesPath("/v1/chat/completions") {
+		t.Fatal("chat must not be claimed by the image protocol")
+	}
+	if enabled.ServesPath("/v1/images/other") {
+		t.Fatal("only the two canonical image entries are claimed")
+	}
+
+	disabled := &ImageProtocolConfig{Upstream: ImageUpstreamSeedream}
+	if disabled.ServesPath("/v1/images/generations") {
+		t.Fatal("a disabled protocol must claim nothing")
+	}
+
+	var nilConfig *ImageProtocolConfig
+	if nilConfig.ServesPath("/v1/images/generations") {
+		t.Fatal("nil config must claim nothing")
+	}
+}

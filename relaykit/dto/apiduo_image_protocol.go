@@ -64,6 +64,25 @@ func (c *ImageProtocolConfig) Validate() error {
 	return nil
 }
 
+// ServesPath 说明图片协议自己接管的入站入口。
+//
+// 这两个路径的语义在协议层已经定死（折叠成 canonical 再按上游脚本发出），
+// 不依赖 advanced_routes 里的转发声明。渠道选择器如果把「没写路由」当成
+// 「不支持」，客户端会在协议本来能处理的情况下拿到一个无法解释的 503。
+//
+// 只放行图片入口：chat 还有纯文本语义，不能替运维决定一条聊天请求要不要变成出图任务。
+func (c *ImageProtocolConfig) ServesPath(path string) bool {
+	if c == nil || !c.Enabled {
+		return false
+	}
+	switch strings.TrimSuffix(strings.TrimSpace(path), "/") {
+	case "/v1/images/generations", "/v1/images/edits":
+		return true
+	default:
+		return false
+	}
+}
+
 // WithPrimaryFallback 在没显式配 primary_path 时让图片协议跟随渠道主端点。
 //
 // 只接受「看着像图片端点」的中心（路径里含 /images/）：
