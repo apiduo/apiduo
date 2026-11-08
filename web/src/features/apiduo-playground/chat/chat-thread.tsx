@@ -46,6 +46,7 @@ import type {
 
 import type { MessageBilling } from '../hooks/use-billing-ledger'
 import { BillPanelSlot, MoneyChip } from '../components/message-billing'
+import { StreamProgress } from '../components/stream-progress'
 
 const MAX_RENDERED_HISTORY_MESSAGES = 24
 
@@ -224,6 +225,13 @@ export function ChatThread({
               versionContent={content}
             />
           )}
+          {/*
+            放在 PlaygroundMessageContent 外面：首 token 还没到的时候，
+            上游组件既没有内容也不渲染 actions，进度条放里面会跟着一起消失。
+          */}
+          {message.from === 'assistant' ? (
+            <StreamProgress chars={content.length} status={message.status} />
+          ) : null}
         </div>
       </Message>
     )

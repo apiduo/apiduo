@@ -339,6 +339,109 @@ For commercial licensing, please contact support@quantumnous.com
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 7%, transparent);
 }
 
+/* ── Stream progress ───────────────────────────────────────────────────────
+ *
+ * Sits under a message while it is being generated. The tracks are 38 % wide so
+ * that at most times there is one band on screen and one off — a wider band
+ * would read as a fill rather than a sweep.
+ */
+@keyframes apd-indeterminate {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(380%);
+  }
+}
+
+@keyframes apd-progress-flash {
+  0% {
+    box-shadow: 0 0 0 0
+      color-mix(in oklch, var(--apiduo-ink) 42%, transparent);
+  }
+  40% {
+    box-shadow: 0 0 10px 2px
+      color-mix(in oklch, var(--apiduo-ink) 26%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.apd-indeterminate-track {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 38%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--apiduo-ink) 55%,
+    transparent
+  );
+  animation: apd-indeterminate 1.45s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* The echo runs slower and dimmer: one band alone reads as a loading spinner,
+ * two offset bands read as something being written. */
+.apd-indeterminate-track--echo {
+  width: 26%;
+  opacity: 0.45;
+  animation-duration: 1.9s;
+  animation-delay: 0.22s;
+}
+
+/* The track has to be visible on its own, otherwise a partly filled bar reads as
+ * a horizontal rule rather than a gauge. 9 % of the foreground is the lightest
+ * value that survives on both themes without turning into a divider. */
+.apd-progress-track {
+  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+}
+
+/* Lighter at the origin, full strength at the head: the eye follows the gradient
+ * towards the point that is still moving. */
+.apd-progress-fill {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--apiduo-ink) 52%, transparent),
+    var(--apiduo-ink)
+  );
+}
+
+/* The head is the only part that reads at a glance — a 3 px bar with a flat end
+ * looks like a rule; the same bar with a lit point reads as "still writing".
+ * It overhangs the track by 2 px on each side, which is why the track keeps
+ * `overflow: visible`. */
+.apd-progress-head {
+  position: absolute;
+  top: 50%;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 999px;
+  background: var(--apiduo-ink);
+  box-shadow:
+    0 0 0 1.5px color-mix(in oklch, var(--apiduo-ink) 30%, transparent),
+    0 0 14px 3px color-mix(in oklch, var(--apiduo-ink) 68%, transparent);
+  animation: apd-breathe 1.7s ease-in-out infinite;
+}
+
+.apd-progress-head--failed {
+  background: var(--destructive);
+  box-shadow: 0 0 9px 1px color-mix(in oklch, var(--destructive) 55%, transparent);
+  animation: none;
+}
+
+.apd-progress-done {
+  animation: apd-progress-flash 640ms var(--apd-ease-pop) both;
+}
+
+.apd-progress-failed {
+  background: color-mix(in oklch, var(--destructive) 14%, var(--muted));
+}
+
 /* ── Degradation ───────────────────────────────────────────────────────────
  *
  * Reduced motion keeps every state change, drops every displacement. Opacity
@@ -369,8 +472,20 @@ For commercial licensing, please contact support@quantumnous.com
   .apd-breathe,
   .apd-shimmer,
   .apd-media-in,
+  .apd-progress-head,
+  .apd-progress-done,
   .apd-sheen-host::after {
     animation: none !important;
+  }
+
+  /* 扫描带停在一个固定位置：仍然告诉用户"这里在等"，但不来回跑 */
+  .apd-indeterminate-track {
+    animation: none !important;
+    transform: translateX(60%);
+  }
+
+  .apd-indeterminate-track--echo {
+    display: none;
   }
 
   .apd-shimmer {
