@@ -383,11 +383,14 @@ func TestGuardFileStreamEdits(t *testing.T) {
 		}
 	})
 
-	t.Run("channel without image protocol is untouched", func(t *testing.T) {
+	t.Run("channel without image protocol is still file-only", func(t *testing.T) {
+		// 未启用 image_protocol 的 advancedcustom 渠道同样只收文件流：
+		// 否则 multipart 文本会变成可重试的 500，urlencoded 文本会把 URL 原样转发给上游。
 		body, contentType := apiduoTestMultipartBody(t,
 			[][2]string{{"image", "https://x/a.png"}}, nil)
-		if err := guardFileStreamEdits(newContext(body.Bytes(), contentType), adaptorInfo(nil)); err != nil {
-			t.Fatalf("a channel without image_protocol must keep its old behaviour, got %v", err)
+		err := guardFileStreamEdits(newContext(body.Bytes(), contentType), adaptorInfo(nil))
+		if status := errorStatus(t, err); status != http.StatusBadRequest {
+			t.Fatalf("text reference must be 400 without image_protocol too, got %d", status)
 		}
 	})
 }

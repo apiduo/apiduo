@@ -156,13 +156,12 @@ func rejectTextImageFields(form *multipart.Form) error {
 //
 // 必须早于 openai 的转换器：它遇到「multipart 里没有文件」会先报 image is required
 // （100% 会被记成可重试的 500），混传文件 + 文本 image 时还会把文本原样写回上游表单。
-// 只约束启用了 image_protocol 的渠道，其余渠道保持原有透传/折叠行为。
+//
+// 覆盖所有 advancedcustom 渠道，不只是启用 image_protocol 的：实测未启用时，
+// multipart 文本引用 → 500 image is required，urlencoded 文本引用 → 200 并把 URL 原样
+// 转发给上游。同一个入口三种载体三种结果，比直接 400 更难查。
 func guardFileStreamEdits(c *gin.Context, info *relaycommon.RelayInfo) error {
 	if c == nil || info == nil || info.RelayMode != relayconstant.RelayModeImagesEdits {
-		return nil
-	}
-	cfg := info.ChannelOtherSettings.ImageProtocol
-	if cfg == nil || !cfg.Enabled {
 		return nil
 	}
 	if err := requireFileStreamEdits(c); err != nil {

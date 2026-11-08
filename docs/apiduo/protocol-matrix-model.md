@@ -374,6 +374,10 @@ case relayconstant.RelayModeImagesEdits:
 
 ### 7.2 载体折叠：edits 的 multipart → generations 的 JSON（已实现）
 
+> ⚠️ 2026-11-08：**JSON 客户端调 edits 的能力已关闭**（edits 只收 multipart 文件流，见 §9.17）。
+> 本节下方的 JSON 分支实测记录只作历史对照；现在 JSON 体调到 `edits` 一律 400，请改用
+> `generations`。multipart → JSON 的折叠仍然有效。
+
 §7 记的缺口补上了。规则来自 `openai-image-adapter` skill 的转换点 ①：
 **edits 只是一扇门，语义和 generations 一样**，但载体只有一种——文件流（§9.17 起强制，
 文本引用一律 400）。
@@ -414,7 +418,7 @@ case relayconstant.RelayModeImagesEdits:
 客户端 curl -F image=@ref.png  → 上游 POST /api/v3/images/generations
                                  application/json
                                  {"image":"data:image/png;base64,iVBORw0…","model":…,"n":1,"prompt":"换成蓝底","size":"2048x2048"}
-客户端 JSON + image=URL        → 上游收到原样 URL（走的是原本的 JSON 分支）
+客户端 JSON + image=URL        → 上游收到原样 URL（2026-11-08 已关闭，见 §9.17）
 回归：上游路径改成 /api/v3/images/edits → 上游收到的仍是 multipart（不折）
 ```
 
@@ -804,8 +808,20 @@ multipart 里 `image` 可以是一段文本（URL / data URI / 裸 base64），J
 
 错误一律 `400 invalid_request` + skip retry：换个载体就能过，重试同一个坏请求没有意义。
 
-边界：只约束启用了 `image_protocol` 的渠道；未启用的 advancedcustom 渠道保持原行为
-（multipart 文件折叠成 JSON、JSON 透传），不动上游既有语义。
+边界：**覆盖全部 advancedcustom 渠道**，不按 `image_protocol` 分叉。
+
+第一版只约束启用协议的渠道，多形态实测立刻打脸 —— 未启用的 advancedcustom 渠道上，同一个
+`/v1/images/edits` 三种载体三种结果：
+
+| 载体 | 未启用协议时的行为 |
+|---|---|
+| multipart 文件 | 200，折叠成 JSON（正确） |
+| multipart 文本引用 | **500** `image is required`（可重试错误，客户端会一直重试同一个坏请求） |
+| urlencoded 文本引用 | **200**，且把 URL **原样转发**给上游 |
+| JSON 体 | 透传（客户端写什么上游收什么） |
+
+既然规则是「只收文件流」，就不该按渠道配置分叉：JSON 体同样 400。需要 URL / 字符串引用
+请走 `generations` / `chat`。
 
 URL 垫图仍然支持，但入口是 `generations` / `chat`（`image_url`）：下载层取回字节后，
 再以文件流发给上游的 edits 端点 —— 见 §9.16。
@@ -824,3 +840,32 @@ URL 垫图仍然支持，但入口是 `generations` / `chat`（`image_url`）：
 | multipart 文件 | 200，上游收到 1 个文件 part（431 KB） |
 | 文件 + `image[]=https://…` | 400（不混传） |
 | chat + data URI 垫图 | 200，上游收到 1 个文件 part，`prompt` 正确 |
+
+### 9.18 多形态 × 多端点矩阵（2026-11-08 12:45）
+
+两道闸门上线后，按「入口 × 上游布局 × 载体形状」跑了一轮 **45 例**矩阵（本地 3299 + 记录式
+假上游 4020），外加 **8 并发 × 3 图**，全绿。
+
+| 维度 | 覆盖 | 结果 |
+|---|---|---|
+| gpt-image-2 双端点 · edits 正例 | 单文件 / `image[]`×2·5·10 / `image[]` 单文件 / `image[0]` / image+mask / 空 part / 19 MiB 边界 / `n=2`+`response_format` | 10/10 ✅ |
+| 同上 · edits 拒绝路径 | 文本 URL / data URI / 裸 b64 / 文件+文本混传 / mask 文本 / JSON 体 / urlencoded 体 / 非图片文件 / 21 MiB 超限 / 无 prompt | 10/10 ✅（全 400，且**零出站**） |
+| generations 入口 | 无图 / data URI / 数组 2 张 / `image:""` / `image:[]` | 5/5 ✅（有图的三条正确分流到 edits） |
+| chat 入口 | 纯文本 / 1 图 / 2 图 / `input_image` 不认 / 流式 | 5/5 ✅（流式回 `text/event-stream` + `chat.completion.chunk`） |
+| seedream 单端点 | edits 文件 → generations JSON / 双图 / 单文件 `image[]` / 文本与 JSON 拒绝 / mask 丢弃 / gens+chat 回归 | 8/8 ✅ |
+| 无 image_protocol（折叠路径） | 文件 → data URI JSON / 双图 / JSON·urlencoded·文本 → 400 | 5/5 ✅ |
+| 端点覆盖 | `edit_path` 覆盖 → `/custom/image-edit`；末段推导 → `/api/v3/images/edits` | 2/2 ✅ |
+| 并发 | 8 请求 × 3 图，每请求图片字节数不同，按 `bytes` 校验 part 归属 | 0 串包，总耗时 268ms |
+
+**这轮抓到的真问题**：第一版闸门只覆盖启用 `image_protocol` 的渠道，于是未启用的 advancedcustom
+渠道上「同一个 edits 入口三种载体三种结果」——multipart 文本 500、urlencoded 文本 200 原样转发
+URL、JSON 透传。已把闸门扩到全部 advancedcustom 渠道（见 §9.17 边界表）。
+
+**断言口径**（防止「跑通了」的假绿）：
+
+1. 400 用例必须**零出站**——假上游一条记录都不能多；
+2. 200 用例必须命中指定的上游路径 + 载体 + 文件 part 数 + 字段子集（`model`/`prompt`/`n`/`response_format`）；
+3. 折叠成 JSON 的用例按**全量 body 摘要**断言（`image` 前缀、张数、`mask` 不在），不读被截断的日志；
+4. 并发用例每请求传不同长度的图片，用 part `bytes` 判断有没有串包。
+
+用例脚本：`/tmp/apiduo-img-test/matrix_edits_20261108.py`（临时件，未入库）。
