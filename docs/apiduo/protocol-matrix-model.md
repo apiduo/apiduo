@@ -810,6 +810,11 @@ multipart 里 `image` 可以是一段文本（URL / data URI / 裸 base64），J
 URL 垫图仍然支持，但入口是 `generations` / `chat`（`image_url`）：下载层取回字节后，
 再以文件流发给上游的 edits 端点 —— 见 §9.16。
 
+> 2026-11-08：skill `openai-image-adapter` 已同步修到 v1.0.1。原文 `references/conversion.md` §2
+> 明写「文本字段里的 URL 原样当引用收下」，与 SKILL.md §1「edits 载体有歧义」互相矛盾，
+> 实现照前者做就会多开一个 SSRF 面；现改成「文本引用一律 400」，并把 `image[]` 单文件保持数组、
+> chat 的 part 拼写、空 `data[]` 口径一并写清。
+
 实测（本地 3299 + 假上游 4020，2026-11-08 12:20）：
 
 | 请求 | 结果 |
