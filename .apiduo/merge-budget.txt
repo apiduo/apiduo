@@ -15,8 +15,10 @@
 # - playground：/pg 三条路由登记 middleware/access_token_routes.go（+5 行）。
 # - 8001 类型：选择器测试补 8 行（断言 Custom 页签三项）。
 # - 减少项：i18n 冗余键清掉 2 行、constants.ts 少 1 行，已反映在总数里。
+# 2026-11-10 追加 +4 行：改主端点不再逐字符清 image_protocol、抽屉徽标改读协议状态
+# （channel-mutate-drawer 净 +4；primary-endpoint-editor 是我方新文件，不计入合并面）。
 # 注意：-cost -update 会重写本文件并丢掉注释，收紧后要补回。
 files	108
 blocks	320
-added	3044
+added	3048
 deleted	109

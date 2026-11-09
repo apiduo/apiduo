@@ -485,6 +485,28 @@ const main = async () => {
       }, value)
       await sleep(500)
     }
+    // ---------- 9.5 回归：改主端点不该顺手清掉图片协议 ----------
+    // 过去输入框每敲一个字就按「像不像图片路径」清空 image_protocol：清空重填后协议就没了，
+    // 保存即静默丢配置。现在只说明折叠去向，开关状态由用户自己决定。
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').includes('派生端点、协议细节'))
+      btn?.click()
+    })
+    await sleep(600)
+    check('ui-fresh 保存后协议为开', (await switchState(page, '图片协议')) === 'true')
+    await setPrimaryPath('')
+    check('清空主端点后协议仍为开（不再被逐字符清掉）', (await switchState(page, '图片协议')) === 'true')
+    await setPrimaryPath('/v1/chat/completions')
+    check('聊天主端点：协议开关没被改写', (await switchState(page, '图片协议')) === 'true')
+    check('聊天主端点：说明折叠仍走图片默认路径', (await dialogText(page)).includes('仍折到'), '')
+    await setPrimaryPath('/v1/images/generations')
+    // 收回到折叠态：后面第 11 步靠「点一下展开」来数派生行，这里不能替它先展开。
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').includes('派生端点、协议细节'))
+      btn?.click()
+    })
+    await sleep(400)
+
     await setPrimaryPath('v1/images/generations')
     await saveDialog(page)
     const toastBad = await waitToast(page)

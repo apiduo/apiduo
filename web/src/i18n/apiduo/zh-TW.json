@@ -127,6 +127,8 @@
     "Any prefix works (v1, api/v3, deployments/…); the last segment must be generations.": "前綴任意（v1、api/v3、deployments/…），末段必須是 generations。",
     "This path does not end with generations, so image requests will not land where the protocol expects.": "這個路徑的末段不是 generations，圖片請求不會落到協議期望的位置。",
     "Image entries are folded into one canonical request first; image-to-image may be rewritten internally by the upstream protocol.": "圖片入口先折成一份 canonical 請求；圖生圖可能由上游協議在內部改寫位址。",
+    "Image protocol on": "圖片協議開啟",
+    "This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.": "這個主端點不是圖片入口：圖片協議仍折到 /v1/images/generations，其餘入口照常轉發到這裡。",
     "Entries forward as-is to this address.": "入口按原樣轉發到這個位址。",
     "Derived endpoints, protocol details": "派生端點、協議細節",
     "Fold image entries into one canonical request before sending.": "把圖片入口折成一份 canonical 請求後再發出。",

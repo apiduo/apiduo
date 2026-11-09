@@ -4372,7 +4372,8 @@ export function ChannelMutateDrawer({
                           {/* APIDUO:primary-endpoint:BEGIN */}
                           <Badge
                             variant={
-                              readPrimaryEndpoint(formValues.settings)
+                              readPrimaryEndpoint(formValues.settings) ||
+                              readImageProtocol(formValues.settings)?.enabled
                                 ? 'outline'
                                 : 'secondary'
                             }
@@ -4391,7 +4392,10 @@ export function ChannelMutateDrawer({
                                       formValues.settings
                                     ),
                                   })
-                                : t('Primary endpoint off')}
+                                : readImageProtocol(formValues.settings)
+                                      ?.enabled
+                                  ? t('Image protocol on')
+                                  : t('Primary endpoint off')}
                             </span>
                           </Badge>
                           {/* APIDUO:primary-endpoint:END */}

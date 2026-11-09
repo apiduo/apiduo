@@ -143,10 +143,9 @@ export function PrimaryEndpointEditor(props: {
       applyPrimaryEndpoint(props.routes, next, { deriveToEmpty: true })
     )
     props.onPrimaryEndpointChange?.(next)
-    if (props.imageProtocol?.enabled && !looksLikeImagePath(next)) {
-      // 主端点不再是图片端点：折叠层失去意义，整块关掉，别留下半套配置。
-      props.onImageProtocolChange?.(null)
-    }
+    // 以前这里在「输入值不像图片路径」时直接清掉 image_protocol —— 但输入过程会经过
+    // 空串和半截路径（`/`、`/v1/im`），等于用户刚改一个字就把协议丢了，填回去也不会恢复。
+    // 现在保留用户的输入：协议开不开由开关决定，页面只说明这种组合会折叠到哪里。
   }
 
   return (
@@ -294,7 +293,7 @@ export function PrimaryEndpointEditor(props: {
                     <Switch
                       checked={protocolOn}
                       aria-label={t('Image protocol')}
-                      disabled={!looksLikeImagePath(declared)}
+                      disabled={!protocolOn && !looksLikeImagePath(declared)}
                       onCheckedChange={(checked) => {
                         props.onImageProtocolChange?.(
                           checked
@@ -307,6 +306,14 @@ export function PrimaryEndpointEditor(props: {
                       }}
                     />
                   </div>
+
+                  {protocolOn && declared !== '' && !looksLikeImagePath(declared) ? (
+                    <p className='text-muted-foreground text-xs'>
+                      {t(
+                        'This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.'
+                      )}
+                    </p>
+                  ) : null}
 
                   {protocolOn ? (
                     <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
