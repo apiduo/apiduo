@@ -2,6 +2,7 @@ package trace
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -98,11 +99,21 @@ type Collector struct {
 	usageSet   bool
 	finalized  bool
 	hasContent bool
-	// sampled is decided once, at Begin, so the log row and the span can
-	// never disagree: a log that carries trace_id always points at a trace
-	// that exists. Deciding at the relay defer instead left 90% of rows (at
-	// a 10% rate) with a link that 404s — a dead link is worse than none.
-	sampled bool
+
+	// Two independent verdicts, decided once the model is known (BindModel
+	// from the stream path, or settlement/finalize). metaSampled decides
+	// whether a span exists at all — and therefore whether the console gets
+	// a trace_id; contentSampled only decides whether that span carries
+	// prompt/answer. Keeping them apart is what lets the log page link every
+	// row while still cutting content volume.
+	model          string
+	decided        bool
+	metaSampled    bool
+	contentSampled bool
+	excluded       bool
+	// parentSampled is the W3C traceparent sampled bit when the client sent
+	// one. nil means "no opinion", which is not the same as false.
+	parentSampled *bool
 }
 
 // Begin creates the per-request Collector and stores it on the context.
@@ -128,9 +139,10 @@ func Begin(c *gin.Context) {
 		requestID: requestID,
 		traceID:   TraceID(requestID),
 		spanID:    SpanID(requestID),
-		sampled:   shouldSample(conf, true),
 	}
 	if tp, ok := ParseTraceparent(c.Request.Header.Get("traceparent")); ok && tp.TraceID != "" {
+		sampled := tp.Sampled
+		col.parentSampled = &sampled
 		// Adopt the client's trace id so the agent framework's spans and
 		// this gateway span share one tree. parentSpanId must be set, or
 		// the span becomes the root of a new trace and the tree breaks.
@@ -147,6 +159,60 @@ func Begin(c *gin.Context) {
 		col.frameMode = 1
 	}
 	c.Set(contextKey, col)
+}
+
+// nowIn returns the wall clock in the policy's timezone. A nil location means
+// the process local zone; container images often run in UTC, which is exactly
+// why the console shows the resolved zone next to the schedule.
+func nowIn(conf *Config) time.Time {
+	if conf != nil && conf.Location != nil {
+		return time.Now().In(conf.Location)
+	}
+	return time.Now()
+}
+
+// BindModel tells the collector which model this request is for, as early as
+// the relay knows it. Needed because per-model rules cannot be applied without
+// the model, and waiting until finalize would buffer SSE frames we are about
+// to throw away.
+func BindModel(c *gin.Context, model string) {
+	col := fromContext(c)
+	if col == nil || model == "" || col.decided {
+		return
+	}
+	col.model = model
+	col.decide(current(), model)
+}
+
+// decide fixes both verdicts once. Cheap enough to call defensively from every
+// reader: after the first call it is a bool check.
+func (col *Collector) decide(conf *Config, model string) {
+	if col.decided {
+		return
+	}
+	col.decided = true
+	if model == "" {
+		model = col.model
+	}
+	rates, excluded := conf.Policy.Resolve(model, nowIn(conf))
+	if excluded {
+		col.excluded = true
+		return
+	}
+	// Parent-based sampling first: an agent that already decided keeps its
+	// tree coherent, and one that declined is not overridden — otherwise its
+	// spans would dangle under a child the gateway invented.
+	if conf.ParentBased && col.parentSampled != nil {
+		if !*col.parentSampled {
+			return
+		}
+		col.metaSampled = true
+	} else {
+		col.metaSampled = sampleByTrace(col.traceID, "meta", rates.Metadata)
+	}
+	if col.metaSampled {
+		col.contentSampled = sampleByTrace(col.traceID, "content", rates.Content)
+	}
 }
 
 func fromContext(c *gin.Context) *Collector {
@@ -175,10 +241,16 @@ func HasCollector(c *gin.Context) bool {
 // reports the same verdict through its return value.
 func TraceIDForLog(c *gin.Context, requestID string) string {
 	if col := fromContext(c); col != nil {
-		if !col.sampled {
+		col.decide(current(), col.model)
+		if !col.metaSampled {
 			return ""
 		}
 		return col.traceID
+	}
+	conf := current()
+	rates, excluded := conf.Policy.Resolve("", nowIn(conf))
+	if excluded || !sampleByTrace(TraceID(requestID), "meta", rates.Metadata) {
+		return ""
 	}
 	return TraceID(requestID)
 }
@@ -195,7 +267,11 @@ func FillUsage(c *gin.Context, u Usage) string {
 	}
 	col.usage = u
 	col.usageSet = true
-	if !col.sampled {
+	// Settlement is the first point where the model is always known, so it
+	// fixes the verdict when the stream hook never ran (non-stream, early
+	// failure).
+	col.decide(current(), col.model)
+	if !col.metaSampled {
 		return ""
 	}
 	return col.traceID
@@ -212,7 +288,11 @@ func ForceSample(c *gin.Context) string {
 	if col == nil || col.finalized {
 		return ""
 	}
-	col.sampled = true
+	// Forced rows are the ones an operator opens Langfuse for, so they keep
+	// their content too — otherwise the link would open an empty trace.
+	col.decided = true
+	col.metaSampled = true
+	col.contentSampled = true
 	return col.traceID
 }
 
@@ -228,6 +308,7 @@ func WrapStreamHandler[T any](c *gin.Context, h func(string, T)) func(string, T)
 		return h
 	}
 	conf := current()
+	col.decide(conf, col.model)
 	col.resetFrames(conf)
 	return func(data string, sr T) {
 		col.appendFrame([]byte(data), conf)
@@ -257,6 +338,11 @@ func (col *Collector) resetFrames(conf *Config) {
 func (col *Collector) appendFrame(frame []byte, conf *Config) {
 	sep := byte('\n')
 	col.totalFrameBytes += len(frame) + 1
+	// Content not sampled: still count bytes (interrupted-stream detection),
+	// never buffer them. This is the whole point of a separate content rate.
+	if col.decided && !col.contentSampled {
+		return
+	}
 	switch col.frameMode {
 	case 1:
 		// Frames are semantic units: truncation must land on frame
@@ -301,6 +387,13 @@ func CaptureResponseBody(c *gin.Context, data []byte) {
 		return
 	}
 	conf := current()
+	// Do NOT decide here: the non-stream response is written before the
+	// settlement point, so the model is still unknown and a verdict taken now
+	// would freeze the default rates and silently ignore every per-model rule.
+	// Buffer unconditionally and let finalize drop content it must not keep.
+	if col.decided && !col.contentSampled {
+		return
+	}
 	col.respBody = truncateCopy(data, conf)
 	col.hasContent = true
 }

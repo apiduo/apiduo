@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // BodyMode selects how much request/response content is captured.
@@ -43,14 +44,26 @@ const (
 // environment once and can only be replaced wholesale (tests do that via
 // setConfig), so readers never need locks.
 type Config struct {
-	Enabled         bool
-	Host            string // Langfuse base URL (OTLP export endpoint), no trailing slash
-	ConsoleURL      string // browser-facing base for the jump link; "" = same as Host
-	PublicKey       string // Basic auth user (pk-lf-...)
-	SecretKey       string // Basic auth password, never leaves this process
-	ProjectID       string // for the console jump link
-	SampleRate      int    // 0-100, regular requests
-	ErrorSampleRate int    // 0-100, failed requests (default 100)
+	Enabled    bool
+	Host       string // Langfuse base URL (OTLP export endpoint), no trailing slash
+	ConsoleURL string // browser-facing base for the jump link; "" = same as Host
+	PublicKey  string // Basic auth user (pk-lf-...)
+	SecretKey  string // Basic auth password, never leaves this process
+	ProjectID  string // for the console jump link
+	// Policy decides sampling from the request's model and the wall clock.
+	// One ordered rule list covers "per model", "exclude these" and "business
+	// hours only" so the console cannot drift into three conflicting sources.
+	Policy *Policy
+	// Location is the timezone the policy's day/minute windows are read in.
+	Location *time.Location
+	// ParentBased follows the W3C traceparent sampled bit: an upstream agent
+	// that already decided "sample" keeps this span, and one that said "do
+	// not sample" is respected. Off means every request is drawn locally.
+	ParentBased        bool
+	TraceViewerUserIDs []int
+	// ErrorSampleRate promotes failed requests that local sampling dropped
+	// (default 100): failures are the rows an operator opens Langfuse for.
+	ErrorSampleRate int
 	BodyMode        BodyMode
 	HeadBytes       int
 	TailBytes       int
@@ -68,7 +81,7 @@ const (
 	defaultQueueMeta      = 2048
 	defaultQueueContent   = 512
 	defaultTimeoutSeconds = 3
-	defaultSampleRate     = 10
+	defaultSampleRate     = 100
 	defaultErrorRate      = 100
 )
 
@@ -103,15 +116,31 @@ func envBodyMode(key string) BodyMode {
 	}
 }
 
+// EnvDefaultRates is the sampling pair the environment asks for.
+//
+// The settings module seeds its console form with this instead of a literal
+// 100. A console showing "100%" while the exporter runs at the .env rate is
+// not a cosmetic mismatch: every "why is this request missing from Langfuse"
+// investigation would start from a false premise. Keeping the read in one
+// place also means loadFromEnv cannot drift from what the form displays.
+func EnvDefaultRates() Rates {
+	return Rates{
+		Metadata: clampRate(envInt("LANGFUSE_SAMPLE_RATE", defaultSampleRate)),
+		Content:  clampRate(envInt("LANGFUSE_CONTENT_SAMPLE_RATE", defaultSampleRate)),
+	}
+}
+
 func loadFromEnv() *Config {
 	return &Config{
-		Enabled:         envBool("LANGFUSE_ENABLED"),
-		Host:            strings.TrimRight(os.Getenv("LANGFUSE_HOST"), "/"),
-		ConsoleURL:      strings.TrimRight(os.Getenv("LANGFUSE_CONSOLE_URL"), "/"),
-		PublicKey:       os.Getenv("LANGFUSE_PUBLIC_KEY"),
-		SecretKey:       os.Getenv("LANGFUSE_SECRET_KEY"),
-		ProjectID:       os.Getenv("LANGFUSE_PROJECT_ID"),
-		SampleRate:      clampRate(envInt("LANGFUSE_SAMPLE_RATE", defaultSampleRate)),
+		Enabled:    envBool("LANGFUSE_ENABLED"),
+		Host:       strings.TrimRight(os.Getenv("LANGFUSE_HOST"), "/"),
+		ConsoleURL: strings.TrimRight(os.Getenv("LANGFUSE_CONSOLE_URL"), "/"),
+		PublicKey:  os.Getenv("LANGFUSE_PUBLIC_KEY"),
+		SecretKey:  os.Getenv("LANGFUSE_SECRET_KEY"),
+		ProjectID:  os.Getenv("LANGFUSE_PROJECT_ID"),
+		Policy:     &Policy{Defaults: EnvDefaultRates()},
+		Location:        time.Local,
+		ParentBased:     true,
 		ErrorSampleRate: clampRate(envInt("LANGFUSE_ERROR_SAMPLE_RATE", defaultErrorRate)),
 		BodyMode:        envBodyMode("LANGFUSE_BODY_MODE"),
 		HeadBytes:       envInt("LANGFUSE_BODY_HEAD_BYTES", defaultHeadBytes),
@@ -122,16 +151,6 @@ func loadFromEnv() *Config {
 		FlushIntervalMS: envInt("LANGFUSE_FLUSH_INTERVAL_MS", 5000),
 		Redact:          os.Getenv("LANGFUSE_REDACT") != "false", // default on
 	}
-}
-
-func clampRate(rate int) int {
-	if rate < 0 {
-		return 0
-	}
-	if rate > 100 {
-		return 100
-	}
-	return rate
 }
 
 var (

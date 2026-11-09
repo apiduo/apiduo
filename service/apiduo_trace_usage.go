@@ -18,6 +18,9 @@ func apiduoTraceUsage(ctx *gin.Context, summary textQuotaSummary, relayInfo *rel
 	if relayInfo == nil || ctx == nil {
 		return ""
 	}
+	// Settlement is the first point where the model is always known, so it
+	// also fixes the sampling verdict for non-stream requests.
+	trace.BindModel(ctx, relayInfo.OriginModelName)
 	u := trace.Usage{
 		PromptTokens:     summary.PromptTokens,
 		CompletionTokens: summary.CompletionTokens,

@@ -127,6 +127,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}
 
 	// APIDUO:trace:BEGIN
+	apiduotrace.BindModel(c, info.OriginModelName)
 	dataHandler = apiduotrace.WrapStreamHandler(c, dataHandler)
 	// APIDUO:trace:END
 

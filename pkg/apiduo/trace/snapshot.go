@@ -38,8 +38,11 @@ type Snapshot struct {
 	Retry            int
 
 	HasContent bool
-	Input      []byte
-	Output     []byte
+	// ContentSampled records whether this span was allowed to carry
+	// prompt/answer. False means metadata-only on purpose, not a capture bug.
+	ContentSampled bool
+	Input          []byte
+	Output         []byte
 
 	InputTruncated  bool
 	OutputTruncated bool

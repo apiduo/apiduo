@@ -11,6 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	// APIDUO:observability:BEGIN
+	"github.com/QuantumNous/new-api/setting/observability_setting"
+	// APIDUO:observability:END
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -748,6 +751,10 @@ func handleConfigUpdate(key, value string) bool {
 	// 特定配置的后处理
 	if configName == "performance_setting" {
 		performance_setting.UpdateAndSync()
+		// APIDUO:observability:BEGIN
+	} else if configName == "observability_setting" {
+		observability_setting.UpdateAndSync()
+		// APIDUO:observability:END
 	} else if configName == "billing_setting" {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()

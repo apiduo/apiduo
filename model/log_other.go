@@ -278,3 +278,55 @@ func formatLogOtherJSON(value string, visibility logOtherVisibility) string {
 	}
 	return string(formatted)
 }
+
+// APIDUO:observability:BEGIN
+// StripLogTraceIDs removes admin_info.trace_id from a page of logs.
+//
+// The trace link is a stronger grant than "can read the log": following it
+// exposes the whole prompt and answer. A viewer without log:trace must not
+// receive the id at all — hiding the link in the UI would leave the id one
+// devtools panel away, and the console URL is guessable.
+func StripLogTraceIDs(logs []*Log) {
+	for i := range logs {
+		logs[i].Other = stripLogTraceID(logs[i].Other)
+	}
+}
+
+func stripLogTraceID(value string) string {
+	if value == "" {
+		return value
+	}
+	var values map[string]json.RawMessage
+	if err := common.UnmarshalJsonStr(value, &values); err != nil {
+		return value
+	}
+	rawAdmin, ok := values[logOtherAdminInfoKey]
+	if !ok {
+		return value
+	}
+	var admin map[string]json.RawMessage
+	if err := common.UnmarshalJsonStr(string(rawAdmin), &admin); err != nil {
+		return value
+	}
+	if _, ok := admin["trace_id"]; !ok {
+		return value
+	}
+	delete(admin, "trace_id")
+
+	if len(admin) == 0 {
+		delete(values, logOtherAdminInfoKey)
+	} else {
+		encoded, err := common.Marshal(admin)
+		if err != nil {
+			return value
+		}
+		values[logOtherAdminInfoKey] = encoded
+	}
+	formatted, err := common.Marshal(values)
+	if err != nil {
+		return value
+	}
+	return string(formatted)
+}
+
+// APIDUO:observability:END

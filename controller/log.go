@@ -7,6 +7,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	// APIDUO:observability:BEGIN
+	"github.com/QuantumNous/new-api/pkg/apiduo/trace"
+	// APIDUO:observability:END
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
@@ -62,7 +65,14 @@ func GetAllLogs(c *gin.Context) {
 		return
 	}
 	if c.GetInt("role") < common.RoleRootUser {
-		model.FormatAdminLogs(logs)
+		// APIDUO:observability:BEGIN
+		// Reading a log and reading the conversation behind it are separate
+		// grants: strip the id for admins the settings did not list, so the
+		// link cannot be reconstructed from the payload.
+		if !trace.TraceViewerAllowed(c.GetInt("id")) {
+			model.StripLogTraceIDs(logs)
+		}
+		// APIDUO:observability:END
 	} else {
 		model.FormatRootLogs(logs)
 	}

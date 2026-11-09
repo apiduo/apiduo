@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -205,7 +206,7 @@ func TestQueueFullDropsFast(t *testing.T) {
 func TestUnsampledLogHasNoTraceID(t *testing.T) {
 	s := newSink(t)
 	conf := testConfig(s.server.URL)
-	conf.SampleRate = 0
+	conf.Policy = &Policy{Defaults: Rates{Metadata: 0, Content: 0}}
 	conf.ErrorSampleRate = 0
 	conf.FlushIntervalMS = 30
 	setConfig(conf)
@@ -250,7 +251,7 @@ func TestUnsampledLogHasNoTraceID(t *testing.T) {
 func TestForceSampleKeepsTheSpanItAdvertised(t *testing.T) {
 	s := newSink(t)
 	conf := testConfig(s.server.URL)
-	conf.SampleRate = 0
+	conf.Policy = &Policy{Defaults: Rates{Metadata: 0, Content: 0}}
 	conf.ErrorSampleRate = 0
 	conf.FlushIntervalMS = 30
 	setConfig(conf)
@@ -273,37 +274,44 @@ func TestForceSampleKeepsTheSpanItAdvertised(t *testing.T) {
 	}
 }
 
-// TestSamplingRates pins the counter-based sampling decision.
-func TestSamplingRates(t *testing.T) {
-	conf := &Config{SampleRate: 0, ErrorSampleRate: 100}
-	sampled := 0
-	for range 100 {
-		if shouldSample(conf, true) {
-			sampled++
+// TestSamplingIsDeterministicByTrace pins the hash-based decision: the same
+// trace always gets the same verdict (survives restarts, needs no shared
+// counter, and two replicas agree), and the rate still holds across traces.
+func TestSamplingIsDeterministicByTrace(t *testing.T) {
+	if sampleByTrace("abc", "meta", 0) {
+		t.Fatal("rate 0 must never sample")
+	}
+	if !sampleByTrace("abc", "meta", 100) {
+		t.Fatal("rate 100 must always sample")
+	}
+	first := sampleByTrace("trace-1", "meta", 10)
+	for range 20 {
+		if sampleByTrace("trace-1", "meta", 10) != first {
+			t.Fatal("the same trace must always get the same verdict")
 		}
 	}
-	if sampled != 0 {
-		t.Fatalf("rate 0 must never sample, got %d", sampled)
-	}
-	sampled = 0
-	for range 100 {
-		if shouldSample(conf, false) {
-			sampled++
+	// The content decision must be independently salted. Checking one trace
+	// would be wrong (a single 50/50 draw coincides half the time), so compare
+	// the agreement rate: identical salting would agree 100% of the time.
+	agree := 0
+	for i := range 1000 {
+		id := fmt.Sprintf("c-%d", i)
+		if sampleByTrace(id, "meta", 50) == sampleByTrace(id, "content", 50) {
+			agree++
 		}
 	}
-	if sampled != 100 {
-		t.Fatalf("error rate 100 must always sample, got %d", sampled)
+	if agree > 650 || agree < 350 {
+		t.Fatalf("meta/content draws must be independent, agreed %d/1000", agree)
 	}
 
-	conf.SampleRate = 10
-	sampled = 0
-	for range 1000 {
-		if shouldSample(conf, true) {
+	sampled := 0
+	for i := range 2000 {
+		if sampleByTrace(fmt.Sprintf("trace-%d", i), "meta", 10) {
 			sampled++
 		}
 	}
-	if sampled < 50 || sampled > 150 {
-		t.Fatalf("rate 10 should sample ~100/1000, got %d", sampled)
+	if sampled < 140 || sampled > 260 {
+		t.Fatalf("rate 10 over 2000 traces should be ~200, got %d", sampled)
 	}
 }
 

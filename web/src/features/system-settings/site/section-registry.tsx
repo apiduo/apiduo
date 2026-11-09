@@ -27,6 +27,9 @@ import { ArtifactStorageSettingsSection } from '../integrations/artifact-storage
 // APIDUO:login-skin:BEGIN
 import { LoginThemeSection } from '@/features/apiduo-login/login-theme-section'
 // APIDUO:login-skin:END
+// APIDUO:observability:BEGIN
+import { ObservabilitySection } from './observability-section'
+// APIDUO:observability:END
 import {
   parseHeaderNavModules,
   parseSidebarModulesAdmin,
@@ -133,6 +136,13 @@ const SITE_SECTIONS = [
     build: () => <LoginThemeSection />,
   },
   // APIDUO:login-skin:END
+  // APIDUO:observability:BEGIN
+  {
+    id: 'observability',
+    titleKey: 'Observability',
+    build: () => <ObservabilitySection />,
+  },
+  // APIDUO:observability:END
 ] as const
 
 export type SiteSectionId = (typeof SITE_SECTIONS)[number]['id']

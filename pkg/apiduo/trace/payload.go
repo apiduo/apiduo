@@ -70,6 +70,19 @@ func (j *jsonBuf) attrInt(key string, value int64) {
 	j.b.WriteString(`"}},`)
 }
 
+// attrBoolAlways emits both true and false. For flags where "false" is a
+// meaningful state (content sampled or not), omitting it would make an old
+// exporter and a content-stripped span look identical.
+func (j *jsonBuf) attrBoolAlways(key string, value bool) {
+	j.b.WriteString(`{"key":`)
+	j.str(key)
+	if value {
+		j.b.WriteString(`,"value":{"boolValue":true}},`)
+		return
+	}
+	j.b.WriteString(`,"value":{"boolValue":false}},`)
+}
+
 func (j *jsonBuf) attrBool(key string, value bool) {
 	if !value {
 		return
@@ -142,6 +155,7 @@ func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot) {
 	j.attrInt("apiduo.quota", int64(sn.Quota))
 	j.attrInt("apiduo.retry", int64(sn.Retry))
 	j.attrBool("apiduo.is_stream", sn.IsStream)
+	j.attrBoolAlways("apiduo.content_sampled", sn.ContentSampled)
 	j.attrBool("apiduo.interrupted", sn.Interrupted)
 	j.attrBool("apiduo.input_truncated", sn.InputTruncated)
 	j.attrBool("apiduo.output_truncated", sn.OutputTruncated)

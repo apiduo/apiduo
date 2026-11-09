@@ -1,7 +1,6 @@
 package trace
 
 import (
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,10 +9,6 @@ import (
 // Public API. Every entry point is cheap and no-op-safe when disabled; the
 // upstream call sites are one line each (docs §3.3), and type translation
 // from repository types lives in bridge files next to those call sites.
-
-// sampleCounter drives the lock-free sampling decision
-// (atomic increment + modulo; math/rand's global source has a mutex).
-var sampleCounter atomic.Uint64
 
 // FinalizeRelay builds the snapshot at the request boundary and enqueues
 // it. Called exactly once from controller/relay.go's defer, which covers
@@ -28,12 +23,23 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 	col.finalized = true
 	conf := current()
 
-	// The regular-rate verdict was fixed at Begin so the log row's trace_id
-	// can never point at a span that was never sent. Failures may still be
-	// promoted by the error rate: they are the sample an operator opens
-	// Langfuse for, and a missing jump link is cheaper than a missing trace.
-	if !col.sampled && (m.Success || !shouldSample(conf, false)) {
+	// The verdict is fixed as soon as the model is known (BindModel on the
+	// stream path, settlement, or here) so the log row's trace_id can never
+	// point at a span that was never sent. Failures may still be promoted by
+	// the error rate — except for excluded models, which must stay invisible.
+	col.decide(conf, m.Model)
+	if col.excluded {
 		return
+	}
+	if !col.metaSampled {
+		if m.Success || !sampleByTrace(col.traceID, "error", conf.ErrorSampleRate) {
+			return
+		}
+		// Promoted by the error rate: content still follows the policy so a
+		// content=0 deployment never leaks prompts through the error path.
+		rates, _ := conf.Policy.Resolve(m.Model, nowIn(conf))
+		col.metaSampled = true
+		col.contentSampled = sampleByTrace(col.traceID, "content", rates.Content)
 	}
 
 	endNano := time.Now().UnixNano()
@@ -79,7 +85,7 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 		}
 	}
 
-	if conf.BodyMode != BodyOff {
+	if conf.BodyMode != BodyOff && col.contentSampled {
 		if input := col.requestBody(c); len(input) > 0 {
 			sn.Input = truncateCopy(input, conf)
 			if len(sn.Input) < len(input) {
@@ -97,6 +103,7 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 		// usage hid the request body of failed requests — the one case where
 		// "what did we send upstream" matters most.
 		sn.HasContent = len(sn.Input) > 0 || len(sn.Output) > 0
+		sn.ContentSampled = col.contentSampled
 		// A failed request that already produced frames was interrupted
 		// mid-stream — the most valuable sample for stream diagnostics.
 		sn.Interrupted = !m.Success && col.totalFrameBytes > 0
@@ -118,7 +125,8 @@ func RecordConsume(in RecordConsumeInput) string {
 		return ""
 	}
 	conf := current()
-	if !shouldSample(conf, true) {
+	rates, excluded := conf.Policy.Resolve(in.Model, nowIn(conf))
+	if excluded || !sampleByTrace(TraceID(in.RequestID), "meta", rates.Metadata) {
 		return ""
 	}
 	endNano := in.UnixNano
@@ -151,22 +159,4 @@ func RecordConsume(in RecordConsumeInput) string {
 	}
 	exporterFor(conf).enqueue(sn)
 	return sn.TraceID
-}
-
-// shouldSample applies the independent regular/error rates. Failed
-// requests default to 100%: they are rare and they are exactly what
-// someone opening Langfuse wants to inspect.
-func shouldSample(conf *Config, success bool) bool {
-	rate := conf.SampleRate
-	if !success {
-		rate = conf.ErrorSampleRate
-	}
-	if rate >= 100 {
-		return true
-	}
-	if rate <= 0 {
-		return false
-	}
-	n := sampleCounter.Add(1)
-	return int(n%100) < rate
 }

@@ -1,5 +1,6 @@
 import {
   type LucideIcon,
+  Activity,
   Database,
   LayoutTemplate,
   PanelsTopLeft,
@@ -49,15 +50,12 @@ const APIDUO_BLOCKS: ReadonlySet<string> = new Set([
   'dashboard:catalog-health',
   'channel:file-relay',
   'channel:artifact-storage',
-  // The protocol matrix lives inside the upstream advanced-custom dialog: one
-  // tab (bulk editing) and one button (read-only coverage popover). Both are
-  // apiduo surfaces that upstream users would otherwise read as native.
-  'channel:protocol-matrix',
-  'channel:route-coverage',
   // 主端点 + 派生：把「每条入口一行」的路由收束成一个中心，apiduo 的结构性改造。
   'channel:primary-endpoint',
   // A third multi-key strategy: apiduo routes one token to one key.
   'channel:multi-key-sticky',
+  // Per-entry coverage summary: which protocols a channel actually serves.
+  'channel:route-coverage',
   // Pool width for multi-key channels: how many keys stay in rotation.
   'channel:min-active-keys',
   'security:agent-keys',
@@ -107,6 +105,7 @@ const APIDUO_SETTINGS_SECTIONS: ReadonlySet<string> = new Set([
   'artifact-storage',
   'appearance',
   'login-theme',
+  'observability',
 ])
 
 /**
@@ -124,6 +123,7 @@ const APIDUO_SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   'artifact-storage': Database,
   appearance: Sparkles,
   'login-theme': LayoutTemplate,
+  observability: Activity,
 }
 
 export function apiduoSettingsSectionIcon(

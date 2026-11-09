@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,7 +17,9 @@ func testConfig(host string) *Config {
 		PublicKey:       "pk-lf-test",
 		SecretKey:       "sk-lf-test",
 		ProjectID:       "proj-test",
-		SampleRate:      100,
+		Policy:          &Policy{Defaults: Rates{Metadata: 100, Content: 100}},
+		Location:        time.Local,
+		ParentBased:     true,
 		ErrorSampleRate: 100,
 		BodyMode:        BodyHeadTail,
 		HeadBytes:       64,
