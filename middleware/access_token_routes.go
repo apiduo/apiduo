@@ -329,6 +329,14 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 
 	// router/relay-router.go
 	"POST /pg/chat/completions": accessTokenSessionRule,
+	// APIDUO:playground:BEGIN
+	// The playground's image and video panels call these the same way the chat
+	// panel calls /pg/chat/completions: from the browser, with the session
+	// cookie. A relay key must not be able to drive them.
+	"POST /pg/images/generations":        accessTokenSessionRule,
+	"POST /pg/video/generations":         accessTokenSessionRule,
+	"GET /pg/video/generations/:task_id": accessTokenSessionRule,
+	// APIDUO:playground:END
 	// APIDUO:option-batch:BEGIN
 	"PUT /api/option/batch": accessTokenScopeRule("option:write"),
 	// APIDUO:option-batch:END

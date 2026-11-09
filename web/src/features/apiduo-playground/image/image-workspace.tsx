@@ -310,7 +310,11 @@ export function ImageWorkspace({
             className='placeholder:text-muted-foreground block min-h-20 w-full resize-none bg-transparent px-4 py-3 text-sm leading-6 outline-none'
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+              if (
+                event.key === 'Enter' &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
                 event.preventDefault()
                 handleSubmit()
               }
@@ -319,7 +323,12 @@ export function ImageWorkspace({
             value={prompt}
           />
           <div className='border-border/60 flex flex-wrap items-center gap-2 border-t px-3 py-2'>
-            <Select onValueChange={setSize} value={size}>
+            <Select
+              onValueChange={(value) => {
+                if (value !== null) setSize(value)
+              }}
+              value={size}
+            >
               <SelectTrigger className='h-7 w-[118px] text-[11.5px]'>
                 <SelectValue />
               </SelectTrigger>

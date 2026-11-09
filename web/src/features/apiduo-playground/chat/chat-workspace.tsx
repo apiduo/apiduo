@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { PlaygroundInput } from '@/features/playground/components/input/playground-input'
 import { usePlaygroundConversation } from '@/features/playground/hooks/use-playground-conversation'
+import type { MessageStateUpdater } from '@/features/playground/lib'
 import type {
   Message,
   ParameterEnabled,
@@ -41,7 +42,7 @@ interface ChatWorkspaceProps {
   models: Array<{ label: string; value: string }>
   groups: Array<{ label: string; value: string; ratio: number | string }>
   isLoadingModels: boolean
-  updateMessages: (updater: (prev: Message[]) => Message[]) => void
+  updateMessages: (updater: MessageStateUpdater) => void
   updateConfig: <K extends keyof PlaygroundConfig>(
     key: K,
     value: PlaygroundConfig[K]

@@ -315,7 +315,11 @@ export function VideoWorkspace({
             className='placeholder:text-muted-foreground block min-h-20 w-full resize-none bg-transparent px-4 py-3 text-sm leading-6 outline-none'
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+              if (
+                event.key === 'Enter' &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
                 event.preventDefault()
                 void handleSubmit()
               }

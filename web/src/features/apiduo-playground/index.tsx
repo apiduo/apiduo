@@ -170,7 +170,9 @@ export function ApiduoPlayground() {
         <ModeTabs onChange={handleModeChange} value={mode} />
 
         <Select
-          onValueChange={(value) => updateConfig('model', value)}
+          onValueChange={(value) => {
+            if (value !== null) updateConfig('model', value)
+          }}
           value={config.model}
         >
           <SelectTrigger className='h-7 w-[190px] font-mono text-[11.5px]'>
@@ -186,7 +188,9 @@ export function ApiduoPlayground() {
         </Select>
 
         <Select
-          onValueChange={(value) => updateConfig('group', value)}
+          onValueChange={(value) => {
+            if (value !== null) updateConfig('group', value)
+          }}
           value={config.group}
         >
           <SelectTrigger className='h-7 w-[118px] font-mono text-[11.5px]'>
