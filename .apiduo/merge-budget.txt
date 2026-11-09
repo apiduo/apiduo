@@ -2,10 +2,21 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-# 2026-11-09 同步上游 bd6bb530（13 个提交，43 个文件）后重算：总量与合并前持平
-# （104/308/2838/99），说明上游这次改动没有落到我方标记块内，解冲突只增了语言文件键。
-# 同日上一条是 dashboard 目录健康面板：blocks 306→308、added 2829→2838。
-files	104
-blocks	308
-added	2838
-deleted	99
+#
+# 2026-11-10 发版收口后的实际值（上次提交 104/308/2838/99）。
+# 相比上一版 +4 文件 / +12 块 / +206 行 / +10 删除，来源按功能：
+# - 主端点与图片协议（最大头）：primary-endpoint-editor 重写成单端点/双端点一份，
+#   图片协议区并进来后删掉独立的 image-protocol-section；channel-mutate-drawer 254 行、
+#   channel-form 114 行、advanced-custom-editor-dialog 136 行、model/channel.go 87 行
+#   （保存期校验 + 尾斜杠归一）。
+# - 可观测性：四处挂接各一个标记块（controller/log.go、model/option.go、
+#   model/log_other.go、relay/helper/stream_scanner.go），都在「读日志 / 配置热更 /
+#   结算 / 流式回调」这种不可替代的位置。
+# - playground：/pg 三条路由登记 middleware/access_token_routes.go（+5 行）。
+# - 8001 类型：选择器测试补 8 行（断言 Custom 页签三项）。
+# - 减少项：i18n 冗余键清掉 2 行、constants.ts 少 1 行，已反映在总数里。
+# 注意：-cost -update 会重写本文件并丢掉注释，收紧后要补回。
+files	108
+blocks	320
+added	3044
+deleted	109

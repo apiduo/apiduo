@@ -18,8 +18,8 @@
 2	web/src/components/layout/components/top-nav.tsx
 3	web/src/components/layout/config/system-settings.config.ts
 1	web/src/features/channels/components/dialogs/advanced-custom-editor-dialog.tsx
-4	web/src/features/channels/components/drawers/channel-provider-picker.tsx
-7	web/src/features/channels/constants.ts
+3	web/src/features/channels/components/drawers/channel-provider-picker.tsx
+6	web/src/features/channels/constants.ts
 1	web/src/features/channels/lib/channel-form-errors.ts
 10	web/src/features/chat/lib/chat-links.ts
 70	web/src/features/dashboard/api.ts
