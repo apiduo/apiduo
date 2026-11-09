@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -100,15 +101,94 @@ func (a *Adaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.
 }
 
 func (a *Adaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
-	return nil
+	if a.config == nil || a.config.Billing.ModeFor(apiduoBillingModelName(info)) != kitdto.AdvancedAsyncBillingPerSecond {
+		return nil
+	}
+	seconds := a.requestedSeconds()
+	if seconds <= 0 {
+		seconds = a.config.Billing.DefaultSeconds
+	}
+	if seconds <= 0 {
+		return nil
+	}
+	return map[string]float64{"seconds": seconds}
+}
+
+// apiduoBillingModelName is the model name a per-model billing override is
+// keyed by. The client spelling wins: it is what the operator wrote in the
+// channel settings.
+func apiduoBillingModelName(info *relaycommon.RelayInfo) string {
+	if info == nil {
+		return ""
+	}
+	if name := strings.TrimSpace(info.OriginModelName); name != "" {
+		return name
+	}
+	return strings.TrimSpace(info.UpstreamModelName)
+}
+
+// requestedSeconds reads the client-declared duration from the submit body,
+// which validation has kept verbatim for the upstream call.
+func (a *Adaptor) requestedSeconds() float64 {
+	if len(a.submitBody) == 0 {
+		return 0
+	}
+	path := a.config.Billing.DurationPath
+	if len(path) == 0 {
+		path = []string{"duration"}
+	}
+	var decoded any
+	if err := common.Unmarshal(a.submitBody, &decoded); err != nil {
+		return 0
+	}
+	raw, ok := kitdto.AdvancedAsyncStringAt(decoded, path)
+	if !ok {
+		return 0
+	}
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || seconds <= 0 {
+		return 0
+	}
+	return seconds
 }
 
 func (a *Adaptor) AdjustBillingOnSubmit(info *relaycommon.RelayInfo, taskData []byte) map[string]float64 {
 	return nil
 }
 
+// AdjustBillingOnComplete settles a per-token task that came back without
+// token counts at the configured fallback price. Returning zero lets the
+// poller recalculate from tokens, or leaves the reservation alone when the
+// channel sets no fallback price.
 func (a *Adaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
-	return 0
+	if task == nil {
+		return 0
+	}
+	// Polling builds a fresh adaptor without relay info, so the channel
+	// settings have to come off the stored task.
+	config, err := a.taskConfig(task)
+	if err != nil || config.Billing.TokenFallbackPrice <= 0 {
+		return 0
+	}
+	if taskResult != nil && (taskResult.TotalTokens > 0 || taskResult.CompletionTokens > 0) {
+		return 0
+	}
+	modelName := ""
+	groupRatio := 1.0
+	if billing := task.PrivateData.BillingContext; billing != nil {
+		modelName = billing.OriginModelName
+		if billing.GroupRatio > 0 {
+			groupRatio = billing.GroupRatio
+		}
+	}
+	if modelName == "" {
+		modelName = task.Properties.OriginModelName
+	}
+	if config.Billing.ModeFor(modelName) != kitdto.AdvancedAsyncBillingPerToken {
+		return 0
+	}
+	quota, _ := common.QuotaFromFloatChecked(config.Billing.TokenFallbackPrice * common.QuotaPerUnit * groupRatio)
+	return quota
 }
 
 func (a *Adaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -244,15 +324,28 @@ func (a *Adaptor) ParseTaskResult(task *model.Task, resp *http.Response, respBod
 	status := config.Fields.NormalizeAdvancedAsyncStatus(rawStatus)
 
 	result := &relaycommon.TaskInfo{Status: status}
-	if resultURL, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.ResultURLPath); ok {
-		result.Url = resultURL
+	// An empty path resolves to the whole reply, so an unset optional field
+	// would otherwise surface the raw JSON as the result URL, progress or
+	// failure reason.
+	if len(config.Fields.ResultURLPath) > 0 {
+		if resultURL, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.ResultURLPath); ok {
+			result.Url = resultURL
+		}
 	}
-	if progress, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.ProgressPath); ok {
-		result.Progress = progress
+	if len(config.Fields.ProgressPath) > 0 {
+		if progress, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.ProgressPath); ok {
+			result.Progress = progress
+		}
 	}
-	if reason, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.ErrorPath); ok {
-		result.Reason = reason
+	if len(config.Fields.ErrorPath) > 0 {
+		if reason, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.ErrorPath); ok {
+			result.Reason = reason
+		}
 	}
+	// Token counts let the poller settle a per-token task from the vendor's own
+	// numbers; the host recalculates the quota when these are present.
+	result.CompletionTokens = advancedAsyncTokensAt(decoded, config.Fields.CompletionTokensPath)
+	result.TotalTokens = advancedAsyncTokensAt(decoded, config.Fields.TotalTokensPath)
 	if status == "FAILURE" && result.Reason == "" {
 		result.Reason = "upstream reported failure"
 	}
@@ -260,6 +353,24 @@ func (a *Adaptor) ParseTaskResult(task *model.Task, resp *http.Response, respBod
 }
 
 func (a *Adaptor) GetModelList() []string { return nil }
+
+// advancedAsyncTokensAt reads a token count from an unset-safe path. Vendors
+// write it as a JSON number or a numeric string, so both decode through the
+// same float parse.
+func advancedAsyncTokensAt(root any, path []string) int {
+	if len(path) == 0 {
+		return 0
+	}
+	raw, ok := kitdto.AdvancedAsyncStringAt(root, path)
+	if !ok {
+		return 0
+	}
+	tokens, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || tokens <= 0 {
+		return 0
+	}
+	return int(tokens)
+}
 
 func (a *Adaptor) GetChannelName() string { return ChannelName }
 

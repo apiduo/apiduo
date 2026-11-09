@@ -24,7 +24,7 @@ import type {
   AdvancedCustomRouteAuth,
 } from '../types'
 
-export const CHANNEL_TYPE_ADVANCED_ASYNC = 64
+export const CHANNEL_TYPE_ADVANCED_ASYNC = 8001
 
 export const ADVANCED_ASYNC_TASK_STATUSES = [
   'NOT_START',
@@ -106,7 +106,18 @@ export function normalizeAdvancedAsyncConfig(
     submit,
     query,
     fields,
-    billing: { mode: config.billing?.mode || 'per_call' },
+    billing: {
+      mode: config.billing?.mode || 'per_call',
+      models:
+        config.billing?.models && Object.keys(config.billing.models).length > 0
+          ? config.billing.models
+          : undefined,
+      duration_path: (config.billing?.duration_path || [])
+        .map((s) => s.trim())
+        .filter(Boolean),
+      default_seconds: config.billing?.default_seconds || undefined,
+      token_fallback_price: config.billing?.token_fallback_price || undefined,
+    },
   }
 }
 
@@ -140,6 +151,12 @@ function normalizeFields(fields: AdvancedAsyncFields | undefined): AdvancedAsync
       .map((s) => s.trim())
       .filter(Boolean),
     error_path: (fields?.error_path || []).map((s) => s.trim()).filter(Boolean),
+    completion_tokens_path: (fields?.completion_tokens_path || [])
+      .map((s) => s.trim())
+      .filter(Boolean),
+    total_tokens_path: (fields?.total_tokens_path || [])
+      .map((s) => s.trim())
+      .filter(Boolean),
     status_map: Object.keys(statusMap).length > 0 ? statusMap : undefined,
   }
 }

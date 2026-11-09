@@ -167,11 +167,17 @@ export interface AdvancedAsyncFields {
   result_url_path?: string[]
   progress_path?: string[]
   error_path?: string[]
+  completion_tokens_path?: string[]
+  total_tokens_path?: string[]
   status_map?: Record<string, string>
 }
 
 export interface AdvancedAsyncBilling {
   mode?: string
+  models?: Record<string, string>
+  duration_path?: string[]
+  default_seconds?: number
+  token_fallback_price?: number
 }
 /* APIDUO:advanced-async:END */
 

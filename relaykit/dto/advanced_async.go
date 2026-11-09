@@ -66,6 +66,11 @@ type AdvancedAsyncFields struct {
 	ResultURLPath []string `json:"result_url_path,omitempty"`
 	ProgressPath  []string `json:"progress_path,omitempty"`
 	ErrorPath     []string `json:"error_path,omitempty"`
+	// CompletionTokensPath and TotalTokensPath locate the vendor's token counts
+	// in the query reply. "per_token" billing settles from them; leaving both
+	// empty keeps the task on its reserved quota.
+	CompletionTokensPath []string `json:"completion_tokens_path,omitempty"`
+	TotalTokensPath      []string `json:"total_tokens_path,omitempty"`
 	// StatusMap maps a vendor status (as written in the reply) to one of
 	// NOT_START / SUBMITTED / QUEUED / IN_PROGRESS / SUCCESS / FAILURE /
 	// UNKNOWN. When empty, common vendor words are recognized.
@@ -74,12 +79,60 @@ type AdvancedAsyncFields struct {
 
 // AdvancedAsyncBilling selects how the submitted task is charged.
 type AdvancedAsyncBilling struct {
-	// Mode is "per_call" (default). Reserved for future usage-based modes.
+	// Mode is "per_call" (default), "per_second" or "per_token". It applies to
+	// every model this channel serves unless Models overrides it.
+	//
+	// per_call   the model price is charged once, whatever the task produced.
+	// per_second the model price is read as the price of one second and
+	//            multiplied by the requested duration.
+	// per_token  the reservation is the model-ratio estimate and the task is
+	//            settled from the vendor's token counts on completion, which
+	//            means the model must carry a ModelRatio, not a ModelPrice.
 	Mode string `json:"mode,omitempty"`
+	// Models maps a model name to its own mode, so one channel can bill one
+	// model per call, another per second and a third per token. A model absent
+	// here falls back to Mode.
+	Models map[string]string `json:"models,omitempty"`
+	// DurationPath locates the requested seconds in the client request body.
+	// Defaults to ["duration"], which is where the Ark task shape writes it.
+	DurationPath []string `json:"duration_path,omitempty"`
+	// DefaultSeconds applies when the request carries no readable duration.
+	// Zero leaves the reservation at the plain per-call price.
+	DefaultSeconds float64 `json:"default_seconds,omitempty"`
+	// TokenFallbackPrice is a per-call price charged when a per-token task
+	// reports no token counts, so the task never stays at the ratio estimate.
+	// Zero keeps the reservation untouched.
+	TokenFallbackPrice float64 `json:"token_fallback_price,omitempty"`
+}
+
+// ModeFor returns the billing mode that applies to this model, falling back to
+// the channel-wide Mode and then to per_call. Model names match case
+// insensitively because clients spell them inconsistently.
+func (c *AdvancedAsyncBilling) ModeFor(modelName string) string {
+	if c == nil {
+		return AdvancedAsyncBillingPerCall
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName != "" {
+		if mode, ok := c.Models[modelName]; ok && strings.TrimSpace(mode) != "" {
+			return strings.ToLower(strings.TrimSpace(mode))
+		}
+		for name, mode := range c.Models {
+			if strings.EqualFold(strings.TrimSpace(name), modelName) && strings.TrimSpace(mode) != "" {
+				return strings.ToLower(strings.TrimSpace(mode))
+			}
+		}
+	}
+	if mode := strings.TrimSpace(c.Mode); mode != "" {
+		return strings.ToLower(mode)
+	}
+	return AdvancedAsyncBillingPerCall
 }
 
 const (
-	AdvancedAsyncBillingPerCall = "per_call"
+	AdvancedAsyncBillingPerCall   = "per_call"
+	AdvancedAsyncBillingPerSecond = "per_second"
+	AdvancedAsyncBillingPerToken  = "per_token"
 
 	AdvancedAsyncContentTypeJSON      = "json"
 	AdvancedAsyncContentTypeMultipart = "multipart"
@@ -210,10 +263,28 @@ func (c *AdvancedAsyncConfig) Validate() error {
 	switch mode {
 	case "":
 		c.Billing.Mode = AdvancedAsyncBillingPerCall
-	case AdvancedAsyncBillingPerCall:
+	case AdvancedAsyncBillingPerCall, AdvancedAsyncBillingPerSecond, AdvancedAsyncBillingPerToken:
 		c.Billing.Mode = mode
 	default:
 		return fmt.Errorf("advanced_async.billing.mode is not supported: %s", c.Billing.Mode)
+	}
+	if c.Billing.DefaultSeconds < 0 {
+		return fmt.Errorf("advanced_async.billing.default_seconds must not be negative")
+	}
+	if c.Billing.TokenFallbackPrice < 0 {
+		return fmt.Errorf("advanced_async.billing.token_fallback_price must not be negative")
+	}
+	for name, mode := range c.Billing.Models {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("advanced_async.billing.models has an empty model name")
+		}
+		normalized := strings.ToLower(strings.TrimSpace(mode))
+		switch normalized {
+		case AdvancedAsyncBillingPerCall, AdvancedAsyncBillingPerSecond, AdvancedAsyncBillingPerToken:
+			c.Billing.Models[name] = normalized
+		default:
+			return fmt.Errorf("advanced_async.billing.models[%s] is not supported: %s", name, mode)
+		}
 	}
 	return nil
 }

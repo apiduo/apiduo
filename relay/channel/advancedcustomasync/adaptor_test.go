@@ -170,6 +170,26 @@ func TestParseTaskResultKeepsUnknownStatusNonTerminal(t *testing.T) {
 	}
 }
 
+func TestParseTaskResultLeavesUnsetOptionalFieldsEmpty(t *testing.T) {
+	config := testConfig()
+	config.Fields.ResultURLPath = nil
+	config.Fields.ProgressPath = nil
+	config.Fields.ErrorPath = nil
+	adaptor := testAdaptor(t, config)
+	task := &model.Task{ChannelId: 7}
+	task.PrivateData.UpstreamTaskID = "upstream-42"
+
+	body := []byte(`{"data":{"task":{"state":"DONE_VENDOR"}},"noise":"x"}`)
+	result, err := adaptor.ParseTaskResult(task, nil, body)
+	if err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if result.Url != "" || result.Progress != "" || result.Reason != "" {
+		t.Fatalf("an empty path must not surface the whole reply: url=%q progress=%q reason=%q",
+			result.Url, result.Progress, result.Reason)
+	}
+}
+
 func TestFetchTaskUsesPathPlaceholder(t *testing.T) {
 	adaptor := testAdaptor(t, testConfig())
 	task := &model.Task{ChannelId: 7}
@@ -181,5 +201,124 @@ func TestFetchTaskUsesPathPlaceholder(t *testing.T) {
 	}
 	if !strings.Contains(target, "/v1/tasks/upstream%2042") {
 		t.Fatalf("query url = %q", target)
+	}
+}
+
+func TestEstimateBillingScalesWithRequestedSeconds(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{Mode: kitdto.AdvancedAsyncBillingPerSecond}
+	adaptor := testAdaptor(t, config)
+	adaptor.submitBody = []byte(`{"model":"vendor-model","duration":5}`)
+
+	ratios := adaptor.EstimateBilling(nil, nil)
+	if ratios["seconds"] != 5 {
+		t.Fatalf("ratios = %v, want seconds=5", ratios)
+	}
+}
+
+func TestEstimateBillingPerCallAddsNoRatio(t *testing.T) {
+	adaptor := testAdaptor(t, testConfig())
+	adaptor.submitBody = []byte(`{"model":"vendor-model","duration":5}`)
+
+	if ratios := adaptor.EstimateBilling(nil, nil); ratios != nil {
+		t.Fatalf("per_call must not add ratios: %v", ratios)
+	}
+}
+
+func TestEstimateBillingFallsBackToDefaultSeconds(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{
+		Mode:           kitdto.AdvancedAsyncBillingPerSecond,
+		DefaultSeconds: 3,
+	}
+	adaptor := testAdaptor(t, config)
+	adaptor.submitBody = []byte(`{"model":"vendor-model"}`)
+
+	ratios := adaptor.EstimateBilling(nil, nil)
+	if ratios["seconds"] != 3 {
+		t.Fatalf("ratios = %v, want seconds=3", ratios)
+	}
+}
+
+func TestParseTaskResultExtractsTokenCounts(t *testing.T) {
+	config := testConfig()
+	config.Fields.CompletionTokensPath = []string{"usage", "completion_tokens"}
+	config.Fields.TotalTokensPath = []string{"usage", "total_tokens"}
+	adaptor := testAdaptor(t, config)
+	task := &model.Task{ChannelId: 7}
+	task.PrivateData.UpstreamTaskID = "upstream-42"
+
+	body := []byte(`{"data":{"task":{"state":"DONE_VENDOR"}},"usage":{"completion_tokens":100000,"total_tokens":120000}}`)
+	result, err := adaptor.ParseTaskResult(task, nil, body)
+	if err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if result.CompletionTokens != 100000 || result.TotalTokens != 120000 {
+		t.Fatalf("tokens = (%d, %d), want (100000, 120000)", result.CompletionTokens, result.TotalTokens)
+	}
+}
+
+func TestParseTaskResultSkipsUnsetTokenPaths(t *testing.T) {
+	adaptor := testAdaptor(t, testConfig())
+	task := &model.Task{ChannelId: 7}
+	task.PrivateData.UpstreamTaskID = "upstream-42"
+
+	body := []byte(`{"data":{"task":{"state":"DONE_VENDOR"}},"usage":{"completion_tokens":100000}}`)
+	result, err := adaptor.ParseTaskResult(task, nil, body)
+	if err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if result.CompletionTokens != 0 || result.TotalTokens != 0 {
+		t.Fatalf("tokens = (%d, %d), want (0, 0)", result.CompletionTokens, result.TotalTokens)
+	}
+}
+
+func TestEstimateBillingUsesPerModelMode(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{
+		Mode:   kitdto.AdvancedAsyncBillingPerCall,
+		Models: map[string]string{"video-per-second": kitdto.AdvancedAsyncBillingPerSecond},
+	}
+	adaptor := testAdaptor(t, config)
+	adaptor.submitBody = []byte(`{"model":"video-per-second","duration":5}`)
+
+	perSecond := &relaycommon.RelayInfo{
+		ChannelMeta:     adaptor.info.ChannelMeta,
+		OriginModelName: "video-per-second",
+	}
+	if ratios := adaptor.EstimateBilling(nil, perSecond); ratios["seconds"] != 5 {
+		t.Fatalf("per-second model ratios = %v, want seconds=5", ratios)
+	}
+
+	perCall := &relaycommon.RelayInfo{
+		ChannelMeta:     adaptor.info.ChannelMeta,
+		OriginModelName: "video-per-call",
+	}
+	if ratios := adaptor.EstimateBilling(nil, perCall); ratios != nil {
+		t.Fatalf("per-call model must not add ratios: %v", ratios)
+	}
+}
+
+func TestAdjustBillingOnCompleteFallsBackToPerCallPrice(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{
+		Mode:               kitdto.AdvancedAsyncBillingPerToken,
+		TokenFallbackPrice: 0.5,
+	}
+	adaptor := testAdaptor(t, config)
+	task := &model.Task{ChannelId: 7, Group: "default"}
+	task.PrivateData.BillingContext = &model.TaskBillingContext{OriginModelName: "vendor-model", GroupRatio: 1}
+
+	if got := adaptor.AdjustBillingOnComplete(task, &relaycommon.TaskInfo{Status: "SUCCESS"}); got != 250000 {
+		t.Fatalf("fallback quota = %d, want 250000", got)
+	}
+	if got := adaptor.AdjustBillingOnComplete(task, &relaycommon.TaskInfo{TotalTokens: 100000}); got != 0 {
+		t.Fatalf("a task with tokens must return 0, got %d", got)
+	}
+
+	config.Billing.Mode = kitdto.AdvancedAsyncBillingPerCall
+	perCall := testAdaptor(t, config)
+	if got := perCall.AdjustBillingOnComplete(task, &relaycommon.TaskInfo{}); got != 0 {
+		t.Fatalf("per-call mode must return 0, got %d", got)
 	}
 }
