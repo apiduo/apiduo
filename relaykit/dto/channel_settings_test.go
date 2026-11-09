@@ -335,6 +335,35 @@ func TestAdvancedCustomMatchPathForModel(t *testing.T) {
 	assert.Equal(t, advancedCustomConverterNone, fallbackRoute.Converter)
 }
 
+// APIDUO:playground-path-alias:BEGIN
+func TestAdvancedCustomMatchPathForModelPlaygroundAlias(t *testing.T) {
+	// Playground 走 /pg，渠道路由表写的是 /v1。两者语义相同，匹配必须等价，
+	// 否则 AdvancedCustom 渠道在 Playground 里会被判成「无可用渠道」。
+	config := &AdvancedCustomConfig{
+		Routes: []AdvancedCustomRoute{
+			{IncomingPath: "/v1/chat/completions", UpstreamPath: "/api/v3/chat/completions"},
+			{IncomingPath: "/v1/responses", UpstreamPath: "/api/v3/responses"},
+		},
+	}
+	require.NoError(t, config.Validate())
+
+	for _, path := range []string{"/v1/chat/completions", "/pg/chat/completions"} {
+		route, ok := config.MatchPathForModel(path, "deepseek-v4-1-flash-261017")
+		require.True(t, ok, "path %q should match the chat route", path)
+		assert.Equal(t, "/api/v3/chat/completions", route.UpstreamPath, "path %q", path)
+	}
+
+	// 也覆盖 supports-only 的选择器入口
+	assert.True(t, config.SupportsPathForModel("/pg/chat/completions", "deepseek-v4-1-flash-261017"))
+
+	// 只改写 /pg 前缀，别的路径不该被顺手牵羊
+	_, ok := config.MatchPathForModel("/other/chat/completions", "deepseek-v4-1-flash-261017")
+	assert.False(t, ok)
+	_, ok = config.MatchPathForModel("/pg/responses", "deepseek-v4-1-flash-261017")
+	assert.True(t, ok, "/pg/responses 应映射到 /v1/responses")
+}
+// APIDUO:playground-path-alias:END
+
 func TestAdvancedCustomMatchPathForModelRegexRules(t *testing.T) {
 	config := &AdvancedCustomConfig{
 		Routes: []AdvancedCustomRoute{
