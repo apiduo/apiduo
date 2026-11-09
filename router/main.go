@@ -18,8 +18,14 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	SetRelayRouter(router)
 	SetTaskPluginProtocolRouter(router)
 	SetVideoRouter(router)
+	// APIDUO:ark-task-alias:BEGIN
+	SetApiduoArkTaskAliasRoutes(router)
+	// APIDUO:ark-task-alias:END
 	SetTaskRouter(router)
 	pluginDispatcher := SetPluginRouter(router)
+	// APIDUO:ark-task-alias:BEGIN
+	pluginDispatcher = ApiduoArkAliasDispatcher(router, pluginDispatcher)
+	// APIDUO:ark-task-alias:END
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""
