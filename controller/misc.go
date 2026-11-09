@@ -168,6 +168,12 @@ func GetStatus(c *gin.Context) {
 		data["custom_oauth_providers"] = providersInfo
 	}
 
+	// APIDUO:login-skin:BEGIN
+	// 放在 map 之后单独赋值：直接插进上面的字面量会打断 gofmt 的对齐，
+	// 让整段上游键值被算成"改动过"，合并面上不划算。
+	data["login_theme"] = common.LoginTheme
+	// APIDUO:login-skin:END
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

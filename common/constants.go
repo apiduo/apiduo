@@ -15,6 +15,13 @@ var Version = "v0.0.0"            // this hard coding will be replaced automatic
 var SystemName = "New API"
 var Footer = ""
 var Logo = ""
+
+// APIDUO:login-skin:BEGIN
+// 登录页皮肤标识。空值与未知值都由前端回落成 aurora，
+// 所以新增一套皮肤只需前后端各加一个 id，不涉及数据迁移。
+var LoginTheme = "aurora"
+
+// APIDUO:login-skin:END
 var TopUpLink = ""
 
 // var ChatLink = ""

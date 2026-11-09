@@ -1,4 +1,10 @@
-import { type LucideIcon, Database, PanelsTopLeft, Sparkles } from 'lucide-react'
+import {
+  type LucideIcon,
+  Database,
+  LayoutTemplate,
+  PanelsTopLeft,
+  Sparkles,
+} from 'lucide-react'
 
 /**
  * Dashboard section tabs that apiduo added on top of upstream new-api.
@@ -99,6 +105,7 @@ const APIDUO_SETTINGS_SECTIONS: ReadonlySet<string> = new Set([
   'nav-apps',
   'artifact-storage',
   'appearance',
+  'login-theme',
 ])
 
 /**
@@ -115,6 +122,7 @@ const APIDUO_SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   'nav-apps': PanelsTopLeft,
   'artifact-storage': Database,
   appearance: Sparkles,
+  'login-theme': LayoutTemplate,
 }
 
 export function apiduoSettingsSectionIcon(

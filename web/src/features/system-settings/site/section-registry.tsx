@@ -24,6 +24,9 @@ import { AppearanceSettingsSection } from '../integrations/appearance-settings-s
 // APIDUO:artifact-storage:BEGIN
 import { ArtifactStorageSettingsSection } from '../integrations/artifact-storage-settings-section'
 // APIDUO:artifact-storage:END
+// APIDUO:login-skin:BEGIN
+import { LoginThemeSection } from '@/features/apiduo-login/login-theme-section'
+// APIDUO:login-skin:END
 import {
   parseHeaderNavModules,
   parseSidebarModulesAdmin,
@@ -123,6 +126,13 @@ const SITE_SECTIONS = [
     ),
   },
   // APIDUO:artifact-storage:END
+  // APIDUO:login-skin:BEGIN
+  {
+    id: 'login-theme',
+    titleKey: 'Sign-in style',
+    build: () => <LoginThemeSection />,
+  },
+  // APIDUO:login-skin:END
 ] as const
 
 export type SiteSectionId = (typeof SITE_SECTIONS)[number]['id']

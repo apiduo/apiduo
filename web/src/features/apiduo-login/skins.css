@@ -1,0 +1,1422 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * apiduo 登录页皮肤
+ *
+ * 一份 DOM，六套皮肤，切换只换根节点的 data-login-skin。
+ *
+ * 皮肤不做两件事：
+ *   1. 不重写表单结构。登录牵扯 Turnstile、通行密钥、微信、协议同意，
+ *      换视觉不值得把这些逻辑再实现一遍；皮肤只负责壳与控件观感。
+ *   2. 不依赖 Tailwind 的 dark: 变体。控制台可能处于亮色而皮肤是深色，
+ *      dark: 由 <html> 决定，会串味；所有表单控件在这里给显式值。
+ *
+ * 变量分两层：--al-* 是皮肤自己的设计 token，再映射到 shadcn 的语义变量，
+ * 让上游的表单组件不用改一行就跟着变色。
+ * ───────────────────────────────────────────────────────────────────────── */
+
+.apiduo-login {
+  /* 皮肤 token，默认值即 aurora */
+  --al-bg: #05070c;
+  --al-surface: rgba(18, 22, 33, 0.92);
+  --al-field: rgba(255, 255, 255, 0.035);
+  --al-ink: #eaf0fa;
+  --al-ink2: #9aa8bf;
+  --al-ink3: #7f8da5;
+  --al-line: rgba(255, 255, 255, 0.1);
+  --al-accent: #7fa6ff;
+  --al-accent-ink: #04060b;
+  --al-btn: linear-gradient(96deg, #3b62f6, #5a5cf3 48%, #7250f5);
+  --al-btn-ink: #ffffff;
+  --al-radius: 11px;
+  --al-card-radius: 22px;
+  --al-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
+    'Noto Sans SC', sans-serif;
+  --al-serif: inherit;
+  --al-title-weight: 600;
+  --al-title-track: -0.022em;
+  --al-card-shadow: 0 30px 80px -32px rgba(0, 0, 0, 0.95);
+  --al-card-pad: 30px;
+  --al-card-blur: blur(28px) saturate(130%);
+
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  overflow-x: hidden;
+  background: var(--al-bg);
+  color: var(--al-ink);
+  font-family: var(--al-font);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+
+  /* 让上游表单组件跟着皮肤走 */
+  --background: var(--al-surface);
+  --foreground: var(--al-ink);
+  --card: var(--al-surface);
+  --card-foreground: var(--al-ink);
+  --popover: var(--al-surface);
+  --popover-foreground: var(--al-ink);
+  --primary: var(--al-accent);
+  --primary-foreground: var(--al-accent-ink);
+  --secondary: var(--al-field);
+  --secondary-foreground: var(--al-ink);
+  --muted: var(--al-field);
+  --muted-foreground: var(--al-ink3);
+  --accent: var(--al-field);
+  --accent-foreground: var(--al-ink);
+  --border: var(--al-line);
+  --input: var(--al-line);
+  --ring: var(--al-accent);
+  --radius: var(--al-radius);
+}
+
+/* ── 背景层 ─────────────────────────────────────────────────────────────── */
+
+.al-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.al-bg__orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.55;
+}
+
+.al-bg__orb--a {
+  width: 52vw;
+  height: 52vw;
+  min-width: 520px;
+  min-height: 520px;
+  left: -8vw;
+  top: -14vw;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(56, 217, 238, 0.32),
+    rgba(56, 217, 238, 0.07) 45%,
+    transparent 70%
+  );
+}
+
+.al-bg__orb--b {
+  width: 48vw;
+  height: 48vw;
+  min-width: 480px;
+  min-height: 480px;
+  right: -6vw;
+  top: 4vh;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(124, 92, 246, 0.3),
+    rgba(124, 92, 246, 0.07) 46%,
+    transparent 72%
+  );
+}
+
+.al-bg__orb--c {
+  width: 34vw;
+  height: 34vw;
+  min-width: 340px;
+  min-height: 340px;
+  left: 32vw;
+  bottom: -18vw;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 143, 199, 0.18),
+    rgba(255, 143, 199, 0.04) 48%,
+    transparent 72%
+  );
+}
+
+.al-bg__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(
+    ellipse 70% 60% at 50% 38%,
+    #000 0%,
+    rgba(0, 0, 0, 0.55) 45%,
+    transparent 78%
+  );
+  mask-image: radial-gradient(
+    ellipse 70% 60% at 50% 38%,
+    #000 0%,
+    rgba(0, 0, 0, 0.55) 45%,
+    transparent 78%
+  );
+  opacity: 0.85;
+}
+
+.al-bg__floor {
+  display: none;
+}
+
+.al-bg__vig {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      90% 70% at 50% 42%,
+      transparent 40%,
+      rgba(3, 5, 9, 0.55) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(5, 7, 12, 0.55),
+      transparent 22%,
+      transparent 78%,
+      rgba(3, 5, 9, 0.75)
+    );
+}
+
+/* ── 顶栏 ───────────────────────────────────────────────────────────────── */
+
+.al-top {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px max(34px, calc((100vw - 1220px) / 2 + 48px));
+  font-size: 12.5px;
+  color: var(--al-ink3);
+}
+
+.al-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.al-mark {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.al-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.al-mark__ph {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  background: var(--al-field);
+}
+
+.al-name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--al-ink);
+}
+
+.al-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--al-ink3);
+  border: 1px solid var(--al-line);
+  border-radius: 4px;
+  padding: 2.5px 6px;
+}
+
+.al-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.al-nav a {
+  color: var(--al-ink3);
+  text-decoration: none;
+  transition: color 0.18s;
+}
+
+.al-nav a:hover {
+  color: var(--al-ink);
+}
+
+.al-nav__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.al-nav__status i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #4ade9b;
+  box-shadow: 0 0 0 3px rgba(74, 222, 155, 0.13);
+}
+
+.al-nav__skin {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--al-ink3);
+  border: 1px solid var(--al-line);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+/* ── 主区 ───────────────────────────────────────────────────────────────── */
+
+.al-main {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 412px;
+  align-items: center;
+  gap: 76px;
+  width: 100%;
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 0 48px 56px;
+}
+
+.al-hero {
+  max-width: 560px;
+  animation: al-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes al-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.al-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 20px;
+  font-size: 12px;
+  color: var(--al-ink2);
+}
+
+.al-eyebrow i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #38d9ee, #7c5cf6 70%, #ff8fc7);
+  box-shadow: 0 0 10px rgba(124, 92, 246, 0.65);
+}
+
+.al-eyebrow em {
+  font-style: normal;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--al-ink3);
+}
+
+.al-title {
+  margin: 0 0 20px;
+  font-family: var(--al-serif);
+  font-size: clamp(32px, 3.45vw, 50px);
+  font-weight: var(--al-title-weight);
+  line-height: 1.14;
+  letter-spacing: var(--al-title-track);
+  color: var(--al-ink);
+}
+
+.al-grad {
+  background-image: linear-gradient(
+    96deg,
+    #d9e7ff 0%,
+    #a3bfff 32%,
+    #b09aff 66%,
+    #e6a6d6 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.al-lede {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.85;
+  color: var(--al-ink2);
+  text-wrap: pretty;
+}
+
+/* 请求链路 */
+.al-flow {
+  margin-top: 34px;
+  border: 1px solid var(--al-line);
+  border-radius: 14px;
+  padding: 14px 16px 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.035),
+    rgba(255, 255, 255, 0.012)
+  );
+}
+
+.al-flow__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.al-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 11px;
+  flex: none;
+  border: 1px solid var(--al-line);
+  border-radius: 9px;
+  background: var(--al-field);
+  font-size: 12px;
+  color: var(--al-ink2);
+  white-space: nowrap;
+}
+
+.al-node i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.al-node i.a {
+  background: #38d9ee;
+}
+
+.al-node i.c {
+  background: #ff8fc7;
+}
+
+.al-node--core {
+  border-color: rgba(140, 150, 255, 0.35);
+  background: linear-gradient(
+    180deg,
+    rgba(124, 92, 246, 0.2),
+    rgba(56, 217, 238, 0.06)
+  );
+  color: var(--al-ink);
+}
+
+.al-node--core img {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+}
+
+.al-rail {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.1),
+    rgba(255, 255, 255, 0.2),
+    rgba(255, 255, 255, 0.1)
+  );
+}
+
+.al-spark {
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 42%;
+  height: 3px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(150, 195, 255, 0.95),
+    transparent
+  );
+  transform: translateX(-120%);
+  animation: al-sweep 3.6s cubic-bezier(0.55, 0, 0.45, 1) infinite;
+}
+
+.al-spark--2 {
+  animation-delay: 1.8s;
+}
+
+@keyframes al-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  70%,
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.al-flow__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--al-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--al-ink3);
+}
+
+.al-flow__foot code {
+  color: var(--al-ink2);
+}
+
+.al-ok {
+  color: #4ade9b;
+  border: 1px solid rgba(74, 222, 155, 0.25);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 9.5px;
+}
+
+.al-sep {
+  width: 1px;
+  height: 9px;
+  background: var(--al-line);
+}
+
+/* 终端块 */
+.al-term {
+  display: none;
+  margin-top: 30px;
+  border: 1px solid var(--al-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.al-term__bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--al-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--al-ink3);
+}
+
+.al-term__bar i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+}
+
+.al-term__bar span {
+  margin-left: 8px;
+}
+
+.al-term__body {
+  padding: 14px 16px 15px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.85;
+  color: var(--al-ink2);
+  overflow-x: auto;
+}
+
+.al-term__body .p {
+  color: #5cf2a0;
+}
+
+.al-term__body .k {
+  color: #ffc46b;
+}
+
+.al-term__body .s {
+  color: #cfe6d8;
+}
+
+.al-term__body .c {
+  color: var(--al-ink3);
+}
+
+.al-term__body .ok {
+  color: #5cf2a0;
+}
+
+.al-ind {
+  padding-left: 14px;
+}
+
+.al-gap {
+  height: 10px;
+}
+
+.al-caret {
+  display: inline-block;
+  width: 6px;
+  height: 11px;
+  vertical-align: -1px;
+  background: #5cf2a0;
+  animation: al-blink 1.1s steps(2, end) infinite;
+}
+
+@keyframes al-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* 编号说明 */
+.al-notes {
+  display: none;
+  margin-top: 34px;
+  border-top: 1px solid var(--al-line);
+  max-width: 520px;
+}
+
+.al-note {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 16px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--al-line);
+}
+
+.al-note__no {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--al-accent);
+  padding-top: 3px;
+}
+
+.al-note__t {
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  color: var(--al-ink);
+}
+
+.al-note__d {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--al-ink3);
+}
+
+/* 口语要点 */
+.al-points {
+  display: none;
+  margin: 30px 0 0;
+  padding: 0;
+  list-style: none;
+  gap: 14px;
+  max-width: 440px;
+}
+
+.al-points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.al-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 8px;
+  flex: none;
+  background: var(--al-accent);
+}
+
+.al-models {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 7px;
+  margin-top: 30px;
+  font-size: 11.5px;
+  color: var(--al-ink3);
+  letter-spacing: 0.02em;
+}
+
+.al-models span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.al-models i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--al-line);
+}
+
+/* ── 卡片 ───────────────────────────────────────────────────────────────── */
+
+.al-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.al-mhead {
+  display: none;
+}
+
+.al-card {
+  position: relative;
+  width: 100%;
+  border-radius: var(--al-card-radius);
+  padding: var(--al-card-pad);
+  background: var(--al-surface);
+  backdrop-filter: var(--al-card-blur, none);
+  -webkit-backdrop-filter: var(--al-card-blur, none);
+  box-shadow: var(--al-card-shadow);
+  animation: al-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.06s;
+}
+
+.al-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.13em;
+  color: var(--al-ink3);
+  white-space: nowrap;
+}
+
+.al-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #4ade9b;
+}
+
+.al-live i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.al-card__title {
+  margin: 0 0 6px;
+  font-family: var(--al-serif);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--al-ink);
+}
+
+.al-card__sub {
+  margin: 0 0 22px;
+  font-size: 13px;
+  color: var(--al-ink3);
+}
+
+.al-card__foot {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--al-ink3);
+}
+
+.al-card__foot a {
+  margin-left: 5px;
+  color: var(--al-accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.al-terms {
+  margin-top: 12px;
+  color: var(--al-ink3);
+}
+
+.al-terms a {
+  color: var(--al-ink2);
+}
+
+/* ── 表单控件（六套共用基线，皮肤只覆盖差异）───────────────────────────── */
+
+.al-card form input:not([type='checkbox']) {
+  height: 44px;
+  padding: 0 13px;
+  border-radius: var(--al-radius);
+  border-color: var(--al-line);
+  background: var(--al-field);
+  color: var(--al-ink);
+  font-size: 13.5px;
+  box-shadow: none;
+}
+
+.al-card form input:not([type='checkbox'])::placeholder {
+  color: var(--al-ink3);
+  opacity: 0.75;
+}
+
+.al-card form input:not([type='checkbox']):focus-visible {
+  border-color: var(--al-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--al-accent) 18%, transparent);
+}
+
+.al-card form label {
+  font-size: 12.5px;
+  color: var(--al-ink2);
+}
+
+.al-card form [data-slot='button'][type='submit'] {
+  height: 46px;
+  margin-top: 6px;
+  border-radius: var(--al-radius);
+  background: var(--al-btn);
+  color: var(--al-btn-ink);
+  font-size: 14.5px;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+  box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--al-accent) 80%, transparent);
+}
+
+.al-card form [data-slot='button'][type='submit']:hover {
+  filter: brightness(1.06);
+}
+
+.al-card form [data-slot='button'][type='button']:not(.absolute) {
+  height: 42px;
+  border-radius: var(--al-radius);
+  font-size: 12.5px;
+  color: var(--al-ink2);
+}
+
+.al-card form [data-slot='button'][type='button']:not(.absolute):hover {
+  color: var(--al-ink);
+}
+
+.al-card form [data-slot='checkbox'] {
+  border-color: var(--al-line);
+  border-radius: 4px;
+}
+
+.al-card form [data-slot='checkbox'][data-checked] {
+  background: var(--al-accent);
+  border-color: var(--al-accent);
+}
+
+/* 协议同意块：上游带的浅底盒子在六套皮肤里都显脏，统一压平 */
+.al-card form > div:last-child {
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
+}
+
+/* ── 皮肤 02：Light ─────────────────────────────────────────────────────── */
+
+.apiduo-login[data-login-skin='light'] {
+  --al-bg: #f6f7fb;
+  --al-surface: #ffffff;
+  --al-field: #fafbfd;
+  --al-ink: #0b1220;
+  --al-ink2: #4b5768;
+  --al-ink3: #6b7788;
+  --al-line: #e2e7ef;
+  --al-accent: #2f5bff;
+  --al-accent-ink: #ffffff;
+  --al-btn: linear-gradient(96deg, #2f5bff, #4a55f7 46%, #7b4dff);
+  --al-btn-ink: #ffffff;
+  --al-radius: 10px;
+  --al-card-radius: 20px;
+  --al-title-weight: 600;
+  --al-card-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.05), 0 28px 64px -30px rgba(16, 24, 40, 0.3);
+  --al-card-blur: none;
+}
+
+[data-login-skin='light'] .al-bg {
+  background:
+    radial-gradient(80% 55% at 78% -10%, rgba(199, 210, 254, 0.55), transparent 62%),
+    radial-gradient(60% 45% at 8% 4%, rgba(186, 230, 253, 0.4), transparent 60%),
+    linear-gradient(180deg, #fbfcfe 0%, #f4f6fb 55%, #eef1f8 100%);
+}
+
+[data-login-skin='light'] .al-bg__orb {
+  display: none;
+}
+
+[data-login-skin='light'] .al-bg__grid {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+}
+
+[data-login-skin='light'] .al-bg__vig {
+  background: linear-gradient(180deg, transparent 55%, rgba(238, 241, 248, 0.9));
+}
+
+[data-login-skin='light'] .al-grad {
+  background-image: linear-gradient(
+    96deg,
+    #1b3ad4 0%,
+    #2f5bff 46%,
+    #6a4dff 100%
+  );
+}
+
+[data-login-skin='light'] .al-card {
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+[data-login-skin='light'] .al-node,
+[data-login-skin='light'] .al-flow {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+[data-login-skin='light'] .al-node--core {
+  background: linear-gradient(180deg, #fff, #f4f6ff);
+  color: #233a8f;
+}
+
+[data-login-skin='light'] .al-flow__foot code,
+[data-login-skin='light'] .al-term__body .p {
+  color: #2f5bff;
+}
+
+/* ── 皮肤 03：Terminal ──────────────────────────────────────────────────── */
+
+.apiduo-login[data-login-skin='terminal'] {
+  --al-bg: #050807;
+  --al-surface: #090e0c;
+  --al-field: #060a08;
+  --al-ink: #d8e6de;
+  --al-ink2: #8ba397;
+  --al-ink3: #6b8076;
+  --al-line: #1f2f28;
+  --al-accent: #5cf2a0;
+  --al-accent-ink: #04120b;
+  --al-btn: rgba(92, 242, 160, 0.1);
+  --al-btn-ink: #5cf2a0;
+  --al-radius: 4px;
+  --al-card-radius: 10px;
+  --al-font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC',
+    sans-serif;
+  --al-card-shadow: 0 34px 70px -40px rgba(0, 0, 0, 1);
+  --al-card-pad: 24px 26px 22px;
+}
+
+[data-login-skin='terminal'] .al-bg {
+  background:
+    radial-gradient(60% 50% at 12% 0%, rgba(92, 242, 160, 0.055), transparent 62%),
+    radial-gradient(50% 45% at 92% 18%, rgba(255, 196, 107, 0.035), transparent 60%),
+    linear-gradient(180deg, #070c0a, #050807 60%, #040706);
+}
+
+[data-login-skin='terminal'] .al-bg__orb {
+  display: none;
+}
+
+[data-login-skin='terminal'] .al-bg__grid {
+  background-image: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.022) 0 1px,
+    transparent 1px 3px
+  );
+  background-size: auto;
+  -webkit-mask-image: none;
+  mask-image: none;
+  opacity: 0.5;
+}
+
+[data-login-skin='terminal'] .al-bg__vig {
+  background: radial-gradient(85% 65% at 50% 40%, transparent 45%, rgba(2, 4, 3, 0.7));
+}
+
+[data-login-skin='terminal'] .al-term {
+  display: block;
+}
+
+[data-login-skin='terminal'] .al-flow,
+[data-login-skin='terminal'] .al-models {
+  display: none;
+}
+
+[data-login-skin='terminal'] .al-title {
+  font-size: clamp(30px, 3.2vw, 46px);
+  color: #eaf4ee;
+}
+
+[data-login-skin='terminal'] .al-grad {
+  background-image: none;
+  color: #8ba397;
+  -webkit-text-fill-color: currentColor;
+}
+
+[data-login-skin='terminal'] .al-eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #5cf2a0;
+  letter-spacing: 0.06em;
+}
+
+[data-login-skin='terminal'] .al-card {
+  border: 1px solid var(--al-line);
+}
+
+[data-login-skin='terminal'] .al-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(92, 242, 160, 0.5), transparent);
+}
+
+[data-login-skin='terminal'] .al-card__meta,
+[data-login-skin='terminal'] .al-card__title,
+[data-login-skin='terminal'] .al-card__sub,
+[data-login-skin='terminal'] .al-card form label,
+[data-login-skin='terminal'] .al-card form input:not([type='checkbox']) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+[data-login-skin='terminal'] .al-card form [data-slot='button'][type='submit'] {
+  border: 1px solid rgba(92, 242, 160, 0.45);
+  background: rgba(92, 242, 160, 0.08);
+  color: #5cf2a0;
+  letter-spacing: 0.06em;
+  box-shadow: none;
+}
+
+[data-login-skin='terminal'] .al-card form [data-slot='button'][type='submit']:hover {
+  background: rgba(92, 242, 160, 0.16);
+  box-shadow: 0 0 26px -6px rgba(92, 242, 160, 0.55);
+}
+
+[data-login-skin='terminal'] .al-card__foot a,
+[data-login-skin='terminal'] .al-terms a {
+  color: #5cf2a0;
+}
+
+/* ── 皮肤 04：Editorial ─────────────────────────────────────────────────── */
+
+.apiduo-login[data-login-skin='editorial'] {
+  --al-bg: #f4f0e7;
+  --al-surface: transparent;
+  --al-field: transparent;
+  --al-ink: #17140f;
+  --al-ink2: #4b4438;
+  --al-ink3: #7d7466;
+  --al-line: #d5cdbd;
+  --al-accent: #a8341b;
+  --al-accent-ink: #f6f2e9;
+  --al-btn: #17140f;
+  --al-btn-ink: #f6f2e9;
+  --al-radius: 0;
+  --al-card-radius: 0;
+  --al-font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC',
+    sans-serif;
+  --al-serif: 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', Georgia,
+    serif;
+  --al-title-weight: 600;
+  --al-title-track: -0.01em;
+  --al-card-shadow: none;
+  --al-card-pad: 0;
+}
+
+[data-login-skin='editorial'] .al-bg {
+  background:
+    radial-gradient(70% 55% at 78% 0%, rgba(255, 252, 244, 0.9), transparent 60%),
+    radial-gradient(60% 50% at 6% 92%, rgba(226, 216, 198, 0.55), transparent 62%),
+    linear-gradient(180deg, #f7f3ea 0%, #f2ede3 60%, #ece6da 100%);
+}
+
+[data-login-skin='editorial'] .al-bg__orb,
+[data-login-skin='editorial'] .al-bg__grid {
+  display: none;
+}
+
+[data-login-skin='editorial'] .al-bg__vig {
+  background: none;
+}
+
+[data-login-skin='editorial'] .al-top {
+  border-bottom: 1px solid var(--al-line);
+  padding-bottom: 18px;
+}
+
+[data-login-skin='editorial'] .al-tag,
+[data-login-skin='editorial'] .al-nav__skin {
+  display: none;
+}
+
+[data-login-skin='editorial'] .al-notes {
+  display: block;
+}
+
+[data-login-skin='editorial'] .al-flow,
+[data-login-skin='editorial'] .al-term,
+[data-login-skin='editorial'] .al-models {
+  display: none;
+}
+
+[data-login-skin='editorial'] .al-title {
+  font-size: clamp(38px, 4.1vw, 58px);
+  line-height: 1.16;
+}
+
+[data-login-skin='editorial'] .al-grad {
+  background-image: none;
+  color: #17140f;
+  -webkit-text-fill-color: currentColor;
+}
+
+[data-login-skin='editorial'] .al-lede {
+  font-family: var(--al-serif);
+  font-size: 16px;
+  line-height: 1.95;
+}
+
+[data-login-skin='editorial'] .al-eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+[data-login-skin='editorial'] .al-card {
+  border-left: 1px solid var(--al-line);
+  padding-left: 64px;
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+[data-login-skin='editorial'] .al-card__meta {
+  color: #a9a091;
+}
+
+[data-login-skin='editorial'] .al-card__title {
+  font-size: 26px;
+}
+
+[data-login-skin='editorial'] .al-card form input:not([type='checkbox']) {
+  border: 0;
+  border-bottom: 1px solid var(--al-line);
+  border-radius: 0;
+  background: transparent;
+  padding-left: 0;
+  font-size: 15px;
+}
+
+[data-login-skin='editorial'] .al-card form [data-slot='button'][type='submit'] {
+  border-radius: 0;
+  box-shadow: none;
+  letter-spacing: 0.12em;
+}
+
+[data-login-skin='editorial'] .al-card form [data-slot='button'][type='button']:not(.absolute) {
+  border-radius: 0;
+}
+
+/* ── 皮肤 05：Cyber ─────────────────────────────────────────────────────── */
+
+.apiduo-login[data-login-skin='cyber'] {
+  --al-bg: #06020e;
+  --al-surface: rgba(16, 8, 28, 0.96);
+  --al-field: rgba(6, 2, 14, 0.75);
+  --al-ink: #ece7fb;
+  --al-ink2: #a49ac2;
+  --al-ink3: #8b80aa;
+  --al-line: rgba(180, 150, 255, 0.22);
+  --al-accent: #ff2d95;
+  --al-accent-ink: #ffffff;
+  --al-btn: linear-gradient(96deg, #ff2d95, #c02bff 52%, #7b4dff);
+  --al-btn-ink: #ffffff;
+  --al-radius: 3px;
+  --al-card-radius: 4px;
+  --al-card-shadow: 0 0 60px -18px rgba(255, 45, 149, 0.45), 0 34px 70px -40px #000;
+}
+
+[data-login-skin='cyber'] .al-bg {
+  background:
+    radial-gradient(70% 50% at 50% 108%, rgba(255, 45, 149, 0.3), transparent 60%),
+    radial-gradient(50% 40% at 82% 8%, rgba(34, 224, 255, 0.14), transparent 62%),
+    radial-gradient(45% 40% at 12% 12%, rgba(139, 92, 246, 0.22), transparent 60%),
+    linear-gradient(180deg, #08030f 0%, #06020e 45%, #0a0416 100%);
+}
+
+[data-login-skin='cyber'] .al-bg__orb {
+  display: none;
+}
+
+[data-login-skin='cyber'] .al-bg__grid {
+  display: none;
+}
+
+[data-login-skin='cyber'] .al-bg__floor {
+  display: block;
+  /* 暗角层排在网格之后，必须把地面提到它上面，否则 0.72 的黑会把网格压没 */
+  z-index: 1;
+  position: absolute;
+  left: -70%;
+  right: -70%;
+  top: 70%;
+  height: 100%;
+  background-image:
+    linear-gradient(rgba(255, 45, 149, 0.42) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 45, 149, 0.3) 1px, transparent 1px);
+  background-size: 76px 76px;
+  transform: perspective(1100px) rotateX(58deg);
+  transform-origin: 50% 0;
+  /* 可见区域只有元素最上面一小段，遮罩必须在 18% 内就到全黑，
+     否则渐变展开在视口之外，网格等于被抹掉（78% + 旧遮罩时完全看不见） */
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, #000 18%, #000 60%, transparent 100%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, #000 18%, #000 60%, transparent 100%);
+  opacity: 0.9;
+}
+
+[data-login-skin='cyber'] .al-bg__vig {
+  background: radial-gradient(80% 60% at 50% 38%, transparent 46%, rgba(4, 1, 10, 0.72) 100%);
+}
+
+[data-login-skin='cyber'] .al-card {
+  border: 1px solid rgba(255, 45, 149, 0.5);
+}
+
+[data-login-skin='cyber'] .al-grad {
+  background-image: linear-gradient(96deg, #9fe9ff 0%, #c9a8ff 45%, #ff8fc7 100%);
+}
+
+[data-login-skin='cyber'] .al-card form [data-slot='button'][type='submit'] {
+  box-shadow: 0 0 30px -8px rgba(255, 45, 149, 0.85);
+}
+
+/* ── 皮肤 06：Warm ──────────────────────────────────────────────────────── */
+
+.apiduo-login[data-login-skin='warm'] {
+  --al-bg: #f8f3ea;
+  --al-surface: #fffdf8;
+  --al-field: #fbf7f0;
+  --al-ink: #22302b;
+  --al-ink2: #5b6a63;
+  --al-ink3: #7c8a82;
+  --al-line: #e9e0d2;
+  --al-accent: #1d3b32;
+  --al-accent-ink: #f7f3ea;
+  --al-btn: #1d3b32;
+  --al-btn-ink: #f7f3ea;
+  --al-radius: 12px;
+  --al-card-radius: 26px;
+  --al-card-shadow:
+    0 1px 2px rgba(60, 45, 30, 0.04), 0 30px 60px -34px rgba(60, 45, 30, 0.38);
+  --al-title-weight: 600;
+  --al-title-track: -0.015em;
+}
+
+[data-login-skin='warm'] .al-bg {
+  background:
+    radial-gradient(55% 45% at 88% 4%, rgba(217, 119, 87, 0.16), transparent 62%),
+    radial-gradient(50% 45% at 6% 88%, rgba(29, 59, 50, 0.1), transparent 62%),
+    radial-gradient(60% 50% at 40% -10%, rgba(255, 255, 255, 0.9), transparent 60%),
+    linear-gradient(180deg, #faf6ef 0%, #f6f0e6 58%, #f1e9dc 100%);
+}
+
+[data-login-skin='warm'] .al-bg__orb {
+  display: none;
+}
+
+[data-login-skin='warm'] .al-bg__grid {
+  display: none;
+}
+
+[data-login-skin='warm'] .al-bg__vig {
+  background: none;
+}
+
+[data-login-skin='warm'] .al-points {
+  display: grid;
+}
+
+[data-login-skin='warm'] .al-flow,
+[data-login-skin='warm'] .al-term,
+[data-login-skin='warm'] .al-notes {
+  display: none;
+}
+
+[data-login-skin='warm'] .al-title {
+  font-size: clamp(34px, 3.4vw, 48px);
+  line-height: 1.2;
+}
+
+[data-login-skin='warm'] .al-grad {
+  background-image: none;
+  color: #b0512f;
+  -webkit-text-fill-color: currentColor;
+}
+
+[data-login-skin='warm'] .al-dot {
+  background: linear-gradient(140deg, #d97757, #c96442);
+}
+
+[data-login-skin='warm'] .al-card form input:not([type='checkbox']) {
+  border-color: #e9e0d2;
+  background: #fbf7f0;
+}
+
+[data-login-skin='warm'] .al-card form [data-slot='button'][type='submit'] {
+  border-radius: 13px;
+  box-shadow: 0 10px 22px -14px rgba(29, 59, 50, 0.8);
+}
+
+/* ── 响应式 ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1120px) {
+  .al-main {
+    grid-template-columns: minmax(0, 1fr) 396px;
+    gap: 48px;
+    padding: 0 36px 48px;
+  }
+
+  .al-top {
+    padding-inline: 36px;
+  }
+}
+
+@media (max-width: 920px) {
+  .al-top {
+    padding: 18px 22px;
+    font-size: 12px;
+  }
+
+  .al-nav {
+    gap: 14px;
+  }
+
+  .al-nav a:first-child {
+    display: none;
+  }
+
+  .al-nav__skin {
+    display: none;
+  }
+
+  /* 移动端品牌头已经在卡片上方，顶栏再放一个就是重复 */
+  .al-top .al-lockup {
+    display: none;
+  }
+
+  .al-top {
+    justify-content: flex-end;
+  }
+
+  .al-main {
+    grid-template-columns: minmax(0, 420px);
+    justify-content: center;
+    gap: 0;
+    padding: 8px 24px 56px;
+  }
+
+  .al-hero {
+    display: none;
+  }
+
+  .al-mhead {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    margin-bottom: 24px;
+    justify-content: center;
+  }
+
+  .al-mhead .al-mark {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+@media (max-width: 460px) {
+  .al-main {
+    padding: 4px 16px 48px;
+  }
+
+  .al-card {
+    --al-card-pad: 22px 18px 20px;
+  }
+
+  .al-card form input:not([type='checkbox']) {
+    font-size: 16px;
+  }
+
+  [data-login-skin='editorial'] .al-card {
+    border-left: 0;
+    padding-left: 0;
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .al-hero,
+  .al-card,
+  .al-spark,
+  .al-caret {
+    animation: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .apiduo-login {
+    --al-line: rgba(255, 255, 255, 0.28);
+  }
+}

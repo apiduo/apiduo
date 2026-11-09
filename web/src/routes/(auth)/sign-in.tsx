@@ -20,7 +20,9 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 
 import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
-import { SignIn } from '@/features/auth/sign-in'
+// APIDUO:login-skin:BEGIN
+import { ApiduoSignIn } from '@/features/apiduo-login'
+// APIDUO:login-skin:END
 import { resolveAuthentication } from '@/lib/auth-session'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -29,7 +31,11 @@ const searchSchema = z.object({
 })
 
 export const Route = createFileRoute('/(auth)/sign-in')({
-  component: SignIn,
+  // APIDUO:login-skin:BEGIN
+  // 上游的 SignIn 保留在 features/auth/sign-in，皮肤版只是换了外层壳；
+  // 这里换掉 component 是唯一挂接点，别处一律落新文件。
+  component: ApiduoSignIn,
+  // APIDUO:login-skin:END
   validateSearch: searchSchema,
   beforeLoad: async ({ search }) => {
     // 根 guard 可能因为没有会话提示而跳过了 refresh。此处必须回源确认，

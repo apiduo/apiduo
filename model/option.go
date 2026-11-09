@@ -83,6 +83,9 @@ func InitOptionMap() {
 	common.OptionMap["Footer"] = common.Footer
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo
+	// APIDUO:login-skin:BEGIN
+	common.OptionMap["LoginTheme"] = common.LoginTheme
+	// APIDUO:login-skin:END
 	common.OptionMap["ServerAddress"] = ""
 	common.OptionMap["TaskPublicAddress"] = system_setting.TaskPublicAddress
 	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
@@ -621,6 +624,10 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SystemName = value
 	case "Logo":
 		common.Logo = value
+	// APIDUO:login-skin:BEGIN
+	case "LoginTheme":
+		common.LoginTheme = value
+	// APIDUO:login-skin:END
 	case "WeChatServerAddress":
 		common.WeChatServerAddress = value
 	case "WeChatServerToken":
