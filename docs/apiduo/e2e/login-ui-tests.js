@@ -359,6 +359,7 @@ const skins = ['aurora', 'light', 'terminal', 'editorial', 'cyber', 'warm']
           bg: cs.backgroundColor,
           accent: cs.getPropertyValue('--al-accent').trim(),
           title: document.title,
+          brand: (document.querySelector('.al-name') || {}).textContent || '',
         }
       })
 
@@ -371,8 +372,17 @@ const skins = ['aurora', 'light', 'terminal', 'editorial', 'cyber', 'warm']
       check(
         '401 仅来自匿名 refresh 探测（预期行为）',
         unexpectedHttp(page).length === 0,
-        unexpectedHttp(page).join(' | ') || '1 次 /api/user/auth/refresh'
+        unexpectedHttp(page).join(' | ') || '无 4xx'
       )
+      const anonRefresh = [...page._cap.reqs.values()].filter((r) =>
+        r.req.url.includes('/api/user/auth/refresh')
+      ).length
+      check(
+        '匿名开页不发起 refresh（不消耗限流额度）',
+        anonRefresh === 0,
+        anonRefresh + ' 次'
+      )
+      check('站点名已切到 Apiduo', s.brand.trim() === 'Apiduo', s.brand.trim() || '(空)')
       shotMap['s1'] = await shot(page, 's1-signin-default')
       await closePage(page)
     }

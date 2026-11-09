@@ -24,6 +24,9 @@ import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
 import { ApiduoSignIn } from '@/features/apiduo-login'
 // APIDUO:login-skin:END
 import { resolveAuthentication } from '@/lib/auth-session'
+// APIDUO:login-skin:BEGIN
+import { hasSessionHint } from '@/lib/session-hint'
+// APIDUO:login-skin:END
 import { useAuthStore } from '@/stores/auth-store'
 
 const searchSchema = z.object({
@@ -38,6 +41,14 @@ export const Route = createFileRoute('/(auth)/sign-in')({
   // APIDUO:login-skin:END
   validateSearch: searchSchema,
   beforeLoad: async ({ search }) => {
+    // APIDUO:login-skin:BEGIN
+    // 提示 Cookie 与 Refresh Cookie 在服务端同生同灭（service/auth_session.go）。
+    // 没有提示就说明没有可换的会话：回源只会拿到 401，还会消耗与登录共享的
+    // CRITICAL_RATE_LIMIT（20 次/20 分钟/IP），同一 NAT 出口的用户会被一起拖累。
+    if (!hasSessionHint() && !useAuthStore.getState().auth.user) {
+      return
+    }
+    // APIDUO:login-skin:END
     // 根 guard 可能因为没有会话提示而跳过了 refresh。此处必须回源确认，
     // 否则持有有效 Refresh Cookie 的用户会被要求重新输入密码。
     await resolveAuthentication()

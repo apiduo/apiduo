@@ -20,7 +20,14 @@
 #   Playground 里被判「无可用渠道」。源文件与测试各一个标记块：+2 blocks、
 #   +40 added。数值取 6057f97d 干净工作树实测；登录页三修尚未提交，其预算
 #   待提交时再上调（那批改动会同时把 files 推到 105）。
+# 2026-11-09 登录页三修（承接 d6a0e6de，叠加在 9ff6a75e 之上）：
+#   1. sign-in 会话提示短路：匿名开页不再 POST /api/user/auth/refresh，
+#      该请求与登录共享 CRITICAL_RATE_LIMIT（20 次/20 分钟/IP），线上实测被耗到 429。
+#   2. 首页 hero 改深路径引图标：`@lobehub/icons` 的 barrel 把 3458 个图标
+#      拖进首屏（登录页 64570 5.7MB / gzip 2.1MB），改为只引 CherryStudio 一个。
+#   3. SystemName 默认值改为 Apiduo：生产 options 表无该项，改默认即可换掉 New API。
+#   预算：files 104（不变）、blocks 303→306、added 2813→2829、deleted 98→99。
 files	104
-blocks	303
-added	2813
-deleted	98
+blocks	306
+added	2829
+deleted	99
