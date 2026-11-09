@@ -46,6 +46,7 @@ export function apiduoTabMark(section: string): string | undefined {
  * unrelated block in another.
  */
 const APIDUO_BLOCKS: ReadonlySet<string> = new Set([
+  'dashboard:catalog-health',
   'channel:file-relay',
   'channel:artifact-storage',
   // The protocol matrix lives inside the upstream advanced-custom dialog: one

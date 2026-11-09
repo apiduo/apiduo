@@ -84,6 +84,10 @@ const PERFORMANCE_MODEL_FALLBACK_KEYS = [
   'secondary-model',
 ] as const
 
+// APIDUO:catalog-health:BEGIN
+import { CatalogHealthPanel } from './components/models/catalog-health-panel'
+// APIDUO:catalog-health:END
+
 const LazyLogStatCards = lazy(() =>
   import('./components/models/log-stat-cards').then((m) => ({
     default: m.LogStatCards,
@@ -459,6 +463,11 @@ export function Dashboard() {
                   />
                 </Suspense>
               </FadeIn>
+              {/* APIDUO:catalog-health:BEGIN */}
+              <FadeIn delay={0.2}>
+                <CatalogHealthPanel data={modelData} loading={dataLoading} />
+              </FadeIn>
+              {/* APIDUO:catalog-health:END */}
             </>
           )}
           {activeSection === 'users' && (
