@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>兑换码优化 · 可执行 Demo</title>
+<style>
+:root{
+  --bg:#ffffff;--page:#f5f5f7;--surface:#f2f2f7;--raised:#ffffff;
+  --ink:#1c1c1e;--ink2:#5f5f66;--ink3:#8e8e93;
+  --line:rgba(0,0,0,.11);--line2:rgba(0,0,0,.22);
+  --accent:#5b5bd6;--accent-soft:#eeedfe;--on-accent:#fff;
+  --ok:#0f6e56;--ok-soft:#e1f5ee;
+  --warn:#854f0b;--warn-soft:#faeeda;
+  --danger:#a32d2d;--danger-soft:#fcebeb;
+  --term:#1c1c1e;--term-ink:#d8d8dc;--term-dim:#8a8a8f;--term-a:#a9a6f5;--term-ok:#5dcaa5;--term-d:#f09595;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --spring:cubic-bezier(.22,1,.36,1);
+}
+html.dark{
+  --bg:#1c1c1e;--page:#101012;--surface:#2c2c2e;--raised:#242426;
+  --ink:#f5f5f7;--ink2:#c7c7cc;--ink3:#a8a8ad;
+  --line:rgba(255,255,255,.14);--line2:rgba(255,255,255,.28);
+  --accent:#a9a6f5;--accent-soft:#34335c;--on-accent:#17171a;
+  --ok:#5dcaa5;--ok-soft:#123a30;
+  --warn:#ef9f27;--warn-soft:#3a2b12;
+  --danger:#f09595;--danger-soft:#3d1d1d;
+  --term:#0c0c0d;--term-ink:#d8d8dc;--term-dim:#7e7e83;--term-a:#b3b0f7;--term-ok:#5dcaa5;--term-d:#f09595;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.page{max-width:1120px;margin:0 auto;padding:24px 20px 60px}
+.top{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+h1{font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 3px}
+.sub{font-size:12px;color:var(--ink2);margin:0;max-width:720px}
+.top-actions{margin-left:auto;display:flex;gap:7px;flex:none}
+.tbtn{border:.5px solid var(--line2);background:var(--bg);color:var(--ink2);border-radius:8px;padding:6px 11px;font-size:11.5px;cursor:pointer;font-family:var(--font);white-space:nowrap;transition:transform .15s var(--spring),background .18s}
+.tbtn:hover{background:var(--surface)}
+.tbtn:active{transform:scale(.95)}
+
+.scenes{display:flex;gap:5px;overflow-x:auto;padding-bottom:2px;margin-bottom:14px;scrollbar-width:none}
+.scenes::-webkit-scrollbar{display:none}
+.scene{border:.5px solid var(--line);background:var(--bg);color:var(--ink2);border-radius:9px;padding:7px 13px;font-size:12px;cursor:pointer;font-family:var(--font);white-space:nowrap;transition:all .18s var(--spring)}
+.scene[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.scene:hover:not([aria-selected="true"]){background:var(--surface)}
+
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;align-items:start}
+.panel{display:none}
+.panel.on{display:block}
+
+.card{background:var(--bg);border:.5px solid var(--line);border-radius:13px;overflow:hidden}
+.card+.card{margin-top:12px}
+.hd{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:.5px solid var(--line)}
+.hd h2{font-size:12.5px;font-weight:600;margin:0}
+.hd .tag{margin-left:auto;font-size:10.5px;color:var(--ink3)}
+.bd{padding:13px 14px}
+
+.lead{font-size:11.5px;color:var(--ink2);margin:0 0 11px;line-height:1.65}
+.lead b{color:var(--ink)}
+
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:9px}
+.field{flex:1 1 120px;min-width:0}
+.field label{display:block;font-size:10.5px;color:var(--ink3);margin-bottom:3px}
+input[type=text],input[type=number]{width:100%;font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--raised);border:.5px solid var(--line2);border-radius:7px;padding:7px 9px;outline:none;transition:border-color .18s,box-shadow .18s}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+input::placeholder{font-family:var(--font);color:var(--ink3)}
+
+.btn{border:.5px solid var(--line2);background:transparent;color:var(--ink);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:var(--font);transition:transform .15s var(--spring),background .18s;white-space:nowrap}
+.btn:hover{background:var(--surface)}
+.btn:active{transform:scale(.96)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{background:var(--accent);opacity:.92}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:11px 0 4px}
+.metric{background:var(--surface);border-radius:9px;padding:9px 11px}
+.metric .k{font-size:10px;color:var(--ink3);margin-bottom:2px}
+.metric .v{font-family:var(--mono);font-size:17px;font-weight:600;letter-spacing:-.02em}
+.metric.bad .v{color:var(--danger)}
+.metric.good .v{color:var(--ok)}
+.metric .u{font-size:10px;color:var(--ink3);font-family:var(--font);font-weight:400;margin-left:2px}
+
+/* 终端 */
+.term{background:var(--term);border-radius:11px;padding:11px 12px;font-family:var(--mono);font-size:10.5px;line-height:1.75;color:var(--term-ink);max-height:330px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.term .ts{color:var(--term-dim)}
+.term .ok{color:var(--term-ok)}
+.term .er{color:var(--term-d)}
+.term .hi{color:var(--term-a)}
+.term .dim{color:var(--term-dim)}
+.term .ln{display:block;animation:in .18s var(--spring) both}
+@keyframes in{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:none}}
+
+.verdict{border-radius:9px;padding:9px 11px;font-size:11.5px;line-height:1.6;margin-top:10px}
+.verdict.err{background:var(--danger-soft);color:var(--danger)}
+.verdict.ok{background:var(--ok-soft);color:var(--ok)}
+.verdict.info{background:var(--surface);color:var(--ink2)}
+.verdict b{font-weight:600}
+
+.verdict-strong{border-radius:9px;padding:10px 12px;font-size:12px;line-height:1.6;background:var(--surface);color:var(--ink);border-left:2.5px solid var(--accent)}
+.verdict-strong b{font-weight:600}
+
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}
+.cmp>div{border:.5px solid var(--line);border-radius:9px;padding:10px 11px}
+.cmp .t{font-size:10px;color:var(--ink3);margin-bottom:4px}
+.cmp .n{font-family:var(--mono);font-size:19px;font-weight:600}
+.cmp.old>div:first-child,.cmp .old{border-color:var(--danger-soft);background:var(--danger-soft)}
+.cmp .new{border-color:var(--ok-soft);background:var(--ok-soft)}
+.cmp .n.bad{color:var(--danger)}
+.cmp .n.good{color:var(--ok)}
+
+/* 表格 */
+.tw{overflow-x:auto;margin:0 -14px}
+table{width:100%;border-collapse:collapse;font-size:11px;min-width:560px}
+th{text-align:left;font-size:10px;color:var(--ink3);font-weight:500;padding:6px 9px;border-bottom:.5px solid var(--line);white-space:nowrap}
+td{padding:6px 9px;border-bottom:.5px solid var(--line);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tr.flash{animation:flash .9s var(--spring)}
+@keyframes flash{0%{background:var(--accent-soft)}100%{background:transparent}}
+.mono{font-family:var(--mono)}
+.st{font-size:10px;padding:1px 6px;border-radius:4px}
+.st.s1{color:var(--ok);background:var(--ok-soft)}
+.st.s2{color:var(--ink2);background:var(--surface)}
+.st.s3{color:var(--ink3);background:var(--surface)}
+.st.sx{color:var(--warn);background:var(--warn-soft)}
+
+/* csv 输出 */
+.csvout{background:var(--term);border-radius:10px;padding:10px 12px;font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--term-ink);overflow-x:auto;white-space:pre;max-height:260px;overflow-y:auto}
+.csvout .bom{color:var(--term-d)}
+.csvout .esc{color:var(--term-a)}
+.csvout .hdr{color:var(--term-dim)}
+
+.prev{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.prev .cell{border:.5px solid var(--line);border-radius:8px;padding:8px 10px;font-size:11px}
+.prev .k{font-size:10px;color:var(--ink3);margin-bottom:2px}
+.prev .v{font-family:var(--mono);font-size:11.5px;word-break:break-all}
+
+.note{font-size:10.5px;color:var(--ink3);margin-top:9px;line-height:1.6}
+kbd{font-family:var(--mono);font-size:10px;background:var(--surface);border:.5px solid var(--line);border-radius:3px;padding:0 4px}
+
+@media(max-width:900px){
+  .wrap{grid-template-columns:1fr}
+  .page{padding:16px 12px 40px}
+  .metrics{grid-template-columns:1fr 1fr}
+  .cmp{grid-template-columns:1fr}
+  .prev{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+@media(prefers-contrast:more){
+  .card,.metric,.term{border:.5px solid currentColor}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top">
+    <div>
+      <h1>兑换码优化 · 可执行 Demo</h1>
+      <p class="sub">
+        每个数字都是这段代码真跑出来的，不是写死的。数据在内存里，点「重置」回到初始状态。
+      </p>
+    </div>
+    <div class="top-actions">
+      <button class="tbtn" id="resetBtn" type="button">重置数据</button>
+      <button class="tbtn" id="themeBtn" type="button">深色</button>
+    </div>
+  </div>
+
+  <div class="scenes" role="tablist">
+    <button class="scene" role="tab" aria-selected="true" data-s="rollback">01 批量生成回滚</button>
+    <button class="scene" role="tab" aria-selected="false" data-s="race">02 并发兑换</button>
+    <button class="scene" role="tab" aria-selected="false" data-s="editrace">03 编辑竞态</button>
+    <button class="scene" role="tab" aria-selected="false" data-s="machine">04 状态机拒绝</button>
+    <button class="scene" role="tab" aria-selected="false" data-s="search">05 按码检索</button>
+    <button class="scene" role="tab" aria-selected="false" data-s="export">06 导出</button>
+  </div>
+
+  <div class="wrap">
+
+    <!-- ========== 左：操作 ========== -->
+    <div>
+
+      <!-- 01 -->
+      <section class="panel on" id="p-rollback">
+        <div class="card">
+          <div class="hd"><h2>批量生成：失败之后库里到底有几张</h2><span class="tag">P0</span></div>
+          <div class="bd">
+            <p class="lead">
+              两种实现生成同样的 1000 张码，第 137 条注入一个重复 key。
+              盯住<b>落库行数</b>这一个数字就够了。
+            </p>
+            <div class="row">
+              <div class="field">
+                <label for="cNum">数量</label>
+                <input id="cNum" type="number" value="1000" min="10" max="1000">
+              </div>
+              <div class="field">
+                <label for="cDup">冲突位置</label>
+                <input id="cDup" type="number" value="137" min="1" max="1000">
+              </div>
+            </div>
+            <div class="row">
+              <button class="btn" id="runOld" type="button">跑旧实现</button>
+              <button class="btn primary" id="runNew" type="button">跑新实现</button>
+            </div>
+            <div class="note">旧实现 = 循环单条 INSERT 并各自提交。新实现 = 单事务 + CreateInBatches(100)。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 -->
+      <section class="panel" id="p-race">
+        <div class="card">
+          <div class="hd"><h2>并发兑换同一张码</h2><span class="tag">已具备</span></div>
+          <div class="bd">
+            <p class="lead">
+              50 个请求同时兑换同一张码。故意在读和写之间留出窗口，
+              对比<b>先读后写</b>与<b>条件更新 CAS</b> 的差别。
+            </p>
+            <div class="row">
+              <button class="btn" id="raceNoCas" type="button">没有 CAS</button>
+              <button class="btn primary" id="raceCas" type="button">现有 CAS</button>
+            </div>
+            <div class="note">CAS = <kbd>UPDATE ... WHERE status = 1</kbd>，RowsAffected = 0 即认输。这条已经在线上了。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 03 -->
+      <section class="panel" id="p-editrace">
+        <div class="card">
+          <div class="hd"><h2>编辑与兑换竞态</h2><span class="tag">P0</span></div>
+          <div class="bd">
+            <p class="lead">
+              管理员打开编辑框（读到 <span class="mono">status=1</span>），
+              用户此刻兑换成功（<span class="mono">status=3</span>），管理员保存。
+              <b>只改了名字</b>，状态会怎样？
+            </p>
+            <div class="row">
+              <button class="btn" id="runEditOld" type="button">旧 Update()</button>
+              <button class="btn primary" id="runEditNew" type="button">新 UpdateFields()</button>
+            </div>
+            <div class="note">
+              差别只有一处：<kbd>UPDATE</kbd> 的字段列表里有没有 <kbd>status</kbd>。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 04 -->
+      <section class="panel" id="p-machine">
+        <div class="card">
+          <div class="hd"><h2>把已兑换的码改回未使用</h2><span class="tag">P0</span></div>
+          <div class="bd">
+            <p class="lead">
+              运营最常见的误操作：想「重置」一张码。旧实现允许，
+              于是这张码可以再领一次额度。<b>账上就是凭空多出来的钱。</b>
+            </p>
+            <div class="row">
+              <button class="btn" id="runMachineOld" type="button">旧：允许改回</button>
+              <button class="btn primary" id="runMachineNew" type="button">新：拒绝</button>
+            </div>
+            <div class="note">
+              判断依据不是「管理员有没有权限」，而是<b>这笔负债是否已经兑付</b>。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 05 -->
+      <section class="panel" id="p-search">
+        <div class="card">
+          <div class="hd"><h2>一个输入框，四条路</h2><span class="tag">P1</span></div>
+          <div class="bd">
+            <p class="lead">
+              粘贴任何形态的输入，看它被判定成什么、走哪条 SQL、命中几条。
+              点下面的例子直接填。
+            </p>
+            <div class="field" style="margin-bottom:8px">
+              <label for="qInput">输入</label>
+              <input id="qInput" type="text" placeholder="贴兑换码 / 名称 / ID" autocomplete="off">
+            </div>
+            <div class="row" id="qExamples">
+              <button class="btn" data-v="A3F9-C2E1-8B4D-76FA-05C1-E9D2-B7A4-F8C6" type="button">带横线的完整码</button>
+              <button class="btn" data-v="a3f9c2" type="button">前 6 位</button>
+              <button class="btn" data-v="1203" type="button">ID</button>
+              <button class="btn" data-v="预售" type="button">名称片段</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 06 -->
+      <section class="panel" id="p-export">
+        <div class="card">
+          <div class="hd"><h2>导出：一份文件等于现金</h2><span class="tag">P1</span></div>
+          <div class="bd">
+            <p class="lead">
+              导出的 CSV 里，名称列有一条 <span class="mono">=cmd|'/c calc'!A1</span>。
+              直接打开会发生什么，取决于有没有那道单引号。
+            </p>
+            <div class="row">
+              <button class="btn" id="expRaw" type="button">不转义</button>
+              <button class="btn primary" id="expSafe" type="button">转义 + BOM</button>
+            </div>
+            <div class="row" style="margin-top:4px">
+              <button class="btn" id="copyCsv" type="button" disabled>复制结果</button>
+              <button class="btn" id="dlCsv" type="button" disabled>下载 .csv</button>
+            </div>
+            <div class="note">BOM 是给 Excel 看的：没有它，中文列名会变成乱码。</div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ========== 右：输出 ========== -->
+    <div>
+      <div class="card">
+        <div class="hd"><h2 id="outTitle">执行日志</h2><span class="tag" id="outTag">模拟 SQL</span></div>
+        <div class="bd">
+          <div class="metrics" id="metrics"></div>
+          <div class="term" id="term"><span class="dim">// 点左侧按钮开始</span></div>
+          <div id="verdict"></div>
+        </div>
+      </div>
+
+      <div class="card" id="tableCard">
+        <div class="hd"><h2>redemptions 表</h2><span class="tag" id="tableCount">0 行</span></div>
+        <div class="bd" style="padding:10px 14px 0">
+          <div class="tw"><table>
+            <thead><tr>
+              <th>ID</th><th>名称</th><th>兑换码</th><th>状态</th><th>额度</th><th>兑换人</th>
+            </tr></thead>
+            <tbody id="rowsBody"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="card" id="csvCard" hidden>
+        <div class="hd"><h2>文件内容</h2><span class="tag" id="csvTag">CSV</span></div>
+        <div class="bd" style="padding:10px 12px 12px">
+          <div class="csvout" id="csvOut"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note" style="margin-top:18px">
+    对照材料：方案 <span class="mono">docs/apiduo/redemption-optimization.md</span> ·
+    架构图 <span class="mono">redemption-architecture.html</span> ·
+    交互原型 <span class="mono">redemption-optimization-prototype.html</span>
+  </p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ================= 基础设施 ================= */
+  var NOW = 1794000000;                       // 固定"当前时间"，避免过期判断随真实时间漂移
+  var seedRows = [
+    { id: 1204, name: "双十一预售", key: "a3f9c2e18b4d76fa05c1e9d2b7a4f8c6", status: 1, quota: 500000, expired: 1798646400, usedUser: "", redeemed: 0 },
+    { id: 1203, name: "双十一预售", key: "7c1de8a94f2b6035d8e7a1c4b9f20635", status: 3, quota: 500000, expired: 1798646400, usedUser: "logtest", redeemed: 1794001200 },
+    { id: 1202, name: "双十一预售", key: "2b8f4a1c9d3e6057fa8b2c4d6e9f0135", status: 1, quota: 500000, expired: 1792000000, usedUser: "", redeemed: 0 },
+    { id: 1201, name: "双十一预售", key: "9e4c7b2a05f8d316c9a7e2b4d6f80135", status: 2, quota: 500000, expired: 1798646400, usedUser: "", redeemed: 0 },
+    { id: 1200, name: "老用户回馈", key: "5d1a8f3c7b2e9046d3c5a7f1b8e20469", status: 3, quota: 100000, expired: 0, usedUser: "alice", redeemed: 1793100000 },
+    { id: 1199, name: "老用户回馈", key: "c8b2e5f14a9d7036b5e8c1f4a2d90753", status: 1, quota: 100000, expired: 0, usedUser: "", redeemed: 0 }
+  ];
+
+  var db, balance, seq;
+
+  function resetData(){
+    db = seedRows.map(function(r){ return Object.assign({}, r); });
+    balance = 0;
+    seq = 1300;
+  }
+  resetData();
+
+  var termEl = document.getElementById("term"),
+      metricsEl = document.getElementById("metrics"),
+      verdictEl = document.getElementById("verdict"),
+      rowsBody = document.getElementById("rowsBody"),
+      tableCount = document.getElementById("tableCount"),
+      outTitle = document.getElementById("outTitle"),
+      csvCard = document.getElementById("csvCard"),
+      csvOut = document.getElementById("csvOut"),
+      csvTag = document.getElementById("csvTag");
+
+  function ts(){
+    var d = new Date();
+    var p = function(n, w){ return String(n).padStart(w || 2, "0"); };
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) + "." + p(d.getMilliseconds(), 3);
+  }
+
+  function clearOut(){ termEl.innerHTML = ""; metricsEl.innerHTML = ""; verdictEl.innerHTML = ""; }
+
+  function log(text, cls){
+    var span = document.createElement("span");
+    span.className = "ln";
+    span.innerHTML = '<span class="ts">' + ts() + "</span>  " + (cls ? '<span class="' + cls + '">' + text + "</span>" : text);
+    termEl.appendChild(span);
+    termEl.scrollTop = termEl.scrollHeight;
+  }
+
+  function metric(k, v, unit, tone){
+    var d = document.createElement("div");
+    d.className = "metric" + (tone ? " " + tone : "");
+    d.innerHTML = '<div class="k">' + k + '</div><div class="v">' + v +
+      (unit ? '<span class="u">' + unit + "</span>" : "") + "</div>";
+    metricsEl.appendChild(d);
+  }
+
+  function verdict(kind, html){
+    var d = document.createElement("div");
+    d.className = "verdict " + kind;
+    d.innerHTML = html;
+    verdictEl.appendChild(d);
+  }
+
+  function statusLabel(r){
+    if (r.status === 1 && r.expired !== 0 && r.expired < NOW) return ["已过期", "sx"];
+    if (r.status === 1) return ["未使用", "s1"];
+    if (r.status === 2) return ["已禁用", "s2"];
+    if (r.status === 3) return ["已使用", "s3"];
+    return ["?", "s2"];
+  }
+
+  function renderTable(flashIds){
+    var sorted = db.slice().sort(function(a, b){ return b.id - a.id; });
+    var MAX_ROWS = 12;
+    var rows = sorted.slice(0, MAX_ROWS);
+    rowsBody.innerHTML = rows.map(function(r){
+      var st = statusLabel(r);
+      var hit = flashIds && flashIds.indexOf(r.id) >= 0;
+      return '<tr class="' + (hit ? "flash" : "") + '">' +
+        '<td class="mono">' + r.id + "</td>" +
+        "<td>" + r.name + "</td>" +
+        '<td class="mono" style="font-size:10px">' + r.key.slice(0, 6) + "…" + r.key.slice(-4) + "</td>" +
+        '<td><span class="st ' + st[1] + '">' + st[0] + "</span></td>" +
+        '<td class="mono">$' + (r.quota / 500000).toFixed(2) + "</td>" +
+        "<td>" + (r.usedUser || "—") + "</td>" +
+      "</tr>";
+    }).join("");
+    tableCount.textContent = db.length + " 行" +
+      (sorted.length > MAX_ROWS ? " · 显示最新 " + MAX_ROWS : "");
+  }
+
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+  /* ================= 01 批量生成 ================= */
+  function genRows(n, startId, dupAt, baseKey){
+    var out = [];
+    for (var i = 0; i < n; i++){
+      out.push({
+        id: startId + i,
+        name: "压测批次",
+        // 第 dupAt 条刻意与已有码重复
+        key: (i + 1 === dupAt) ? baseKey : (startId + i).toString(16).padStart(8, "0") + "a1b2c3d4e5f60718",
+        status: 1,
+        quota: 500000,
+        expired: 0,
+        usedUser: "",
+        redeemed: 0
+      });
+    }
+    return out;
+  }
+
+  async function runOldCreate(n, dupAt){
+    resetData();
+    clearOut();
+    outTitle.textContent = "旧实现 · 逐条提交";
+    var conflictKey = db[0].key;
+    var before = db.length;
+    var inserted = 0;
+    log("-- 旧实现：循环 " + n + " 次 Insert() --", "dim");
+    var rows = genRows(n, seq, dupAt, conflictKey);
+    for (var i = 0; i < rows.length; i++){
+      var r = rows[i];
+      var dup = db.some(function(x){ return x.key === r.key; });
+      if (dup){
+        log("INSERT #" + (i + 1) + "  → <span class='er'>duplicate key</span>", "");
+        log("        已提交的行留在库里：<span class='er'>" + inserted + " 行</span>", "");
+        break;
+      }
+      db.push(r);
+      inserted++;
+      if ((i + 1) % 100 === 0 || i === 0){
+        log("INSERT #" + (i + 1) + "  → ok", "dim");
+      }
+    }
+    var after = db.length;
+    metric("落库行数", after - before, "行", "bad");
+    metric("接口返回", "失败", "", "");
+    metric("孤儿码", after - before, "张", "bad");
+    verdict("err", "<b>" + (after - before) + " 张码已经入库，但接口按失败返回。</b>" +
+      "没人知道这批码存在，但每一张都能兑换。这就是「生成即负债」被破坏的样子。");
+    renderTable([rows[0].id, rows[inserted - 1] ? rows[inserted - 1].id : rows[0].id]);
+    seq += n;
+  }
+
+  async function runNewCreate(n, dupAt){
+    resetData();
+    clearOut();
+    outTitle.textContent = "新实现 · 单事务";
+    var conflictKey = db[0].key;
+    var before = db.length;
+    var rows = genRows(n, seq, dupAt, conflictKey);
+    var stg = [];
+    var batchSize = 100;
+    log("-- 新实现：BEGIN + CreateInBatches(" + batchSize + ") --", "dim");
+
+    var failed = false;
+    for (var b = 0; b < Math.ceil(n / batchSize); b++){
+      var slice = rows.slice(b * batchSize, (b + 1) * batchSize);
+      var bad = null;
+      for (var i = 0; i < slice.length; i++){
+        var r = slice[i];
+        var dupInDb = db.some(function(x){ return x.key === r.key; });
+        var dupInTx = stg.some(function(x){ return x.key === r.key; });
+        if (dupInDb || dupInTx){ bad = r; break; }
+        stg.push(r);
+      }
+      if (bad){
+        log("INSERT batch " + (b + 1) + " (" + slice.length + " rows)  → <span class='er'>conflict</span>", "");
+        failed = true;
+        break;
+      }
+      log("INSERT batch " + (b + 1) + " (" + slice.length + " rows)  → ok", "dim");
+      await sleep(18);
+    }
+
+    if (failed){
+      log("ROLLBACK", "er");
+      log("已写入 " + stg.length + " 行全部撤销", "dim");
+    } else {
+      db = db.concat(stg);
+      log("COMMIT  " + stg.length + " rows", "ok");
+    }
+
+    var after = db.length;
+    metric("落库行数", after - before, "行", "good");
+    metric("事务", failed ? "ROLLBACK" : "COMMIT", "", failed ? "" : "good");
+    metric("孤儿码", 0, "张", "good");
+    verdict("ok", failed
+      ? "<b>0 行落库。</b>接口返回失败 ⟺ 库里没有新增。重试是安全的。"
+      : "<b>原子提交：" + stg.length + " 行一次性可见。</b>");
+    renderTable([]);
+    if (!failed) seq += n;
+  }
+
+  /* ================= 02 并发兑换 ================= */
+  function makeRaceRow(){
+    return { id: 9001, name: "并发测试", key: "ffffffffffffffffffffffffffffffff", status: 1, quota: 500000, expired: 0, usedUser: "", redeemed: 0 };
+  }
+
+  async function runNoCas(){
+    resetData();
+    clearOut();
+    outTitle.textContent = "没有 CAS · 先读后写";
+    db.unshift(makeRaceRow());
+    balance = 0;
+    log("-- 50 个请求同时兑换同一张码（读和写之间有窗口） --", "dim");
+    var ok = 0, fail = 0;
+    var row = db[0];
+
+    // 屏障：让 50 个请求都完成「读」之后，再一起「写」。
+    // 否则先写的会把后来者的读拦住，只剩一部分能通过——那反而看不出问题。
+    var arrived = 0, release;
+    var gate = new Promise(function(r){ release = r; });
+
+    await Promise.all(Array.from({ length: 50 }, async function(_, i){
+      await sleep(Math.random() * 40);
+      if (row.status !== 1){ fail++; return; }   // 读
+      arrived++;
+      if (arrived === 50) release();
+      await gate;                                 // 等所有人读完
+      row.status = 3;                             // 写（不校验）
+      row.usedUser = "user" + i;
+      balance += row.quota;
+      ok++;
+    }));
+
+    metric("兑换成功", ok, "次", "bad");
+    metric("额度发放", "$" + (balance / 500000).toFixed(2), "", "bad");
+    metric("应收", "$1.00", "", "");
+    log("UPDATE 无条件 → <span class='er'>" + ok + " 次都成功</span>", "");
+    verdict("err", "<b>" + ok + " 个请求都兑换成功了。</b>一张 $1 的码发出了 $" +
+      (balance / 500000).toFixed(2) + "。这就是没有 CAS 的代价。");
+    renderTable([row.id]);
+  }
+
+  async function runCas(){
+    resetData();
+    clearOut();
+    outTitle.textContent = "现有 CAS · 条件更新";
+    db.unshift(makeRaceRow());
+    balance = 0;
+    log("-- 50 个请求同时兑换同一张码 --", "dim");
+    log("UPDATE redemptions SET status=3 WHERE id=9001 AND status=1", "hi");
+    var ok = 0, fail = 0;
+    var row = db[0];
+
+    await Promise.all(Array.from({ length: 50 }, async function(_, i){
+      await sleep(Math.random() * 40);
+      if (row.status !== 1){ fail++; return; }
+      await sleep(6);
+      // CAS：写入这一刻再判一次，等价于 WHERE status = 1
+      if (row.status !== 1){ fail++; return; }
+      row.status = 3;
+      row.usedUser = "user" + i;
+      balance += row.quota;
+      ok++;
+    }));
+
+    metric("兑换成功", ok, "次", "good");
+    metric("被 CAS 拦下", fail, "次", "");
+    metric("额度发放", "$" + (balance / 500000).toFixed(2), "", "good");
+    log("RowsAffected = 1  → 置信者", "ok");
+    log("RowsAffected = 0  → " + fail + " 个请求认输", "dim");
+    verdict("ok", "<b>1 成功，49 失败，额度只发一次。</b>这块线上已经有了，本次不动。");
+    renderTable([row.id]);
+  }
+
+  /* ================= 03 编辑竞态 ================= */
+  function setupEditRace(){
+    var row = { id: 9100, name: "原标题", key: "1a2b3c4d5e6f708192a3b4c5d6e7f809", status: 1, quota: 500000, expired: 0, usedUser: "", redeemed: 0 };
+    db = db.filter(function(r){ return r.id !== row.id; });
+    db.unshift(row);
+    balance = 0;
+    return row;
+  }
+
+  async function runEditOld(){
+    resetData();
+    clearOut();
+    outTitle.textContent = "旧 Update() · 带 status";
+    var row = setupEditRace();
+    log("-- 管理员打开编辑框 --", "dim");
+    var snapshot = { name: row.name, quota: row.quota, status: row.status };
+    log("SELECT ... → status = <span class='hi'>" + snapshot.status + "</span>（快照）", "");
+    await sleep(320);
+    log("-- 用户兑换成功 --", "dim");
+    row.status = 3;
+    row.usedUser = "logtest";
+    row.redeemed = NOW + 60;
+    balance += row.quota;
+    log("UPDATE status: 1 → 3  额度 +$1.00", "ok");
+    await sleep(320);
+    log("-- 管理员保存「只改了名字」 --", "dim");
+    // 旧实现：Select 含 status，写的是快照里的值
+    row.name = "改名后的标题";
+    row.status = snapshot.status;
+    log("UPDATE redemptions SET name=?, status=1 WHERE id=9100", "");
+    log("→ status 被写成 <span class='er'>1</span>", "");
+    metric("最终 status", row.status, "", "bad");
+    metric("redeemed_time", row.redeemed > 0 ? "有值" : "空", "", "bad");
+    metric("能否再兑", "能", "", "bad");
+    verdict("err", "<b>码复活了，而且没人改状态。</b>管理员只想改个名字，" +
+      "但因为 UPDATE 的字段列表里带着 status、值来自刚才的快照，" +
+      "兑换记录（redeemed_time / used_user_id）还留着——账面自相矛盾。");
+    renderTable([row.id]);
+  }
+
+  async function runEditNew(){
+    resetData();
+    clearOut();
+    outTitle.textContent = "新 UpdateFields() · 不含 status";
+    var row = setupEditRace();
+    log("-- 管理员打开编辑框 --", "dim");
+    var snapshot = { name: row.name, quota: row.quota, status: row.status };
+    log("SELECT ... → status = <span class='hi'>" + snapshot.status + "</span>（快照）", "");
+    await sleep(320);
+    log("-- 用户兑换成功 --", "dim");
+    row.status = 3;
+    row.usedUser = "logtest";
+    row.redeemed = NOW + 60;
+    balance += row.quota;
+    log("UPDATE status: 1 → 3  额度 +$1.00", "ok");
+    await sleep(320);
+    log("-- 管理员保存「只改了名字」 --", "dim");
+    row.name = "改名后的标题";
+    log("UPDATE redemptions SET name=?, quota=?, expired_time=? WHERE id=9100", "hi");
+    log("→ 字段列表里没有 status，兑换结果不受影响", "ok");
+    metric("最终 status", row.status, "", "good");
+    metric("redeemed_time", "保留", "", "good");
+    metric("能否再兑", "不能", "", "good");
+    verdict("ok", "<b>状态保持 3，兑换记录完整。</b>修法不是加锁，是让这条 UPDATE 根本不碰 status——" +
+      "字段编辑与状态迁移是两件事。");
+    renderTable([row.id]);
+  }
+
+  /* ================= 04 状态机 ================= */
+  async function runMachineOld(){
+    resetData();
+    clearOut();
+    outTitle.textContent = "旧 · 允许 used → enabled";
+    var row = { id: 9200, name: "状态测试", key: "deadbeefdeadbeefdeadbeefdeadbeef", status: 3, quota: 500000, expired: 0, usedUser: "logtest", redeemed: NOW - 3600 };
+    db = db.filter(function(r){ return r.id !== row.id; });
+    db.unshift(row);
+    balance = row.quota;   // 第一次兑付已经发过一张
+    log("-- 管理员把已用的码改回未使用 --", "dim");
+    log("PUT /api/redemption/?status_only=true  { id: 9200, status: 1 }", "");
+    row.status = 1;
+    log("UPDATE status: 3 → 1", "er");
+    log("redeemed_time 与 used_user_id 保留：<span class='er'>" + row.redeemed + " / logtest</span>", "");
+    await sleep(260);
+    log("-- 这张码又被兑换了一次 --", "dim");
+    row.status = 3;
+    balance += row.quota;
+    log("额度 +$1.00", "er");
+    metric("同一张码兑付", 2, "次", "bad");
+    metric("累计发放", "$" + (balance / 500000).toFixed(2), "", "bad");
+    metric("账面状态", "已用", "", "");
+    verdict("err", "<b>一张 $1 的码付出了 $1。而且第二次的 used_user_id 覆盖了第一次的，</b>" +
+      "谁兑的都查不到了。这不是权限问题，是把已兑付的负债重新变成负债。");
+    renderTable([row.id]);
+  }
+
+  async function runMachineNew(){
+    resetData();
+    clearOut();
+    outTitle.textContent = "新 · 拒绝逆向迁移";
+    var row = { id: 9200, name: "状态测试", key: "deadbeefdeadbeefdeadbeefdeadbeef", status: 3, quota: 500000, expired: 0, usedUser: "logtest", redeemed: NOW - 3600 };
+    db = db.filter(function(r){ return r.id !== row.id; });
+    db.unshift(row);
+    balance = 0;
+    log("-- 管理员把已用的码改回未使用 --", "dim");
+    log("UPDATE ... WHERE id = 9200 AND status IN (1,2)", "hi");
+    log("RowsAffected = 0", "er");
+    log("→ 403 " + "denied_irreversible", "er");
+    await sleep(200);
+    log("审计：redemption.status_update { from: 3, to: 1, result: denied_irreversible }", "dim");
+    metric("允许的迁移", "1 ↔ 2", "", "good");
+    metric("拒绝的迁移", "3 → 任意", "", "good");
+    metric("码状态", "仍为 3", "", "good");
+    verdict("ok", "<b>拒绝。</b>要再发一张就新建；要撤销误兑换走独立的高危动作（P2），" +
+      "那条路要回收额度并单独记账——不混进状态开关。");
+    renderTable([row.id]);
+  }
+
+  /* ================= 05 检索 ================= */
+  var qInput = document.getElementById("qInput");
+
+  function normalize(s){
+    return (s || "").replace(/[\s\u200b-\u200d\ufeff]/g, "").replace(/[-_—–]/g, "").toLowerCase();
+  }
+
+  function classify(raw){
+    var v = normalize(raw);
+    if (!v) return { kind: "idle", sql: "—", note: "输入任意内容", hits: [] };
+    if (/^\d{1,10}$/.test(v))
+      return { kind: "ID", sql: "WHERE id = " + v, note: "纯数字，≤10 位", hits: db.filter(function(r){ return String(r.id) === v; }) };
+    if (/^[0-9a-f]{32}$/.test(v))
+      return { kind: "完整码", sql: "WHERE key = '" + v + "'", note: "32 位 hex，走唯一索引", hits: db.filter(function(r){ return r.key === v; }) };
+    if (v.length >= 4 && v.length < 32 && /^[0-9a-f]+$/.test(v))
+      return { kind: "码前缀", sql: "WHERE key LIKE '" + v + "%'", note: v.length + " 位 hex，MySQL/SQLite 走索引；PG 上顺序扫", hits: db.filter(function(r){ return r.key.indexOf(v) === 0; }) };
+    return { kind: "名称", sql: "WHERE name LIKE '%" + v + "%'", note: "包含匹配，放弃索引换可用性", hits: db.filter(function(r){ return r.name.toLowerCase().indexOf(v) >= 0; }) };
+  }
+
+  function runSearch(){
+    clearOut();
+    outTitle.textContent = "检索判定";
+    var raw = qInput.value;
+    var c = classify(raw);
+    log("raw      = " + (raw ? raw : "(空)"), "dim");
+    log("normalized = <span class='hi'>" + (normalize(raw) || "(空)") + "</span>", "");
+    log("kind     = " + c.kind, "");
+    log("SQL      = " + c.sql, "hi");
+    log("hits     = " + c.hits.length, c.hits.length ? "ok" : "dim");
+    metric("识别为", c.kind, "", "");
+    metric("命中", c.hits.length, "行", c.hits.length ? "good" : "");
+    metric("查询形态", c.kind === "名称" ? "扫表" : "索引", "", "");
+    verdictEl.innerHTML = '<div class="verdict info"><b>' + c.note + "。</b></div>";
+    renderTable(c.hits.map(function(r){ return r.id; }));
+
+    csvCard.hidden = true;
+    var t = document.getElementById("tableCard");
+    if (t) t.hidden = false;
+  }
+
+  /* ================= 06 导出 ================= */
+  var lastCsv = "";
+
+  function escCell(v){
+    var s = String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    if (/[",\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function buildCsv(safe){
+    var rows = db.filter(function(r){ return r.status === 1 && (r.expired === 0 || r.expired >= NOW); });
+    var head = ["name", "key", "quota", "status"];
+    var lines = [head.join(",")];
+    rows.forEach(function(r){
+      var name = safe ? escCell(r.name) : r.name;
+      lines.push([name, r.key, (r.quota / 500000).toFixed(2), "unused"].join(","));
+    });
+    var body = lines.join("\r\n");
+    return (safe ? "\ufeff" : "") + body + "\r\n";
+  }
+
+  function showCsv(safe){
+    resetData();
+    clearOut();
+    outTitle.textContent = safe ? "导出 · 转义 + BOM" : "导出 · 不转义";
+    // 演示数据里插一条带公式的名字，确保两种模式都能看到差异；重复点击要幂等
+    db = db.filter(function(r){ return r.id !== 9300; });
+    db.push({ id: 9300, name: "=cmd|'/c calc'!A1", key: "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f", status: 1, quota: 100000, expired: 0, usedUser: "", redeemed: 0 });
+
+    lastCsv = buildCsv(safe);
+    var rows = db.filter(function(r){ return r.status === 1 && (r.expired === 0 || r.expired >= NOW); });
+
+    log("GET /api/redemption/export?status=unused&format=csv", "hi");
+    log("导出锁：acquire redemption_export:1  → ok", "dim");
+    log("查询口径：status = 1 AND (expired_time = 0 OR expired_time >= now)", "dim");
+    log("写入 " + rows.length + " 行，逐行 flush", "ok");
+    log("审计：redemption.export { rows: " + rows.length + ", format: csv }", "dim");
+
+    metric("导出行数", rows.length, "行", "");
+    metric("BOM", safe ? "有" : "无", "", safe ? "good" : "bad");
+    metric("公式转义", safe ? "已处理" : "未处理", "", safe ? "good" : "bad");
+
+    csvCard.hidden = false;
+    csvTag.textContent = safe ? "CSV · UTF-8 BOM" : "CSV · 裸文本";
+    var esc = function(t){ return t.replace(/&/g, "&amp;").replace(/</g, "&lt;"); };
+    csvOut.innerHTML = esc(lastCsv).replace(/^\ufeff/, '<span class="bom">\\ufeff</span>');
+
+    verdict(safe ? "ok" : "err", safe
+      ? "<b>两个细节：</b>名称以 <span class='mono'>=</span> 开头时前置单引号，Excel 会当文本；" +
+        "文件头有 BOM，中文列名不会乱码。"
+      : "<b>用 Excel 打开这份文件，第一行数据里的名称会被当公式执行。</b>" +
+        "名称是运营填的，等于把一个可执行载荷藏进了导出文件。");
+
+    document.getElementById("tableCard").hidden = true;
+    renderTable([9300]);
+    document.getElementById("copyCsv").disabled = false;
+    document.getElementById("dlCsv").disabled = false;
+  }
+
+  /* ================= 场景切换 ================= */
+  var scenes = Array.prototype.slice.call(document.querySelectorAll(".scene"));
+  var ids = ["rollback", "race", "editrace", "machine", "search", "export"];
+
+  function switchScene(k, btn){
+    resetData();
+    scenes.forEach(function(x){ x.setAttribute("aria-selected", String(x === btn)); });
+    ids.forEach(function(id){
+      document.getElementById("p-" + id).classList.toggle("on", id === k);
+    });
+    clearOut();
+    termEl.innerHTML = '<span class="dim">// 点左侧按钮开始</span>';
+    document.getElementById("tableCard").hidden = false;
+    csvCard.hidden = true;
+    outTitle.textContent = "执行日志";
+    renderTable([]);
+    if (k === "search"){ qInput.value = ""; }
+  }
+
+  scenes.forEach(function(b){
+    b.addEventListener("click", function(){ switchScene(b.dataset.s, b); });
+  });
+
+  /* ================= 绑定 ================= */
+  document.getElementById("runOld").addEventListener("click", function(){
+    var n = clamp(parseInt(document.getElementById("cNum").value, 10), 10, 1000, 1000);
+    var d = clamp(parseInt(document.getElementById("cDup").value, 10), 1, n, Math.min(137, n));
+    runOldCreate(n, d);
+  });
+  document.getElementById("runNew").addEventListener("click", function(){
+    var n = clamp(parseInt(document.getElementById("cNum").value, 10), 10, 1000, 1000);
+    var d = clamp(parseInt(document.getElementById("cDup").value, 10), 1, n, Math.min(137, n));
+    runNewCreate(n, d);
+  });
+
+  document.getElementById("raceNoCas").addEventListener("click", runNoCas);
+  document.getElementById("raceCas").addEventListener("click", runCas);
+  document.getElementById("runEditOld").addEventListener("click", runEditOld);
+  document.getElementById("runEditNew").addEventListener("click", runEditNew);
+  document.getElementById("runMachineOld").addEventListener("click", runMachineOld);
+  document.getElementById("runMachineNew").addEventListener("click", runMachineNew);
+  document.getElementById("expRaw").addEventListener("click", function(){ showCsv(false); });
+  document.getElementById("expSafe").addEventListener("click", function(){ showCsv(true); });
+
+  qInput.addEventListener("input", runSearch);
+  document.getElementById("qExamples").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-v]");
+    if (!b) return;
+    qInput.value = b.dataset.v;
+    runSearch();
+  });
+
+  document.getElementById("copyCsv").addEventListener("click", async function(){
+    try {
+      await navigator.clipboard.writeText(lastCsv);
+      this.textContent = "已复制";
+      var self = this;
+      setTimeout(function(){ self.textContent = "复制结果"; }, 1400);
+    } catch (e) {
+      this.textContent = "复制失败";
+    }
+  });
+
+  document.getElementById("dlCsv").addEventListener("click", function(){
+    var blob = new Blob([lastCsv], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "redemption-codes.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", function(){
+    resetData();
+    clearOut();
+    termEl.innerHTML = '<span class="dim">// 数据已重置</span>';
+    document.getElementById("tableCard").hidden = false;
+    csvCard.hidden = true;
+    document.getElementById("copyCsv").disabled = true;
+    document.getElementById("dlCsv").disabled = true;
+    renderTable([]);
+  });
+
+  document.getElementById("themeBtn").addEventListener("click", function(){
+    var r = document.documentElement;
+    r.classList.toggle("dark");
+    this.textContent = r.classList.contains("dark") ? "浅色" : "深色";
+  });
+
+  function clamp(v, min, max, fallback){
+    if (!Number.isFinite(v)) return fallback;
+    return Math.min(max, Math.max(min, v));
+  }
+
+  renderTable([]);
+})();
+</script>
+</body>
+</html>

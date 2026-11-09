@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>语音接口适配 · 架构与原型</title>
+<style>
+:root{
+  --bg:#FAFAF8; --surface:#FFFFFF; --border:#E4E3DF; --border-strong:#D0CFC9;
+  --text:#1F1F1D; --muted:#6B6A65; --hint:#918F89;
+  --blue-50:#E6F1FB; --blue-100:#B5D4F4; --blue-600:#185FA5; --blue-800:#0C447C;
+  --amber-50:#FAEEDA; --amber-600:#854F0B; --amber-800:#633806;
+  --red-50:#FCEBEB; --red-600:#A32D2D; --red-800:#791F1F;
+  --green-50:#EAF3DE; --green-600:#3B6D11; --green-800:#27500A;
+  --radius:12px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px; line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:900px; margin:0 auto; padding:48px 24px 80px}
+header{margin-bottom:40px}
+h1{font-size:24px; font-weight:500; margin:0 0 10px; letter-spacing:-.01em}
+.lede{color:var(--muted); font-size:14px; margin:0; max-width:640px}
+.lede strong{color:var(--text); font-weight:500}
+.meta{margin-top:16px; display:flex; gap:20px; flex-wrap:wrap; font-size:12px; color:var(--hint)}
+.meta span code{font-family:var(--mono); font-size:11px; color:var(--muted)}
+section{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px 26px; margin-bottom:20px}
+h2{font-size:16px; font-weight:500; margin:0 0 6px}
+.sub{font-size:13px; color:var(--muted); margin:0 0 20px}
+h3{font-size:13px; font-weight:500; margin:20px 0 8px}
+p{margin:0 0 12px}
+code{font-family:var(--mono); font-size:12px; background:#F4F3F0; padding:1px 5px; border-radius:4px; color:#3A3A37}
+pre{margin:0; font-family:var(--mono); font-size:11.5px; line-height:1.65; white-space:pre-wrap; word-break:break-word}
+.seg{font-size:12.5px; padding:5px 11px; border-radius:7px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; font-family:inherit; transition:background .12s,color .12s,border-color .12s}
+.seg:hover{border-color:var(--border-strong); color:var(--text)}
+.seg.on{background:var(--blue-50); border-color:var(--blue-600); color:var(--blue-800); font-weight:500}
+input[type=text]{width:100%; font-family:var(--mono); font-size:12px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text)}
+input[type=text]:focus{outline:none; border-color:var(--blue-600)}
+select{font-size:12px; padding:5px 6px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); font-family:var(--mono)}
+.dir{padding:11px 13px; border:1px solid var(--border); border-radius:9px; margin-bottom:8px; transition:opacity .15s}
+.dir.off{opacity:.45}
+.dir-row{display:grid; grid-template-columns:130px minmax(0,1fr) 104px 100px; gap:9px; align-items:center}
+.dir-label{display:flex; align-items:flex-start; gap:7px; cursor:pointer; font-size:13px; line-height:1.35}
+.dir-label span.t{display:block}
+.dir-label span.e{display:block; font-size:11px; color:var(--hint); margin-top:1px}
+.panel{background:#F6F5F2; border-radius:9px; padding:12px 14px}
+.panel .cap{font-size:11px; color:var(--muted); margin-bottom:8px; letter-spacing:.01em}
+.stage{border:1px solid var(--border); border-radius:9px; padding:11px 13px}
+.stage .lbl{font-size:11px; color:var(--muted); margin-bottom:7px; display:flex; justify-content:space-between; gap:10px; align-items:baseline}
+.stage .lbl .r{font-family:var(--mono); color:var(--hint)}
+.arrow{text-align:center; color:#C4C2BB; font-size:12px; line-height:1; padding:6px 0}
+table{width:100%; border-collapse:collapse; font-size:13px}
+th{text-align:left; font-weight:500; font-size:11.5px; color:var(--muted); padding:0 12px 8px 0; border-bottom:1px solid var(--border); white-space:nowrap}
+td{padding:11px 12px 11px 0; border-bottom:1px solid #F0EFEC; vertical-align:top}
+td:last-child,th:last-child{padding-right:0}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block; font-size:11px; padding:1px 7px; border-radius:20px; white-space:nowrap}
+.tag.bad{background:var(--red-50); color:var(--red-800)}
+.tag.warn{background:var(--amber-50); color:var(--amber-800)}
+.tag.ok{background:var(--green-50); color:var(--green-800)}
+.flow{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:14px; font-size:12px; color:var(--muted)}
+.flow .step{background:#F6F5F2; border-radius:6px; padding:3px 9px; font-family:var(--mono); font-size:11px; color:#3A3A37}
+.flow .to{color:#C4C2BB}
+.arch{width:100%; height:auto; display:block}
+.bill{display:flex; gap:16px; flex-wrap:wrap; align-items:baseline; border-radius:9px; padding:11px 14px; margin-top:12px}
+.bill .k{font-size:12px}
+.bill .v{font-size:21px; font-weight:500; letter-spacing:-.01em}
+.bill .note{font-size:11px; margin-left:auto}
+.warnbox{background:var(--amber-50); border:1px solid var(--amber-600); border-radius:9px; padding:10px 13px; font-size:12.5px; line-height:1.65; color:var(--amber-800); margin-top:12px}
+ul{margin:0 0 12px; padding-left:20px}
+li{margin-bottom:6px}
+@media (max-width:640px){
+  .dir-row{grid-template-columns:1fr 1fr; gap:8px}
+  .dir-label{grid-column:1/-1}
+  .wrap{padding:32px 16px 60px}
+  section{padding:18px 16px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>语音接口适配 · 架构与原型</h1>
+  <p class="lede">
+    三类入口全做，覆盖 OpenAI 兼容与国内厂商。核心判断：这不是补齐 29 个
+    <code>not implemented</code>，而是补一条<b>方向 / 载体 / 计量</b>分开表达的链路。
+  </p>
+  <div class="meta">
+    <span>入口 <code>/v1/audio/{speech,transcriptions,translations}</code></span>
+    <span>载体 <code>advanced_custom</code></span>
+    <span>状态 待评审</span>
+  </div>
+</header>
+
+<section>
+  <h2>1. 四层数据流</h2>
+  <p class="sub">入口只决定「怎么读请求、怎么回包」，中间只有一份 canonical，上游差异全部收敛在脚本层。</p>
+  <svg class="arch" viewBox="0 0 680 480" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>语音接口适配的四层数据流</title>
+    <desc>三个入站入口经能力声明与 canonical 层，由上游脚本分派到三家上游，AudioSeconds 计量贯穿全链路</desc>
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+    <text x="40" y="44" font-family="system-ui,sans-serif" font-size="12" fill="#918F89">入站入口 · OpenAI 形态</text>
+    <g>
+      <rect x="40" y="56" width="186" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="133" y="77" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">/v1/audio/speech</text>
+      <text x="133" y="95" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">文本 → 音频</text>
+    </g>
+    <g>
+      <rect x="247" y="56" width="186" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="340" y="77" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">/v1/audio/transcriptions</text>
+      <text x="340" y="95" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">音频 → 文本</text>
+    </g>
+    <g>
+      <rect x="454" y="56" width="186" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="547" y="77" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">/v1/audio/translations</text>
+      <text x="547" y="95" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">音频 → 英文文本</text>
+    </g>
+    <path d="M133 112 L133 124 L340 124" fill="none" stroke="#C4C2BB" stroke-width="0.5"/>
+    <path d="M340 112 L340 136" fill="none" stroke="#C4C2BB" stroke-width="0.5" marker-end="url(#ar)"/>
+    <path d="M547 112 L547 124 L340 124" fill="none" stroke="#C4C2BB" stroke-width="0.5"/>
+    <g>
+      <rect x="40" y="136" width="600" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="60" y="158" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">L1 能力声明 · AudioProtocolConfig.ServesPath</text>
+      <text x="380" y="158" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">按方向判断，不按渠道笼统判断</text>
+    </g>
+    <path d="M340 180 L340 204" fill="none" stroke="#C4C2BB" stroke-width="0.5" marker-end="url(#ar)"/>
+    <g>
+      <rect x="40" y="204" width="600" height="60" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="60" y="226" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">L2 canonical · fields + blob</text>
+      <text x="60" y="246" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">TTS 走 fields 透传厂商 extras；STT 走 blob 保留原始字节，不 base64</text>
+    </g>
+    <path d="M340 264 L340 288" fill="none" stroke="#C4C2BB" stroke-width="0.5" marker-end="url(#ar)"/>
+    <g>
+      <rect x="40" y="288" width="600" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="60" y="310" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">L3 上游脚本 · planAudioRequest</text>
+      <text x="380" y="310" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">一个上游一个函数，不堆厂商 switch</text>
+    </g>
+    <path d="M340 332 L340 344 L133 344 L133 356" fill="none" stroke="#C4C2BB" stroke-width="0.5"/>
+    <path d="M340 332 L340 356" fill="none" stroke="#C4C2BB" stroke-width="0.5" marker-end="url(#ar)"/>
+    <path d="M340 344 L547 344 L547 356" fill="none" stroke="#C4C2BB" stroke-width="0.5"/>
+    <g>
+      <rect x="40" y="356" width="186" height="48" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="133" y="374" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">OpenAI 兼容</text>
+      <text x="133" y="392" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">三类全支持</text>
+    </g>
+    <g>
+      <rect x="247" y="356" width="186" height="48" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="340" y="374" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">火山引擎</text>
+      <text x="340" y="392" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">TTS 与 ASR 分端点</text>
+    </g>
+    <g>
+      <rect x="454" y="356" width="186" height="48" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+      <text x="547" y="374" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#0C447C">阿里 DashScope</text>
+      <text x="547" y="392" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#185FA5">签名与端点各一套</text>
+    </g>
+    <g>
+      <rect x="40" y="428" width="600" height="32" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5" stroke-dasharray="3 3"/>
+      <text x="60" y="444" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" font-weight="500" fill="#633806">L0 计量 · AudioSeconds</text>
+      <text x="214" y="444" dominant-baseline="central" font-family="system-ui,sans-serif" font-size="12" fill="#854F0B">旁路贯穿全链，STT 的唯一计费依据</text>
+    </g>
+  </svg>
+  <div class="flow">
+    <span class="step">入站</span><span class="to">→</span>
+    <span class="step">ServesPath</span><span class="to">→</span>
+    <span class="step">canonical</span><span class="to">→</span>
+    <span class="step">plan</span><span class="to">→</span>
+    <span class="step">upstream</span>
+  </div>
+</section>
+
+<section>
+  <h2>2. 配置面板原型</h2>
+  <p class="sub">挂在现有渠道编辑抽屉里，与 <code>image_protocol</code> 同级。关掉即删键，不留 <code>{"enabled":false}</code> 这种占位。</p>
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+    <div>
+      <div style="font-weight:500;font-size:14px">渠道 · advanced_custom #7</div>
+      <div style="font-size:12px;color:var(--hint);margin-top:2px">settings.audio_protocol</div>
+    </div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="ap-en" checked> 启用语音协议
+    </label>
+  </div>
+
+  <div id="ap-body">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="cap">上游协议</div>
+      <div id="ap-ups" style="display:flex;gap:7px;flex-wrap:wrap"></div>
+    </div>
+
+    <div class="cap" style="font-size:11px;color:var(--muted);margin-bottom:8px">方向端点 · 勾选即声明该方向可服务</div>
+    <div id="ap-dirs"></div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-top:16px">
+      <div class="panel">
+        <div class="cap">写入 settings</div>
+        <pre id="ap-json"></pre>
+      </div>
+      <div class="panel">
+        <div class="cap">ServesPath 判定</div>
+        <div id="ap-serve"></div>
+      </div>
+    </div>
+    <div id="ap-warn"></div>
+  </div>
+</section>
+
+<section>
+  <h2>3. 请求转换 demo</h2>
+  <p class="sub">同一个 canonical，四个入口四种上游。注意 STT 那两行的字节去向，以及同步与异步的差别。</p>
+
+  <div id="dm-tabs" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px"></div>
+
+  <div class="stage">
+    <div class="lbl"><span>① 入站</span><span class="r">OpenAI 形态</span></div>
+    <pre id="dm-in"></pre>
+  </div>
+  <div class="arrow">↓</div>
+  <div class="stage">
+    <div class="lbl"><span>② canonical · 纯函数，无 IO</span><span class="r">fields + blob</span></div>
+    <pre id="dm-can"></pre>
+  </div>
+  <div class="arrow">↓</div>
+  <div class="stage">
+    <div class="lbl"><span>③ 上游 plan</span><span class="r" id="dm-up"></span></div>
+    <pre id="dm-out"></pre>
+  </div>
+  <div id="dm-bill"></div>
+</section>
+
+<section>
+  <h2>4. 两个必须先修的计费缺陷</h2>
+  <p class="sub">都在现有代码里，与本次适配无关，但会决定适配值不值得做。</p>
+  <table>
+    <thead>
+      <tr><th style="width:22%">缺陷</th><th style="width:30%">现状</th><th style="width:26%">后果</th><th style="width:22%">修法</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="tag bad">P1</span><div style="margin-top:6px;font-weight:500">STT 时长计量缺失</div></td>
+        <td>STT 请求的 <code>Input</code> 是空串，<code>GetTokenCountMeta()</code> 算出 0 token；上游不返 usage 时回落到这个 0</td>
+        <td>whisper-1 这类按秒计费的上游<b>完全免费</b>，且已发出的量收不回来</td>
+        <td><code>RelayInfo.AudioSeconds</code>，三级来源：上游 duration → 容器头解析 → 字节保守下限</td>
+      </tr>
+      <tr>
+        <td><span class="tag bad">P1</span><div style="margin-top:6px;font-weight:500">音频 token 识别失败</div></td>
+        <td><code>dto.Usage</code> 的 tag 是 <code>input_tokens_details</code>，OpenAI 语音接口返的是 <code>input_token_details</code>，差一个 s</td>
+        <td>音频输入按文本价结算，<code>audio_ratio</code> 配置形同虚设</td>
+        <td>不靠 details 猜，直接按 <code>RelayMode</code> 三选一分派</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="warnbox">
+    <b>为什么排在适配之前：</b>现在能出声的只有 4 个渠道，漏损面有限。一旦把 29 个渠道铺开，同一处缺陷会被放大 29 倍，而且按秒计费的账期已过，追不回来。
+  </div>
+</section>
+
+<section>
+  <h2>5. 实施顺序</h2>
+  <p class="sub">按风险排，不按功能排。每步都可独立合入。</p>
+  <table>
+    <thead><tr><th style="width:12%">阶段</th><th style="width:52%">内容</th><th style="width:36%">为什么在这个位置</th></tr></thead>
+    <tbody>
+      <tr><td><b>P1</b></td><td>计量地基：<code>AudioSeconds</code> + 三级时长来源 + 按秒结算 + 计费分支改按 RelayMode 分派</td><td>不修就先别接。已发出的量不可追</td></tr>
+      <tr><td><b>P2</b></td><td>协议配置 + canonical 折叠 + 单测（纯函数，无网络无厂商）</td><td><code>Enabled=false</code> 时零行为变化，可安全合入</td></tr>
+      <tr><td><b>P3</b></td><td>OpenAI 脚本 + 三类入口打通 + 能力声明挂进渠道选择器</td><td>覆盖面最广，siliconflow 这类只需改 base_url</td></tr>
+      <tr><td><b>P4</b></td><td>国内厂商逐家：先火山（含异步桥接），再阿里，再腾讯</td><td>每家一套签名，一家一个失败面</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</div>
+
+<script>
+(function(){
+var AP_PRESETS={
+  openai:{label:'OpenAI 兼容',d:{speech:{p:'/v1/audio/speech',b:'json',a:'bearer'},transcription:{p:'/v1/audio/transcriptions',b:'multipart',a:'bearer'},translation:{p:'/v1/audio/translations',b:'multipart',a:'bearer'}}},
+  volcengine:{label:'火山引擎',d:{speech:{p:'/api/v1/tts',b:'json',a:'volc_header'},transcription:{p:'/api/v1/asr/submit',b:'async',a:'volc_header'},translation:null}},
+  dashscope:{label:'阿里 DashScope',d:{speech:{p:'/api/v1/services/aigc/multimodal-generation',b:'json',a:'bearer'},transcription:{p:'/api/v1/services/audio/asr/transcription',b:'json',a:'bearer'},translation:null}},
+  tencent:{label:'腾讯云',d:{speech:{p:'/',b:'json',a:'tc3'},transcription:null,translation:null}},
+  minimax:{label:'MiniMax',d:{speech:{p:'/v1/t2a_v2',b:'json',a:'bearer'},transcription:null,translation:null}}
+};
+var DIRS=[
+  {k:'speech',n:'语音合成',e:'文本 → 音频'},
+  {k:'transcription',n:'语音转写',e:'音频 → 文本'},
+  {k:'translation',n:'语音翻译',e:'音频 → 英文'}
+];
+var PATHS={speech:'/v1/audio/speech',transcription:'/v1/audio/transcriptions',translation:'/v1/audio/translations'};
+var st={up:'openai',rows:{}};
+DIRS.forEach(function(d){
+  var p=AP_PRESETS.openai.d[d.k];
+  st.rows[d.k]={on:!!p,path:p?p.p:'',body:p?p.b:'json',auth:p?'bearer':'bearer'};
+});
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function sel(v,list){return list.map(function(x){return '<option value="'+x+'"'+(x===v?' selected':'')+'>'+x+'</option>'}).join('')}
+
+function serveList(){
+  var ok=DIRS.filter(function(d){return st.rows[d.k].on&&st.rows[d.k].path.trim()}).map(function(d){return d.k});
+  return Object.keys(PATHS).map(function(p){
+    var y=ok.indexOf(p)>=0;
+    return '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px">'
+      +'<span style="font-family:var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis">'+p+'</span>'
+      +'<span style="font-weight:500;white-space:nowrap;margin-left:8px;color:'+(y?'var(--blue-800)':'var(--hint)')+'">'+(y?'可服务':'拒绝')+'</span></div>';
+  }).join('');
+}
+
+function syncAP(){
+  var cfg={enabled:true,upstream:st.up};
+  DIRS.forEach(function(d){
+    var r=st.rows[d.k];
+    if(r.on&&r.path.trim())cfg[d.k]={path:r.path.trim(),body:r.body,auth:r.auth};
+  });
+  $('ap-json').textContent=JSON.stringify({audio_protocol:cfg},null,1);
+  $('ap-serve').innerHTML=serveList();
+  var asy=DIRS.some(function(d){return st.rows[d.k].on&&st.rows[d.k].body==='async'});
+  $('ap-warn').innerHTML=asy
+    ? '<div class="warnbox">已选异步上游：火山录音文件识别是「提交 + 轮询」两步，<code>AudioHelper</code> 是同步模型，需要在脚本层加收齐桥接，属 P4 范围。</div>'
+    : '';
+}
+
+function renderDirs(){
+  $('ap-dirs').innerHTML=DIRS.map(function(d){
+    var r=st.rows[d.k];
+    var has=!!AP_PRESETS[st.up].d[d.k];
+    return '<div class="dir'+(r.on?'':' off')+'">'
+      +'<div class="dir-row">'
+      +'<label class="dir-label"><input type="checkbox" data-dir="'+d.k+'"'+(r.on?' checked':'')+' style="margin-top:2px">'
+      +'<span><span class="t">'+d.n+'</span><span class="e">'+d.e+'</span></span></label>'
+      +'<input type="text" data-f="path" data-dir="'+d.k+'" value="'+esc(r.path)+'" placeholder="上游路径">'
+      +'<select data-f="body" data-dir="'+d.k+'">'+sel(r.body,['json','multipart','async'])+'</select>'
+      +'<select data-f="auth" data-dir="'+d.k+'">'+sel(r.auth,['bearer','volc_header','tc3','query'])+'</select>'
+      +'</div>'
+      +(has?'':'<div style="font-size:11px;color:var(--amber-600);margin-top:7px">该上游无此方向能力，配了也会在脚本层报错</div>')
+      +'</div>';
+  }).join('');
+}
+
+$('ap-ups').innerHTML=Object.keys(AP_PRESETS).map(function(k){
+  return '<button class="seg" data-up="'+k+'">'+AP_PRESETS[k].label+'</button>';
+}).join('');
+
+function renderUps(){
+  var bs=$('ap-ups').querySelectorAll('button');
+  for(var i=0;i<bs.length;i++)bs[i].classList.toggle('on',bs[i].dataset.up===st.up);
+}
+function fullAP(){renderUps();renderDirs();syncAP()}
+
+$('ap-en').addEventListener('change',function(e){
+  $('ap-body').style.opacity=e.target.checked?'1':'.45';
+  $('ap-body').style.pointerEvents=e.target.checked?'auto':'none';
+  if(e.target.checked)fullAP();
+});
+$('ap-ups').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-up]');
+  if(!b)return;
+  st.up=b.dataset.up;
+  DIRS.forEach(function(d){
+    var p=AP_PRESETS[st.up].d[d.k];
+    st.rows[d.k]=p?{on:true,path:p.p,body:p.b,auth:p.a}:{on:false,path:'',body:'json',auth:'bearer'};
+  });
+  fullAP();
+});
+$('ap-dirs').addEventListener('change',function(e){
+  var k=e.target.dataset.dir;
+  if(!k)return;
+  if(e.target.type==='checkbox'){st.rows[k].on=e.target.checked;renderDirs();syncAP();}
+  else{st.rows[k][e.target.dataset.f]=e.target.value;syncAP();}
+});
+$('ap-dirs').addEventListener('input',function(e){
+  var k=e.target.dataset.dir;
+  if(k&&e.target.dataset.f==='path'){st.rows[k].path=e.target.value;syncAP();}
+});
+fullAP();
+
+var SCN={
+  tts_oai:{tab:'TTS → OpenAI',up:'openai',
+    in:'POST /v1/audio/speech\n{ "model":"tts-1", "input":"你好世界",\n  "voice":"alloy", "speed":1.0 }',
+    can:'fields = { model:"tts-1", input:"你好世界",\n           voice:"alloy", speed:1.0 }\nblob   = nil\n\n未识别的键原样留下 → 厂商 extras 无损',
+    out:'POST /v1/audio/speech\n{ "model":"tts-1", "input":"你好世界",\n  "voice":"alloy", "speed":1.0 }\n\n响应 audio/mpeg，直接写 c.Writer',
+    bill:['按字符计价','¥0.0002','与修复前一致','ok']},
+  tts_volc:{tab:'TTS → 火山',up:'volcengine',
+    in:'POST /v1/audio/speech\n{ "model":"tts-1", "input":"你好世界",\n  "voice":"female-01", "response_format":"mp3" }',
+    can:'fields = { input:"你好世界", voice:"female-01",\n           response_format:"mp3" }\nblob   = nil\n\nmodel 被脚本丢弃：火山按 cluster 认模型',
+    out:'POST /api/v1/tts\n{ "app":{ "appid":"...","cluster":"volcano_tts" },\n  "audio":{ "voice_type":"...","encoding":"mp3",\n            "rate":24000, "speed_ratio":1.0 },\n  "request":{ "text":"你好世界","operation":"submit" } }',
+    bill:['按字符计价','¥0.0002','与修复前一致','ok']},
+  stt_oai:{tab:'STT → OpenAI',up:'openai',
+    in:'POST /v1/audio/transcriptions\nContent-Type: multipart/form-data\n  file=meeting.mp3 (2.4 MB)\n  model=whisper-1  response_format=verbose_json',
+    can:'fields = { model:"whisper-1",\n           response_format:"verbose_json" }\nblob   = { 2.4 MB, audio/mpeg }\n\n只在 STT 出现：字节不进 map，不 base64',
+    out:'POST /v1/audio/transcriptions  (multipart 原样转发)\n\n响应 { "text":"...", "duration":144.3 }\n        ↑ 读它 → AudioSeconds = 144.3',
+    bill:['按秒计价 · 144 秒','¥0.1040','修复前 ¥0.0000','bad']},
+  stt_volc:{tab:'STT → 火山（异步）',up:'volcengine',
+    in:'POST /v1/audio/transcriptions\nContent-Type: multipart/form-data\n  file=meeting.mp3 (2.4 MB)\n  model=whisper-1',
+    can:'fields = { model:"whisper-1" }\nblob   = { 2.4 MB, audio/mpeg }\n\ncanonical 不认识「异步」——它只描述请求',
+    out:'POST /api/v1/asr/submit  →  返回 task_id\nGET  /api/v1/asr/query?task_id=...\n  轮询到 done 才拿到 text 与 duration\n\n需要同步桥接，P4 才支持',
+    bill:['按秒计价 · 144 秒','¥0.1040','依赖 P4 桥接','warn']}
+};
+var order=['tts_oai','tts_volc','stt_oai','stt_volc'];
+var cur='tts_oai';
+
+$('dm-tabs').innerHTML=order.map(function(k){
+  return '<button class="seg" data-k="'+k+'">'+SCN[k].tab+'</button>';
+}).join('');
+
+function paintDM(){
+  var bs=$('dm-tabs').querySelectorAll('button');
+  for(var i=0;i<bs.length;i++)bs[i].classList.toggle('on',bs[i].dataset.k===cur);
+  var s=SCN[cur];
+  $('dm-in').textContent=s.in;
+  $('dm-can').textContent=s.can;
+  $('dm-out').textContent=s.out;
+  $('dm-up').textContent=s.up;
+  var tone=s.bill[3];
+  var bg=tone==='bad'?'var(--amber-50)':(tone==='warn'?'var(--amber-50)':'#F6F5F2');
+  var bd=tone==='bad'||tone==='warn'?'1px solid var(--amber-600)':'none';
+  var fg=tone==='bad'||tone==='warn'?'var(--amber-800)':'var(--text)';
+  $('dm-bill').innerHTML='<div class="bill" style="background:'+bg+';border:'+bd+'">'
+    +'<span class="k" style="color:'+fg+'">'+s.bill[0]+'</span>'
+    +'<span class="v" style="color:'+fg+'">'+s.bill[1]+'</span>'
+    +'<span class="note" style="color:'+(tone==='bad'||tone==='warn'?'var(--amber-600)':'var(--hint)')+'">'+s.bill[2]+'</span>'
+    +'</div>';
+}
+$('dm-tabs').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-k]');
+  if(!b)return;
+  cur=b.dataset.k;
+  paintDM();
+});
+paintDM();
+})();
+</script>
+</body>
+</html>

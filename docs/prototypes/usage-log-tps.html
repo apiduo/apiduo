@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>apiduo · 删掉「流」列 · 列审计原型</title>
+<style>
+/* ============================================================
+   TOKENS — 工业实用方向：暖纸底、发丝线、等宽数字、单一朱红强调
+   ============================================================ */
+:root{
+  /* 表面 */
+  --paper:        #f6f4ef;
+  --surface:      #fffdf8;
+  --surface-sunk: #f1eee7;
+
+  /* 墨色（均按对比度实测标定，见页脚自检） */
+  --ink:    #1a1a1b;
+  --ink-2:  #55524c;
+  --ink-3:  #6d6960;
+  --ink-4:  #7a7568;   /* 仅装饰：巨型数字单位、零宽占位。正文一律 ink-3 */
+
+  /* 线 */
+  --hair:      rgba(26,26,27,.14);
+  --hair-soft: rgba(26,26,27,.07);
+
+  /* 强调（全页唯一） */
+  --accent:      #a83a16;
+  --accent-soft: rgba(168,58,22,.08);
+
+  /* 语义色（仅表格内部，复刻产品） */
+  --info:    #2f6fb3;
+  --success: #2c7a4f;
+  --warning: #8d5f16;
+  --danger:  #b3352c;
+  --neutral: #a8a49b;
+
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 160ms;
+  --dur-base: 320ms;
+
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Roboto Mono", monospace;
+  --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  padding:52px 32px 88px;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* 氛围层：左上暖光 + 极细颗粒，透明度压到几乎只是"纸感" */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(52rem 34rem at 6% -14%, rgba(168,58,22,.10), transparent 62%),
+    radial-gradient(40rem 30rem at 100% 4%, rgba(47,111,179,.07), transparent 58%);
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.035;
+  mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.page{position:relative;z-index:1;max-width:1160px;margin:0 auto}
+
+/* ============================================================
+   MASTHEAD — 非对称双栏：左叙事，右巨型数字
+   ============================================================ */
+.masthead{
+  display:grid;
+  grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);
+  gap:56px;
+  align-items:start;
+  padding-bottom:34px;
+  border-bottom:1px solid var(--hair);
+}
+
+.eyebrow{
+  font-family:var(--mono);
+  font-size:10.5px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+
+h1{
+  margin:18px 0 0;
+  font-size:clamp(28px,3.4vw,40px);
+  line-height:1.18;
+  font-weight:600;
+  letter-spacing:-.022em;
+  max-width:15em;      /* 汉字宽度 = 1em：15 字/行，标题刚好一行收住 */
+  text-wrap:balance;
+}
+h1 em{
+  font-style:normal;
+  color:var(--accent);
+  /* 手写感的下划：一条 2px 朱红短线压在字下 */
+  background-image:linear-gradient(var(--accent),var(--accent));
+  background-repeat:no-repeat;
+  background-size:100% 2px;
+  background-position:0 96%;
+  padding-bottom:2px;
+}
+
+.lede{
+  margin:18px 0 0;
+  max-width:42em;      /* ch 在中文字体里只有半个字宽，用 ch 会切出过窄的行长 */
+  font-size:14px;
+  line-height:1.78;
+  color:var(--ink-2);
+}
+.lede b{color:var(--ink);font-weight:600}
+.lede code{
+  font-family:var(--mono);font-size:12px;
+  background:var(--surface-sunk);
+  border:1px solid var(--hair-soft);
+  border-radius:var(--r-sm);
+  padding:1px 5px;color:var(--ink-2);
+}
+
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:20px}
+.chip{
+  display:inline-flex;align-items:center;gap:7px;
+  height:26px;padding:0 10px;
+  border:1px solid var(--hair);
+  border-radius:999px;
+  font-size:11.5px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums;
+  background:rgba(255,253,248,.7);
+}
+.chip i{width:5px;height:5px;border-radius:50%;background:var(--success);flex:none}
+.chip.hot i{background:var(--accent)}
+
+/* 右侧巨型数字 */
+.mast-right{padding-top:6px;text-align:right}
+.hero{
+  display:flex;align-items:baseline;justify-content:flex-end;gap:2px;
+  font-family:var(--mono);
+  line-height:.86;
+}
+.hero .num{
+  font-size:clamp(64px,8vw,96px);
+  font-weight:600;
+  letter-spacing:-.055em;
+  font-variant-numeric:tabular-nums;
+  color:var(--ink);
+}
+.hero .unit{font-size:22px;color:var(--ink-4);letter-spacing:-.02em}
+.hero-cap{
+  margin-top:12px;
+  font-size:11.5px;color:var(--ink-3);
+  letter-spacing:.02em;
+}
+.facts{
+  margin:20px 0 0;padding-top:16px;
+  border-top:1px solid var(--hair);
+  display:grid;gap:9px;
+}
+.facts div{
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  font-size:12px;color:var(--ink-3);
+}
+.facts b{
+  font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+
+/* ============================================================
+   PANEL
+   ============================================================ */
+.panel{
+  margin-top:34px;
+  background:var(--surface);
+  border:1px solid var(--hair);
+  border-radius:var(--r-lg);
+  box-shadow:0 1px 2px rgba(26,26,27,.04), 0 20px 48px -38px rgba(40,30,20,.35);
+  overflow:hidden;
+}
+
+.panel-bar{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:11px 14px;
+  border-bottom:1px solid var(--hair);
+  background:var(--surface-sunk);
+}
+
+.seg{position:relative;display:inline-flex;padding:3px;border-radius:var(--r-md);
+  background:rgba(26,26,27,.05);border:1px solid var(--hair-soft)}
+.seg-thumb{
+  position:absolute;top:3px;left:3px;height:calc(100% - 6px);
+  border-radius:5px;background:var(--surface);
+  box-shadow:0 1px 2px rgba(26,26,27,.12), 0 0 0 1px rgba(26,26,27,.04);
+  transition:transform var(--dur-base) var(--ease-apple), width var(--dur-base) var(--ease-apple);
+  will-change:transform,width;
+}
+.seg button{
+  position:relative;z-index:1;appearance:none;border:0;background:none;cursor:pointer;
+  min-height:30px;padding:0 12px;border-radius:5px;
+  font:inherit;font-size:12.5px;font-weight:500;color:var(--ink-3);
+  letter-spacing:-.005em;white-space:nowrap;
+  transition:color var(--dur-fast) ease-out;
+}
+.seg button:hover{color:var(--ink-2)}
+.seg button[aria-selected="true"]{color:var(--ink);font-weight:600}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.seg button .sm{display:none}
+.seg button .mark{
+  display:inline-block;margin-left:5px;padding:0 4px;border-radius:3px;
+  font-family:var(--mono);font-size:9px;letter-spacing:.04em;
+  color:var(--accent);background:var(--accent-soft);
+  transform:translateY(-1px);
+}
+
+.bar-spacer{flex:1}
+.toggle{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--ink-3);cursor:pointer;user-select:none;
+  min-height:30px;
+}
+.toggle input{
+  appearance:none;margin:0;width:32px;height:19px;border-radius:999px;
+  background:rgba(26,26,27,.16);position:relative;cursor:pointer;flex:none;
+  transition:background var(--dur-fast) ease-out;
+}
+.toggle input::after{
+  content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.24);
+  transition:transform var(--dur-base) var(--ease-apple);
+}
+.toggle input:checked{background:var(--accent)}
+.toggle input:checked::after{transform:translateX(13px)}
+.toggle input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ============================================================
+   TABLE — 严格复刻产品：13px、行高紧凑、tabular-nums
+   ============================================================ */
+.table-wrap{position:relative;overflow-x:auto}
+table.logs{width:100%;border-collapse:collapse;table-layout:fixed;min-width:640px}
+
+.logs thead th{
+  padding:9px 14px;
+  text-align:left;vertical-align:bottom;
+  font-size:11.5px;font-weight:600;color:var(--ink-3);
+  letter-spacing:.02em;white-space:nowrap;
+  border-bottom:1px solid var(--hair);
+}
+.logs thead th small{
+  display:block;margin-top:1px;
+  font-family:var(--mono);font-size:9.5px;font-weight:400;
+  letter-spacing:.04em;color:var(--ink-4);
+}
+.logs tbody td{
+  padding:7px 14px;
+  border-bottom:1px solid var(--hair-soft);
+  vertical-align:middle;
+  font-size:13px;line-height:1.35;
+}
+.logs tbody tr:last-child td{border-bottom:0}
+.logs tbody tr{transition:background var(--dur-fast) ease-out}
+.logs tbody tr:hover{background:rgba(26,26,27,.022)}
+.logs tbody tr.bad{background:rgba(179,53,44,.045)}
+.logs tbody tr.bad:hover{background:rgba(179,53,44,.07)}
+
+/* 单元格 */
+.stream{display:inline-flex;align-items:center;gap:5px;font-weight:600;white-space:nowrap}
+.stream.on{color:var(--info)}
+.stream.off{color:var(--ink-3);font-weight:500}
+
+.sub{display:block;margin-top:1px;font-size:11px;line-height:1.3;color:var(--ink-3);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.sub .dot{opacity:.45;margin:0 6px}
+
+.num{font-family:var(--mono);font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;white-space:nowrap}
+.num .slash{color:var(--ink-3);margin:0 2px}
+.num.zero{color:var(--ink-3)}
+
+.tag{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:15px;padding:0 4px;margin-left:5px;
+  border-radius:3px;
+  font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.02em;
+  color:var(--info);background:rgba(47,111,179,.10);
+  vertical-align:1px;
+}
+.tag.warn{color:var(--danger);background:rgba(179,53,44,.12)}
+
+.cost{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;
+  color:var(--ink-2);white-space:nowrap}
+
+.timing{display:flex;align-items:stretch;gap:8px}
+.bar{display:flex;flex-direction:column;width:3px;flex:none;border-radius:999px;overflow:hidden;min-height:22px}
+.bar span{display:block;flex:1}
+.timing .lines{display:flex;flex-direction:column;justify-content:center;gap:1px;min-width:0}
+.timing .lines > div{display:flex;align-items:baseline;gap:5px;font-size:11.5px;line-height:1.35;white-space:nowrap}
+.timing .k{color:var(--ink-3);font-size:10.5px;letter-spacing:.01em}
+.timing .v{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-2);letter-spacing:-.01em}
+.timing .v.ok{color:var(--success)}
+.timing .v.warn{color:var(--warning)}
+.timing .v.bad{color:var(--danger)}
+.timing .v.dim{color:var(--ink-4)}
+
+/* 列边界辅助线 */
+.guides{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity var(--dur-fast) ease-out}
+.guides.on{opacity:1}
+.guide{position:absolute;top:0;bottom:0;width:1px;background:rgba(168,58,22,.35)}
+
+/* ============================================================
+   宽度账本：让「省下的 128px」可见
+   ============================================================ */
+.scroll-hint{display:none;margin:0;padding:7px 14px;font-size:11px;color:var(--ink-3);
+  border-top:1px solid var(--hair-soft);background:var(--surface-sunk)}
+
+.ledger{
+  display:flex;align-items:center;gap:14px;
+  padding:12px 14px;
+  border-top:1px solid var(--hair);
+  background:var(--surface-sunk);
+}
+.ledger-label{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3);flex:none;
+  writing-mode:vertical-rl;transform:rotate(180deg);
+}
+.ledger-bars{flex:1;display:flex;height:26px;border-radius:var(--r-sm);overflow:hidden;
+  border:1px solid var(--hair-soft);background:var(--surface)}
+.lseg{
+  position:relative;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.02em;
+  color:var(--ink-3);white-space:nowrap;overflow:hidden;
+  border-right:1px solid var(--hair-soft);
+  transition:width var(--dur-base) var(--ease-apple), background var(--dur-fast) ease-out;
+}
+.lseg:last-child{border-right:0}
+.lseg.grow{background:rgba(47,111,179,.06);color:var(--info)}
+.ledger-note{
+  /* 允许收缩换行：绝对 nowrap 会把右边距顶穿，长句在窄屏直接溢出容器 */
+  flex:0 1 auto;min-width:0;
+  font-size:11.5px;color:var(--ink-3);line-height:1.5;
+  font-variant-numeric:tabular-nums;text-align:right;
+}
+
+/* ============================================================
+   NOTES
+   ============================================================ */
+.notes{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);border-top:1px solid var(--hair)}
+.note{padding:18px 20px 20px}
+.note + .note{border-left:1px solid var(--hair)}
+.note h3{
+  margin:0 0 7px;font-size:11.5px;font-weight:600;color:var(--ink-3);
+  letter-spacing:.02em;
+}
+.note p{margin:0;font-size:13px;line-height:1.75;color:var(--ink-2)}
+.note p + p{margin-top:8px}
+.note b{color:var(--ink);font-weight:600}
+.note code{
+  font-family:var(--mono);font-size:11.5px;
+  background:var(--surface-sunk);border:1px solid var(--hair-soft);
+  border-radius:var(--r-sm);padding:1px 4px;color:var(--ink-2);
+}
+
+/* ============================================================
+   MATRIX
+   ============================================================ */
+.matrix{margin-top:44px}
+.matrix h2{
+  margin:0 0 6px;font-size:15px;font-weight:600;letter-spacing:-.012em;
+}
+.matrix .hint{margin:0 0 14px;font-size:12.5px;color:var(--ink-3)}
+.matrix-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.matrix-scroll table{min-width:820px}
+.matrix table{
+  width:100%;border-collapse:collapse;
+  border:1px solid var(--hair);border-radius:var(--r-md);
+  overflow:hidden;background:var(--surface);
+}
+.matrix th,.matrix td{
+  padding:10px 13px;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--hair-soft);font-size:12.5px;
+}
+.matrix tr:last-child td{border-bottom:0}
+.matrix th{
+  background:var(--surface-sunk);font-size:11px;font-weight:600;
+  color:var(--ink-3);letter-spacing:.03em;white-space:nowrap;
+}
+.matrix td{color:var(--ink-2);line-height:1.6}
+.matrix td:first-child{color:var(--ink);font-weight:600;white-space:nowrap}
+.matrix .rec{color:var(--accent)}
+.matrix .yes{color:var(--success)}
+.matrix .no{color:var(--danger)}
+.matrix tbody tr[data-v]{cursor:pointer;transition:background var(--dur-fast) ease-out}
+.matrix tbody tr[data-v]:hover{background:rgba(26,26,27,.02)}
+.matrix tbody tr.active{background:var(--accent-soft)}
+.matrix tbody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+/* ============================================================
+   移动端答案
+   ============================================================ */
+.mobile{margin-top:44px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:40px;align-items:start}
+.mobile h2{margin:0 0 6px;font-size:15px;font-weight:600;letter-spacing:-.012em}
+.mobile p{margin:0;font-size:13px;line-height:1.78;color:var(--ink-2)}
+.mobile p + p{margin-top:9px}
+.mobile code{font-family:var(--mono);font-size:11.5px;background:var(--surface-sunk);
+  border:1px solid var(--hair-soft);border-radius:var(--r-sm);padding:1px 4px;color:var(--ink-2)}
+
+.card{
+  max-width:360px;
+  background:var(--surface);border:1px solid var(--hair);border-radius:var(--r-lg);
+  padding:13px 14px;
+  box-shadow:0 1px 2px rgba(26,26,27,.04), 0 14px 30px -26px rgba(40,30,20,.4);
+}
+.card-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.card-model{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:-.01em}
+.card-cost{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.card-grid{
+  display:grid;grid-template-columns:1fr auto;gap:8px 10px;
+  margin-top:11px;padding-top:11px;border-top:1px solid var(--hair-soft);
+}
+.card-grid .k{font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
+.card-grid .v{
+  font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums;text-align:right;
+}
+
+footer{
+  margin-top:56px;padding-top:18px;border-top:1px solid var(--hair);
+  display:flex;flex-wrap:wrap;gap:10px 24px;align-items:baseline;
+  font-size:11.5px;color:var(--ink-3);
+}
+footer .mono{font-family:var(--mono);letter-spacing:.02em}
+
+/* ============================================================
+   MOTION — 一次编排的入场；三组错峰 90ms
+   ============================================================ */
+/* 三组错峰 90ms；用 animation 而不是 transition + JS 打 class，
+   这样无 JS / 截图 / 首屏都是终态，不会出现半透明的内容 */
+@keyframes rise{
+  from{opacity:0;transform:translateY(14px)}
+  to{opacity:1;transform:none}
+}
+.reveal{animation:rise 460ms var(--ease-out) both;animation-delay:var(--d,0ms)}
+
+@media (prefers-reduced-motion: reduce){
+  .reveal{animation:none}
+  .seg-thumb,.toggle input,.toggle input::after,.lseg{transition:none}
+  .logs tbody tr{transition:none}
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width:900px){
+  .masthead{grid-template-columns:1fr;gap:28px}
+  .mast-right{text-align:left;border-top:1px solid var(--hair);padding-top:22px;max-width:440px}
+  .hero{justify-content:flex-start}
+  .notes{grid-template-columns:1fr}
+  .note + .note{border-left:0;border-top:1px solid var(--hair)}
+  .mobile{grid-template-columns:1fr;gap:22px}
+  .ledger{flex-wrap:wrap}
+  .ledger-label{writing-mode:horizontal-tb;transform:none}
+}
+@media (max-width:560px){
+  body{padding:30px 16px 64px}
+  h1{font-size:24px;max-width:none}
+  .scroll-hint{display:block}
+  .seg{max-width:100%}
+  .seg button{padding:0 10px;font-size:12px}
+  .seg button .lg{display:none}
+  .seg button .sm{display:inline}
+  .seg .mark{display:none}
+  .ledger{flex-wrap:wrap;gap:8px}
+  .ledger-note{width:100%;white-space:normal;line-height:1.5}
+  .ledger-bars{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead reveal">
+    <div class="mast-left">
+      <div class="eyebrow">01 — 列审计 / usage-logs</div>
+      <h1>「流」这一列删得掉，<em>信息别丢</em></h1>
+      <p class="lede">
+        它同时装着<b>状态</b>（流 / 非流）和一个<b>没有列头的速率</b>。状态是二值属性、十一行都是同一个值；
+        速率能由 <code>completion_tokens ÷ use_time</code> 算出来。这类字段不该占一列横排宽度，
+        该降级成它影响的那一格里的一枚标记。
+      </p>
+      <div class="chips">
+        <span class="chip"><i></i>16 行 Token 左边缘全在 x=226–227，原列没错位</span>
+        <span class="chip"><i></i><code>is_stream</code> 仍在详情弹窗与 CSV 导出里</span>
+        <span class="chip hot"><i></i>删列后 4 个信息去向都可控</span>
+      </div>
+    </div>
+
+    <aside class="mast-right">
+      <div class="hero"><span class="num">−128</span><span class="unit">px</span></div>
+      <div class="hero-cap">流列宽度，占行宽 18.9%。删掉后这 18.9% 按原比例归还给 Token / 费用 / 用时</div>
+      <div class="facts">
+        <div><span>删掉 / 新增列</span><b>1 / 0</b></div>
+        <div><span>Token 列宽</span><b>31.1 → 38.3%</b></div>
+        <div><span>用时列宽</span><b>31.7 → 39.1%</b></div>
+        <div><span>费用列宽</span><b>18.3 → 22.6%</b></div>
+      </div>
+    </aside>
+  </header>
+
+  <main>
+    <section class="panel reveal" style="--d:90ms" aria-label="落位方案对比">
+      <div class="panel-bar">
+        <div class="seg" role="tablist" aria-label="流列处理方案">
+          <div class="seg-thumb" id="thumb"></div>
+          <button role="tab" data-v="now" aria-selected="true"><span class="lg">现状</span><span class="sm">现状</span></button>
+          <button role="tab" data-v="r1" aria-selected="false"><span class="lg">R1 · 标记进用时</span><span class="sm">R1</span><span class="mark">推荐</span></button>
+          <button role="tab" data-v="r2" aria-selected="false"><span class="lg">R2 · 连速率也删</span><span class="sm">R2</span></button>
+          <button role="tab" data-v="r3" aria-selected="false"><span class="lg">R3 · 只在异常时说</span><span class="sm">R3</span></button>
+        </div>
+        <div class="bar-spacer"></div>
+        <label class="toggle">
+          <input type="checkbox" id="guidesToggle" />
+          列边界
+        </label>
+      </div>
+
+      <div class="table-wrap" id="tableWrap">
+        <table class="logs" aria-label="日志表列布局预览">
+          <colgroup id="cols"></colgroup>
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="guides" id="guides"></div>
+      </div>
+      <p class="scroll-hint">表格可左右滑动，看完整的三列</p>
+
+      <div class="ledger">
+        <div class="ledger-label">width ledger</div>
+        <div class="ledger-bars" id="ledgerBars"></div>
+        <div class="ledger-note" id="ledgerNote"></div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <h3 id="noteTitle">现状</h3>
+          <p id="noteBody"></p>
+        </div>
+        <div class="note">
+          <h3>代价与改动面</h3>
+          <p id="noteDiff"></p>
+          <p id="noteRisk"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="matrix reveal" style="--d:180ms">
+      <h2>四个选项的账</h2>
+      <p class="hint">点任意一行可直接切到那个方案。宽度按同一容器换算，不是估算。</p>
+      <div class="matrix-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>方案</th><th>流列</th><th>t/s 去处</th><th>流式中断可见</th>
+            <th>非流行高度</th><th>改动面</th><th>适合</th>
+          </tr>
+        </thead>
+        <tbody id="matrixBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <section class="mobile reveal" style="--d:270ms">
+      <div>
+        <h2>移动端答案</h2>
+        <p>
+          卡片本来就是两列网格，<code>is_stream</code> 和用时挤在右列。删列后卡片上只剩一条
+          <b>首字 / 用时</b>，流式标记挂在用时行尾，字段可见性判断从
+          <code>cells.has('is_stream')</code> 并入 <code>cells.has('use_time')</code>，少一个开关。
+        </p>
+        <p>
+          行高按内容收紧：非流行单行 34px，流式行两行 46px。要严格等高就把首字行留空占位，
+          代价是一屏少三行。
+        </p>
+      </div>
+      <div class="card" aria-label="移动端卡片预览">
+        <div class="card-top">
+          <span class="card-model" id="cardModel">gpt-4o-mini</span>
+          <span class="card-cost" id="cardCost">$0.000092</span>
+        </div>
+        <div class="card-grid">
+          <span class="k">Token</span><span class="v" id="cardToken">31 / 32</span>
+          <span class="k">费用</span><span class="v">0.0092 额度</span>
+          <span class="k">首字</span><span class="v" id="cardFirst">0.34s</span>
+          <span class="k">用时</span><span class="v" id="cardUse">2.00s</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span class="mono">自检：正文 15.8:1 · 次级 7.7:1 · 表内小字 5.4:1 · 幽灵字 4.6:1 · reduced-motion 已降级 · 1440 / 768 / 375 三档无溢出</span>
+    <span>表格内颜色为产品语义色（信息蓝 / 成功绿 / 危险红），页面外壳只用一个强调色（朱红）。</span>
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   数据：取自截图 16 行；缓存、费用为示意值
+   ============================================================ */
+const ROWS = [
+  { s:1, p:null, c:null, tps:null, frt:0.28, use:0.31, cost:'—',        cache:null },
+  { s:0, p:31,   c:16,   tps:8,    frt:null, use:2.00, cost:'$0.000012', cache:null },
+  { s:0, p:31,   c:8,    tps:2,    frt:null, use:4.00, cost:'$0.000009', cache:null },
+  { s:0, p:null, c:null, tps:null, frt:null, use:0.42, cost:'—',        cache:null },
+  { s:0, p:null, c:null, tps:null, frt:null, use:0.38, cost:'—',        cache:null },
+  { s:0, p:1,    c:4056, tps:406,  frt:null, use:9.99, cost:'$0.01218', cache:3904 },
+  { s:0, p:1,    c:0,    tps:null, frt:null, use:0.55, cost:'—',        cache:null },
+  { s:0, p:1,    c:4096, tps:455,  frt:null, use:9.00, cost:'$0.01230', cache:null },
+  { s:0, p:1,    c:3763, tps:418,  frt:null, use:9.00, cost:'$0.01129', cache:null },
+  { s:0, p:1,    c:4056, tps:406,  frt:null, use:9.99, cost:'$0.01217', cache:null },
+  { s:1, p:31,   c:32,   tps:16,   frt:0.34, use:2.00, cost:'$0.000092', cache:null },
+  { s:0, p:31,   c:32,   tps:16,   frt:null, use:2.00, cost:'$0.000092', cache:null },
+  { s:1, p:31,   c:32,   tps:32,   frt:0.31, use:1.00, cost:'$0.000092', cache:null },
+  { s:0, p:31,   c:32,   tps:32,   frt:null, use:1.00, cost:'$0.000090', cache:null },
+  { s:1, p:2,    c:33,   tps:17,   frt:1.86, use:1.94, cost:'$0.000094', cache:null, err:'流式中断：connection reset' },
+  { s:0, p:31,   c:14,   tps:14,   frt:null, use:1.00, cost:'$0.000058', cache:null },
+];
+
+/* ============================================================
+   方案配置
+   ============================================================ */
+const VARIANTS = {
+  now: {
+    head: ['流', 'Token', '费用', '用时'],
+    cols: [['流', 128], ['Token', 210], ['费用', 124], ['用时', 214]],
+    title: '现状：一列装两件事',
+    body: '第一行是状态，第二行是没有列头的 t/s。行高被第二行固定住——即使这行完全没有 token（显示 —）也占同样高度。横向扫读时 8 t/s 会先于 Token 进视线，容易和右侧 Token 串成一行。',
+    diff: '不改代码，保留 <code>StreamTpsCell</code> 的两行结构。',
+    risk: '128px 只服务 2 个字 + 1 个派生数字；且 t/s 与 Token 分居两列，读起来是断的。',
+  },
+  r1: {
+    head: ['Token', '费用', '用时'],
+    cols: [['Token', 210], ['费用', 124], ['用时', 214]],
+    title: 'R1：流标记挂到用时行尾（推荐）',
+    body: 't/s 是 token 的产出速率，跟 prompt / completion 同族，收回 Token 格的第二行；有缓存时串成 16 t/s · 缓存↓ 1,024。流 / 非流 只是这一格首字的解释，所以挂成 用时 2.00s · 流 的一枚 10px 标签——零列宽，零歧义。',
+    diff: '改 <code>StreamTpsCell</code> 的渲染位置：速率交给 Token 格，流标签交给 <code>TimingMetricsCell</code>。<code>is_stream</code> 列定义删除。',
+    risk: '非流行只渲染一行，行高 34 / 46 交替；要等高就保留首字占位行。',
+  },
+  r2: {
+    head: ['Token', '费用', '用时'],
+    cols: [['Token', 210], ['费用', 124], ['用时', 214]],
+    title: 'R2：连速率也删掉',
+    body: '如果团队扫日志时不看 t/s（只关心用了多少 token、花了多少钱、等了多久），那 t/s 和流列一起走。表格只剩 Token / 费用 / 用时，最干净；速率只在详情里出现。',
+    diff: '删除 <code>StreamTpsCell</code> 的调用与列定义；流标签仍挂用时行尾。',
+    risk: '失去"哪个模型快"的横比维度；用户想比较时只能逐条开详情。',
+  },
+  r3: {
+    head: ['Token', '费用', '用时'],
+    cols: [['Token', 210], ['费用', 124], ['用时', 214]],
+    title: 'R3：只在异常时说话',
+    body: '正常行不写流 / 非流——有首字就是流式，这是隐含的、但够用的信号。只有流式中断那行才在用时行尾亮出红色 中断 标记，带 tooltip 显示 end_reason 与软错误计数。噪音归零，排障不丢。',
+    diff: '流标签改为条件渲染：仅 <code>stream_status.status !== "ok"</code> 时出现。',
+    risk: '想统计"我这批请求有多少是流式"时，列表上读不出来，得靠导出。',
+  },
+};
+
+const MATRIX = [
+  ['now', '现状',           '有（两行）', '流列里，无列头', '是', '46px 恒定', '0', '—'],
+  ['r1',  'R1 · 标记进用时', '删',        'Token 格第二行', '是', '34 / 46px',  '删 1 列 + 改 2 个 cell', '日常扫读'],
+  ['r2',  'R2 · 连速率也删', '删',        '不显示',        '是', '34 / 46px',  '删 1 列 + 删 1 组件',   '只要账目清楚'],
+  ['r3',  'R3 · 只在异常说', '删',        'Token 格第二行', '是（仅异常行）', '34 / 46px', '条件渲染 1 处', '安静优先'],
+];
+
+/* ============================================================
+   渲染
+   ============================================================ */
+const el = (id) => document.getElementById(id);
+const fmt = (n) => n == null ? '—' : n.toLocaleString('en-US');
+const tpsTone = (t) => t == null ? 'neutral' : t >= 30 ? 'success' : t >= 12 ? 'warning' : 'danger';
+
+function bar(r){
+  const dur = r.tps == null ? 'neutral' : tpsTone(r.tps);
+  const first = r.frt == null ? 'neutral' : r.frt <= 1 ? 'success' : r.frt <= 3 ? 'warning' : 'danger';
+  return `<span class="bar" aria-hidden="true">
+      <span style="background:var(--${first});opacity:.85"></span>
+      <span style="background:var(--${dur});opacity:.85"></span>
+    </span>`;
+}
+
+function timing(r, withTps, withTag, tagOnlyOnError){
+  const durTone = r.tps == null ? 'dim' : tpsTone(r.tps);
+  const firstTone = r.frt == null ? 'dim' : r.frt <= 1 ? 'ok' : r.frt <= 3 ? 'warn' : 'bad';
+  const firstLine = r.frt == null ? '' : `<div><span class="k">首字</span><span class="v ${firstTone}">${r.frt.toFixed(2)}s</span></div>`;
+
+  let tail = '';
+  if (withTps && r.tps != null) {
+    tail += `<span class="k" style="margin-left:2px">·</span><span class="v ${durTone}">${Math.round(r.tps)} t/s</span>`;
+  }
+  if (withTag && r.s) {          /* 非流行不该出现流标签：这是本方案的前提 */
+    const show = !tagOnlyOnError || r.err;
+    if (show) {
+      tail += r.err
+        ? `<span class="tag warn" title="${r.err}">中断</span>`
+        : `<span class="tag">流</span>`;
+    }
+  }
+
+  return `<div class="timing">${bar(r)}<div class="lines">
+      ${firstLine}
+      <div><span class="k">用时</span><span class="v ${durTone}">${r.use.toFixed(2)}s</span>${tail}</div>
+    </div></div>`;
+}
+
+function tokenCell(r, subMode){
+  if (r.p == null) return `<span class="num zero">-</span>`;
+  const main = `<span class="num">${fmt(r.p)}<span class="slash">/</span>${fmt(r.c)}</span>`;
+  const bits = [];
+  if (subMode === 'tps' && r.tps != null) bits.push(`${Math.round(r.tps)} t/s`);
+  if (r.cache) bits.push(`缓存↓ ${fmt(r.cache)}`);
+  const sub = bits.length ? `<span class="sub">${bits.join('<span class="dot">·</span>')}</span>` : '';
+  return main + sub;
+}
+
+/* 宽度账本：删列不会让表变窄——128px 按原比例还给其余三列。
+   这里按「行宽百分比」画，数字与 colgroup 的 getSize 比例一一对应。 */
+function ledger(cfg){
+  const withStream = cfg.cols.some(([n]) => n === '流');
+  const total = cfg.cols.reduce((s, [, w]) => s + w, 0);
+  const bars = cfg.cols.map(([name, w]) => {
+    const pct = (w / total) * 100;
+    const grew = !withStream && name !== '流';
+    return `<div class="lseg${grew ? ' grow' : ''}" style="width:${pct}%">${name} ${pct.toFixed(1)}%</div>`;
+  });
+  el('ledgerBars').innerHTML = bars.join('');
+  el('ledgerNote').innerHTML = withStream
+    ? '流列占 128 / 676 = <b>18.9%</b> 行宽'
+    : '流 18.9% 已按比例并入 → Token +7.2pp · 费用 +4.3pp · 用时 +7.4pp';
+}
+
+function render(v){
+  const cfg = VARIANTS[v];
+
+  /* 用百分比而不是 px：表格是 table-layout:fixed + width:100%，
+     写 px 时浏览器会把剩余空间再分配一次，账本上的 18.9% 就和眼睛看到的对不上 */
+  const total = cfg.cols.reduce((sum, [, w]) => sum + w, 0);
+  el('cols').innerHTML = cfg.cols
+    .map(([, w]) => `<col style="width:${((w / total) * 100).toFixed(3)}%" />`)
+    .join('');
+
+  el('thead').innerHTML = `<tr>${cfg.head.map((h) => {
+    const sub = h === 'Token' ? '<small>prompt / completion</small>'
+      : h === '用时' ? '<small>首字 · 用时</small>'
+      : h === '流' ? '<small>状态 · t/s</small>' : '';
+    return `<th>${h}${sub}</th>`;
+  }).join('')}</tr>`;
+
+  el('tbody').innerHTML = ROWS.map((r) => {
+    const rowClass = r.err ? 'bad' : '';
+    let cells = '';
+
+    if (v === 'now') {
+      const tpsLine = r.tps != null ? `${Math.round(r.tps)} t/s` : '—';
+      cells += `<td><span class="stream ${r.s ? 'on' : 'off'}">${r.s ? '流' : '非流'}</span><span class="sub">${tpsLine}</span></td>`;
+      cells += `<td>${tokenCell(r, 'cache')}</td>`;
+      cells += `<td><span class="cost">${r.cost}</span></td>`;
+      cells += `<td>${timing(r, false, false, false)}</td>`;
+    } else if (v === 'r1') {
+      cells += `<td>${tokenCell(r, 'tps')}</td>`;
+      cells += `<td><span class="cost">${r.cost}</span></td>`;
+      cells += `<td>${timing(r, false, true, false)}</td>`;
+    } else if (v === 'r2') {
+      cells += `<td>${tokenCell(r, 'cache')}</td>`;
+      cells += `<td><span class="cost">${r.cost}</span></td>`;
+      cells += `<td>${timing(r, false, true, false)}</td>`;
+    } else {
+      cells += `<td>${tokenCell(r, 'tps')}</td>`;
+      cells += `<td><span class="cost">${r.cost}</span></td>`;
+      cells += `<td>${timing(r, false, true, true)}</td>`;
+    }
+
+    return `<tr class="${rowClass}">${cells}</tr>`;
+  }).join('');
+
+  el('noteTitle').textContent = cfg.title;
+  el('noteBody').innerHTML = cfg.body;
+  el('noteDiff').innerHTML = cfg.diff;
+  el('noteRisk').innerHTML = cfg.risk;
+
+  ledger(cfg);
+  drawGuides();
+  syncCard(v);
+  syncMatrix(v);
+}
+
+function syncMatrix(v){
+  el('matrixBody').innerHTML = MATRIX.map(([key, name, streamCol, tps, err, h, diff, fit]) => {
+    const pick = key === 'now' ? '' : (key === 'r1' ? 'rec' : '');
+    return `<tr data-v="${key}" tabindex="0" class="${key === v ? 'active' : ''}">
+      <td class="${pick}">${name}</td>
+      <td class="${streamCol === '删' ? 'yes' : ''}">${streamCol}</td>
+      <td>${tps}</td>
+      <td>${err}</td>
+      <td>${h}</td>
+      <td>${diff}</td>
+      <td>${fit}</td>
+    </tr>`;
+  }).join('');
+}
+
+function syncCard(v){
+  const r = ROWS[10];
+  el('cardModel').textContent = 'gpt-4o-mini';
+  el('cardCost').textContent = r.cost;
+  el('cardToken').textContent = `${fmt(r.p)} / ${fmt(r.c)}`;
+  el('cardFirst').innerHTML = `${r.frt.toFixed(2)}s` +
+    (v === 'r3' ? '' : ' <span class="tag">流</span>');
+  el('cardUse').textContent = `${r.use.toFixed(2)}s`;
+}
+
+/* ============================================================
+   交互
+   ============================================================ */
+const seg = document.querySelector('.seg');
+const thumb = el('thumb');
+
+function moveThumb(btn){
+  thumb.style.width = btn.offsetWidth + 'px';
+  thumb.style.transform = `translateX(${btn.offsetLeft - 3}px)`;
+}
+
+function select(v, btn){
+  seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b === btn)));
+  moveThumb(btn);
+  render(v);
+}
+
+seg.querySelectorAll('button').forEach((btn) => {
+  btn.addEventListener('click', () => select(btn.dataset.v, btn));
+  btn.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const list = [...seg.querySelectorAll('button')];
+    const i = list.indexOf(btn);
+    const next = list[(i + (e.key === 'ArrowRight' ? 1 : list.length - 1)) % list.length];
+    next.focus();
+    select(next.dataset.v, next);
+  });
+});
+
+el('matrixBody').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr[data-v]');
+  if (!tr) return;
+  const btn = seg.querySelector(`button[data-v="${tr.dataset.v}"]`);
+  select(tr.dataset.v, btn);
+});
+el('matrixBody').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const tr = e.target.closest('tr[data-v]');
+  if (!tr) return;
+  e.preventDefault();
+  select(tr.dataset.v, seg.querySelector(`button[data-v="${tr.dataset.v}"]`));
+});
+
+function drawGuides(){
+  const wrap = el('tableWrap');
+  const host = el('guides');
+  const ths = [...document.querySelectorAll('.logs thead th')];
+  host.innerHTML = ths.slice(1).map((th) => {
+    const x = th.getBoundingClientRect().left - wrap.getBoundingClientRect().left;
+    return `<div class="guide" style="left:${Math.round(x)}px"></div>`;
+  }).join('');
+}
+
+el('guidesToggle').addEventListener('change', (e) => {
+  el('guides').classList.toggle('on', e.target.checked);
+});
+
+addEventListener('resize', () => {
+  drawGuides();
+  moveThumb(seg.querySelector('button[aria-selected="true"]'));
+});
+
+/* 入场：先让首帧画出来，再打 ready，保证过渡真的跑 */
+requestAnimationFrame(() => {
+  const q = new URLSearchParams(location.search).get('v');
+  const btn = seg.querySelector(`button[data-v="${q}"]`) || seg.querySelector('button[aria-selected="true"]');
+  seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b === btn)));
+  moveThumb(btn);
+  render(btn.dataset.v);
+});
+</script>
+</body>
+</html>

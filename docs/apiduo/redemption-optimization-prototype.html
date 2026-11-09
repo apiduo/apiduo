@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>兑换码优化 · 交互原型</title>
+<style>
+:root{
+  --bg:#ffffff;--page:#f5f5f7;--surface:#f2f2f7;--raised:#ffffff;
+  --ink:#1c1c1e;--ink2:#5f5f66;--ink3:#8e8e93;
+  --line:rgba(0,0,0,.11);--line2:rgba(0,0,0,.20);
+  --accent:#5b5bd6;--accent-soft:#eeedfe;--on-accent:#ffffff;
+  --ok:#0f6e56;--ok-soft:#e1f5ee;
+  --warn:#854f0b;--warn-soft:#faeeda;
+  --danger:#a32d2d;--danger-soft:#fcebeb;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --spring:cubic-bezier(.22,1,.36,1);
+  --sheet-spring:cubic-bezier(.34,1.3,.64,1);
+}
+html.dark{
+  --bg:#1c1c1e;--page:#101012;--surface:#2c2c2e;--raised:#242426;
+  --ink:#f5f5f7;--ink2:#c7c7cc;--ink3:#a8a8ad;
+  --line:rgba(255,255,255,.14);--line2:rgba(255,255,255,.28);
+  --accent:#a9a6f5;--accent-soft:#34335c;--on-accent:#17171a;
+  --ok:#5dcaa5;--ok-soft:#123a30;
+  --warn:#ef9f27;--warn-soft:#3a2b12;
+  --danger:#f09595;--danger-soft:#3d1d1d;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--font);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.page{max-width:1180px;margin:0 auto;padding:26px 20px 70px}
+.top{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px}
+h1{font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0 0 3px}
+.sub{font-size:12px;color:var(--ink2);margin:0}
+.theme{margin-left:auto;border:.5px solid var(--line2);background:var(--bg);color:var(--ink2);border-radius:8px;padding:6px 10px;font-size:11.5px;cursor:pointer;white-space:nowrap;transition:transform .15s var(--spring)}
+.theme:active{transform:scale(.95)}
+
+/* tabs */
+.tabs{display:flex;gap:4px;background:var(--surface);border-radius:10px;padding:3px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:transparent;color:var(--ink2);font-family:var(--font);font-size:12px;padding:6px 13px;border-radius:7px;cursor:pointer;white-space:nowrap;transition:background .2s var(--spring),color .2s}
+.tab[aria-selected="true"]{background:var(--bg);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+html.dark .tab[aria-selected="true"]{box-shadow:none;background:var(--raised)}
+
+.card{background:var(--bg);border:.5px solid var(--line);border-radius:14px;overflow:hidden;animation:sheet .3s var(--sheet-spring) both}
+@keyframes sheet{from{opacity:0;transform:translateY(8px) scale(.995)}to{opacity:1;transform:none}}
+.panel{display:none}
+.panel.on{display:block}
+.hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:.5px solid var(--line);flex-wrap:wrap}
+.hd h2{font-size:13.5px;font-weight:600;margin:0}
+.hd .meta{font-size:11px;color:var(--ink3);margin-left:auto}
+.bd{padding:14px 16px}
+
+/* controls */
+.search{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.inp{flex:1 1 300px;min-width:0;font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--raised);border:.5px solid var(--line2);border-radius:8px;padding:8px 11px;outline:none;transition:border-color .2s,box-shadow .2s}
+.inp:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.inp::placeholder{font-family:var(--font);color:var(--ink3)}
+select{font-family:var(--font);font-size:12px;color:var(--ink);background:var(--raised);border:.5px solid var(--line2);border-radius:8px;padding:8px 10px;outline:none}
+.judge{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink2);background:var(--surface);border-radius:7px;padding:7px 10px;margin-bottom:12px;min-height:32px}
+.judge code{font-family:var(--mono);font-size:10.5px;color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:1px 5px}
+.judge.idle{color:var(--ink3)}
+
+/* table */
+.tw{overflow-x:auto;margin:0 -16px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:11px;color:var(--ink3);font-weight:500;padding:8px 10px;border-bottom:.5px solid var(--line);white-space:nowrap;background:var(--bg);position:sticky;top:0}
+td{padding:9px 10px;border-bottom:.5px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tr.hit{background:var(--accent-soft)}
+tr.dim{opacity:.35}
+.mono{font-family:var(--mono);font-size:11.5px}
+td .mono{white-space:nowrap}
+.name{font-weight:500}
+.st{display:inline-flex;align-items:center;font-size:11px;padding:2px 7px;border-radius:5px;white-space:nowrap}
+.st.ok{color:var(--ok);background:var(--ok-soft)}
+.st.used{color:var(--ink3);background:var(--surface)}
+.st.off{color:var(--ink2);background:var(--surface)}
+.st.exp{color:var(--warn);background:var(--warn-soft)}
+
+/* switch */
+.sw{position:relative;display:inline-block;width:32px;height:18px;flex:none}
+.sw input{opacity:0;width:0;height:0}
+.sw i{position:absolute;inset:0;background:var(--line2);border-radius:9px;transition:background .2s var(--spring)}
+.sw i::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .22s var(--spring)}
+.sw input:checked+i{background:var(--accent)}
+.sw input:checked+i::after{transform:translateX(14px)}
+.sw input:disabled+i{opacity:.4;cursor:not-allowed}
+.sw.locked{cursor:not-allowed}
+.rowact{display:flex;gap:6px;flex-wrap:nowrap}
+.icon{border:.5px solid var(--line);background:transparent;color:var(--ink2);border-radius:6px;padding:3px 7px;font-size:11px;cursor:pointer;font-family:var(--font);white-space:nowrap;transition:background .15s,transform .15s var(--spring)}
+.icon:hover{background:var(--surface)}
+.icon:active{transform:scale(.95)}
+.icon.danger{color:var(--danger);border-color:var(--danger-soft)}
+
+/* form */
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.field{min-width:0}
+.field label{display:block;font-size:11px;color:var(--ink3);margin-bottom:4px}
+.field input,.field select{width:100%}
+.field .hintline{font-size:10.5px;color:var(--ink3);margin-top:4px;line-height:1.4}
+.qty{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.qchip{border:.5px solid var(--line2);background:transparent;color:var(--ink2);border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:var(--mono);transition:all .15s var(--spring)}
+.qchip:hover{background:var(--surface)}
+.qchip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.notice{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;line-height:1.55;border-radius:8px;padding:9px 11px;margin-top:12px}
+.notice b{font-weight:600;flex:none;white-space:nowrap}
+.notice.warn{color:var(--warn);background:var(--warn-soft)}
+.notice.ok{color:var(--ok);background:var(--ok-soft)}
+.notice.danger{color:var(--danger);background:var(--danger-soft)}
+.notice.info{color:var(--ink2);background:var(--surface)}
+.notice .x{margin-left:auto;font-family:var(--mono);font-size:10.5px;opacity:.8;white-space:nowrap}
+.actions{display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap}
+.btn{border:.5px solid var(--line2);background:transparent;color:var(--ink);border-radius:8px;padding:7px 15px;font-size:12px;cursor:pointer;font-family:var(--font);transition:transform .15s var(--spring)}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.ghost{color:var(--ink2)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary:disabled{opacity:.75}
+
+/* result block */
+.result{margin-top:14px;border:.5px solid var(--line);border-radius:10px;overflow:hidden}
+.result .rh{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--surface);font-size:11.5px;color:var(--ink2);border-bottom:.5px solid var(--line)}
+.result .rh b{color:var(--ink);font-weight:600}
+.result .rb{padding:12px}
+.oldnew{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.oldnew>div{border:.5px solid var(--line);border-radius:8px;padding:10px 12px;font-size:11.5px;line-height:1.6}
+.oldnew .t{font-size:10.5px;color:var(--ink3);margin-bottom:5px}
+.oldnew .bad{border-color:var(--danger-soft);background:var(--danger-soft)}
+.oldnew .good{border-color:var(--ok-soft);background:var(--ok-soft)}
+.snippet{font-family:var(--mono);font-size:11px;color:var(--ink);background:var(--surface);border-radius:6px;padding:8px 10px;margin-top:9px;line-height:1.75;white-space:pre-wrap;word-break:break-all}
+
+/* csv preview */
+.csv{border:.5px solid var(--line);border-radius:8px;overflow:hidden;font-family:var(--mono);font-size:10.5px}
+.csv .cr{display:grid;grid-template-columns:1.1fr 3fr .8fr .8fr;border-bottom:.5px solid var(--line)}
+.csv .cr:last-child{border-bottom:0}
+.csv .cr>span{padding:6px 9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-right:.5px solid var(--line)}
+.csv .cr>span:last-child{border-right:0}
+.csv .cr.head{background:var(--surface);color:var(--ink3)}
+.csv .cr.inject{background:var(--danger-soft)}
+.csv .cr.inject>span:nth-child(2){color:var(--danger);font-weight:600}
+
+/* user redeem */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.demo{border:.5px solid var(--line);border-radius:10px;padding:13px;background:var(--raised)}
+.demo h3{font-size:11px;color:var(--ink3);font-weight:500;margin:0 0 9px;display:flex;align-items:center;gap:6px}
+.demo h3 span{font-size:10px;padding:1px 5px;border-radius:4px;background:var(--surface);color:var(--ink2)}
+.paste{font-family:var(--mono);font-size:12px;width:100%;background:var(--bg);border:.5px solid var(--line2);border-radius:8px;padding:8px 10px;color:var(--ink);outline:none;resize:vertical;min-height:56px;line-height:1.6}
+.paste:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.norm{font-size:10.5px;color:var(--ink3);margin-top:6px;line-height:1.5;word-break:break-all}
+.norm b{font-family:var(--mono);color:var(--accent);font-weight:500}
+.toastline{font-size:11.5px;border-radius:8px;padding:8px 11px;margin-top:10px;line-height:1.5}
+.toastline.e{color:var(--danger);background:var(--danger-soft)}
+.toastline.s{color:var(--ok);background:var(--ok-soft)}
+
+/* audit */
+.audit{position:relative;padding-left:22px}
+.audit::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:1px;background:var(--line)}
+.ae{position:relative;padding:9px 0}
+.ae::before{content:"";position:absolute;left:-20px;top:15px;width:7px;height:7px;border-radius:50%;background:var(--line2);box-shadow:0 0 0 3px var(--bg)}
+.ae.d::before{background:var(--danger)}
+.ae.w::before{background:var(--warn)}
+.ae .at{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ae .act{font-family:var(--mono);font-size:11.5px;font-weight:600}
+.ae .who{font-size:11px;color:var(--ink3)}
+.ae .det{font-size:11.5px;color:var(--ink2);margin-top:3px;line-height:1.6}
+.ae .det code{font-family:var(--mono);font-size:10.5px;background:var(--surface);border-radius:4px;padding:1px 4px;color:var(--ink)}
+.ba{font-family:var(--mono);font-size:10.5px;background:var(--surface);border-radius:5px;padding:6px 8px;margin-top:5px;line-height:1.7;word-break:break-all}
+.ba em{font-style:normal;color:var(--ink3)}
+
+/* sheet */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.34);z-index:60;animation:fade .2s var(--spring)}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{position:fixed;top:0;right:0;bottom:0;width:min(430px,94vw);background:var(--bg);border-left:.5px solid var(--line);z-index:61;display:flex;flex-direction:column;box-shadow:-12px 0 40px rgba(0,0,0,.16);animation:slide .34s var(--sheet-spring)}
+@keyframes slide{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+.shd{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:.5px solid var(--line)}
+.shd h3{font-size:13px;font-weight:600;margin:0}
+.shd .icon{margin-left:auto}
+.sbody{padding:14px 16px;overflow:auto;flex:1}
+.sfield{margin-bottom:12px}
+.sfield label{display:block;font-size:11px;color:var(--ink3);margin-bottom:4px}
+.scode{font-family:var(--mono);font-size:12px;background:var(--surface);border-radius:7px;padding:8px 10px;margin-bottom:14px;word-break:break-all;color:var(--ink2)}
+.sstate{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--ink2);background:var(--surface);border-radius:8px;padding:9px 11px;margin-top:14px;line-height:1.5}
+.sstate .lock{color:var(--warn)}
+.sstate .free{color:var(--ok)}
+.smeta{font-size:11px;color:var(--ink3);margin-top:12px;line-height:1.75}
+.sfoot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:.5px solid var(--line)}
+.empty{text-align:center;padding:34px 10px;color:var(--ink3);font-size:12px}
+.empty span{display:block;font-size:11px;color:var(--ink3);opacity:.72;margin-top:3px}
+.flashbar{font-size:11.5px;color:var(--ok);background:var(--ok-soft);border-radius:8px;padding:8px 11px;margin-bottom:10px;animation:sheet .25s var(--spring)}
+
+/* footer note */
+.note{font-size:11px;color:var(--ink3);margin-top:14px;line-height:1.75}
+.note b{color:var(--ink2)}
+kbd{font-family:var(--mono);font-size:10.5px;background:var(--surface);border:.5px solid var(--line);border-radius:4px;padding:1px 4px}
+details{margin-top:14px;border:.5px solid var(--line);border-radius:10px;padding:10px 13px;background:var(--bg)}
+summary{font-size:11.5px;color:var(--ink2);cursor:pointer;outline:none}
+details .dc{font-size:11.5px;color:var(--ink2);line-height:1.75;margin-top:8px}
+details .dc b{color:var(--ink)}
+
+@media(max-width:820px){
+  .split,.oldnew{grid-template-columns:1fr}
+  .page{padding:16px 12px 50px}
+  .bd{padding:12px}
+  .tw{margin:0 -12px}
+  table{min-width:880px}
+  th,td{padding:8px 8px}
+  .csv .cr{grid-template-columns:1fr 2fr .6fr}
+  .csv .cr>span:nth-child(4){display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+@media(prefers-reduced-transparency:reduce){
+  .card,.demo,.result{background:var(--bg)}
+}
+@media(prefers-contrast:more){
+  .st,.notice,.toastline{border:.5px solid currentColor}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top">
+    <div>
+      <h1>兑换码优化 · 交互原型</h1>
+      <p class="sub">预付负债模型下的四个动作：生成、查、导、兑。数据为演示用，不连后端。</p>
+    </div>
+    <button class="theme" id="themeBtn" type="button">深色</button>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="视图">
+    <button class="tab" role="tab" aria-selected="true" data-t="list" type="button">列表与检索</button>
+    <button class="tab" role="tab" aria-selected="false" data-t="create" type="button">批量生成</button>
+    <button class="tab" role="tab" aria-selected="false" data-t="export" type="button">导出</button>
+    <button class="tab" role="tab" aria-selected="false" data-t="redeem" type="button">用户端兑换</button>
+    <button class="tab" role="tab" aria-selected="false" data-t="audit" type="button">审计</button>
+  </div>
+
+  <!-- ===================== 1. 列表与检索 ===================== -->
+  <section class="panel on" id="p-list" role="tabpanel">
+    <div class="card">
+      <div class="hd">
+        <h2>兑换码</h2>
+        <span class="meta" id="listMeta">共 6 条</span>
+      </div>
+      <div class="bd">
+        <div class="flashbar" id="flash" hidden></div>
+        <div class="search">
+          <input class="inp" id="q" placeholder="粘贴兑换码 / 输入名称 / ID" autocomplete="off" spellcheck="false">
+          <select id="st">
+            <option value="">全部状态</option>
+            <option value="1">未使用</option>
+            <option value="3">已使用</option>
+            <option value="2">已禁用</option>
+            <option value="expired">已过期</option>
+          </select>
+        </div>
+        <div class="judge idle" id="judge">输入任意内容，这里会显示检索按哪条路径走</div>
+
+        <div class="tw">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:64px">ID</th>
+                <th style="width:140px">名称</th>
+                <th style="width:78px">状态</th>
+                <th>兑换码</th>
+                <th style="width:92px">额度</th>
+                <th style="width:120px">兑换人</th>
+                <th style="width:110px">过期</th>
+                <th style="width:96px">启用</th>
+                <th style="width:164px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+
+        <div class="notice info" style="margin-top:14px">
+          <b>状态不可逆</b>
+          已兑换的码，开关锁定。要再发一张，新建；要撤销误兑换，走独立的高危动作并记账。
+          <span class="x">§4.2</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 2. 批量生成 ===================== -->
+  <section class="panel" id="p-create" role="tabpanel">
+    <div class="card">
+      <div class="hd">
+        <h2>批量生成</h2>
+        <span class="meta">单事务 · 全有或全无</span>
+      </div>
+      <div class="bd">
+        <div class="form">
+          <div class="field">
+            <label for="cname">名称</label>
+            <input class="inp" id="cname" value="双十二预售" maxlength="20">
+            <div class="hintline">1–20 字，导出时作为批次标识</div>
+          </div>
+          <div class="field">
+            <label for="cquota">单张额度</label>
+            <input class="inp" id="cquota" value="500000" inputmode="numeric">
+            <div class="hintline" id="quotaReadable">= $1.00</div>
+          </div>
+          <div class="field">
+            <label for="cexp">过期时间</label>
+            <input class="inp" id="cexp" type="date" value="2026-12-31">
+            <div class="hintline">留空表示永不过期</div>
+          </div>
+          <div class="field">
+            <label for="ccount">数量</label>
+            <input class="inp" id="ccount" value="100" inputmode="numeric">
+            <div class="qty" id="qchips">
+              <button class="qchip" data-n="10" type="button">10</button>
+              <button class="qchip on" data-n="100" type="button">100</button>
+              <button class="qchip" data-n="500" type="button">500</button>
+              <button class="qchip" data-n="1000" type="button">1000</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice warn" id="qtyWarn" hidden>
+          <b>超过 100 张</b>
+          旧上限是 100；新上限 1000，单事务一次提交，失败则整批回滚。
+          <span class="x" id="qtyEst">预计 0.4s</span>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" id="genBtn" type="button">生成</button>
+          <button class="btn ghost" id="failSwitch" type="button" aria-pressed="false">模拟第 137 条冲突</button>
+          <span class="meta" style="font-size:11px;color:var(--ink3)">用来对比新旧行为</span>
+        </div>
+
+        <div class="result" id="genResult" hidden>
+          <div class="rh"><b id="genTitle">生成结果</b><span id="genSub"></span></div>
+          <div class="rb" id="genBody"></div>
+        </div>
+
+        <div class="snippet" id="genSnippet" hidden></div>
+
+        <details>
+          <summary>为什么不是「循环 1000 次插入 + 包个事务」</summary>
+          <div class="dc">
+            包事务解决<b>原子性</b>（全有或全无），不解决<b>往返次数</b>：1000 次 INSERT 仍是 1000 次网络往返 + 1000 次解析。
+            改成 <b>CreateInBatches(100)</b> 后是 10 条多值语句，往返降两个数量级。
+            批大小取 100 而不是 1000，是因为 SQLite 的绑定变量上限与 MySQL 的包长在三库上都要留余量。
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 3. 导出 ===================== -->
+  <section class="panel" id="p-export" role="tabpanel">
+    <div class="card">
+      <div class="hd">
+        <h2>导出</h2>
+        <span class="meta">CSV · 流式 · 留痕</span>
+      </div>
+      <div class="bd">
+        <div class="form">
+          <div class="field">
+            <label for="escope">范围</label>
+            <select id="escope">
+              <option value="filtered">当前筛选（双十一预售 · 未使用）</option>
+              <option value="unused">全部未使用</option>
+              <option value="all">全部（含已用、已禁用）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="efmt">格式</label>
+            <select id="efmt">
+              <option value="csv">CSV（Excel 可直接打开）</option>
+              <option value="txt">TXT（一行一码）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ecols">列</label>
+            <select id="ecols">
+              <option value="full">码 · 名称 · 额度 · 状态 · 过期</option>
+              <option value="min">仅码</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="notice danger" style="margin-top:12px">
+          <b>这一份文件等于现金</b>
+          导出包含完整兑换码，会写一条 <code style="font-family:var(--mono);font-size:10.5px">redemption.export</code> 审计（含筛选条件与行数）。
+          <span class="x">§4.4</span>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" id="expBtn" type="button">导出 4 行</button>
+          <span id="expState" style="font-size:11px;color:var(--ink3)"></span>
+        </div>
+
+        <div style="margin-top:14px">
+          <div style="font-size:11px;color:var(--ink3);margin-bottom:6px">文件预览（前 4 行 · 注意第 3 行）</div>
+          <div class="csv" id="csvPrev"></div>
+        </div>
+
+        <details>
+          <summary>CSV 为什么要有那一撇（'）</summary>
+          <div class="dc">
+            Excel 会把以 <kbd>=</kbd> <kbd>+</kbd> <kbd>-</kbd> <kbd>@</kbd> 开头的单元格当公式执行。
+            名称是运营填的，一旦有人写了 <b>=cmd|'/c calc'!A1</b>，同事用 Excel 打开这份导出就等于被执行了一次命令。
+            所以字段首字符命中这几个符号时前置一个单引号，Excel 会当文本。
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 4. 用户端兑换 ===================== -->
+  <section class="panel" id="p-redeem" role="tabpanel">
+    <div class="card">
+      <div class="hd">
+        <h2>用户端兑换</h2>
+        <span class="meta">粘贴即清洗 · 错误原因不细分</span>
+      </div>
+      <div class="bd">
+        <div class="split">
+          <div class="demo">
+            <h3>失败态 <span>码里有空格和横线</span></h3>
+            <textarea class="paste" id="badPaste">A3F9-C2E1-8B4D-76FA-05C1-E9D2-B7A4-F8C6</textarea>
+            <div class="norm" id="badNorm"></div>
+            <div class="toastline e" id="badToast" hidden>兑换失败，请检查兑换码是否正确</div>
+          </div>
+          <div class="demo">
+            <h3>成功态 <span>余额即时刷新</span></h3>
+            <textarea class="paste" id="okPaste">7c1de8a94f2b6035d8e7a1c4b9f20635</textarea>
+            <div class="norm" id="okNorm"></div>
+            <div class="toastline s" id="okToast" hidden>兑换成功，已到账 $1.00</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn" id="redeemBtn" type="button">模拟兑换</button>
+          <button class="btn ghost" id="redeemReset" type="button">重置</button>
+        </div>
+
+        <div class="notice info" style="margin-top:14px">
+          <b>为什么不告诉用户「码已用」还是「码不存在」</b>
+          那等于免费提供一个状态查询接口：攻击者可以拿一批码逐个试，问出哪些是真的。
+          所以对外统一文案，细分原因只进服务端日志。这一条<b>不改</b>。
+          <span class="x">§4.6</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 5. 审计 ===================== -->
+  <section class="panel" id="p-audit" role="tabpanel">
+    <div class="card">
+      <div class="hd">
+        <h2>审计</h2>
+        <span class="meta">七个 action · 码永远打码</span>
+      </div>
+      <div class="bd">
+        <div class="audit">
+          <div class="ae d">
+            <div class="at"><span class="act">redemption.status_update</span><span class="who">root · 2026-11-08 20:41</span></div>
+            <div class="det">想把一张已兑换的码改回未使用 —— <b>被拒绝</b></div>
+            <div class="ba">{ id: 1203, key_masked: "7c1d****0635", from: 3, to: 1, used_user_id: 11, result: "denied_irreversible" }</div>
+          </div>
+          <div class="ae">
+            <div class="at"><span class="act">redemption.update</span><span class="who">root · 2026-11-08 20:33</span></div>
+            <div class="det">改额度，状态字段不参与写入</div>
+            <div class="ba">{ id: 1204, key_masked: "a3f9****f8c6", before: { quota: 300000 }, after: { quota: 500000 } }</div>
+          </div>
+          <div class="ae w">
+            <div class="at"><span class="act">redemption.create_failed</span><span class="who">root · 2026-11-08 20:12</span></div>
+            <div class="det">批量生成中途失败，整批回滚</div>
+            <div class="ba">{ name: "双十二预售", count: 1000, inserted: 0, error: "duplicate key on batch 2" }</div>
+          </div>
+          <div class="ae">
+            <div class="at"><span class="act">redemption.export</span><span class="who">root · 2026-11-08 19:58</span></div>
+            <div class="det">导出 1000 行 CSV</div>
+            <div class="ba">{ filters: { name: "双十一预售", status: 1 }, rows: 1000, format: "csv" }</div>
+          </div>
+          <div class="ae">
+            <div class="at"><span class="act">redemption.delete_invalid</span><span class="who">root · 2026-11-08 19:40</span></div>
+            <div class="det">分批清理，返回剩余</div>
+            <div class="ba">{ deleted: 10000, remaining: 2000 }</div>
+          </div>
+          <div class="ae">
+            <div class="at"><span class="act">redemption.create</span><span class="who">root · 2026-11-08 19:22</span></div>
+            <div class="det">生成 100 张</div>
+            <div class="ba">{ name: "双十一预售", count: 100, quota: 500000, expired_time: 1765092000 }</div>
+          </div>
+        </div>
+
+        <div class="notice ok" style="margin-top:10px">
+          <b>完整性判据</b>
+          审计里搜不到 32 位十六进制串。正则 <code style="font-family:var(--mono);font-size:10.5px">[0-9a-f]{32}</code> 命中即为泄露。
+          <span class="x">§10</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="note">
+    <b>怎么读这份原型：</b>每个视图右上角的 <kbd>§x.x</kbd> 指向 <span class="mono">docs/apiduo/redemption-optimization.md</span> 的对应小节。
+    点「模拟第 137 条冲突」再点生成，可以并排看到旧行为（前 136 张落库但没人知道）与新行为（整批回滚）。
+  </p>
+</div>
+
+<div class="overlay" id="ov" hidden></div>
+<aside class="sheet" id="sheet" hidden aria-label="编辑兑换码">
+  <div class="shd">
+    <h3>编辑兑换码</h3>
+    <button class="icon" id="sheetClose" type="button">关闭</button>
+  </div>
+  <div class="sbody">
+    <div class="scode" id="sCode"></div>
+    <div class="sfield"><label for="sName">名称</label><input class="inp" id="sName" maxlength="20"></div>
+    <div class="sfield"><label for="sQuota">额度（quota，500000 = $1）</label><input class="inp" id="sQuota" inputmode="numeric"></div>
+    <div class="sfield"><label for="sExp">过期时间</label><input class="inp" id="sExp" type="date"></div>
+    <div class="sstate" id="sState"></div>
+    <div class="smeta" id="sMeta"></div>
+  </div>
+  <div class="sfoot">
+    <button class="btn ghost" id="sheetCancel" type="button">取消</button>
+    <button class="btn primary" id="sheetSave" type="button">保存</button>
+  </div>
+</aside>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- theme ---------- */
+  var root = document.documentElement, tb = document.getElementById("themeBtn");
+  function sync(){
+    var dark = root.classList.contains("dark");
+    tb.textContent = dark ? "浅色" : "深色";
+    tb.setAttribute("aria-label", dark ? "切换到浅色" : "切换到深色");
+  }
+  tb.addEventListener("click", function(){ root.classList.toggle("dark"); sync(); });
+  sync();
+
+  /* ---------- tabs ---------- */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+  tabs.forEach(function(t){
+    t.addEventListener("click", function(){
+      tabs.forEach(function(x){ x.setAttribute("aria-selected", String(x === t)); });
+      ["list","create","export","redeem","audit"].forEach(function(k){
+        document.getElementById("p-" + k).classList.toggle("on", k === t.dataset.t);
+      });
+    });
+  });
+
+  /* ---------- demo data ---------- */
+  var NOW = Math.floor(Date.now() / 1000);
+  var DATA = [
+    { id: 1204, name: "双十一预售", key: "a3f9c2e18b4d76fa05c1e9d2b7a4f8c6", status: 1, quota: 500000,
+      created: 1794036000, expired: 1798646400, used: 0, usedUser: "" },
+    { id: 1203, name: "双十一预售", key: "7c1de8a94f2b6035d8e7a1c4b9f20635", status: 3, quota: 500000,
+      created: 1794036000, expired: 1798646400, used: 1794126000, usedUser: "logtest" },
+    { id: 1202, name: "双十一预售", key: "2b8f4a1c9d3e6057fa8b2c4d6e9f0135", status: 1, quota: 500000,
+      created: 1794036000, expired: 1793462400, used: 0, usedUser: "" },
+    { id: 1201, name: "双十一预售", key: "9e4c7b2a05f8d316c9a7e2b4d6f80135", status: 2, quota: 500000,
+      created: 1794036000, expired: 1798646400, used: 0, usedUser: "" },
+    { id: 1200, name: "老用户回馈", key: "5d1a8f3c7b2e9046d3c5a7f1b8e20469", status: 3, quota: 100000,
+      created: 1793536000, expired: 0, used: 1793636000, usedUser: "alice" },
+    { id: 1199, name: "老用户回馈", key: "c8b2e5f14a9d7036b5e8c1f4a2d90753", status: 1, quota: 100000,
+      created: 1793536000, expired: 0, used: 0, usedUser: "" }
+  ];
+
+  var HEX32 = /^[0-9a-f]{32}$/;
+  var HEX = /^[0-9a-f]+$/;
+
+  function normalize(s){
+    return (s || "")
+      .replace(/[\s\u200b-\u200d\ufeff]/g, "")
+      .replace(/[-_—–]/g, "")
+      .toLowerCase();
+  }
+  function expired(r){ return r.expired !== 0 && r.expired < NOW; }
+  function statusOf(r){
+    if (expired(r) && r.status === 1) return "expired";
+    return String(r.status);
+  }
+  function stBadge(r){
+    var s = statusOf(r);
+    if (s === "expired") return '<span class="st exp">已过期</span>';
+    if (s === "1") return '<span class="st ok">未使用</span>';
+    if (s === "2") return '<span class="st off">已禁用</span>';
+    return '<span class="st used">已使用</span>';
+  }
+  function mask(k){ return k.slice(0,4) + " **** " + k.slice(-4); }
+  function money(q){ return "$" + (q / 500000).toFixed(2); }
+  function fmtDate(ts){
+    if (!ts) return "永不";
+    var d = new Date(ts * 1000);
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+
+  /* ---------- list ---------- */
+  var q = document.getElementById("q"),
+      stSel = document.getElementById("st"),
+      rowsEl = document.getElementById("rows"),
+      judge = document.getElementById("judge"),
+      listMeta = document.getElementById("listMeta");
+
+  function classify(raw){
+    var v = normalize(raw);
+    if (!v) return { kind:"idle", hit:function(){ return true; }, note:"输入任意内容，这里会显示检索按哪条路径走" };
+    if (/^\d{1,10}$/.test(v))
+      return { kind:"id", hit:function(r){ return String(r.id) === v; },
+               note:"识别为 ID → <code>id = ?</code>" };
+    if (HEX32.test(v))
+      return { kind:"exact", hit:function(r){ return r.key === v; },
+               note:"识别为完整兑换码 → <code>key = ?</code>（唯一索引，三库都走索引）" };
+    if (v.length >= 4 && v.length < 32 && HEX.test(v))
+      return { kind:"prefix", hit:function(r){ return r.key.indexOf(v) === 0; },
+               note:"识别为码前缀（" + v.length + " 位）→ <code>key LIKE '…%'</code>（PG 上是扫表，万级可接受）" };
+    return { kind:"name", hit:function(r){ return r.name.toLowerCase().indexOf(v) >= 0; },
+             note:"识别为名称 → <code>name LIKE '%…%'</code>（改成包含匹配）" };
+  }
+
+  function render(){
+    var c = classify(q.value);
+    var st = stSel.value;
+    var shown = 0;
+
+    rowsEl.innerHTML = DATA.map(function(r){
+      var hit = c.hit(r);
+      var passSt = !st || statusOf(r) === st;
+      var visible = hit && passSt;
+      if (visible) shown++;
+      var locked = r.status === 3;
+      var tip = locked ? "已兑换的码不能改回未使用"
+              : (expired(r) ? "已过期：延期后可兑换" : "启用 / 禁用");
+      return '<tr class="' + (visible ? (c.kind !== "idle" ? "hit" : "") : "dim") + '">' +
+        '<td class="mono">' + r.id + '</td>' +
+        '<td class="name">' + r.name + '</td>' +
+        '<td>' + stBadge(r) + '</td>' +
+        '<td><span class="mono">' + mask(r.key) + '</span></td>' +
+        '<td class="mono">' + money(r.quota) + '</td>' +
+        '<td style="font-size:11.5px;color:var(--ink2)">' + (r.usedUser || "—") + '</td>' +
+        '<td style="font-size:11.5px;color:var(--ink3)">' + fmtDate(r.expired) + '</td>' +
+        '<td><span class="sw' + (locked ? " locked" : "") + '" title="' + tip + '">' +
+          '<input type="checkbox" ' + (r.status === 1 ? "checked" : "") + (locked ? " disabled" : "") + ' aria-label="启用">' +
+          '<i></i></span></td>' +
+        '<td><div class="rowact">' +
+          '<button class="icon" type="button" data-act="copy" data-id="' + r.id + '">复制</button>' +
+          '<button class="icon" type="button" data-act="edit" data-id="' + r.id + '">编辑</button>' +
+          '<button class="icon' + (locked ? "" : " danger") + '" type="button" data-act="del" data-id="' + r.id + '">' + (locked ? "查看" : "删除") + '</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join("");
+    if (shown === 0) {
+      rowsEl.innerHTML = '<tr><td colspan="9" class="empty">没有匹配的兑换码<span>换个关键词，或把状态筛选清空</span></td></tr>';
+    }
+
+    judge.className = "judge" + (c.kind === "idle" ? " idle" : "");
+    var raw = (q.value || "").trim();
+    var extra = "";
+    if (c.kind !== "idle" && c.kind !== "name" && raw !== normalize(raw)) {
+      extra = '<span style="margin-left:auto;color:var(--ink3)">已归一化：<b style="font-family:var(--mono);font-weight:500">' + normalize(raw) + "</b></span>";
+    }
+    judge.innerHTML = c.note + extra;
+    listMeta.textContent = "命中 " + shown + " / " + DATA.length + " 条";
+    if (c.kind === "idle") listMeta.textContent = "共 " + DATA.length + " 条";
+  }
+
+  q.addEventListener("input", render);
+  stSel.addEventListener("change", render);
+  render();
+
+  /* ---------- flash ---------- */
+  var flashEl = document.getElementById("flash");
+  var flashTimer = null;
+  function showFlash(msg){
+    flashEl.textContent = msg;
+    flashEl.hidden = false;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function(){ flashEl.hidden = true; }, 2800);
+  }
+
+  /* ---------- edit sheet ---------- */
+  var ov = document.getElementById("ov"),
+      sheet = document.getElementById("sheet"),
+      sCode = document.getElementById("sCode"),
+      sName = document.getElementById("sName"),
+      sQuota = document.getElementById("sQuota"),
+      sExp = document.getElementById("sExp"),
+      sState = document.getElementById("sState"),
+      sMeta = document.getElementById("sMeta"),
+      cur = null;
+
+  function toDateInput(ts){
+    if (!ts) return "";
+    var d = new Date(ts * 1000);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function openSheet(r){
+    cur = r;
+    sCode.textContent = mask(r.key);
+    sName.value = r.name;
+    sQuota.value = String(r.quota);
+    sExp.value = toDateInput(r.expired);
+
+    var st = statusOf(r);
+    if (st === "3") {
+      sState.innerHTML = stBadge(r) + '<span class="lock">已兑换的码不能改回未使用；要再发一张请新建</span>';
+    } else if (st === "2") {
+      sState.innerHTML = stBadge(r) + '<span class="free">已禁用，可在列表开关启用</span>';
+    } else if (st === "expired") {
+      sState.innerHTML = stBadge(r) + '<span class="lock">已过期：把过期时间改到未来即可重新可兑</span>';
+    } else {
+      sState.innerHTML = stBadge(r) + '<span class="free">未使用，可直接兑换</span>';
+    }
+
+    var parts = ["创建于 " + fmtDate(r.created)];
+    if (r.used) parts.push("兑换于 " + fmtDate(r.used));
+    if (r.usedUser) parts.push("由 " + r.usedUser + " 兑换");
+    if (!r.used && !r.usedUser) parts.push("尚未兑换");
+    sMeta.textContent = parts.join(" · ");
+
+    ov.hidden = false;
+    sheet.hidden = false;
+  }
+
+  function closeSheet(){
+    ov.hidden = true;
+    sheet.hidden = true;
+    cur = null;
+  }
+
+  ov.addEventListener("click", closeSheet);
+  document.getElementById("sheetClose").addEventListener("click", closeSheet);
+  document.getElementById("sheetCancel").addEventListener("click", closeSheet);
+  document.addEventListener("keydown", function(e){
+    if (e.key === "Escape" && !sheet.hidden) closeSheet();
+  });
+
+  document.getElementById("sheetSave").addEventListener("click", function(){
+    if (!cur) return;
+    var wasUsed = statusOf(cur) === "3";
+    cur.name = (sName.value || cur.name).slice(0, 20);
+    var qv = parseInt(sQuota.value, 10);
+    if (Number.isFinite(qv) && qv > 0) cur.quota = qv;
+    var dv = sExp.value;
+    cur.expired = dv ? Math.floor(new Date(dv + "T23:59:59").getTime() / 1000) : 0;
+    closeSheet();
+    render();
+    showFlash(wasUsed
+      ? "已保存。状态未参与本次写入 —— 已兑换的码保持已兑换"
+      : "已保存。状态未参与本次写入");
+  });
+
+  rowsEl.addEventListener("click", function(e){
+    var b = e.target.closest("button[data-act]");
+    if (!b) return;
+    var id = parseInt(b.dataset.id, 10);
+    var row = null;
+    for (var i = 0; i < DATA.length; i++){ if (DATA[i].id === id){ row = DATA[i]; break; } }
+    if (!row) return;
+    var act = b.dataset.act;
+    if (act === "copy"){
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(row.key);
+      showFlash("完整兑换码已复制");
+    } else if (act === "edit"){
+      openSheet(row);
+    } else {
+      showFlash(row.status === 3 ? "已兑换的码只能查看，不能删除" : "演示环境不执行删除");
+    }
+  });
+
+  /* ---------- create ---------- */
+  var cnt = document.getElementById("ccount"),
+      chips = document.getElementById("qchips"),
+      warn = document.getElementById("qtyWarn"),
+      est = document.getElementById("qtyEst"),
+      genBtn = document.getElementById("genBtn"),
+      failSwitch = document.getElementById("failSwitch"),
+      genResult = document.getElementById("genResult"),
+      genTitle = document.getElementById("genTitle"),
+      genSub = document.getElementById("genSub"),
+      genBody = document.getElementById("genBody"),
+      genSnippet = document.getElementById("genSnippet"),
+      cquota = document.getElementById("cquota"),
+      quotaReadable = document.getElementById("quotaReadable"),
+      simFail = false;
+
+  function syncQty(){
+    var n = parseInt(cnt.value, 10) || 0;
+    warn.hidden = n <= 100;
+    est.textContent = "预计 " + (n / 2500).toFixed(1) + "s";
+    Array.prototype.forEach.call(chips.children, function(b){
+      b.classList.toggle("on", parseInt(b.dataset.n, 10) === n);
+    });
+  }
+  cnt.addEventListener("input", syncQty);
+  chips.addEventListener("click", function(e){
+    var b = e.target.closest(".qchip");
+    if (!b) return;
+    cnt.value = b.dataset.n;
+    syncQty();
+  });
+  cquota.addEventListener("input", function(){
+    var v = parseInt(cquota.value, 10) || 0;
+    quotaReadable.textContent = "= " + money(v);
+  });
+  syncQty();
+
+  failSwitch.addEventListener("click", function(){
+    simFail = !simFail;
+    failSwitch.setAttribute("aria-pressed", String(simFail));
+    failSwitch.textContent = simFail ? "已开启：第 137 条冲突" : "模拟第 137 条冲突";
+  });
+
+  genBtn.addEventListener("click", function(){
+    var n = Math.min(1000, Math.max(1, parseInt(cnt.value, 10) || 1));
+    var name = document.getElementById("cname").value || "未命名";
+    genBtn.disabled = true;
+    genBtn.textContent = "提交中…";
+    genResult.hidden = true;
+    genSnippet.hidden = true;
+
+    setTimeout(function(){
+      genBtn.disabled = false;
+      genBtn.textContent = "生成";
+      genResult.hidden = false;
+
+      if (simFail) {
+        genTitle.textContent = "整批回滚";
+        genSub.textContent = "0 张入库";
+        genBody.innerHTML =
+          '<div class="oldnew">' +
+            '<div class="bad"><div class="t">旧行为</div>' +
+              '循环插入，第 137 条冲突时：<b>前 136 张已入库</b>，接口返回错误，前端当失败处理。<br>' +
+              '这 136 张成为「没人知道、但可以兑」的负债。' +
+            '</div>' +
+            '<div class="good"><div class="t">新行为</div>' +
+              '单事务 + 多值插入，冲突发生在第 137 条：<b>整批撤销，库里 0 张</b>。<br>' +
+              '接口返回明确错误，可原样重试。' +
+            '</div>' +
+          '</div>';
+        genSnippet.hidden = false;
+        genSnippet.textContent =
+          "POST /api/redemption/  →  200 { success: false }\n" +
+          "  message: \"Failed to create redemption codes, nothing was inserted\"\n" +
+          "  audit:   redemption.create_failed { count: " + n + ", inserted: 0 }";
+      } else {
+        genTitle.textContent = "生成成功";
+        genSub.textContent = n + " 张 · " + name;
+        genBody.innerHTML =
+          '<div class="notice ok" style="margin-top:0">' +
+            '<b>' + n + ' 张一次性返回</b>约 ' + Math.ceil(n * 0.7) + ' KB，前端直接进导出对话框。' +
+            '<span class="x">' + (n > 100 ? "旧上限 100，现在一次到位" : "") + '</span>' +
+          '</div>' +
+          '<div class="snippet" style="margin-top:10px">' +
+            "INSERT INTO redemptions (user_id,name,`key`,created_time,quota,expired_time,status)\n" +
+            "VALUES (…),(…),(…),…   -- " + Math.min(n, 100) + " 行/批，共 " + Math.ceil(n/100) + " 批，单事务" +
+          '</div>';
+        genSnippet.hidden = false;
+        genSnippet.textContent =
+          "POST /api/redemption/  →  200 { success: true, data: [" + n + " keys] }\n" +
+          "  audit: redemption.create { name: \"" + name + "\", count: " + n + " }";
+      }
+    }, 620);
+  });
+
+  /* ---------- export ---------- */
+  var expBtn = document.getElementById("expBtn"),
+      expState = document.getElementById("expState"),
+      csvPrev = document.getElementById("csvPrev");
+
+  var CSV_ROWS = [
+    { name: "双十一预售", key: "a3f9c2e18b4d76fa05c1e9d2b7a4f8c6", quota: "$1.00", st: "未使用" },
+    { name: "双十一预售", key: "2b8f4a1c9d3e6057fa8b2c4d6e9f0135", quota: "$1.00", st: "已过期" },
+    { name: "=cmd|'/c calc'!A1", key: "5d1a8f3c7b2e9046d3c5a7f1b8e20469", quota: "$0.20", st: "未使用" },
+    { name: "老用户回馈", key: "c8b2e5f14a9d7036b5e8c1f4a2d90753", quota: "$0.20", st: "未使用" }
+  ];
+
+  function escCell(v){
+    var s = String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    if (/[",\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function renderCsv(){
+    var head = '<div class="cr head"><span>名称</span><span>兑换码</span><span>额度</span><span>状态</span></div>';
+    var body = CSV_ROWS.map(function(r){
+      var inject = /^[=+\-@]/.test(r.name);
+      return '<div class="cr' + (inject ? " inject" : "") + '">' +
+        '<span>' + escCell(r.name) + '</span>' +
+        '<span>' + r.key + '</span>' +
+        '<span>' + r.quota + '</span>' +
+        '<span>' + r.st + '</span>' +
+      '</div>';
+    }).join("");
+    csvPrev.innerHTML = head + body;
+  }
+  renderCsv();
+
+  expBtn.addEventListener("click", function(){
+    var n = CSV_ROWS.length;
+    expBtn.disabled = true;
+    expState.textContent = "生成中…";
+    setTimeout(function(){
+      expBtn.disabled = false;
+      expState.textContent = "已导出 " + n + " 行 · redemption.export 已记录";
+    }, 700);
+  });
+
+  /* ---------- redeem ---------- */
+  var badPaste = document.getElementById("badPaste"),
+      okPaste = document.getElementById("okPaste"),
+      badNorm = document.getElementById("badNorm"),
+      okNorm = document.getElementById("okNorm"),
+      badToast = document.getElementById("badToast"),
+      okToast = document.getElementById("okToast"),
+      redeemBtn = document.getElementById("redeemBtn"),
+      redeemReset = document.getElementById("redeemReset");
+
+  function normLine(el, out){
+    var v = normalize(el.value);
+    if (!v) { out.innerHTML = "等待输入"; return; }
+    var shape = HEX32.test(v) ? "32 位 hex · 形态合法" : (v.length + " 位 · 形态不完整");
+    out.innerHTML = "清洗后：<b>" + v + "</b><br>" + shape;
+  }
+  badPaste.addEventListener("input", function(){ normLine(badPaste, badNorm); });
+  okPaste.addEventListener("input", function(){ normLine(okPaste, okNorm); });
+  normLine(badPaste, badNorm);
+  normLine(okPaste, okNorm);
+
+  redeemBtn.addEventListener("click", function(){
+    badToast.hidden = true; okToast.hidden = true;
+    redeemBtn.disabled = true;
+    redeemBtn.textContent = "提交中…";
+    setTimeout(function(){
+      redeemBtn.disabled = false;
+      redeemBtn.textContent = "模拟兑换";
+      badToast.hidden = false;
+      okToast.hidden = false;
+    }, 560);
+  });
+  redeemReset.addEventListener("click", function(){
+    badToast.hidden = true; okToast.hidden = true;
+    badPaste.value = "A3F9-C2E1-8B4D-76FA-05C1-E9D2-B7A4-F8C6";
+    okPaste.value = "7c1de8a94f2b6035d8e7a1c4b9f20635";
+    normLine(badPaste, badNorm);
+    normLine(okPaste, okNorm);
+  });
+})();
+</script>
+</body>
+</html>

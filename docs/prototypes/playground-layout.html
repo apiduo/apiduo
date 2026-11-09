@@ -1,0 +1,1706 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>apiduo · Playground 布局原型</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Segoe UI",Roboto,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    font-feature-settings:"tnum" 0;
+    overflow:hidden;
+  }
+
+  :root{
+    --bg: oklch(0.986 0.003 255);
+    --surface: oklch(1 0 0);
+    --surface-2: oklch(0.972 0.004 255);
+    --line: oklch(0.910 0.006 255);
+    --line-soft: oklch(0.946 0.005 255);
+    --ink: oklch(0.215 0.012 258);
+    --ink-2: oklch(0.455 0.012 258);
+    --ink-3: oklch(0.590 0.012 258);
+    --primary: oklch(0.600 0.185 258);
+    --primary-ink: oklch(0.450 0.190 258);
+    --primary-wash: oklch(0.962 0.024 258);
+    --danger: oklch(0.560 0.190 25);
+    --danger-wash: oklch(0.965 0.020 25);
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / .055);
+    --shadow-lg: 0 20px 54px -30px oklch(0.25 0.04 258 / .38), 0 1px 2px oklch(0 0 0 / .05);
+    --shadow-focus: 0 24px 64px -32px oklch(0.30 0.08 258 / .45), 0 1px 2px oklch(0 0 0 / .05);
+    --r-xl: 18px;
+    --r-lg: 14px;
+    --r-md: 10px;
+    --r-sm: 7px;
+    --settle: cubic-bezier(.22,1,.36,1);
+    --pop: cubic-bezier(.34,1.26,.64,1);
+    --stage-h: min(50vh, 460px);
+    --res-h: min(46vh, 400px);
+  }
+
+  [data-theme="dark"]{
+    --bg: oklch(0.163 0.008 260);
+    --surface: oklch(0.198 0.009 260);
+    --surface-2: oklch(0.232 0.010 260);
+    --line: oklch(0.292 0.012 260);
+    --line-soft: oklch(0.256 0.010 260);
+    --ink: oklch(0.952 0.005 260);
+    --ink-2: oklch(0.730 0.010 260);
+    --ink-3: oklch(0.612 0.010 260);
+    --primary: oklch(0.690 0.155 258);
+    --primary-ink: oklch(0.790 0.120 258);
+    --primary-wash: oklch(0.295 0.055 258);
+    --danger: oklch(0.680 0.165 25);
+    --danger-wash: oklch(0.290 0.055 25);
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / .35);
+    --shadow-lg: 0 22px 58px -30px oklch(0 0 0 / .75), 0 1px 2px oklch(0 0 0 / .35);
+    --shadow-focus: 0 26px 68px -32px oklch(0 0 0 / .8), 0 1px 2px oklch(0 0 0 / .35);
+  }
+
+  /* ───────── shell ───────── */
+
+  .app{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    isolation:isolate;
+  }
+
+  /* One soft wash at the top of the canvas. Without it the middle of the page
+     is pure white and any single object in it reads as floating debris. */
+  .app::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:-1;
+    pointer-events:none;
+    background:
+      radial-gradient(58% 42% at 50% -6%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 72%),
+      radial-gradient(40% 30% at 92% 8%, color-mix(in oklch, var(--primary) 4%, transparent), transparent 70%);
+  }
+
+  .topbar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    height:54px;
+    flex:0 0 auto;
+    padding:0 16px;
+    border-bottom:1px solid var(--line-soft);
+    background:color-mix(in oklch, var(--bg) 78%, transparent);
+    backdrop-filter:saturate(180%) blur(18px);
+    -webkit-backdrop-filter:saturate(180%) blur(18px);
+  }
+
+  .modes{
+    position:relative;
+    display:inline-flex;
+    align-items:center;
+    gap:2px;
+    padding:3px;
+    border-radius:var(--r-md);
+    background:color-mix(in oklch, var(--ink) 6%, transparent);
+  }
+
+  .mode-pill{
+    position:absolute;
+    top:3px;
+    bottom:3px;
+    left:0;
+    width:0;
+    border-radius:var(--r-sm);
+    background:var(--surface);
+    box-shadow:var(--shadow-sm);
+    transition:transform .40s var(--settle), width .40s var(--settle), opacity .16s ease;
+    pointer-events:none;
+  }
+
+  .mode{
+    position:relative;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    height:28px;
+    padding:0 10px;
+    border:0;
+    border-radius:var(--r-sm);
+    background:transparent;
+    color:var(--ink-3);
+    font:inherit;
+    font-size:12.5px;
+    font-weight:500;
+    letter-spacing:.01em;
+    cursor:pointer;
+    transition:color .18s ease, transform .09s ease-out;
+    white-space:nowrap;
+  }
+  .mode:hover{color:var(--ink-2)}
+  .mode[aria-selected="true"]{color:var(--ink)}
+  .mode:active{transform:scale(.97)}
+  .mode svg{width:13px;height:13px;flex:0 0 auto}
+  .mode[aria-selected="true"] svg{color:var(--primary-ink)}
+
+  .topbar-right{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin-left:auto;
+  }
+
+  .spend{
+    display:inline-flex;
+    align-items:baseline;
+    gap:5px;
+    height:28px;
+    padding:0 9px;
+    border-radius:var(--r-sm);
+    color:var(--ink-3);
+    font-size:11.5px;
+    white-space:nowrap;
+    transition:background-color .18s ease;
+  }
+  .spend:hover{background:color-mix(in oklch, var(--ink) 5%, transparent)}
+  .spend b{
+    font-variant-numeric:tabular-nums;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink);
+    letter-spacing:-.01em;
+  }
+
+  .icon-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:28px;
+    height:28px;
+    border:0;
+    border-radius:var(--r-sm);
+    background:transparent;
+    color:var(--ink-3);
+    cursor:pointer;
+    transition:background-color .18s ease, color .18s ease, transform .09s ease-out;
+  }
+  .icon-btn:hover{background:color-mix(in oklch, var(--ink) 6%, transparent); color:var(--ink)}
+  .icon-btn:active{transform:scale(.94)}
+  .icon-btn[aria-pressed="true"]{background:var(--primary-wash); color:var(--primary-ink)}
+  .icon-btn svg{width:15px;height:15px}
+
+  /* ───────── stage ───────── */
+
+  .stage{
+    position:relative;
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:22px 16px 12px;
+    scrollbar-width:thin;
+  }
+  .stage::-webkit-scrollbar{width:9px}
+  .stage::-webkit-scrollbar-thumb{
+    background:color-mix(in oklch, var(--ink) 16%, transparent);
+    border-radius:99px;
+    border:3px solid transparent;
+    background-clip:content-box;
+  }
+
+  /* Canvas + suggestions are one group, so they must share one auto margin.
+     Putting it on .stream alone tore the two apart on a tall phone. */
+  .stage-inner{
+    width:100%;
+    max-width:700px;
+    display:flex;
+    flex-direction:column;
+    margin-block:auto;
+  }
+
+  /* Content scrolls under the composer. Without a fade the last visible image
+     is cut by a hard horizontal edge, which reads as a broken layout rather
+     than "there is more below". Sticky + negative margin keeps it out of flow. */
+  .stage::after{
+    content:"";
+    position:sticky;
+    bottom:-12px;
+    flex:0 0 auto;
+    width:100%;
+    height:34px;
+    margin-top:-34px;
+    pointer-events:none;
+    background:linear-gradient(to top, var(--bg) 24%, transparent);
+  }
+
+  .stream{
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+
+  /* ───────── canvas ───────── */
+
+  /* The box is driven by the ratio control, so it is the control's echo.
+     Width = min(available, stage-height * ratio) keeps the shape exact at any
+     viewport; setting a height instead would let max-width break the ratio. */
+  .frame{
+    --arn:1;
+    width:min(100%, calc(var(--stage-h) * var(--arn)));
+    aspect-ratio:var(--arn);
+    margin-inline:auto;
+    border-radius:var(--r-xl);
+    overflow:hidden;
+    position:relative;
+    transition:width .46s var(--settle);
+  }
+
+  .canvas-empty{
+    display:grid;
+    place-content:center;
+    justify-items:center;
+    gap:9px;
+    padding:24px;
+    text-align:center;
+    border:1px dashed color-mix(in oklch, var(--ink) 15%, transparent);
+    background:
+      radial-gradient(circle at 1px 1px, color-mix(in oklch, var(--ink) 6%, transparent) 1px, transparent 0) 0 0/18px 18px,
+      var(--surface-2);
+  }
+  .canvas-empty::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:radial-gradient(60% 60% at 50% 45%, var(--surface) 42%, transparent 78%);
+    pointer-events:none;
+  }
+  .canvas-empty > *{position:relative; z-index:1}
+
+  .canvas-icon{
+    display:grid;
+    place-items:center;
+    width:40px;
+    height:40px;
+    border-radius:12px;
+    background:var(--surface);
+    color:var(--primary-ink);
+    box-shadow:var(--shadow-sm), 0 0 0 1px var(--line);
+    margin-bottom:2px;
+  }
+  .canvas-icon svg{width:18px;height:18px}
+
+  .chat-empty{
+    display:grid;
+    place-content:center;
+    justify-items:center;
+    gap:9px;
+    padding:56px 24px;
+    text-align:center;
+  }
+
+  .canvas-title{
+    font-size:13.5px;
+    font-weight:560;
+    letter-spacing:-.005em;
+    color:var(--ink);
+  }
+  .canvas-sub{
+    font-size:12px;
+    line-height:1.6;
+    color:var(--ink-3);
+    max-width:280px;
+  }
+  .canvas-sub kbd{
+    font:inherit;
+    font-size:11px;
+    padding:1px 5px;
+    border-radius:4px;
+    background:color-mix(in oklch, var(--ink) 8%, transparent);
+    color:var(--ink-2);
+  }
+
+  .suggestions{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:6px;
+    margin-top:14px;
+    width:100%;
+  }
+
+  .sug{
+    border:1px solid var(--line);
+    background:color-mix(in oklch, var(--surface) 70%, transparent);
+    color:var(--ink-2);
+    font:inherit;
+    font-size:11.5px;
+    padding:5px 10px;
+    border-radius:99px;
+    cursor:pointer;
+    transition:background-color .16s ease, border-color .16s ease, color .16s ease, transform .09s ease-out;
+    backdrop-filter:blur(8px);
+  }
+  .sug:hover{background:var(--surface); border-color:color-mix(in oklch, var(--ink) 20%, transparent); color:var(--ink)}
+  .sug:active{transform:scale(.97)}
+
+  /* generating */
+
+  .canvas-loading{
+    display:grid;
+    place-items:center;
+    background:var(--surface-2);
+    isolation:isolate;
+  }
+  .canvas-loading .fill{
+    position:absolute;
+    inset:0;
+    background:
+      radial-gradient(55% 45% at 30% 25%, color-mix(in oklch, var(--primary) 20%, transparent), transparent 70%),
+      radial-gradient(45% 50% at 72% 78%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 72%);
+    opacity:.9;
+  }
+  .shimmer{
+    position:absolute;
+    inset:0;
+    background-image:linear-gradient(102deg, transparent 26%, color-mix(in oklch, var(--ink) 7%, transparent) 46%, transparent 66%);
+    background-size:230% 100%;
+    animation:shimmer 1.9s ease-in-out infinite;
+  }
+  @keyframes shimmer{from{background-position:-70% 0}to{background-position:170% 0}}
+
+  .loader{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:11px;
+  }
+  .ring{
+    width:26px;height:26px;
+    border-radius:99px;
+    border:2px solid color-mix(in oklch, var(--primary) 22%, transparent);
+    border-top-color:var(--primary);
+    animation:spin .78s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loader-text{
+    font-size:11.5px;
+    color:var(--ink-3);
+    font-variant-numeric:tabular-nums;
+    letter-spacing:.01em;
+  }
+  .loader-text b{color:var(--ink-2); font-weight:550}
+
+  /* result */
+
+  /* The meta row hugs the artwork instead of the 700px column: at 400px wide
+     the round details and the "查看请求" affordance would otherwise sit an
+     inch apart from the image they describe. */
+  .round{
+    --arn:1;
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+    width:min(100%, calc(var(--res-h) * var(--arn)));
+    margin-inline:auto;
+  }
+  /* A 2-up grid has to fit two rows in the same budget one image gets, so its
+     column is derived from the ratio instead of being pinned to 100%. */
+  .round.wide{width:min(100%, calc(var(--res-h) * 1.1 * var(--arn) + 8px))}
+
+  .round-meta{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    font-size:11px;
+    color:var(--ink-3);
+    padding:0 2px;
+    min-height:16px;
+  }
+  .round-meta .dot{opacity:.42}
+  .round-meta .mono{font-variant-numeric:tabular-nums}
+  .round-meta .cost{
+    color:var(--ink-2);
+    font-weight:560;
+    font-variant-numeric:tabular-nums;
+  }
+  .round-meta .right{margin-left:auto; display:flex; align-items:center; gap:8px}
+  .meta-link{
+    border:0;background:transparent;font:inherit;font-size:11px;
+    color:var(--ink-3);cursor:pointer;padding:2px 0;border-radius:4px;
+    transition:color .16s ease;
+  }
+  .meta-link:hover{color:var(--primary-ink)}
+  .meta-link.danger{color:var(--danger)}
+
+  .art{
+    --arn:1;
+    /* A result carries its own height budget, tighter than the empty canvas:
+       one round plus the composer has to fit without scrolling, otherwise
+       every generation ends with the user hunting for their own image. */
+    width:100%;
+    aspect-ratio:var(--arn);
+    border-radius:var(--r-lg);
+    overflow:hidden;
+    position:relative;
+    background:var(--surface-2);
+    box-shadow:0 0 0 1px var(--line-soft);
+    isolation:isolate;
+  }
+  .art svg{display:block;width:100%;height:100%}
+  .art .veil{
+    position:absolute;inset:0;
+    background:var(--surface-2);
+    animation:veil .62s var(--settle) forwards;
+  }
+  @keyframes veil{to{opacity:0}}
+  .art .develop{
+    position:absolute;inset:0;
+    animation:develop .72s var(--settle) both;
+  }
+  @keyframes develop{
+    from{opacity:0; filter:blur(11px) saturate(.82); transform:scale(1.03)}
+    to{opacity:1; filter:none; transform:none}
+  }
+  .art .save{
+    position:absolute;right:8px;bottom:8px;
+    width:26px;height:26px;display:grid;place-items:center;
+    border:0;border-radius:7px;
+    background:color-mix(in oklch, var(--surface) 88%, transparent);
+    color:var(--ink-2);
+    box-shadow:var(--shadow-sm);
+    cursor:pointer;
+    opacity:0;
+    transform:translateY(3px);
+    transition:opacity .18s ease, transform .18s ease;
+    backdrop-filter:blur(10px);
+  }
+  .art:hover .save{opacity:1; transform:none}
+  .art .save svg{width:13px;height:13px}
+
+  .grid-2{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:8px;
+  }
+  .grid-2 .art{width:100%; border-radius:var(--r-md)}
+
+  .failed{
+    display:grid;
+    place-content:center;
+    justify-items:center;
+    gap:8px;
+    padding:26px;
+    text-align:center;
+    border-radius:var(--r-lg);
+    background:var(--danger-wash);
+    box-shadow:inset 0 0 0 1px color-mix(in oklch, var(--danger) 22%, transparent);
+    aspect-ratio:var(--arn);
+  }
+  .failed-title{font-size:12.5px;font-weight:560;color:var(--danger)}
+  .failed-msg{
+    font-size:11.5px;line-height:1.6;color:color-mix(in oklch, var(--danger) 78%, var(--ink));
+    max-width:300px;
+    font-variant-numeric:tabular-nums;
+  }
+  .retry{
+    margin-top:3px;
+    display:inline-flex;align-items:center;gap:5px;
+    border:1px solid color-mix(in oklch, var(--danger) 30%, transparent);
+    background:var(--surface);
+    color:var(--danger);
+    font:inherit;font-size:11.5px;font-weight:520;
+    padding:5px 11px;border-radius:7px;cursor:pointer;
+    transition:transform .09s ease-out, box-shadow .16s ease;
+  }
+  .retry:hover{box-shadow:var(--shadow-sm)}
+  .retry:active{transform:scale(.97)}
+  .retry svg{width:12px;height:12px}
+
+  /* ───────── composer ───────── */
+
+  .composer{
+    flex:0 0 auto;
+    padding:10px 16px 14px;
+    background:linear-gradient(to top, var(--bg) 62%, transparent);
+  }
+
+  .composer-inner{
+    width:100%;
+    max-width:700px;
+    margin-inline:auto;
+    border-radius:var(--r-xl);
+    background:var(--surface);
+    box-shadow:var(--shadow-lg), 0 0 0 1px var(--line);
+    transition:box-shadow .22s ease;
+  }
+  .composer-inner:focus-within{
+    box-shadow:var(--shadow-focus), 0 0 0 1px color-mix(in oklch, var(--primary) 42%, var(--line));
+  }
+
+  #prompt{
+    display:block;
+    width:100%;
+    min-height:78px;
+    max-height:190px;
+    padding:14px 16px 4px;
+    border:0;
+    background:transparent;
+    color:var(--ink);
+    font:inherit;
+    font-size:13.5px;
+    line-height:1.62;
+    resize:none;
+    outline:none;
+  }
+  #prompt::placeholder{color:var(--ink-3)}
+
+  .toolbar{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:7px;
+    padding:5px 9px 9px;
+  }
+
+  /* one chip carries the whole routing decision: which model, billed under
+     which group. They are not two questions for the user, they are one. */
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    height:28px;
+    padding:0 8px 0 9px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:transparent;
+    color:var(--ink);
+    font:inherit;
+    font-size:11.5px;
+    font-weight:520;
+    cursor:pointer;
+    transition:background-color .16s ease, border-color .16s ease, transform .09s ease-out;
+    max-width:230px;
+  }
+  .chip:hover{background:color-mix(in oklch, var(--ink) 4%, transparent); border-color:color-mix(in oklch, var(--ink) 22%, transparent)}
+  .chip:active{transform:scale(.985)}
+  .chip svg.lead{width:13px;height:13px;color:var(--primary-ink);flex:0 0 auto}
+  .chip .name{
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-variant-numeric:tabular-nums;
+  }
+  .chip .grp{
+    color:var(--ink-3);
+    font-weight:450;
+    flex:0 0 auto;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    max-width:74px;
+  }
+  .chip .sep{color:var(--ink-3); opacity:.5; flex:0 0 auto}
+  .chip svg.chev{width:11px;height:11px;color:var(--ink-3);flex:0 0 auto;margin-left:1px}
+
+  .vsep{
+    width:1px;
+    height:16px;
+    background:var(--line);
+    flex:0 0 auto;
+    margin:0 2px;
+  }
+
+  .segment{
+    display:inline-flex;
+    align-items:center;
+    gap:1px;
+    padding:2px;
+    border-radius:8px;
+    background:color-mix(in oklch, var(--ink) 5%, transparent);
+  }
+
+  .seg{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    height:24px;
+    min-width:30px;
+    padding:0 7px;
+    border:0;
+    border-radius:6px;
+    background:transparent;
+    color:var(--ink-3);
+    font:inherit;
+    font-size:11px;
+    font-weight:520;
+    font-variant-numeric:tabular-nums;
+    cursor:pointer;
+    transition:background-color .18s ease, color .18s ease, box-shadow .18s ease, transform .09s ease-out;
+    white-space:nowrap;
+  }
+  .seg:hover{color:var(--ink)}
+  .seg[aria-pressed="true"]{
+    background:var(--surface);
+    color:var(--ink);
+    box-shadow:var(--shadow-sm);
+  }
+  .seg:active{transform:scale(.95)}
+  .seg .shape{
+    width:11px;height:11px;
+    border:1.4px solid currentColor;
+    border-radius:2px;
+    flex:0 0 auto;
+    opacity:.62;
+  }
+  .seg[aria-pressed="true"] .shape{opacity:1; color:var(--primary-ink)}
+  .seg .shape.s-16-9{width:13px;height:8px}
+  .seg .shape.s-9-16{width:8px;height:13px}
+
+  .price{
+    display:inline-flex;
+    align-items:baseline;
+    gap:3px;
+    font-size:11px;
+    color:var(--ink-3);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .price b{
+    font-size:12px;
+    font-weight:600;
+    color:var(--ink-2);
+    letter-spacing:-.01em;
+  }
+  .price .was{
+    text-decoration:line-through;
+    opacity:.55;
+    font-size:10.5px;
+  }
+
+  .toolbar .right{
+    margin-left:auto;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .clear{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:28px;height:28px;
+    border:0;border-radius:7px;
+    background:transparent;color:var(--ink-3);
+    cursor:pointer;
+    transition:background-color .16s ease, color .16s ease, opacity .16s ease;
+  }
+  .clear:hover{background:color-mix(in oklch, var(--ink) 6%, transparent); color:var(--ink)}
+  .clear svg{width:13px;height:13px}
+
+  .submit{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    height:30px;
+    padding:0 14px;
+    border:0;
+    border-radius:9px;
+    background:var(--primary);
+    color:#fff;
+    font:inherit;
+    font-size:12.5px;
+    font-weight:560;
+    letter-spacing:.01em;
+    cursor:pointer;
+    box-shadow:0 1px 2px oklch(0 0 0 / .12), inset 0 1px 0 oklch(1 0 0 / .18);
+    transition:background-color .16s ease, transform .09s ease-out, box-shadow .2s ease, filter .16s ease;
+  }
+  .submit:hover:not(:disabled){filter:brightness(1.06); box-shadow:0 4px 14px -4px color-mix(in oklch, var(--primary) 55%, transparent), inset 0 1px 0 oklch(1 0 0 / .18)}
+  .submit:active:not(:disabled){transform:scale(.97)}
+  .submit:disabled{opacity:.42; cursor:not-allowed; box-shadow:none}
+  /* Busy is not "unavailable": the button stays solid and reports what it is
+     doing, otherwise the only feedback for a 20s generation is a spinner in
+     the canvas far above the click. */
+  .submit.busy{opacity:1; cursor:progress; background:color-mix(in oklch, var(--primary) 82%, var(--ink))}
+  .submit svg{width:13px;height:13px}
+  .submit .mini-ring{
+    width:12px;height:12px;border-radius:99px;
+    border:1.7px solid oklch(1 0 0 / .35);
+    border-top-color:#fff;
+    animation:spin .72s linear infinite;
+  }
+
+  .hint{
+    max-width:700px;
+    margin:7px auto 0;
+    font-size:10.5px;
+    color:var(--ink-3);
+    text-align:center;
+    letter-spacing:.005em;
+  }
+
+  /* ───────── model popover ───────── */
+
+  .pop{
+    position:absolute;
+    z-index:40;
+    width:268px;
+    padding:6px;
+    border-radius:12px;
+    background:color-mix(in oklch, var(--surface) 96%, transparent);
+    box-shadow:0 24px 60px -24px oklch(0 0 0 / .35), 0 0 0 1px var(--line);
+    backdrop-filter:blur(24px) saturate(180%);
+    -webkit-backdrop-filter:blur(24px) saturate(180%);
+    transform-origin:bottom left;
+    animation:popIn .26s var(--pop) both;
+  }
+  @keyframes popIn{from{opacity:0; transform:translateY(6px) scale(.97)}to{opacity:1; transform:none}}
+  .pop[hidden]{display:none}
+
+  .pop-label{
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-3);
+    padding:7px 8px 5px;
+  }
+
+  .pop-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    width:100%;
+    padding:6px 8px;
+    border:0;
+    border-radius:7px;
+    background:transparent;
+    color:var(--ink);
+    font:inherit;
+    font-size:12px;
+    text-align:left;
+    cursor:pointer;
+    transition:background-color .14s ease;
+  }
+  .pop-item:hover{background:color-mix(in oklch, var(--ink) 6%, transparent)}
+  .pop-item .mono{font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .pop-item .tail{margin-left:auto; font-size:10.5px; color:var(--ink-3); flex:0 0 auto}
+  .pop-item .mark{width:13px; flex:0 0 auto; color:var(--primary-ink); opacity:0}
+  .pop-item[aria-checked="true"] .mark{opacity:1}
+  .pop-rule{height:1px; background:var(--line-soft); margin:5px 4px}
+
+  /* ───────── annotations ───────── */
+
+  .note{
+    position:fixed;
+    z-index:60;
+    max-width:214px;
+    padding:9px 11px;
+    border-radius:10px;
+    background:color-mix(in oklch, var(--surface) 94%, transparent);
+    box-shadow:0 16px 44px -20px oklch(0 0 0 / .4), 0 0 0 1px color-mix(in oklch, var(--primary) 34%, var(--line));
+    backdrop-filter:blur(20px) saturate(180%);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);
+    font-size:11.5px;
+    line-height:1.58;
+    color:var(--ink-2);
+    pointer-events:none;
+  }
+  .note b{
+    display:block;
+    color:var(--ink);
+    font-size:11.5px;
+    font-weight:600;
+    margin-bottom:2px;
+  }
+  .note.legacy{
+    box-shadow:0 16px 44px -20px oklch(0 0 0 / .4), 0 0 0 1px color-mix(in oklch, var(--danger) 38%, var(--line));
+  }
+  .note.legacy b{color:var(--danger)}
+
+  .ring-mark{
+    position:fixed;
+    z-index:59;
+    border:1.5px dashed color-mix(in oklch, var(--danger) 62%, transparent);
+    border-radius:9px;
+    pointer-events:none;
+  }
+  .ring-mark.ok{
+    border-color:color-mix(in oklch, var(--primary) 62%, transparent);
+  }
+
+  /* ───────── menu ───────── */
+
+  .menu{
+    position:absolute;
+    z-index:50;
+    min-width:146px;
+    padding:5px;
+    border-radius:10px;
+    background:color-mix(in oklch, var(--surface) 96%, transparent);
+    box-shadow:0 20px 50px -22px oklch(0 0 0 / .35), 0 0 0 1px var(--line);
+    backdrop-filter:blur(24px) saturate(180%);
+    animation:popIn .24s var(--pop) both;
+  }
+  .menu[hidden]{display:none}
+  .menu-item{
+    display:flex;align-items:center;gap:7px;
+    width:100%;padding:6px 8px;
+    border:0;border-radius:6px;
+    background:transparent;color:var(--ink-2);
+    font:inherit;font-size:11.5px;text-align:left;cursor:pointer;
+    transition:background-color .14s ease, color .14s ease;
+  }
+  .menu-item:hover{background:color-mix(in oklch, var(--ink) 6%, transparent); color:var(--ink)}
+  .menu-item .mark{margin-left:auto;width:12px;color:var(--primary-ink);opacity:0}
+  .menu-item[aria-checked="true"]{color:var(--ink); font-weight:540}
+  .menu-item[aria-checked="true"] .mark{opacity:1}
+
+  /* ───────── responsive ───────── */
+
+  @media (max-width:760px){
+    :root{--stage-h:min(42vh, 330px)}
+    .topbar{height:50px; padding:0 10px; gap:6px}
+    .mode{padding:0 8px; font-size:12px}
+    .mode span{display:none}
+    .mode[aria-selected="true"] span{display:inline}
+    .spend{padding:0 6px; font-size:0}
+    .spend b{font-size:12px}
+    .stage{padding:14px 12px 4px}
+    .composer{padding:8px 12px 10px}
+    #prompt{min-height:64px; font-size:13px; padding:12px 14px 2px}
+    .toolbar{gap:6px; padding:4px 8px 8px}
+    .chip{max-width:186px}
+    .toolbar .right{gap:6px}
+    .hint{font-size:10px}
+    .note{display:none}
+    .ring-mark{display:none}
+  }
+
+  @media (max-width:430px){
+    .chip .grp, .chip .sep{display:none}
+    .vsep{display:none}
+    .price .was{display:none}
+    .segment .seg{padding:0 5px; min-width:26px}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
+    .ring{animation:spin .78s linear infinite !important}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="topbar">
+    <div class="modes" role="tablist" aria-label="模式" id="modes">
+      <span class="mode-pill" id="modePill" aria-hidden="true"></span>
+      <button class="mode" role="tab" data-mode="chat" aria-selected="false" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.7 9.7 0 0 1-2.9-.5L3 21l1.6-5.1A8.4 8.4 0 0 1 3.6 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.4 8.4z"/></svg>
+        <span>聊天</span>
+      </button>
+      <button class="mode" role="tab" data-mode="image" aria-selected="true" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.6" cy="8.6" r="1.6"/><path d="m21 15.5-4.6-4.6a2 2 0 0 0-2.8 0L5 19.5"/></svg>
+        <span>图片</span>
+      </button>
+      <button class="mode" role="tab" data-mode="video" aria-selected="false" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="14" height="14" rx="2.5"/><path d="m16.5 10.5 5-3v9l-5-3z"/></svg>
+        <span>视频</span>
+      </button>
+    </div>
+
+    <div class="topbar-right">
+      <div class="spend" id="spend" title="本次会话累计"><span>本次会话</span><b id="spendVal">¥0.00</b><span id="spendCnt">· 0 次</span></div>
+
+      <button class="icon-btn" id="stateBtn" title="切换状态预览" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>
+      </button>
+
+      <button class="icon-btn" id="noteBtn" title="标注改动点" aria-pressed="false" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8M21 16v2.5a2.5 2.5 0 0 1-2.5 2.5H16M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/></svg>
+      </button>
+
+      <button class="icon-btn" id="themeBtn" title="切换深浅色" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M20.5 14.4A8.6 8.6 0 0 1 9.6 3.5a8.6 8.6 0 1 0 10.9 10.9z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="stage-inner">
+      <div class="stream" id="stream"></div>
+      <div class="suggestions" id="suggestions"></div>
+    </div>
+  </main>
+
+  <footer class="composer">
+    <div class="composer-inner">
+      <textarea id="prompt" rows="2" placeholder="描述你想要的画面…" autocomplete="off" spellcheck="false"></textarea>
+      <div class="toolbar" id="toolbar"></div>
+    </div>
+    <p class="hint" id="hint">参数只对这一次生成生效 · ⏎ 发送 · ⇧⏎ 换行</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const ICON = {
+    model:'<svg class="lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 21 7.3v9.4L12 21.4 3 16.7V7.3z"/><path d="M3 7.3l9 4.7 9-4.7M12 12v9.4"/></svg>',
+    chev:'<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+    trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6h17M9 6V4.4A1.4 1.4 0 0 1 10.4 3h3.2A1.4 1.4 0 0 1 15 4.4V6M18.5 6l-.8 13.1a1.9 1.9 0 0 1-1.9 1.9H8.2a1.9 1.9 0 0 1-1.9-1.9L5.5 6"/></svg>',
+    send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>',
+    retry:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 1 2.6 6.1"/><path d="M3.5 19.5V13h6.5"/></svg>',
+    save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M7.5 10 12 14.5 16.5 10M4 19.5h16"/></svg>',
+    check:'<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-10"/></svg>',
+    image:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.6" cy="8.6" r="1.6"/><path d="m21 15.5-4.6-4.6a2 2 0 0 0-2.8 0L5 19.5"/></svg>',
+    chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.7 9.7 0 0 1-2.9-.5L3 21l1.6-5.1A8.4 8.4 0 0 1 3.6 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.4 8.4z"/></svg>',
+    video:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="14" height="14" rx="2.5"/><path d="m16.5 10.5 5-3v9l-5-3z"/></svg>'
+  };
+
+  const RATIOS = {
+    '1:1' : { ar:1,        px:'1024×1024', label:'1:1',  shape:'s-1-1' },
+    '16:9': { ar:16/9,     px:'1792×1024', label:'16:9', shape:'s-16-9' },
+    '9:16': { ar:9/16,     px:'1024×1792', label:'9:16', shape:'s-9-16' }
+  };
+
+  const MODELS = [
+    { id:'flux-3-lage',  unit:0.020 },
+    { id:'gpt-image-1',  unit:0.042 },
+    { id:'seedream-3.0', unit:0.015 }
+  ];
+
+  const GROUPS = [
+    { id:'default', ratio:0.80 },
+    { id:'vip',     ratio:1.00 },
+    { id:'svip',    ratio:0.62 }
+  ];
+
+  const SUGGESTIONS = {
+    image: ['晨光里的玻璃茶壶','等距机房，青绿与琥珀色灯光','手绘风格的海岸小镇地图'],
+    chat:  ['解释一下 SSE 和 WebSocket 的取舍','把这段 Go 代码改成并发安全','写一个批量重命名的脚本'],
+    video: ['延时摄影：城市天台日落','咖啡倒入杯中的慢镜头','雪落在松枝上的微距']
+  };
+
+  const state = {
+    mode:'image',
+    ratio:'1:1',
+    count:1,
+    model:'flux-3-lage',
+    group:'default',
+    busy:false,
+    results:[],
+    spend:0,
+    spendCount:0,
+    preview:'empty',   // empty | loading | single | quad | failed | history
+    notes:false
+  };
+
+  const $ = (sel) => document.querySelector(sel);
+  const stream = $('#stream');
+  const suggestions = $('#suggestions');
+  const toolbar = $('#toolbar');
+  const promptEl = $('#prompt');
+  const hint = $('#hint');
+
+  const model = () => MODELS.find(m => m.id === state.model);
+  const group = () => GROUPS.find(g => g.id === state.group);
+  const money = (v) => '¥' + (v === 0 ? '0.00' : v.toFixed(v < 0.1 ? 3 : 2));
+  const unitPrice = () => model().unit * group().ratio * 7.2;
+
+  /* ───────── fake artwork (offline, deterministic) ───────── */
+
+  function artIso(seed){
+    const g = 'iso' + seed;
+    let lines = '';
+    for (let i = -6; i < 14; i++){
+      lines += `<path d="M${-200 + i * 46} 400 L${60 + i * 46} 40" />`;
+      lines += `<path d="M${-40 + i * 46} 400 L${220 + i * 46} 40" />`;
+    }
+    return `<svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="bg${g}" x1="0" y1="0" x2=".7" y2="1">
+          <stop offset="0" stop-color="#07121f"/><stop offset="1" stop-color="#0d2035"/>
+        </linearGradient>
+        <radialGradient id="t${g}"><stop offset="0" stop-color="#2dd4bf" stop-opacity=".55"/><stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/></radialGradient>
+        <radialGradient id="a${g}"><stop offset="0" stop-color="#f59e0b" stop-opacity=".48"/><stop offset="1" stop-color="#f59e0b" stop-opacity="0"/></radialGradient>
+      </defs>
+      <rect width="400" height="400" fill="url(#bg${g})"/>
+      <circle cx="112" cy="118" r="168" fill="url(#t${g})"/>
+      <circle cx="308" cy="306" r="158" fill="url(#a${g})"/>
+      <g stroke="#2dd4bf" stroke-opacity=".14" stroke-width="1">${lines}</g>
+      <g fill="none" stroke="#5eead4" stroke-opacity=".55" stroke-width="1.6">
+        <path d="M200 148 l56 32 v64 l-56 32 -56-32 v-64z"/>
+        <path d="M144 180 l56 32 56-32M200 212 v64"/>
+      </g>
+      <g fill="#2dd4bf" fill-opacity=".82">
+        <rect x="150" y="286" width="10" height="10" rx="2"/>
+        <rect x="172" y="298" width="10" height="10" rx="2" fill-opacity=".5"/>
+        <rect x="238" y="132" width="8" height="8" rx="2" fill="#fbbf24" fill-opacity=".85"/>
+        <rect x="256" y="146" width="8" height="8" rx="2" fill="#fbbf24" fill-opacity=".45"/>
+      </g>
+      <circle cx="200" cy="212" r="3.4" fill="#e6fffb"/>
+    </svg>`;
+  }
+
+  function artOrb(seed){
+    const g = 'orb' + seed;
+    return `<svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="bg${g}" x1="0" y1="0" x2=".4" y2="1">
+          <stop offset="0" stop-color="#f8f2e6"/><stop offset="1" stop-color="#e7dcc9"/>
+        </linearGradient>
+        <radialGradient id="glass${g}" cx=".36" cy=".3" r=".82">
+          <stop offset="0" stop-color="#ffffff" stop-opacity=".96"/>
+          <stop offset=".38" stop-color="#dbeafe" stop-opacity=".72"/>
+          <stop offset=".72" stop-color="#93c5fd" stop-opacity=".42"/>
+          <stop offset="1" stop-color="#1e3a5f" stop-opacity=".34"/>
+        </radialGradient>
+        <linearGradient id="shine${g}" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#fff" stop-opacity=".92"/>
+          <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="soft${g}"><feGaussianBlur stdDeviation="10"/></filter>
+      </defs>
+      <rect width="400" height="400" fill="url(#bg${g})"/>
+      <rect x="0" y="252" width="400" height="148" fill="#d9cbb4"/>
+      <ellipse cx="200" cy="300" rx="104" ry="20" fill="#0f172a" opacity=".18" filter="url(#soft${g})"/>
+      <circle cx="200" cy="196" r="96" fill="url(#glass${g})"/>
+      <ellipse cx="168" cy="156" rx="34" ry="24" fill="url(#shine${g})" transform="rotate(-24 168 156)"/>
+      <path d="M200 100 a96 96 0 0 1 0 192" fill="#fde68a" opacity=".22"/>
+      <circle cx="246" cy="238" r="13" fill="#fbbf24" opacity=".38" filter="url(#soft${g})"/>
+      <path d="M296 92 l14 14 M303 92 l-14 14" stroke="#c9b998" stroke-width="1.6" opacity=".7"/>
+    </svg>`;
+  }
+
+  function artMap(seed){
+    const g = 'map' + seed;
+    return `<svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="bg${g}" x1="0" y1="0" x2=".6" y2="1">
+          <stop offset="0" stop-color="#f5ecd8"/><stop offset="1" stop-color="#e9dcc0"/>
+        </linearGradient>
+      </defs>
+      <rect width="400" height="400" fill="url(#bg${g})"/>
+      <g stroke="#b9a684" stroke-width=".8" opacity=".5">
+        <path d="M0 96h400M0 196h400M0 296h400"/>
+        <path d="M96 0v400M196 0v400M296 0v400"/>
+      </g>
+      <path d="M-10 268 C 70 250, 96 210, 150 214 S 228 258, 282 232 352 176, 412 186"
+            fill="none" stroke="#a98f63" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M-10 274 C 70 256, 96 216, 150 220 S 228 264, 282 238 352 182, 412 192"
+            fill="none" stroke="#cbb894" stroke-width="1" stroke-linecap="round" opacity=".8"/>
+      <path d="M132 -10 C 148 66, 122 118, 168 158 S 268 176, 276 240 248 330, 262 410"
+            fill="none" stroke="#8fb3c9" stroke-width="1.8" stroke-linecap="round" opacity=".9"/>
+      <g fill="none" stroke="#8b7550" stroke-width="1.3" stroke-linecap="round" opacity=".85">
+        <path d="M60 128 l16-9 16 9v17l-16 9-16-9z"/>
+        <path d="M232 302 l14-8 14 8v15l-14 8-14-8z"/>
+        <path d="M300 96 l12-7 12 7v13l-12 7-12-7z"/>
+      </g>
+      <g fill="#a1462f">
+        <circle cx="196" cy="188" r="4.2"/>
+        <circle cx="196" cy="188" r="10" fill="none" stroke="#a1462f" stroke-width="1.1" opacity=".55"/>
+        <circle cx="268" cy="252" r="3"/>
+        <circle cx="104" cy="146" r="3"/>
+      </g>
+      <text x="204" y="180" font-family="Georgia,serif" font-size="13" fill="#7a4b33" opacity=".9">Port</text>
+      <text x="118" y="140" font-family="Georgia,serif" font-size="11" fill="#7a4b33" opacity=".7">Inn</text>
+      <g stroke="#b9a684" stroke-width="1" opacity=".7">
+        <path d="M316 336 h44M338 314 v44"/>
+      </g>
+      <text x="306" y="372" font-family="Georgia,serif" font-size="10" fill="#8b7550" opacity=".75">N</text>
+      <rect x="14" y="14" width="372" height="372" fill="none" stroke="#a98f63" stroke-width="1.4" opacity=".5"/>
+    </svg>`;
+  }
+
+  const ART = [artIso, artOrb, artMap];
+  let artSeed = 0;
+  function makeArt(i){ return ART[i % ART.length](++artSeed); }
+
+  /* ───────── rendering ───────── */
+
+  function frameStyle(el, ar){ el.style.setProperty('--arn', ar); }
+
+  function chatEmpty(){
+    const div = document.createElement('div');
+    div.className = 'chat-empty';
+    div.innerHTML = `
+      <div class="canvas-icon">${ICON.chat}</div>
+      <div class="canvas-title">开始一段对话</div>
+      <div class="canvas-sub">模型和分组就在下方，跟着这条消息一起走</div>`;
+    return div;
+  }
+
+  function emptyCanvas(){
+    const r = RATIOS[state.ratio];
+    const copy = {
+      image: { title:'描述你想要的画面', sub:'选好比例，写下画面，按 <kbd>⏎</kbd> 生成', icon:ICON.image },
+      chat:  { title:'开始一段对话',     sub:'模型和分组就在下方，跟着这条消息一起走', icon:ICON.chat },
+      video: { title:'描述你想要的镜头', sub:'选好时长，写下镜头，按 <kbd>⏎</kbd> 生成', icon:ICON.video }
+    }[state.mode];
+
+    const div = document.createElement('div');
+    div.className = 'frame canvas-empty';
+    frameStyle(div, r.ar);
+    div.innerHTML = `
+      <div class="canvas-icon">${copy.icon}</div>
+      <div class="canvas-title">${copy.title}</div>
+      <div class="canvas-sub">${copy.sub}</div>
+    `;
+    return div;
+  }
+
+  function loadingCanvas(){
+    const r = RATIOS[state.ratio];
+    const div = document.createElement('div');
+    div.className = 'frame canvas-loading';
+    frameStyle(div, r.ar);
+    div.innerHTML = `
+      <div class="fill"></div>
+      <div class="shimmer"></div>
+      <div class="loader">
+        <div class="ring"></div>
+        <div class="loader-text"><b>${r.px}</b> · ${state.count} 张</div>
+      </div>`;
+    return div;
+  }
+
+  function roundMeta({ time, count, cost, px, failed }){
+    const div = document.createElement('div');
+    div.className = 'round-meta';
+    div.innerHTML = `
+      <span class="mono">${time}</span>
+      <span class="dot">·</span>
+      <span class="mono">${px}</span>
+      <span class="dot">·</span>
+      <span>${count} 张</span>
+      <span class="dot">·</span>
+      <span class="cost">${failed ? '未计费' : money(cost)}</span>
+      <span class="right">
+        <button class="meta-link${failed ? ' danger' : ''}" type="button">查看请求</button>
+      </span>`;
+    return div;
+  }
+
+  function artBlock(i, ar, animate){
+    const d = document.createElement('div');
+    d.className = 'art';
+    d.style.setProperty('--arn', ar);
+    d.innerHTML = `${animate ? '<div class="veil"></div>' : ''}
+      <div class="${animate ? 'develop' : ''}">${makeArt(i)}</div>
+      <button class="save" type="button" title="下载">${ICON.save}</button>`;
+    return d;
+  }
+
+  function singleRound(opts){
+    const ar = opts.ratio ? RATIOS[opts.ratio].ar : (opts.ar || 1);
+    const wrap = document.createElement('div');
+    wrap.className = 'round';
+    wrap.style.setProperty('--arn', ar);
+    wrap.appendChild(roundMeta(opts));
+    wrap.appendChild(artBlock(opts.seed || 0, ar, opts.animate));
+    return wrap;
+  }
+
+  function quadRound(opts){
+    const ar = RATIOS[opts.ratio || state.ratio].ar;
+    const wrap = document.createElement('div');
+    wrap.className = 'round wide';
+    wrap.style.setProperty('--arn', ar);
+    wrap.appendChild(roundMeta(opts));
+    const grid = document.createElement('div');
+    grid.className = 'grid-2';
+    for (let i = 0; i < 4; i++) grid.appendChild(artBlock(i, ar, opts.animate));
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  function failedRound(){
+    const r = RATIOS[state.ratio];
+    const wrap = document.createElement('div');
+    wrap.className = 'round';
+    wrap.style.setProperty('--arn', r.ar);
+    wrap.appendChild(roundMeta({ time:now(), px:r.px, count:state.count, cost:0, failed:true }));
+    const box = document.createElement('div');
+    box.className = 'failed';
+    box.style.setProperty('--arn', r.ar);
+    box.innerHTML = `
+      <div class="failed-title">生成失败</div>
+      <div class="failed-msg">上游返回 429，当前分组并发已满。稍后重试，或换个分组。</div>
+      <button class="retry" type="button">${ICON.retry}重试这一张</button>`;
+    wrap.appendChild(box);
+    return wrap;
+  }
+
+  function now(){
+    const d = new Date();
+    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+
+  function renderStream(){
+    stream.innerHTML = '';
+    suggestions.innerHTML = '';
+
+    const p = state.preview;
+
+    if (state.mode === 'chat'){
+      stream.appendChild(chatEmpty());
+    } else if (state.mode === 'video'){
+      stream.appendChild(emptyCanvas());
+    } else if (p === 'empty'){
+      stream.appendChild(emptyCanvas());
+    } else if (p === 'loading'){
+      stream.appendChild(loadingCanvas());
+    } else if (p === 'single'){
+      stream.appendChild(singleRound({ time:now(), px:RATIOS[state.ratio].px, count:1, cost:unitPrice(), ratio:state.ratio, seed:1 }));
+    } else if (p === 'quad'){
+      stream.appendChild(quadRound({ time:now(), px:RATIOS[state.ratio].px, count:4, cost:unitPrice()*4, ratio:state.ratio }));
+    } else if (p === 'failed'){
+      stream.appendChild(failedRound());
+    } else if (p === 'history'){
+      stream.appendChild(singleRound({ time:'20:07', px:'1024×1024', count:1, cost:0.115, ratio:'1:1', seed:0 }));
+      stream.appendChild(quadRound({ time:'20:04', px:'1792×1024', count:4, cost:0.461, ratio:'16:9' }));
+      stream.appendChild(singleRound({ time:'19:58', px:'1024×1792', count:1, cost:0.115, ratio:'9:16', seed:2 }));
+    }
+
+    if (state.mode === 'image' && (p === 'empty')){
+      SUGGESTIONS.image.forEach(s => {
+        const b = document.createElement('button');
+        b.className = 'sug';
+        b.type = 'button';
+        b.textContent = s;
+        b.onclick = () => { promptEl.value = s; promptEl.focus(); };
+        suggestions.appendChild(b);
+      });
+    }
+    if (state.mode !== 'image'){
+      SUGGESTIONS[state.mode].forEach(s => {
+        const b = document.createElement('button');
+        b.className = 'sug';
+        b.type = 'button';
+        b.textContent = s;
+        b.onclick = () => { promptEl.value = s; promptEl.focus(); };
+        suggestions.appendChild(b);
+      });
+    }
+  }
+
+  /* ───────── toolbar ───────── */
+
+  function ratioGroup(){
+    const wrap = document.createElement('div');
+    wrap.className = 'segment';
+    Object.entries(RATIOS).forEach(([key, r]) => {
+      const b = document.createElement('button');
+      b.className = 'seg';
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(state.ratio === key));
+      b.innerHTML = `<span class="shape ${r.shape}"></span>${r.label}`;
+      b.onclick = () => { state.ratio = key; state.preview = 'empty'; renderAll(); };
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
+  function countGroup(){
+    const wrap = document.createElement('div');
+    wrap.className = 'segment';
+    [1,2,3,4].forEach(n => {
+      const b = document.createElement('button');
+      b.className = 'seg';
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(state.count === n));
+      b.textContent = '×' + n;
+      b.onclick = () => { state.count = n; renderToolbar(); };
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
+  function durationGroup(values, current, onPick){
+    const wrap = document.createElement('div');
+    wrap.className = 'segment';
+    values.forEach(v => {
+      const b = document.createElement('button');
+      b.className = 'seg';
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(current === v));
+      b.textContent = v;
+      b.onclick = () => { onPick(v); renderToolbar(); };
+      wrap.appendChild(b);
+    });
+    return wrap;
+  }
+
+  function modelChip(){
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.type = 'button';
+    b.id = 'modelChip';
+    b.innerHTML = `${ICON.model}<span class="name">${state.model}</span><span class="sep">·</span><span class="grp">${state.group}</span>${ICON.chev}`;
+    b.onclick = (e) => { e.stopPropagation(); openModelPop(b); };
+    return b;
+  }
+
+  function renderToolbar(){
+    toolbar.innerHTML = '';
+
+    toolbar.appendChild(modelChip());
+    const sep = document.createElement('span');
+    sep.className = 'vsep';
+    toolbar.appendChild(sep);
+
+    const right = document.createElement('div');
+    right.className = 'right';
+
+    if (state.mode === 'image'){
+      toolbar.appendChild(ratioGroup());
+      toolbar.appendChild(countGroup());
+
+      const price = document.createElement('span');
+      price.className = 'price';
+      const discounted = unitPrice() * state.count;
+      price.innerHTML = `≈ <b>${money(discounted)}</b><span>/ ${state.count > 1 ? state.count + ' 张' : '张'}</span>`;
+      right.appendChild(price);
+
+      const clear = document.createElement('button');
+      clear.className = 'clear';
+      clear.type = 'button';
+      clear.title = '清空结果';
+      clear.innerHTML = ICON.trash;
+      clear.onclick = () => { state.preview = 'empty'; state.results = []; renderAll(); };
+      right.appendChild(clear);
+
+      right.appendChild(submitBtn('生成'));
+    }
+
+    if (state.mode === 'chat'){
+      const temp = durationGroup(['0.2','0.7','1.0'], '0.7', () => {});
+      temp.title = '采样温度';
+      const ctx = durationGroup(['2k','8k','32k'], '8k', () => {});
+      ctx.title = '最大上下文';
+      toolbar.appendChild(temp);
+      toolbar.appendChild(ctx);
+
+      const price = document.createElement('span');
+      price.className = 'price';
+      price.innerHTML = `输入 <b>$2.00</b><span>/M</span> · 输出 <b>$8.00</b><span>/M</span>`;
+      right.appendChild(price);
+
+      right.appendChild(submitBtn('发送'));
+    }
+
+    if (state.mode === 'video'){
+      const dur = durationGroup(['5s','10s'], '5s', () => {});
+      dur.title = '时长';
+      const res = durationGroup(['720p','1080p'], '1080p', () => {});
+      res.title = '分辨率';
+      toolbar.appendChild(dur);
+      toolbar.appendChild(res);
+
+      const price = document.createElement('span');
+      price.className = 'price';
+      price.innerHTML = `≈ <b>${money(0.86 * state.count)}</b><span>/ ${state.count > 1 ? state.count + ' 条' : '条'}</span>`;
+      right.appendChild(price);
+
+      right.appendChild(submitBtn('生成'));
+    }
+
+    toolbar.appendChild(right);
+  }
+
+  function submitBtn(label){
+    const b = document.createElement('button');
+    b.className = 'submit' + (state.busy ? ' busy' : '');
+    b.type = 'button';
+    b.disabled = state.busy;
+    b.innerHTML = state.busy
+      ? `${label === '发送' ? '发送中' : '生成中'}<span class="mini-ring"></span>`
+      : `${label}${ICON.send}`;
+    b.onclick = run;
+    return b;
+  }
+
+  /* ───────── model popover ───────── */
+
+  let popEl = null;
+  function closePop(){ if (popEl){ popEl.remove(); popEl = null; } }
+
+  function openModelPop(anchor){
+    closePop();
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+
+    const mk = (label) => {
+      const d = document.createElement('div');
+      d.className = 'pop-label';
+      d.textContent = label;
+      return d;
+    };
+
+    pop.appendChild(mk('模型'));
+    MODELS.forEach(m => {
+      const b = document.createElement('button');
+      b.className = 'pop-item';
+      b.type = 'button';
+      b.setAttribute('role','menuitemradio');
+      b.setAttribute('aria-checked', String(m.id === state.model));
+      b.innerHTML = `${ICON.check}<span class="mono">${m.id}</span><span class="tail">$${m.unit.toFixed(3)}/张</span>`;
+      b.onclick = () => { state.model = m.id; closePop(); renderToolbar(); };
+      pop.appendChild(b);
+    });
+
+    pop.appendChild(Object.assign(document.createElement('div'), { className:'pop-rule' }));
+    pop.appendChild(mk('分组（计费口径）'));
+    GROUPS.forEach(g => {
+      const b = document.createElement('button');
+      b.className = 'pop-item';
+      b.type = 'button';
+      b.setAttribute('role','menuitemradio');
+      b.setAttribute('aria-checked', String(g.id === state.group));
+      b.innerHTML = `${ICON.check}<span class="mono">${g.id}</span><span class="tail">×${g.ratio.toFixed(2)}</span>`;
+      b.onclick = () => { state.group = g.id; closePop(); renderToolbar(); };
+      pop.appendChild(b);
+    });
+
+    document.body.appendChild(pop);
+    const r = anchor.getBoundingClientRect();
+    const w = 268;
+    pop.style.left = Math.max(10, Math.min(r.left, window.innerWidth - w - 10)) + 'px';
+    pop.style.top = (window.innerHeight - r.top > 300)
+      ? (r.top - pop.offsetHeight - 8) + 'px'
+      : (r.bottom + 8) + 'px';
+    popEl = pop;
+  }
+
+  document.addEventListener('click', (e) => {
+    if (popEl && !popEl.contains(e.target)) closePop();
+  });
+
+  /* ───────── run ───────── */
+
+  function run(){
+    if (state.busy) return;
+    if (!promptEl.value.trim()){
+      promptEl.focus();
+      promptEl.placeholder = '先写下想要的画面…';
+      return;
+    }
+    state.busy = true;
+    state.preview = 'loading';
+    renderAll();
+
+    setTimeout(() => {
+      state.busy = false;
+      state.preview = state.count > 1 ? 'quad' : 'single';
+      state.spend += unitPrice() * state.count;
+      state.spendCount += 1;
+      promptEl.value = '';
+      renderAll();
+      renderSpend();
+    }, 2200);
+  }
+
+  function renderSpend(){
+    $('#spendVal').textContent = money(state.spend);
+    $('#spendCnt').textContent = `· ${state.spendCount} 次`;
+  }
+
+  /* ───────── modes ───────── */
+
+  function placePill(){
+    const pill = $('#modePill');
+    const active = document.querySelector('.mode[aria-selected="true"]');
+    if (!active) return;
+    const host = $('#modes').getBoundingClientRect();
+    const r = active.getBoundingClientRect();
+    pill.style.width = r.width + 'px';
+    pill.style.transform = `translateX(${r.left - host.left - 3}px)`;
+  }
+
+  document.querySelectorAll('.mode').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.mode').forEach(b => b.setAttribute('aria-selected', 'false'));
+      btn.setAttribute('aria-selected', 'true');
+      state.mode = btn.dataset.mode;
+      state.preview = state.mode === 'image' ? 'empty' : 'empty';
+      state.busy = false;
+      placePill();
+      renderAll();
+    };
+  });
+
+  /* ───────── menu: states ───────── */
+
+  const STATES = [
+    ['empty','空态'],
+    ['loading','生成中'],
+    ['single','单图完成'],
+    ['quad','四图完成'],
+    ['failed','失败态'],
+    ['history','多轮历史']
+  ];
+
+  let menuEl = null;
+  $('#stateBtn').onclick = (e) => {
+    e.stopPropagation();
+    if (menuEl){ menuEl.remove(); menuEl = null; return; }
+    const m = document.createElement('div');
+    m.className = 'menu';
+    STATES.forEach(([key, label]) => {
+      const b = document.createElement('button');
+      b.className = 'menu-item';
+      b.type = 'button';
+      b.setAttribute('aria-checked', String(state.preview === key));
+      b.innerHTML = `${label}${ICON.check}`;
+      b.onclick = () => {
+        state.preview = key;
+        state.mode = 'image';
+        document.querySelectorAll('.mode').forEach(x => x.setAttribute('aria-selected', String(x.dataset.mode === 'image')));
+        placePill();
+        renderAll();
+        m.remove(); menuEl = null;
+      };
+      m.appendChild(b);
+    });
+    document.body.appendChild(m);
+    const r = e.currentTarget.getBoundingClientRect();
+    m.style.left = Math.min(r.right - 146, window.innerWidth - 156) + 'px';
+    m.style.top = (r.bottom + 6) + 'px';
+    menuEl = m;
+  };
+
+  document.addEventListener('click', (e) => {
+    if (menuEl && !menuEl.contains(e.target) && e.target.id !== 'stateBtn'){ menuEl.remove(); menuEl = null; }
+  });
+
+  /* ───────── theme ───────── */
+
+  $('#themeBtn').onclick = () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+  };
+
+  /* ───────── annotations ───────── */
+
+  const NOTES = [
+    { sel:'.modes', text:'<b>顶栏只剩导航</b>模式切换是页面级状态，留在这里；模型和分组已经下沉到输入框。', side:'right' },
+    { sel:'.frame', text:'<b>画布就是参数的反馈</b>占位严格按所选比例铺开，选 1:1 就是方的，出图不会再跳一次尺寸。', side:'right' },
+    { sel:'.chip', text:'<b>模型 · 分组合成一个决策</b>选模型和选价目是同一件事的两面，不再分两处、不再重复出现。', side:'above' },
+    { sel:'.price', text:'<b>价格贴着生成按钮</b>从「顶部一条孤立灰字」变成「这一次要花多少」，紧挨动作。', side:'above' }
+  ];
+
+  function clearNotes(){
+    document.querySelectorAll('.note,.ring-mark').forEach(n => n.remove());
+  }
+
+  function drawNotes(){
+    clearNotes();
+    NOTES.forEach((n, i) => {
+      const target = document.querySelector(n.sel);
+      if (!target) return;
+      const r = target.getBoundingClientRect();
+      if (r.width === 0) return;
+
+      const ring = document.createElement('div');
+      ring.className = 'ring-mark ok';
+      ring.style.left = (r.left - 5) + 'px';
+      ring.style.top = (r.top - 5) + 'px';
+      ring.style.width = (r.width + 10) + 'px';
+      ring.style.height = (r.height + 10) + 'px';
+      document.body.appendChild(ring);
+
+      const note = document.createElement('div');
+      note.className = 'note';
+      note.innerHTML = n.text;
+      document.body.appendChild(note);
+
+      const nw = note.offsetWidth, nh = note.offsetHeight;
+      let left, top;
+      if (n.side === 'right'){
+        left = r.right + 14;
+        top = r.top + r.height / 2 - nh / 2;
+      } else if (n.side === 'above'){
+        // Clear the composer entirely: a bubble sitting on top of the textarea
+        // it is explaining hides the thing being reviewed.
+        const host = document.querySelector('.composer-inner').getBoundingClientRect();
+        top = host.top - nh - 10;
+        left = r.left;
+      } else {
+        left = r.left + r.width / 2 - nw / 2;
+        top = r.top - nh - 12;
+      }
+      if (left + nw > window.innerWidth - 10) left = window.innerWidth - nw - 10;
+      if (top < 60) top = r.bottom + 12;
+      note.style.left = Math.max(10, left) + 'px';
+      note.style.top = Math.max(58, top) + 'px';
+    });
+  }
+
+  $('#noteBtn').onclick = (e) => {
+    state.notes = !state.notes;
+    e.currentTarget.setAttribute('aria-pressed', String(state.notes));
+    if (state.notes) drawNotes(); else clearNotes();
+  };
+
+  /* ───────── boot ───────── */
+
+  /* Deep-linkable states: #loading #single #quad #failed #history #notes
+     #dark and #chat #video, comma-separated. Reviewers open a link instead of
+     replaying clicks, and the screenshots in the PR point at the same URL. */
+  (function applyHash(){
+    const h = location.hash.replace(/^#/, '').toLowerCase();
+    if (!h) return;
+    for (const part of h.split(',')){
+      if (STATES.some(([k]) => k === part)) state.preview = part;
+      if (part === 'notes'){ state.notes = true; $('#noteBtn').setAttribute('aria-pressed', 'true'); }
+      if (part === 'dark') document.documentElement.dataset.theme = 'dark';
+      if (part === 'chat' || part === 'image' || part === 'video'){
+        state.mode = part;
+        document.querySelectorAll('.mode').forEach(x => x.setAttribute('aria-selected', String(x.dataset.mode === part)));
+      }
+    }
+  })();
+
+  function renderAll(){
+    renderStream();
+    renderToolbar();
+    renderSpend();
+    promptEl.placeholder = {
+      chat:'问点什么…',
+      image:'描述你想要的画面…',
+      video:'描述你想要的镜头…'
+    }[state.mode];
+    hint.textContent = state.mode === 'image'
+      ? '参数只对这一次生成生效 · Enter 生成 · Shift + Enter 换行'
+      : '模型与分组跟随这条消息 · Enter 发送 · Shift + Enter 换行';
+    if (state.notes) requestAnimationFrame(drawNotes);
+  }
+
+  promptEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){
+      e.preventDefault();
+      run();
+    }
+  });
+
+  promptEl.addEventListener('input', () => {
+    promptEl.style.height = 'auto';
+    promptEl.style.height = Math.min(190, Math.max(78, promptEl.scrollHeight)) + 'px';
+  });
+
+  window.addEventListener('resize', () => { placePill(); if (state.notes) drawNotes(); });
+  document.addEventListener('scroll', () => { if (state.notes) requestAnimationFrame(drawNotes); }, true);
+
+  requestAnimationFrame(() => { placePill(); renderAll(); });
+})();
+</script>
+</body>
+</html>
