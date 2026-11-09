@@ -2,34 +2,13 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-#
-# 2026-11-08 Playground 多模态（对话/生图/生视频 + 计费对账）：
-#   files +1 router/relay-router.go、blocks +3、added +14、deleted +2
-#   只保留了不可替代的挂接点：/pg 的三条路由必须写在路由组里，
-#   路由文件把上游 Playground 换成 ApiduoPlayground（删 2 行）。
-#   controller 侧全部落在新文件 controller/apiduo_playground.go，前端整套在
-#   web/src/features/apiduo-playground/，两者都不参与本预算。
-#
-# 2026-11-08 登录页皮肤（六套 + 后台可配）：
-#   files +4、blocks +8、added +47、deleted +2
-#   挂接点只有四个，每个都是"不在这里写就没有别处可写"：
-#     common/constants.go       LoginTheme 变量（option 的落脚点）
-#     model/option.go           OptionMap 注册 + switch case
-#     controller/misc.go        status 返回 login_theme
-#     routes/(auth)/sign-in.tsx component: SignIn -> ApiduoSignIn（删 1 行）
-#   皮肤组件、六套 CSS、后台设置分区全在 web/src/features/apiduo-login/，
-#   区域注册只在 site/section-registry.tsx 加一个数组项。
-#   controller/misc.go 的值故意写在 gin.H 之后单独赋值：插进字面量会打断
-#   gofmt 的对齐，让整段上游键值被算成改动，反而更贵。
-# 2026-11-09 两处上游挂接点（显式上调预算，理由如下）：
-#   files +2、blocks +3、added +23
-#   ① web/rsbuild.config.ts  'vendor-lobehub' cacheGroup（chunks:'async'）
-#      —— 不在这里写，@lobehub/icons 8.6MB 会继续被打进首屏 initial chunk；
-#      构建产物实测：首屏 gzip 从 ~4.7MB 降到 3.8MB。
-#   ② relay/convert_request_error.go  tools[] 类型错误判 400
-#      —— 客户端参数错误回 500 会被当服务端故障重试；函数只有这一处出口，
-#      挪不进新文件（判定必须发生在错误分类的当口）。
-files	104
-blocks	302
-added	2785
+# 2026-11-09 tools 类型错误回 400（relay/convert_request_error.go）：
+#   files +1、blocks +2、added +11（相对 102/299/2762）。
+#   错误分类只有这一处出口，判定必须发生在当口，挪不进新文件；
+#   不修则客户端把请求参数错误当服务端故障，反复重试同一个坏请求。
+#   （同日曾加过 rsbuild 的 vendor-lobehub cacheGroup，实测该包本就不在首屏，
+#     无收益已回滚，预算未留。）
+files	103
+blocks	301
+added	2773
 deleted	98
