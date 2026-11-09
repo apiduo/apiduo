@@ -67,7 +67,6 @@
     "OpenAI client → Responses upstream": "OpenAI client → Responses upstream",
     "Click a cell to forward it as is or turn it off. Use the arrow to pick a converter.": "Click a cell to forward it as is or turn it off. Use the arrow to pick a converter.",
     "Converted — the tag names the target protocol": "Converted — the tag names the target protocol",
-    "Coverage": "Coverage",
     "Derived from the routes above. Nothing here is stored separately.": "Derived from the routes above. Nothing here is stored separately.",
     "Edit in list view": "Edit in list view",
     "Endpoint and model combinations that will be forwarded": "Endpoint and model combinations that will be forwarded",
@@ -117,7 +116,6 @@
     "Rainbow": "Rainbow",
     "Sheen": "Sheen",
     "Pulse": "Pulse",
-    "Restore defaults": "Restore defaults",
     "Appearance presets": "Appearance presets"
   }
 }
