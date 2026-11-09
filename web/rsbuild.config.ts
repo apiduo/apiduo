@@ -50,6 +50,18 @@ export default defineConfig(({ envMode }) => {
           priority: 0,
           enforce: true,
         },
+        // APIDUO:lobe-icons-async:BEGIN
+        // @lobehub/icons 的目录式动态 import 会命中两万多个图标组件，default preset
+        // 把它们提成一个 initial chunk 直接写进 HTML（实测 5.8MB，gzip 2.2MB）。
+        // 限定 chunks:'async' 后该包只存在于异步 chunk：首屏不再下载，用到图标才拉。
+        'vendor-lobehub': {
+          test: /node_modules[\\/]@lobehub[\\/]icons[\\/]/,
+          name: 'vendor-lobehub',
+          chunks: 'async',
+          priority: 20,
+          enforce: true,
+        },
+        // APIDUO:lobe-icons-async:END
       },
     },
     source: {

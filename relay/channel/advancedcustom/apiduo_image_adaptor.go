@@ -108,8 +108,17 @@ func (a *Adaptor) prepareImageProtocol(
 	a.imageClientModel = canonical.model()
 	a.imageUpstreamPath = plan.UpstreamPath
 	a.imageRequestCount = 1
-	if n, ok := canonical.fields["n"].(int); ok && n >= 1 {
-		a.imageRequestCount = n
+	// canonical 的字段来自 JSON 解码，number 一律是 float64；只有直接读表单的
+	// 路径才会是 int。只认 int 会让 chat 入口的 n 恒为 1，多图请求按一张计费。
+	switch n := canonical.fields["n"].(type) {
+	case int:
+		if n >= 1 {
+			a.imageRequestCount = n
+		}
+	case float64:
+		if n >= 1 {
+			a.imageRequestCount = int(n)
+		}
 	}
 	return plan, true, nil
 }
