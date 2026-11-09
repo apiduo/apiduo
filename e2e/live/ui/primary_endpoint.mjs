@@ -320,9 +320,24 @@ const main = async () => {
   })
   const page = await browser.newPage()
   const pageErrors = []
+  const httpErrors = []
   page.on('pageerror', (e) => pageErrors.push(e.message))
+  // 控制台只说「Failed to load resource」，不带 URL；请求本身才记得住是哪一条。
+  // 顶栏的「检查更新」会打 api.github.com，沙箱里它常因匿名限流回 403 ——
+  // 那是外部服务，不是本页面的 JS 错误，别让它把整条断言带红。
+  const externalNoise = (url) => /api\.github\.com\//.test(url)
+  page.on('response', (r) => {
+    if (r.status() >= 400 && !externalNoise(r.url())) {
+      httpErrors.push(`${r.status()} ${r.url()}`)
+    }
+  })
   page.on('console', (m) => {
-    if (m.type() === 'error') pageErrors.push('console:' + m.text().slice(0, 160))
+    if (m.type() !== 'error') return
+    const text = m.text()
+    // 加载失败的控制台文案不带 URL，无法判断是不是外部服务；这类错误
+    // 上面已经按 URL 收过一遍（httpErrors），这里不再重复记账。
+    if (text.startsWith('Failed to load resource')) return
+    pageErrors.push('console:' + text.slice(0, 160))
   })
   await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 2 })
   await page.evaluateOnNewDocument(() => localStorage.setItem('i18nextLng', 'zh'))
@@ -610,7 +625,12 @@ const main = async () => {
       .catch(() => false)
     check('Escape 关闭对话框', closed)
 
-    check('全程无 JS 报错', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '))
+    check(
+      '全程无 JS 报错',
+      pageErrors.length === 0,
+      pageErrors.slice(0, 3).join(' | ') +
+        (httpErrors.length ? ' || HTTP: ' + httpErrors.slice(0, 3).join(' | ') : '')
+    )
   } finally {
     await browser.close()
     await drop(names)
