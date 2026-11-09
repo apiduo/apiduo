@@ -61,12 +61,15 @@ const (
 	ChannelTypeTaskPlugin     = 61
 	ChannelTypeVLLM           = 62
 	ChannelTypeSGLang         = 63
+	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 	// APIDUO:advanced-async:BEGIN A task-only channel type: it owns the async
 	// route table and never reads advanced_custom.
-	ChannelTypeAdvancedAsync = 64
-	// APIDUO:advanced-async:END
-	// APIDUO:advanced-async:BEGIN
-	ChannelTypeDummy = 65 // this one is only for count, do not add any channel after this
+	//
+	// 8001 sits in apiduo's own range on purpose. Upstream hands out its next
+	// type after ChannelTypeDummy, so a type inserted just below it (64 was the
+	// first attempt) collides the moment upstream adds a channel. Keep every
+	// apiduo-only type at 8000+, past Dummy rather than behind it.
+	ChannelTypeAdvancedAsync = 8001
 	// APIDUO:advanced-async:END
 
 )
@@ -256,3 +259,4 @@ func IsAdvancedCustomChannel(channelType int) bool {
 		return false
 	}
 }
+

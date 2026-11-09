@@ -561,13 +561,24 @@ test('custom providers have their own tab and keep the search when switching cat
   expect(within(tabs).getAllByRole('tab')).toHaveLength(5)
   await user.click(within(tabs).getByRole('tab', { name: 'Custom' }))
   const panel = screen.getByRole('tabpanel', { name: 'Custom' })
-  expect(within(panel).getAllByRole('option')).toHaveLength(2)
+  /* APIDUO:channel-type:BEGIN */
+  expect(within(panel).getAllByRole('option')).toHaveLength(3)
+  /* APIDUO:channel-type:END */
   expect(
     within(panel).getByRole('option', { name: 'Advanced Custom Built-in #58' })
   ).toBeVisible()
   expect(
     within(panel).getByRole('option', { name: 'Custom Built-in #8' })
   ).toBeVisible()
+  /* APIDUO:channel-type:BEGIN */
+  // 8001 sits in apiduo's own range, so the picker lists it as a type of its
+  // own instead of leaving operators to type a bare number.
+  expect(
+    within(panel).getByRole('option', {
+      name: 'Advanced Custom Async Built-in #8001',
+    })
+  ).toBeVisible()
+  /* APIDUO:channel-type:END */
   expect(
     within(panel).queryByRole('option', { name: /Plugin/ })
   ).not.toBeInTheDocument()
