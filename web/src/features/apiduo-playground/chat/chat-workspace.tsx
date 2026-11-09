@@ -107,7 +107,6 @@ export function ChatWorkspace({
   // 请求结束到消息落库之间隔一次 render，用 effect 取最后一条的 key 再结算
   useEffect(() => {
     const outcome = pendingOutcomeRef.current
-    // eslint-disable-next-line no-console
     if (!outcome) return
     const last = messages.at(-1)
     if (!last || last.from !== 'assistant') return
@@ -117,6 +116,11 @@ export function ChatWorkspace({
     if (!isFinal && !outcome.stopped && !outcome.failed) return
 
     pendingOutcomeRef.current = null
+
+    // 失败且上游没回 usage：这一单没有任何可计费的量。之前这里会掉进估算分支，
+    // 给一条根本没花过钱的失败消息挂上金额，还把它累加进会话总计 —— 用户会以为
+    // 出错也被扣了钱。部分生成后才断开的请求会带 usage，那种仍然按实际用量结算。
+    if (outcome.failed && !outcome.usage) return
 
     const lastUser = [...messages].reverse().find((m) => m.from === 'user')
     const promptText = lastUser?.versions[0]?.content ?? ''

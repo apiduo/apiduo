@@ -231,6 +231,8 @@ export function ImageWorkspace({
             {results.map((result) => {
               const billing = ledger.billingByKey[result.id]
               const expanded = expandedBillingKey === result.id
+              // 失败时不要再挂转圈：它不会停，读起来像"还在生成"
+              const showGenerating = !billing && !result.error
               return (
                 <div
                   className='apd-rise border-border/60 bg-background rounded-xl border p-3'
@@ -254,12 +256,13 @@ export function ImageWorkspace({
                           expanded={expanded}
                           onToggle={() => onToggleBilling(result.id)}
                         />
-                      ) : (
+                      ) : null}
+                      {showGenerating ? (
                         <span className='flex items-center gap-1.5 font-mono'>
                           <Loader2Icon className='size-3 animate-spin' />
                           {t('Generating…')}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 

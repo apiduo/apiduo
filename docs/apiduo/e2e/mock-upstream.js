@@ -79,6 +79,9 @@ http
 
     // ---- 生图 ----
     if (url.includes('/images/generations')) {
+      if (String(body.prompt || '').includes('[fail]')) {
+        return json(res, { error: { message: 'mock image exploded' } }, 500)
+      }
       const n = Number(body.n) || 1
       return json(res, {
         created: Math.floor(Date.now() / 1000),
@@ -89,7 +92,19 @@ http
     // ---- 对话 ----
     if (url.includes('/chat/completions')) {
       const model = body.model || 'gpt-4o'
-      const parts = ['本地 mock：', '这是一条', '可复现的', '测试回复。']
+      // 只看最后一条 user：整段历史里出现过 [fail] 会让后续正常消息也判失败
+      const lastUser = [...(body.messages || [])].reverse().find((m) => m.role === 'user')
+      const userText = (lastUser && lastUser.content) || ''
+      // 带 [slow] 的请求走慢速通道：先空转 1.2s 让 UI 停在"首字未到"，
+      // 再用 30 个 chunk 吐满，便于观察渲染进度条的两个阶段
+      const slow = userText.includes('[slow]')
+      // 用来验证「上游报错时前端不该产生消费」：直接 500，且不带 usage
+      if (userText.includes('[fail]')) {
+        return json(res, { error: { message: 'mock upstream exploded', type: 'server_error' } }, 500)
+      }
+      const parts = slow
+        ? Array.from({ length: 30 }, (_, i) => `第 ${i + 1} 段：这是慢速通道吐出的内容，用来观察渲染进度。`)
+        : ['本地 mock：', '这是一条', '可复现的', '测试回复。']
       const usage = {
         prompt_tokens: body.__promptTokens || 1200,
         completion_tokens: body.__completionTokens || 380,
@@ -151,7 +166,45 @@ http
         res.write('data: [DONE]\n\n')
         clearInterval(timer)
         res.end()
-      }, 60)
+      }, slow ? 110 : 60)
+      if (slow) {
+        // 先把计时器停住，等 1.2s 再放开，模拟首 token 延迟
+        clearInterval(timer)
+        setTimeout(() => {
+          const resume = setInterval(() => {
+            if (i < parts.length) {
+              res.write(
+                'data: ' +
+                  JSON.stringify({
+                    id: 'chatcmpl-mock',
+                    object: 'chat.completion.chunk',
+                    created: Math.floor(Date.now() / 1000),
+                    model,
+                    choices: [{ index: 0, delta: { content: parts[i] }, finish_reason: null }],
+                  }) +
+                  '\n\n'
+              )
+              i += 1
+              return
+            }
+            res.write(
+              'data: ' +
+                JSON.stringify({
+                  id: 'chatcmpl-mock',
+                  object: 'chat.completion.chunk',
+                  created: Math.floor(Date.now() / 1000),
+                  model,
+                  choices: [],
+                  usage,
+                }) +
+                '\n\n'
+            )
+            res.write('data: [DONE]\n\n')
+            clearInterval(resume)
+            res.end()
+          }, 110)
+        }, 1200)
+      }
       return
     }
 
