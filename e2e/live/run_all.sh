@@ -23,6 +23,7 @@ export E2E_HEADERS="$run/upstream-headers.log"
 export E2E_HEADERS2="$run/upstream-headers-2.log"
 export E2E_UP1="http://127.0.0.1:$TRACE_UP"
 export E2E_UP2="http://127.0.0.1:$UP2"
+export E2E_BODIES="$run/upstream-bodies.log"
 export E2E_H1="$E2E_HEADERS"
 export E2E_H2="$E2E_HEADERS2"
 export E2E_SINK_DIR="$run/sink"
@@ -98,9 +99,10 @@ build_gateway
 echo "== 起假服务 =="
 mkdir -p "$run/sink" "$run/sink2" "$run/trace" "$run/image" "$run/off"
 : > "$E2E_HEADERS"
+: > "$E2E_BODIES"
 : > "$E2E_HEADERS2"
 : > "$E2E_IMAGE_LOG"
-"$run/fakes" -upstream "127.0.0.1:$TRACE_UP" -sink "127.0.0.1:$SINK" -dir "$run/sink" -headers "$E2E_HEADERS" \
+"$run/fakes" -upstream "127.0.0.1:$TRACE_UP" -sink "127.0.0.1:$SINK" -dir "$run/sink" -headers "$E2E_HEADERS" -bodies "$E2E_BODIES" \
   >"$run/fakes.log" 2>&1 &
 pids+=($!)
 disown "$!" 2>/dev/null || true
@@ -114,7 +116,9 @@ pids+=($!)
 disown "$!" 2>/dev/null || true
 
 gw_env() {
-  echo "PORT=$1 GIN_MODE=release SYNC_FREQUENCY=1 MEMORY_CACHE_ENABLED=true ERROR_LOG_ENABLED=true CRITICAL_RATE_LIMIT=5000 CRITICAL_RATE_LIMIT_DURATION=1800"
+  # GLOBAL_API_RATE_LIMIT 默认 360 次/180s/IP：所有套件都从 127.0.0.1 发，
+  # 跑到第九套必然 429（表现为"登录失败/写入失败"，很容易误判成产品缺陷）。
+  echo "PORT=$1 GIN_MODE=release SYNC_FREQUENCY=1 MEMORY_CACHE_ENABLED=true ERROR_LOG_ENABLED=true CRITICAL_RATE_LIMIT=5000 CRITICAL_RATE_LIMIT_DURATION=1800 GLOBAL_API_RATE_LIMIT=200000 GLOBAL_WEB_RATE_LIMIT=200000"
 }
 
 echo "== 起网关实例 =="
@@ -176,6 +180,8 @@ suite affinity "渠道亲和（sticky）" "http://127.0.0.1:$GW_IMAGE" channel_a
 suite health "渠道健康（自动禁用/启用）" "http://127.0.0.1:$GW_IMAGE" channel_health.py
 suite multikey "多 key 渠道（粘性/上限/换 key）" "http://127.0.0.1:$GW_IMAGE" multi_key_sticky.py
 suite autogroup "跨分组重试（auto 分组）" "http://127.0.0.1:$GW_IMAGE" auto_group.py
+suite override "亲和参数覆盖模板" "http://127.0.0.1:$GW_IMAGE" affinity_override.py
+suite combo "auto 分组 + 多 key 组合" "http://127.0.0.1:$GW_IMAGE" combo_group_multikey.py
 suite discount "折扣 + PAT + 审计" "http://127.0.0.1:$GW_IMAGE" discount_pat.py
 
 echo

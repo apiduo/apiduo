@@ -39,6 +39,9 @@ func main() {
 	// 内容触发失败的开关。第二台假上游用 -fail-prefix= 关掉它，否则
 	// "跨分组重试" 用例里本该成功的那台也会跟着 500，测出来全是失败。
 	failPrefix := flag.String("fail-prefix", "fail", "user content starting with this makes the upstream 500; empty disables")
+	// 上游实际收到的报文。参数覆盖类断言必须看这个：网关自己的日志只能
+	// 证明它"以为"发了什么。
+	bodiesPath := flag.String("bodies", "/tmp/apiduo-e2e/upstream-bodies.log", "record request bodies, one JSON per line")
 	flag.Parse()
 	_ = os.MkdirAll(*sinkDir, 0o755)
 
@@ -65,6 +68,11 @@ func main() {
 				r.Header.Get("traceparent"), r.Header.Get("tracestate"))
 			f.Close()
 		}
+		if f, err := os.OpenFile(*bodiesPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+			rec, _ := json.Marshal(map[string]string{"model": reqModel, "body": string(body)})
+			f.Write(append(rec, '\n'))
+			f.Close()
+		}
 		var req struct {
 			Stream   bool `json:"stream"`
 			Messages []struct {
@@ -86,7 +94,7 @@ func main() {
 			}
 		}
 		// 以 -bad 结尾的 key 一律 500：多 key 渠道要能证明「坏 key 只影响它自己」
-		if strings.HasSuffix(shortKey(r.Header.Get("Authorization")), "-bad") {
+		if strings.Contains(shortKey(r.Header.Get("Authorization")), "bad") {
 			fail = true
 		}
 		if fail {

@@ -112,19 +112,29 @@ def make_token(name, group, auto_groups=None, cross=False):
     st, res = call("POST", "/api/token/", body, JWT)
     if not (st == 200 and res.get("success")):
         return None, res
-    st, res = call("GET", "/api/token/?p=0&page_size=100", None, JWT)
-    items = (res.get("data") or {}).get("items") or []
-    tok = next((t for t in items if t.get("name") == name), None)
+    tok = find_token(name)
     if not tok:
         raise SystemExit(f"token {name} was not created")
     st, res = call("POST", f"/api/token/{tok['id']}/key", {}, JWT)
     return (res.get("data") or {}).get("key"), tok
 
 
+def find_token(name, page_size=100, max_pages=20):
+    """按名字找令牌，必须翻页：一页只有 100 条，后面套件建的令牌会落到第二页。"""
+    for page in range(max_pages):
+        st, res = call("GET", f"/api/token/?p={page}&page_size={page_size}", None, JWT)
+        data = res.get("data") or {}
+        items = data.get("items") or []
+        row = next((t for t in items if t.get("name") == name), None)
+        if row:
+            return row
+        if len(items) < page_size:
+            break
+    return None
+
+
 def token_row(name):
-    st, res = call("GET", "/api/token/?p=0&page_size=100", None, JWT)
-    items = (res.get("data") or {}).get("items") or []
-    return next((t for t in items if t.get("name") == name), None)
+    return find_token(name)
 
 
 def relay(model, key, content="cross-group"):
