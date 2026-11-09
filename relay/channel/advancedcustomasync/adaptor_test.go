@@ -322,3 +322,69 @@ func TestAdjustBillingOnCompleteFallsBackToPerCallPrice(t *testing.T) {
 		t.Fatalf("per-call mode must return 0, got %d", got)
 	}
 }
+
+// 时长不一定躺在顶层：方舟把 seconds 塞在参数对象里，配置必须能指到嵌套键。
+func TestEstimateBillingReadsNestedDurationPath(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{
+		Mode:         kitdto.AdvancedAsyncBillingPerSecond,
+		DurationPath: []string{"parameters", "duration"},
+	}
+	adaptor := testAdaptor(t, config)
+	adaptor.submitBody = []byte(`{"model":"vendor-model","parameters":{"duration":"7"}}`)
+
+	if ratios := adaptor.EstimateBilling(nil, nil); ratios["seconds"] != 7 {
+		t.Fatalf("ratios = %v, want seconds=7", ratios)
+	}
+}
+
+// 读不出秒数又没有兜底价时不能瞎猜：预扣退回按次价（不附加 ratio）。
+func TestEstimateBillingIgnoresUnreadableDuration(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{Mode: kitdto.AdvancedAsyncBillingPerSecond}
+
+	for _, body := range []string{
+		`{"model":"vendor-model"}`,
+		`{"model":"vendor-model","duration":"five"}`,
+		`{"model":"vendor-model","duration":0}`,
+		`{"model":"vendor-model","duration":-3}`,
+	} {
+		adaptor := testAdaptor(t, config)
+		adaptor.submitBody = []byte(body)
+		if ratios := adaptor.EstimateBilling(nil, nil); ratios != nil {
+			t.Fatalf("%s produced ratios %v, want nil", body, ratios)
+		}
+	}
+}
+
+// per_token 的预扣来自 ratio 估算，适配器自己不能再加一份 ratio，否则双计。
+func TestEstimateBillingPerTokenAddsNoRatio(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{Mode: kitdto.AdvancedAsyncBillingPerToken}
+	adaptor := testAdaptor(t, config)
+	adaptor.submitBody = []byte(`{"model":"vendor-model","duration":5}`)
+
+	info := &relaycommon.RelayInfo{ChannelMeta: adaptor.info.ChannelMeta, OriginModelName: "vendor-model"}
+	if ratios := adaptor.EstimateBilling(nil, info); ratios != nil {
+		t.Fatalf("per_token must not add ratios: %v", ratios)
+	}
+}
+
+// 轮询重建适配器时 BillingContext 可能已经不在（老任务），模型名要能从任务属性里捞到，
+// 否则 per_token 模式识别不出来，兜底价永远不会生效。
+func TestAdjustBillingOnCompleteFallsBackToTaskProperties(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{
+		Mode:               kitdto.AdvancedAsyncBillingPerCall,
+		Models:             map[string]string{"vendor-model": kitdto.AdvancedAsyncBillingPerToken},
+		TokenFallbackPrice: 0.5,
+	}
+	adaptor := testAdaptor(t, config)
+
+	task := &model.Task{ChannelId: 7, Group: "default"}
+	task.Properties.OriginModelName = "vendor-model"
+
+	if got := adaptor.AdjustBillingOnComplete(task, &relaycommon.TaskInfo{Status: "SUCCESS"}); got != 250000 {
+		t.Fatalf("quota = %d, want 250000 (0.5 USD at 500k quota/unit)", got)
+	}
+}

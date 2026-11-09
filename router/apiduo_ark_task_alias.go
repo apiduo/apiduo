@@ -75,7 +75,13 @@ func apiduoArkFetchPathRewrite() gin.HandlerFunc {
 		target := apiduoArkRelaySubmitPath + "/" + taskID
 		c.Request.URL.Path = target
 		c.Request.URL.RawPath = ""
-		c.Request.RequestURI = target
+		// 与 apiduoArkReenter 保持一致：查询串留在 RequestURI 里。
+		// 只改 Path 会让日志与 RequestURI 看到两个不同的地址，排查时很难认。
+		if c.Request.URL.RawQuery != "" {
+			c.Request.RequestURI = target + "?" + c.Request.URL.RawQuery
+		} else {
+			c.Request.RequestURI = target
+		}
 		c.Next()
 	}
 }

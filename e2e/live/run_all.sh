@@ -184,6 +184,7 @@ suite off "关闭态等价" "http://127.0.0.1:$GW_OFF" off.py
 suite privacy "普通用户隐私" "http://127.0.0.1:$GW_TRACE" privacy.py
 suite image "图片协议 + 主端点" "http://127.0.0.1:$GW_IMAGE" image_primary.py
 suite adversarial "主端点对抗（坏配置/静默改道）" "http://127.0.0.1:$GW_IMAGE" primary_adversarial.py
+suite async "高级异步 + 方舟别名" "http://127.0.0.1:$GW_IMAGE" advanced_async.py
 # 顺序有意义：discount 会关掉自用模式并只给 disc-model 配价，
 # 之后再跑 select 就会撞「price not configured」。select 必须排在它前面。
 suite select "渠道选择/权重/降级" "http://127.0.0.1:$GW_IMAGE" channel_select.py
