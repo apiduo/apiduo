@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -20,9 +21,17 @@ const (
 	primaryEndpointManagementPathPrefix = "/api/advanced-custom"
 )
 
-// NormalizePrimaryEndpoint 去掉空白；空串表示未声明。
+// NormalizePrimaryEndpoint 去掉空白与末尾斜杠；空串表示未声明。
+//
+// 末尾斜杠不是语义的一部分：留着会让「/x」和「/x/」被当成两条不同的上游，
+// 保存时的「等于主端点就收敛成空」也按字符串相等判断，两边写法不同就收敛不掉。
+// 只裁真正有内容的路径，免得把「//」（非法）裁成空、把非法输入当成未声明。
 func NormalizePrimaryEndpoint(raw string) string {
-	return strings.TrimSpace(raw)
+	path := strings.TrimSpace(raw)
+	if trimmed := strings.TrimRight(path, "/"); trimmed != "" {
+		return trimmed
+	}
+	return path
 }
 
 // ValidatePrimaryEndpoint 只做形状校验：必须是 / 开头的路径，不能带空白、查询串或片段。
@@ -31,17 +40,31 @@ func ValidatePrimaryEndpoint(raw string) error {
 	if path == "" {
 		return nil
 	}
+	if err := ValidateAbsolutePath(path); err != nil {
+		return fmt.Errorf("primary_endpoint %s: %q", err, raw)
+	}
+	return nil
+}
+
+// ValidateAbsolutePath 校验「/ 开头的上游路径」的公共形状：单斜杠开头、无空白、
+// 无查询串或片段、不指向管理面。
+//
+// primary_endpoint 和 image_protocol 的 primary_path / edit_path 指向同一个地方，
+// 形状规则必须一致：只校验前者会让协议里那两条在保存时放行、在请求时才失败，
+// 而且报错发生在每次请求上，运维看不出是配置问题。错误文案只描述问题本身，
+// 由调用方补字段名。
+func ValidateAbsolutePath(path string) error {
 	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
-		return fmt.Errorf("primary_endpoint must be a path starting with a single /: %q", raw)
+		return errors.New("must be a path starting with a single /")
 	}
 	if strings.ContainsAny(path, " \t\r\n") {
-		return fmt.Errorf("primary_endpoint must not contain whitespace: %q", raw)
+		return errors.New("must not contain whitespace")
 	}
 	if strings.ContainsAny(path, "?#") {
-		return fmt.Errorf("primary_endpoint must not contain query or fragment: %q", raw)
+		return errors.New("must not contain query or fragment")
 	}
 	if strings.HasPrefix(path, primaryEndpointManagementPathPrefix) {
-		return fmt.Errorf("primary_endpoint must not point at a management path: %q", raw)
+		return errors.New("must not point at a management path")
 	}
 	return nil
 }

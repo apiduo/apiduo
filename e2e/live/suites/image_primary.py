@@ -230,7 +230,7 @@ def main():
     check("C5 非法渠道未落库", "e2e-badprimary" not in channels(at))
 
     drop(at, names + ["e2e-badprimary"])
-    api(at, "PUT", "/api/option/", json={"key": "performance_setting.monitor_disk_threshold", "value": "95"})
+    api(at, "PUT", "/api/option/", json={"key": "performance_setting.monitor_disk_threshold", "value": "99"})
 
     failed = [r for r in rows if not r[0]]
     print(f"\n共 {len(rows)} 项，失败 {len(failed)}")

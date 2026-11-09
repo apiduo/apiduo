@@ -108,3 +108,53 @@ func TestImageProtocolServesPath(t *testing.T) {
 		t.Fatal("nil config must claim nothing")
 	}
 }
+
+func TestNormalizePrimaryEndpointTrimsTrailingSlash(t *testing.T) {
+	cases := map[string]string{
+		" /v1/images/generations/ ": "/v1/images/generations",
+		"/v1/images/generations//":  "/v1/images/generations",
+		"/":                         "/",
+		"//":                        "//",
+		"":                          "",
+		"   ":                       "",
+	}
+	for raw, want := range cases {
+		if got := NormalizePrimaryEndpoint(raw); got != want {
+			t.Fatalf("NormalizePrimaryEndpoint(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestValidatePrimaryEndpointAcceptsTrailingSlash(t *testing.T) {
+	if err := ValidatePrimaryEndpoint("/v1/images/generations/"); err != nil {
+		t.Fatalf("trailing slash must be normalized away, got %v", err)
+	}
+	if err := ValidatePrimaryEndpoint("//"); err == nil {
+		t.Fatal("double slash must not be normalized into an empty declaration")
+	}
+}
+
+func TestImageProtocolValidateMatchesPrimaryEndpointShape(t *testing.T) {
+	ok := []*ImageProtocolConfig{
+		{Enabled: true, Upstream: ImageUpstreamSeedream},
+		{Enabled: true, Upstream: ImageUpstreamGPTImage2, PrimaryPath: "/v1/images/generations", EditPath: "/v1/images/edits"},
+		{Enabled: true, Upstream: ImageUpstreamSeedream, PrimaryPath: "/v1/images/generations/"},
+	}
+	for _, cfg := range ok {
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("expected %+v to pass, got %v", cfg, err)
+		}
+	}
+	bad := []*ImageProtocolConfig{
+		{Enabled: true, Upstream: "bogus"},
+		{Enabled: true, Upstream: ImageUpstreamSeedream, PrimaryPath: "//evil.example/x"},
+		{Enabled: true, Upstream: ImageUpstreamSeedream, PrimaryPath: "/v1/ima ges/x"},
+		{Enabled: true, Upstream: ImageUpstreamSeedream, EditPath: "/v1/images/edits?x=1"},
+		{Enabled: true, Upstream: ImageUpstreamSeedream, EditPath: "/api/advanced-custom/routes"},
+	}
+	for _, cfg := range bad {
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("expected %+v to be rejected", cfg)
+		}
+	}
+}

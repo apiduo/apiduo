@@ -186,7 +186,10 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		return "", err
 	}
 	// APIDUO:image-protocol:BEGIN
-	if target, ok := a.imageProtocolURL(info); ok {
+	if target, ok, err := a.imageProtocolURL(info); ok {
+		if err != nil {
+			return "", err
+		}
 		return target, nil
 	}
 	// APIDUO:image-protocol:END

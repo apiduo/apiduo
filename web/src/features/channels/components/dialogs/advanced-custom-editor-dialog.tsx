@@ -26,9 +26,6 @@ import {
   ChevronRight,
   CircleDollarSign,
   Code2,
-  // APIDUO:matrix-grid:BEGIN
-  Grid3x3,
-  // APIDUO:matrix-grid:END
   Info,
   ListTree,
   // APIDUO:primary-endpoint:BEGIN
@@ -83,15 +80,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-// APIDUO:coverage:BEGIN
-import { CoverageSummary } from '@/features/protocol-matrix/components/coverage-summary'
-// APIDUO:coverage:END
-// APIDUO:matrix-grid:BEGIN
-import { MatrixGrid } from '@/features/protocol-matrix/components/matrix-grid'
-import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
-// APIDUO:matrix-grid:END
 // APIDUO:primary-endpoint:BEGIN
+import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
 import { PrimaryEndpointEditor } from '../primary-endpoint-editor'
+import { withPrimaryFallbackRoutes } from '../../lib/primary-endpoint'
 // APIDUO:primary-endpoint:END
 
 import {
@@ -162,11 +154,16 @@ type AdvancedCustomEditorDialogProps = {
 type AdvancedCustomEditorTab =
   | 'primary'
   | 'forwarding'
-  | 'matrix'
   | 'models'
   | 'balance'
   | 'json'
 // APIDUO:matrix-grid:END
+
+// APIDUO:primary-endpoint:BEGIN
+// 开关关着时内容只有两行，固定 70vh 会留一大片空白；按内容长，
+// 超过 90dvh 时由外层的 max-h + overflow 兜住。
+const DIALOG_CONTENT_HEIGHT = 'auto'
+// APIDUO:primary-endpoint:END
 
 const longSelectContentClass = 'w-[360px] max-w-[calc(100vw-2rem)]'
 const longSelectItemClass =
@@ -185,9 +182,6 @@ const advancedCustomTabs = new Set<AdvancedCustomEditorTab>([
   'primary',
   // APIDUO:primary-endpoint:END
   'forwarding',
-  // APIDUO:matrix-grid:BEGIN
-  'matrix',
-  // APIDUO:matrix-grid:END
   'models',
   'balance',
   'json',
@@ -327,8 +321,11 @@ export function AdvancedCustomEditorDialog({
     )
   })
   // APIDUO:primary-endpoint:BEGIN
-  const [activeTab, setActiveTab] =
-    useState<AdvancedCustomEditorTab>('primary')
+  // 开关关着时默认落在「转发路由」，与 new-api 完全一致；开着才进「主端点」。
+  // 对话框关闭时会卸载（父组件条件渲染），所以这里用初始化值就够。
+  const [activeTab, setActiveTab] = useState<AdvancedCustomEditorTab>(() =>
+    (primaryEndpoint || '').trim() ? 'primary' : 'forwarding'
+  )
   // APIDUO:primary-endpoint:END
   const [jsonText, setJsonText] = useState(() =>
     stringifyAdvancedCustomConfig(
@@ -386,8 +383,29 @@ export function AdvancedCustomEditorDialog({
     [usedIncomingPaths]
   )
   const validationError = useMemo(
-    () => validateAdvancedCustomConfig(normalizedConfig),
-    [normalizedConfig]
+    /* APIDUO:primary-endpoint:BEGIN */
+    // 主端点自身形状不合法时先报它：补齐会把非法值灌进空路由，最后报的是
+    // 「上游路径必须是…」，用户对着路由表改不到真正填错的那个字段。
+    () => {
+      const declared = (primaryEndpoint || '').trim()
+      if (declared && !declared.startsWith('/')) {
+        return { message: 'Primary endpoint must be a path starting with /' }
+      }
+      // 开着主端点时，空 upstream 是「跟随主端点」：校验前先补齐副本。
+      return validateAdvancedCustomConfig(
+        (primaryEndpoint || '').trim()
+          ? {
+              ...normalizedConfig,
+              advanced_routes: withPrimaryFallbackRoutes(
+                normalizedConfig.advanced_routes || [],
+                primaryEndpoint || ''
+              ),
+            }
+          : normalizedConfig
+      )
+    },
+    [normalizedConfig, primaryEndpoint]
+    /* APIDUO:primary-endpoint:END */
   )
   const canFixCatchAllOrder =
     validationError?.message === catchAllOrderErrorMessage
@@ -420,7 +438,8 @@ export function AdvancedCustomEditorDialog({
     setJsonText(stringifyAdvancedCustomConfig(normalized))
     setJsonError('')
     // APIDUO:primary-endpoint:BEGIN
-    setActiveTab('primary')
+    // 套模板后去看结果，但开关关着时「主端点」页签只有关闭说明，落在路由页更有用。
+    setActiveTab((primaryEndpoint || '').trim() ? 'primary' : 'forwarding')
     // APIDUO:primary-endpoint:END
     setTemplateConfirmOpen(false)
     const firstForwardingPath = (normalized.advanced_routes || [])
@@ -647,7 +666,19 @@ export function AdvancedCustomEditorDialog({
       return null
     }
 
-    const error = validateAdvancedCustomConfig(parsed)
+    /* APIDUO:primary-endpoint:BEGIN */
+    const error = validateAdvancedCustomConfig(
+      (primaryEndpoint || '').trim()
+        ? {
+            ...parsed,
+            advanced_routes: withPrimaryFallbackRoutes(
+              parsed.advanced_routes || [],
+              primaryEndpoint || ''
+            ),
+          }
+        : parsed
+    )
+    /* APIDUO:primary-endpoint:END */
     if (error) {
       setJsonError(t(error.message))
       return null
@@ -742,7 +773,9 @@ export function AdvancedCustomEditorDialog({
       contentClassName='flex max-h-[min(90dvh,var(--dialog-available-height))] flex-col gap-0 p-0 sm:max-w-5xl'
       headerClassName='border-b px-6 py-4'
       footerClassName='border-t px-6 py-4'
-      contentHeight='70vh'
+      /* APIDUO:primary-endpoint:BEGIN */
+      contentHeight={DIALOG_CONTENT_HEIGHT}
+      /* APIDUO:primary-endpoint:END */
       footer={
         <>
           <Button
@@ -765,10 +798,10 @@ export function AdvancedCustomEditorDialog({
         className='min-w-0 gap-0'
       >
         <div className='border-b px-4 py-3'>
-          {/* APIDUO:matrix-grid:BEGIN */}
-          <TabsList className='grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-6'>
-            {/* APIDUO:matrix-grid:END */}
-            {/* APIDUO:primary-endpoint:BEGIN */}
+          {/* APIDUO:primary-endpoint:BEGIN */}
+          {/* h-auto! ：基础样式在 Tabs 横向时锁了 h-8（group-data-horizontal 变体，
+              特异性高于普通 h-auto），窄屏两列换行后第三行会被裁掉。 */}
+          <TabsList className='grid h-auto! w-full grid-cols-2 gap-1 sm:grid-cols-5'>
             <TabsTrigger value='primary'>
               <Network className='size-4' aria-hidden='true' />
               <span
@@ -777,7 +810,6 @@ export function AdvancedCustomEditorDialog({
               >
                 {t('Primary endpoint')}
               </span>
-              <Badge variant='outline'>{routeRows.length}</Badge>
             </TabsTrigger>
             {/* APIDUO:primary-endpoint:END */}
             <TabsTrigger value='forwarding'>
@@ -785,17 +817,6 @@ export function AdvancedCustomEditorDialog({
               {t('Forwarding Routes')}
               <Badge variant='outline'>{routeRows.length}</Badge>
             </TabsTrigger>
-            {/* APIDUO:matrix-grid:BEGIN */}
-            <TabsTrigger value='matrix'>
-              <Grid3x3 className='size-4' aria-hidden='true' />
-              <span
-                className='apiduo-text'
-                data-apiduo={apiduoBlockMark('channel:protocol-matrix')}
-              >
-                {t('Matrix')}
-              </span>
-            </TabsTrigger>
-            {/* APIDUO:matrix-grid:END */}
             <TabsTrigger value='models'>
               <ListTree className='size-4' aria-hidden='true' />
               {t('Model List')}
@@ -838,23 +859,6 @@ export function AdvancedCustomEditorDialog({
           />
         </TabsContent>
         {/* APIDUO:primary-endpoint:END */}
-        {/* APIDUO:matrix-grid:BEGIN */}
-        <TabsContent value='matrix' className='p-4'>
-          <MatrixGrid
-            routes={config.advanced_routes}
-            models={channelModels}
-            onChange={(nextRoutes) => {
-              const stamp = Date.now()
-              replaceRoutes(
-                nextRoutes,
-                nextRoutes.map(
-                  (_, index) => `advanced-custom-route-matrix-${index}-${stamp}`
-                )
-              )
-            }}
-          />
-        </TabsContent>
-        {/* APIDUO:matrix-grid:END */}
 
         <TabsContent value='forwarding' className='flex flex-col gap-4 p-4'>
           <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
@@ -865,12 +869,6 @@ export function AdvancedCustomEditorDialog({
               </p>
             </div>
             <div className='flex flex-wrap gap-2'>
-              {/* APIDUO:coverage:BEGIN */}
-              <CoverageSummary
-                routes={config.advanced_routes}
-                models={channelModels}
-              />
-              {/* APIDUO:coverage:END */}
               <Combobox
                 options={availableIncomingPathOptions}
                 value=''

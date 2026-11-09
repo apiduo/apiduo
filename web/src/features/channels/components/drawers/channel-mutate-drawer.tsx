@@ -202,7 +202,11 @@ import {
   readImageProtocol,
   writeImageProtocol,
 } from '../../lib/image-protocol-settings'
-import { readPrimaryEndpoint, writePrimaryEndpoint } from '../../lib/primary-endpoint'
+import {
+  fillPrimaryForStats,
+  readPrimaryEndpoint,
+  writePrimaryEndpoint,
+} from '../../lib/primary-endpoint'
 // APIDUO:primary-endpoint:END
 import {
   collectInvalidStatusCodeEntries,
@@ -736,10 +740,19 @@ export function ChannelMutateDrawer({
     [supportsMultiKeyAddMode]
   )
 
+  /* APIDUO:primary-endpoint:BEGIN */
+  // 声明了主端点时，空 upstream 不算缺配置：统计看补齐后的副本。
   const advancedCustomStats = useMemo(
-    () => getAdvancedCustomStats(currentAdvancedCustom),
-    [currentAdvancedCustom]
+    () =>
+      getAdvancedCustomStats(
+        fillPrimaryForStats(
+          currentAdvancedCustom,
+          readPrimaryEndpoint(formValues.settings)
+        )
+      ),
+    [currentAdvancedCustom, formValues.settings]
   )
+  /* APIDUO:primary-endpoint:END */
   /* APIDUO:advanced-async:BEGIN */
   const advancedAsyncStats = useMemo(
     () => getAdvancedAsyncStats(currentAdvancedAsync),
@@ -4356,6 +4369,32 @@ export function ChannelMutateDrawer({
                           <Badge variant='secondary'>
                             {t('Routes')}: {advancedCustomStats.routeCount}
                           </Badge>
+                          {/* APIDUO:primary-endpoint:BEGIN */}
+                          <Badge
+                            variant={
+                              readPrimaryEndpoint(formValues.settings)
+                                ? 'outline'
+                                : 'secondary'
+                            }
+                            className='max-w-[16rem]'
+                            title={readPrimaryEndpoint(formValues.settings) || ''}
+                          >
+                            <span
+                              className='apiduo-text truncate'
+                              data-apiduo={apiduoBlockMark(
+                                'channel:primary-endpoint'
+                              )}
+                            >
+                              {readPrimaryEndpoint(formValues.settings)
+                                ? t('Primary endpoint: {{path}}', {
+                                    path: readPrimaryEndpoint(
+                                      formValues.settings
+                                    ),
+                                  })
+                                : t('Primary endpoint off')}
+                            </span>
+                          </Badge>
+                          {/* APIDUO:primary-endpoint:END */}
                           {advancedCustomRouteTypeLabels.map((label) => (
                             <Badge
                               key={label}
@@ -5331,16 +5370,19 @@ export function ChannelMutateDrawer({
           // APIDUO:primary-endpoint:BEGIN
           primaryEndpoint={readPrimaryEndpoint(formValues.settings)}
           onPrimaryEndpointChange={(primary) => {
-            form.setValue('settings', writePrimaryEndpoint(formValues.settings, primary), {
-              shouldDirty: true,
-              shouldValidate: true,
-            })
+            // 用 form 当前值而不是本轮渲染的 formValues：同一个事件里连着改两处
+            // settings 时，闭包里的 formValues 还没更新，后写会覆盖前写。
+            form.setValue(
+              'settings',
+              writePrimaryEndpoint(form.getValues('settings'), primary),
+              { shouldDirty: true, shouldValidate: true }
+            )
           }}
           imageProtocol={readImageProtocol(formValues.settings)}
           onImageProtocolChange={(next) => {
             form.setValue(
               'settings',
-              writeImageProtocol(formValues.settings, next),
+              writeImageProtocol(form.getValues('settings'), next),
               { shouldDirty: true, shouldValidate: true }
             )
           }}

@@ -53,12 +53,14 @@ func (c *ImageProtocolConfig) Validate() error {
 		"primary_path": c.PrimaryPath,
 		"edit_path":    c.EditPath,
 	} {
-		trimmed := strings.TrimSpace(value)
+		trimmed := NormalizePrimaryEndpoint(value)
 		if trimmed == "" {
 			continue
 		}
-		if !strings.HasPrefix(trimmed, "/") || strings.Contains(trimmed, "?") {
-			return fmt.Errorf("image_protocol.%s must be a path starting with /, without query", name)
+		// 与 primary_endpoint 同一套形状规则：保存期就拦住「//host」这种
+		// 协议相对地址，别让它到请求时才在 URL 构建处炸掉。
+		if err := ValidateAbsolutePath(trimmed); err != nil {
+			return fmt.Errorf("image_protocol.%s %s: %q", name, err, value)
 		}
 	}
 	return nil

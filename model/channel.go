@@ -1091,6 +1091,11 @@ func (channel *Channel) ValidateSettings() error {
 	if err := channelOtherSettings.ValidatePrimaryEndpoint(); err != nil {
 		return err
 	}
+	// 图片协议过去只在请求时校验：upstream 填错能存进去，然后每次出图都 400。
+	// 配置错误应该在保存时就暴露，而不是让客户端反复撞同一个坏请求。
+	if err := channelOtherSettings.ImageProtocol.Validate(); err != nil {
+		return err
+	}
 	// APIDUO:primary-endpoint:END
 	// APIDUO:advanced-async:BEGIN
 	if err := channelOtherSettings.AdvancedAsync.Validate(); err != nil {

@@ -332,3 +332,92 @@ export function previewRoutePlan(
     warnings,
   }
 }
+
+/**
+ * 校验前补齐：把空 upstream_path 填成主端点，和后端 `WithPrimaryFallback` 一个语义。
+ *
+ * 校验器（`validateAdvancedCustomConfig`）只认「每条路由都有上游」。声明了主端点
+ * 之后，空值不再是缺配置而是「跟随主端点」，所以校验必须看补齐后的副本，
+ * 否则开着开关的合法配置会被判成 Incomplete。返回新数组，不改原对象。
+ */
+export function withPrimaryFallbackRoutes(
+  routes: readonly AdvancedCustomRoute[],
+  primary: string
+): AdvancedCustomRoute[] {
+  const center = primary.trim()
+  if (!center) return [...routes]
+  return routes.map((route) =>
+    (route.upstream_path || '').trim() ? route : { ...route, upstream_path: center }
+  )
+}
+
+/**
+ * 统计口径的 JSON 版本：把 `advanced_custom` 字符串里空的 upstream_path 填成主端点。
+ *
+ * 抽屉上的路由徽标与「Incomplete」都用 `getAdvancedCustomStats`，它只看字符串。
+ * 开关打开后空 upstream 是合法的，所以先把副本补齐再统计，否则页面一直显示不完整。
+ */
+export function fillPrimaryForStats(
+  configJson: string | undefined,
+  primary: string
+): string | undefined {
+  const center = primary.trim()
+  const raw = (configJson || '').trim()
+  if (!center || !raw) return configJson
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return configJson
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return configJson
+  }
+  const config = parsed as { advanced_routes?: unknown }
+  if (!Array.isArray(config.advanced_routes)) return configJson
+  let changed = false
+  const routes = config.advanced_routes.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item
+    const route = item as Record<string, unknown>
+    const upstream = typeof route.upstream_path === 'string' ? route.upstream_path.trim() : ''
+    if (upstream) return item
+    changed = true
+    return { ...route, upstream_path: center }
+  })
+  if (!changed) return configJson
+  return JSON.stringify({ ...config, advanced_routes: routes })
+}
+
+/** 主端点看着像图片端点（路径里含 /images/）。协议回退、页面文案都用这一条判据。 */
+export function looksLikeImagePath(path: string): boolean {
+  return /\/images(\/|$)/.test(path.trim())
+}
+
+/**
+ * 打开主端点开关时的路由表兜底：一张业务路由都没有时，先种一条跟随主端点的派生。
+ *
+ * 高级自定义渠道至少需要一条路由才合法，否则打开开关后保存会被
+ * 「requires at least one route」拦住，而错误指向的路由列表在页面上是空的。
+ * 入站入口按主端点猜：看着像图片端点就种 generations，否则种 chat。
+ */
+export function seedPrimaryRoute(
+  routes: readonly AdvancedCustomRoute[],
+  primary: string
+): AdvancedCustomRoute[] {
+  const hasBusinessRoute = routes.some(
+    (route) => !isAdvancedCustomManagementPath(incomingPathOf(route))
+  )
+  if (hasBusinessRoute) return [...routes]
+  // 保留已有的管理面路由（模型列表 / 余额查询），只补业务入口：
+  // 换主端点不该顺手把运维配好的管理面删掉。
+  return [
+    ...routes,
+    {
+      incoming_path: looksLikeImagePath(primary)
+        ? '/v1/images/generations'
+        : '/v1/chat/completions',
+      upstream_path: '',
+      converter: 'none',
+    },
+  ]
+}

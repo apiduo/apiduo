@@ -6,11 +6,15 @@ import {
   addDerivation,
   applyPrimaryEndpoint,
   buildDerivations,
+  fillPrimaryForStats,
+  looksLikeImagePath,
+  seedPrimaryRoute,
   patchDerivation,
   previewRoutePlan,
   readPrimaryEndpoint,
   removeDerivation,
   resolvePrimaryEndpoint,
+  withPrimaryFallbackRoutes,
   writePrimaryEndpoint,
 } from '../primary-endpoint'
 
@@ -246,5 +250,101 @@ describe('previewRoutePlan', () => {
     expect(plan.matched).toBe(false)
     expect(plan.warnings).toEqual(['no-route'])
     expect(plan.carrier).toBe('multipart')
+  })
+})
+
+describe('withPrimaryFallbackRoutes', () => {
+  it('把空 upstream 填成主端点，显式值不动', () => {
+    const next = withPrimaryFallbackRoutes(
+      [
+        { incoming_path: '/v1/images/generations', upstream_path: '' },
+        { incoming_path: '/v1/chat/completions', upstream_path: '/custom/chat' },
+      ],
+      ' /v1/images/generations '
+    )
+    expect(next[0].upstream_path).toBe('/v1/images/generations')
+    expect(next[1].upstream_path).toBe('/custom/chat')
+  })
+
+  it('没声明主端点时原样返回（开关关着就是 new-api 行为）', () => {
+    const input = [{ incoming_path: '/v1/chat/completions', upstream_path: '' }]
+    expect(withPrimaryFallbackRoutes(input, '')).toEqual(input)
+    expect(withPrimaryFallbackRoutes(input, '   ')).toEqual(input)
+  })
+
+  it('返回新数组，不改原对象', () => {
+    const input = [{ incoming_path: '/v1/chat/completions', upstream_path: '' }]
+    const next = withPrimaryFallbackRoutes(input, '/v1/chat/completions')
+    expect(input[0].upstream_path).toBe('')
+    expect(next).not.toBe(input)
+  })
+})
+
+describe('fillPrimaryForStats', () => {
+  it('JSON 里的空 upstream 也补齐（抽屉统计用）', () => {
+    const filled = fillPrimaryForStats(
+      JSON.stringify({
+        advanced_routes: [
+          { incoming_path: '/v1/images/edits', upstream_path: '' },
+          { incoming_path: '/v1/chat/completions', upstream_path: '/x' },
+        ],
+      }),
+      '/v1/images/generations'
+    )
+    const parsed = JSON.parse(filled as string)
+    expect(parsed.advanced_routes[0].upstream_path).toBe('/v1/images/generations')
+    expect(parsed.advanced_routes[1].upstream_path).toBe('/x')
+  })
+
+  it('没有主端点或坏 JSON 时原样返回', () => {
+    expect(fillPrimaryForStats('{}', '')).toBe('{}')
+    expect(fillPrimaryForStats('not json', '/v1/x')).toBe('not json')
+  })
+})
+
+describe('seedPrimaryRoute', () => {
+  it('空路由表种一条跟随主端点的图片入口', () => {
+    const seeded = seedPrimaryRoute([], '/v1/images/generations')
+    expect(seeded).toEqual([
+      {
+        incoming_path: '/v1/images/generations',
+        upstream_path: '',
+        converter: 'none',
+      },
+    ])
+  })
+
+  it('主端点不是图片端点时种对话入口', () => {
+    const seeded = seedPrimaryRoute([], '/v1/chat/completions')
+    expect(seeded[0].incoming_path).toBe('/v1/chat/completions')
+  })
+
+  it('已有业务路由时原样返回', () => {
+    const input = [
+      { incoming_path: '/v1/chat/completions', upstream_path: '/x' },
+    ]
+    expect(seedPrimaryRoute(input, '/v1/images/generations')).toEqual(input)
+    expect(seedPrimaryRoute(input, '/v1/images/generations')).not.toBe(input)
+  })
+
+  it('只有管理面路由时仍补一条业务路由', () => {
+    const seeded = seedPrimaryRoute(
+      [{ incoming_path: '/v1/models', upstream_path: '/m' }],
+      '/v1/images/generations'
+    )
+    expect(seeded.map((row) => row.incoming_path)).toEqual([
+      '/v1/models',
+      '/v1/images/generations',
+    ])
+  })
+})
+
+describe('looksLikeImagePath', () => {
+  it('识别图片端点', () => {
+    expect(looksLikeImagePath('/v1/images/generations')).toBe(true)
+    expect(looksLikeImagePath('/openai/v1/images/edits')).toBe(true)
+    expect(looksLikeImagePath(' /v1/images ')).toBe(true)
+    expect(looksLikeImagePath('/v1/chat/completions')).toBe(false)
+    expect(looksLikeImagePath('/v1/imagesx/generations')).toBe(false)
   })
 })

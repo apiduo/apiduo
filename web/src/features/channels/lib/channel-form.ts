@@ -49,6 +49,12 @@ import {
 } from './advanced-async'
 /* APIDUO:advanced-async:END */
 import { readTaskExtendPluginKeys } from './channel-plugin-extensions'
+/* APIDUO:primary-endpoint:BEGIN */
+import {
+  readPrimaryEndpoint,
+  withPrimaryFallbackRoutes,
+} from './primary-endpoint'
+/* APIDUO:primary-endpoint:END */
 import { supportsResponsesWebSocket } from './responses-websocket'
 
 // ============================================================================
@@ -344,8 +350,33 @@ export const channelFormSchema = z
       const advancedCustomConfig = parseAdvancedCustomConfig(
         data.advanced_custom
       )
-      const advancedCustomError =
-        validateAdvancedCustomConfig(advancedCustomConfig)
+      /* APIDUO:primary-endpoint:BEGIN */
+      const primaryForValidation = readPrimaryEndpoint(data.settings)
+      // 主端点形状不合法时先报它。否则补齐会把非法值灌进每条空路由，校验返回的是
+      // 「上游路径必须是完整 URL 或以 / 开头」——用户看的是路由，错在另一个字段。
+      const primaryMalformed =
+        primaryForValidation !== '' && !primaryForValidation.startsWith('/')
+      if (primaryMalformed) {
+        addRequiredIssue(
+          ctx,
+          'settings',
+          'Primary endpoint must be a path starting with /'
+        )
+      }
+      // 声明了主端点时，空 upstream 是「跟随主端点」而不是缺配置：校验看补齐后的副本。
+      const validationCopy = advancedCustomConfig
+        ? {
+            ...advancedCustomConfig,
+            advanced_routes: withPrimaryFallbackRoutes(
+              advancedCustomConfig.advanced_routes || [],
+              primaryForValidation
+            ),
+          }
+        : advancedCustomConfig
+      const advancedCustomError = primaryMalformed
+        ? null
+        : validateAdvancedCustomConfig(validationCopy)
+      /* APIDUO:primary-endpoint:END */
       if (advancedCustomError) {
         addRequiredIssue(ctx, 'advanced_custom', advancedCustomError.message)
       }

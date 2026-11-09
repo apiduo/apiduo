@@ -253,17 +253,20 @@ func (a *Adaptor) doImageProtocolRequest(
 }
 
 // imageProtocolURL 返回脚本选定的端点；没接管时第二个返回值为 false。
-func (a *Adaptor) imageProtocolURL(info *relaycommon.RelayInfo) (string, bool) {
+//
+// 接管了但地址构建不出来时返回 error，而不是退回路由表的地址：那会让「配置写错了」
+// 表现成「请求成功但发去了另一个端点」，比直接失败更难查。
+func (a *Adaptor) imageProtocolURL(info *relaycommon.RelayInfo) (string, bool, error) {
 	if a.imageUpstreamPath == "" {
-		return "", false
+		return "", false, nil
 	}
 	route := a.route
 	route.UpstreamPath = a.imageUpstreamPath
 	target, err := buildRouteURL(route, a.converter, info)
 	if err != nil {
-		return "", false
+		return "", true, err
 	}
-	return target, true
+	return target, true, nil
 }
 
 // doImageProtocolResponse 是 DoResponse 挂接块的全部实现。
