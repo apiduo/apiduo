@@ -36,7 +36,17 @@ const closeDialog = async () => {
 
 try {
   await page.goto(BASE + '/sign-in', { waitUntil: 'networkidle2', timeout: 60000 });
-  await page.waitForSelector('input', { timeout: 30000 });
+  try {
+    await page.waitForSelector('input', { timeout: 30000 });
+  } catch (err) {
+    // 登录页没有输入框时，先把现场留下来：是白屏、向导页、还是 503 提示，
+    // 光看一句超时分不出来。
+    await page.screenshot({ path: '/tmp/apiduo-ui-signin-fail.png', fullPage: true }).catch(() => {});
+    const text = await page.evaluate(() => document.body.innerText).catch(() => '');
+    console.log('  DIAG url=' + page.url());
+    console.log('  DIAG body=' + text.slice(0, 400).replace(/\s+/g, ' '));
+    throw err;
+  }
   const inputs = await page.$$('input');
   const passwordIdx = await page.$$eval('input', (els) => els.findIndex((e) => e.type === 'password'));
   const userIdx = await page.$$eval('input', (els) => els.findIndex((e) => e.type !== 'password' && e.type !== 'hidden'));

@@ -106,12 +106,27 @@ def ensure_channel(jwt):
     time.sleep(2)
 
 
+def find_token(jwt):
+    """按名字找令牌，要翻页：一页 100 条，套件自己建的令牌会落到后面。"""
+    for page in range(10):
+        listing = call("GET", f"/api/token/?p={page}&page_size=100", None, jwt).get("data") or {}
+        items = listing.get("items") or []
+        tok = next((t for t in items if t.get("name") == TOKEN), None)
+        if tok:
+            return tok
+        if len(items) < 100:
+            break
+    return None
+
+
 def ensure_token(jwt):
-    call("POST", "/api/token/", {"name": TOKEN, "remain_quota": 0, "unlimited_quota": True,
-                                 "expired_time": -1, "group": "default"}, jwt)
-    listing = call("GET", "/api/token/?p=0&page_size=20", None, jwt).get("data") or {}
-    items = listing.get("items") or []
-    tok = next((t for t in items if t.get("name") == TOKEN), None)
+    # 复用同名令牌：开发环境会反复起同一个数据目录，每次都建一条只会堆垃圾。
+    # 新建流程保持原样，一次性实例（run_all）行为不变。
+    tok = find_token(jwt)
+    if not tok:
+        call("POST", "/api/token/", {"name": TOKEN, "remain_quota": 0, "unlimited_quota": True,
+                                     "expired_time": -1, "group": "default"}, jwt)
+        tok = find_token(jwt)
     if not tok:
         raise SystemExit("relay token was not created")
     res = call("POST", f"/api/token/{tok['id']}/key", {}, jwt)

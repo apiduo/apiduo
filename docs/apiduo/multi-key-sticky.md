@@ -145,6 +145,12 @@
 
 反过来说，**关掉 batch 是会重排的**：候选集变大，某个原本排第二的 key 可能翻盘。这是数学事实，不是实现缺陷，文档里写清楚比事后解释便宜。
 
+上限可以随时改，包括从 N 改回 0。`PUT /api/channel/` 收的是 `*int`，而 `ChannelInfo`
+实现了 `driver.Valuer`（整体写 JSON 列），所以 0 不会被 GORM「struct Updates 跳过零值」
+吃掉。这条有 e2e 固定：上限 2 的 polling 渠道改成 0 后，紧接着的 10 次请求覆盖了全部
+5 把可用 key（`e2e/live/suites/multi_key_sticky.py` 第 6b 段）。同一段还验了上限对轮询
+生效、窗口外的 key 从不参与、摘掉活跃 key 后窗口只右移一格。
+
 ## 怎么开
 
 渠道 key 字段一行一个（多 key 渠道），策略选 **Token Sticky**：

@@ -131,20 +131,36 @@ def last_body(model=MODEL):
     return None, ""
 
 
-def last_admin_info(model=MODEL):
-    st, res = call("GET", "/api/log/?p=0&page_size=20&type=2", None, JWT)
+def model_log_rows(model=MODEL, page_size=100):
+    st, res = call("GET", f"/api/log/?p=0&page_size={page_size}&type=2", None, JWT)
     rows = (res.get("data") or {}).get("items") or []
-    for row in rows:
-        if row.get("model_name") != model:
-            continue
-        other = row.get("other")
-        if isinstance(other, str):
-            try:
-                other = json.loads(other)
-            except Exception:
-                other = {}
-        return (other or {}).get("admin_info") or {}
-    return None
+    return [row for row in rows if row.get("model_name") == model]
+
+
+def admin_info_of(row):
+    other = row.get("other")
+    if isinstance(other, str):
+        try:
+            other = json.loads(other)
+        except Exception:
+            other = {}
+    return (other or {}).get("admin_info") or {}
+
+
+def wait_admin_info(before, model=MODEL, tries=25, delay=0.2):
+    """等本模型多出一条日志，再取最新那条的 admin_info。
+
+    日志是异步批量落库的（writer 2s 一轮，空载也要 100-300ms），请求返回时这一行
+    常常还不在表里。直接读第一页会拿到上一条，四条日志断言于是整体错位一格 ——
+    单跑可能侥幸通过，全量跑（前面十几套压着日志写入）几乎必现。
+    """
+    rows = model_log_rows(model)
+    for _ in range(tries):
+        if len(rows) > before:
+            return admin_info_of(rows[0])
+        time.sleep(delay)
+        rows = model_log_rows(model)
+    return admin_info_of(rows[0]) if rows else {}
 
 
 def main():
@@ -187,6 +203,7 @@ def main():
     # ---------- 1. 规则命中：模板只补空缺，operations 才能改渠道值 ----------
     body, raw = last_body()
     before = len(open(BODIES, encoding="utf-8").read().splitlines()) if os.path.exists(BODIES) else 0
+    logs_before = len(model_log_rows())
     st, res = relay("override hit", session="sess-ovr-1")
     body, raw = last_body()
     check("命中规则的请求 200", st == 200, f"HTTP {st} {str(res)[:100]}")
@@ -197,7 +214,7 @@ def main():
     check("模板 operations 在渠道静态值之后执行（temperature=0.77）",
           body.get("temperature") == 0.77, str(body.get("temperature")))
 
-    info = last_admin_info() or {}
+    info = wait_admin_info(logs_before)
     aff = info.get("channel_affinity") or {}
     tpl = aff.get("override_template") or {}
     check("日志标记模板已应用", tpl.get("applied") is True, str(tpl))
@@ -205,6 +222,7 @@ def main():
     check("日志记下模板键数（3）", tpl.get("param_override_keys") == 3, str(tpl.get("param_override_keys")))
 
     # ---------- 2. 规则未命中：模板完全不参与，渠道覆盖照常 ----------
+    logs_before = len(model_log_rows())
     st, res = relay("override miss")
     body, raw = last_body()
     check("未命中的请求也 200", st == 200, f"HTTP {st} {str(res)[:100]}")
@@ -214,7 +232,7 @@ def main():
           body.get("temperature") == 0.11, str(body.get("temperature")))
     check("未命中时 top_p 仍是渠道值", body.get("top_p") == 0.22, str(body.get("top_p")))
 
-    info = last_admin_info() or {}
+    info = wait_admin_info(logs_before)
     aff = info.get("channel_affinity") or {}
     check("未命中时日志没有 override_template", "override_template" not in aff, str(aff)[:140])
 

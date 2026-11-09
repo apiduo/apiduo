@@ -11,6 +11,8 @@
 - min_active_keys 上限：超出上限的 key 是备用，永远不参与选择；
   活跃 key 被摘掉后备用 key 自动补位
 - polling 模式对照：连续请求真的在轮换
+- polling × min_active_keys 交叉：上限对轮询同样生效，备用 key 只在窗口滑动时顶上，
+  且上限经 API 热更新后立刻改变窗口宽度
 - 失败换 key：同一请求被重试时不能再用刚失败的那把（tried 集合）
 - 坏 key 自动禁用：只摘掉坏的那把，渠道本身继续服务
 """
@@ -315,6 +317,69 @@ def main():
     seen = used(mark, m3)
     check("polling 模式下 6 次覆盖 3 把 key", len(set(seen)) == 3, f"keys={seen}")
     check("polling 是轮转而不是随机重复", len(set(seen[:3])) == 3, f"first3={seen[:3]}")
+
+    # ---------- 6b. polling × mini batch（交叉格）：上限必须对轮询生效 ----------
+    # 单测用 TestActiveCapAppliesToPolling 钉住选择器本身（6 key / 上限 2 只出 2 把）。
+    # 这一格走完整链路——表单 → API → DB → 渠道缓存——验的是模式与上限在缓存里
+    # 仍是同一份数据，而不是选择器拿了别人的窗口。
+    m6 = "mk-pollcap"
+    six = ["sk-e2e-mk-p%d" % i for i in range(6)]
+    six_tails = [key[len("sk-e2e-"):] for key in six]
+    ch6 = create_multikey("e2e-mk-pollcap", m6, six, mode="polling", cap=2)
+    info6 = (ch6 or {}).get("channel_info") or {}
+    check("polling 渠道的模式已落库", info6.get("multi_key_mode") == "polling",
+          str(info6.get("multi_key_mode")))
+    check("polling 渠道的活跃上限已落库", info6.get("min_active_keys") == 2,
+          str(info6.get("min_active_keys")))
+
+    t6 = make_token("e2e-mk-pollcap-t")
+    mark = len(log_lines(m6))
+    relay(m6, t6, 12)
+    seen = used(mark, m6)
+    check("polling+上限2：12 次请求全部到达上游", len(seen) == 12, "lines=%d" % len(seen))
+    check("polling+上限2：只用了窗口内两把 key", set(seen) == set(six_tails[:2]),
+          "keys=%s" % sorted(set(seen)))
+    check("polling+上限2：窗口外四把从未参与", not (set(seen) & set(six_tails[2:])),
+          "keys=%s" % sorted(set(seen)))
+    pair = seen[:2]
+    check("polling+上限2：严格两把交替轮转",
+          len(pair) == 2 and pair[0] != pair[1] and seen == [pair[i % 2] for i in range(len(seen))],
+          "seen=%s" % seen)
+
+    # 摘掉窗口内一把 → 窗口右移，备用 key 顶上，仍然只有两把在转。
+    # 期望窗口按「剩余可用 key 的前两个」算，不假设轮询从 index 0 起步。
+    first_index = six_tails.index(pair[0])
+    remaining = [i for i in range(6) if i != first_index]
+    expected_window = {six_tails[i] for i in remaining[:2]}
+    st, res = call("POST", "/api/channel/multi_key/manage",
+                   {"channel_id": ch6["id"], "action": "disable_key", "key_index": first_index}, JWT)
+    check("摘掉窗口内的活跃 key 成功", st == 200 and res.get("success"),
+          "HTTP %d %s" % (st, str(res)[:100]))
+    time.sleep(1)
+    mark = len(log_lines(m6))
+    relay(m6, t6, 8)
+    slid = used(mark, m6)
+    # 宽度是 2：掉一把就由剩余列表的下一把顶上，窗口整体右移一格。
+    # 断言「恰好等于剩余前两把」同时覆盖补位和不越界，别再单独数下标。
+    check("备用 key 补进窗口（窗口滑到剩余前两把）", set(slid) == expected_window,
+          "keys=%s want=%s" % (sorted(set(slid)), sorted(expected_window)))
+    check("被摘掉的 key 不再参与轮询", six_tails[first_index] not in slid, six_tails[first_index])
+
+    # 上限热更新 2 → 0：必须立刻回到「全部可用 key 参与」。
+    # 0 在 GORM 的 struct Updates 里是零值，写侧最容易在这里静默丢更新，
+    # 所以这条只能走 HTTP 才测得出来：写库存新值，选择器读缓存。
+    st, res = call("PUT", "/api/channel/", {"id": ch6["id"], "min_active_keys": 0}, JWT)
+    check("上限改成 0 被接受", st == 200 and res.get("success"),
+          "HTTP %d %s" % (st, str(res)[:120]))
+    time.sleep(2)
+    info6 = (get_channel("e2e-mk-pollcap") or {}).get("channel_info") or {}
+    check("上限 0 已落库（0 是有效值，不等于「没改」）", info6.get("min_active_keys") in (0, None),
+          str(info6.get("min_active_keys")))
+    mark = len(log_lines(m6))
+    relay(m6, t6, 10)
+    wide = used(mark, m6)
+    check("上限解除后轮询扩散到全部 5 把可用 key", len(set(wide)) == 5,
+          "keys=%s" % sorted(set(wide)))
 
     # ---------- 7. 重试不能再用刚失败的那把（tried 集合） ----------
     m4 = "mk-retry"

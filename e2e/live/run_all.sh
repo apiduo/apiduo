@@ -32,21 +32,19 @@ export E2E_PROJECT_ID="e2e-project"
 export E2E_CONSOLE="http://127.0.0.1:$SINK"
 
 pids=()
+PORTS=("$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF")
+
 cleanup() {
+  # 一、直接子进程。二、按端口兜底：管道被中断（SIGPIPE）或脚本被顶掉时，
+  # 网关/fakes 会成为孤儿，只剩端口这一条线索。
+  # 一律 -9：这些是常驻进程，SIGTERM 不保证生效，残留会占着端口让下一轮
+  # 三个网关全部 "bind: address already in use"，表现成「整套 e2e 连不上」。
   for pid in "${pids[@]:-}"; do
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+    [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null || true
   done
-  # 兜底：管道被中断（SIGPIPE）时子进程会漏掉，按端口再收一次。
-  # 这些端口在启动前已确认空闲，所以监听者一定是本轮起的。
-  for port in "$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF"; do
+  for port in "${PORTS[@]}"; do
     orphans=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
-    [ -n "$orphans" ] && kill $orphans 2>/dev/null || true
-  done
-  # 兜底：管道被中断（SIGPIPE）时子进程会漏掉，按端口再收一次。
-  # 这些端口在启动前已确认空闲，所以监听者一定是本轮起的。
-  for port in "$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF"; do
-    orphans=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
-    [ -n "$orphans" ] && kill $orphans 2>/dev/null || true
+    [ -n "$orphans" ] && kill -9 $orphans 2>/dev/null || true
   done
   if [ "${KEEP:-0}" = "1" ]; then
     echo "已保留运行目录：$run"
@@ -56,42 +54,54 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# 上一轮被中断时留下的实例：端口被占，但占的是我们自己的二进制（路径里带
+# apiduo-e2e 或 image_mock.py）。先回收再检查，否则一次 Ctrl-C 就让后面几轮全红。
+reclaim_stale() {
+  local port=$1 pids pid cmd
+  pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+  [ -z "$pids" ] && return 0
+  for pid in $pids; do
+    cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+    case "$cmd" in
+      *apiduo-e2e*|*image_mock.py*)
+        kill -9 "$pid" 2>/dev/null || true
+        echo "  回收上一轮残留：port=$port pid=$pid"
+        ;;
+    esac
+  done
+  sleep 1
+}
+
 need_port() {
   if lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; then
     echo "端口 $1 已被占用（$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t | head -1)）：换一个，或先停掉旧实例" >&2
     exit 1
   fi
 }
-for p in "$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF"; do need_port "$p"; done
+for p in "${PORTS[@]}"; do reclaim_stale "$p"; done
+for p in "${PORTS[@]}"; do need_port "$p"; done
 
 echo "== 构建 =="
+# 重建前端前一律先清空 dist：rsbuild 收尾时用 fs.cp 覆盖 public/ 里的同名文件，
+# 旧产物还在就会撞沙箱 safe-delete 的批量删除闸门（累计 64 个即失败），
+# 报错却写成 "Failed to copy public directory"，很容易误判成权限问题。
+# 清空后是纯新建，不删任何东西。find 是原生命令，不过 node 的 shim。
+rebuild_web() {
+  find "$repo/web/dist" -mindepth 1 -delete 2>/dev/null || true
+  (cd "$repo/web" && bun run build)
+}
+
 if [ ! -f "$repo/web/dist/index.html" ]; then
   echo "  web/dist 缺失或损坏，先构建前端（约 60s）"
-  (cd "$repo/web" && bun run build)
+  rebuild_web
 fi
 build_gateway() {
-  build_gateway() {
   (cd "$repo" && go build -o "$run/apiduo" .) && return 0
   # 并行开发时别的进程可能在重写 web/dist，embed 会拿到半成品。
   # 这不是代码问题，重建前端再试一次即可。
   echo "  go build 失败（多半是 web/dist 正被重写），重建前端后重试" >&2
-  (cd "$repo/web" && bun run build)
+  rebuild_web
   (cd "$repo" && go build -o "$run/apiduo" .)
-}
-build_gateway && return 0
-  # 并行开发时别的进程可能在重写 web/dist，embed 会拿到半成品。
-  # 这不是代码问题，重建前端再试一次即可。
-  echo "  go build 失败（多半是 web/dist 正被重写），重建前端后重试" >&2
-  (cd "$repo/web" && bun run build)
-  build_gateway() {
-  (cd "$repo" && go build -o "$run/apiduo" .) && return 0
-  # 并行开发时别的进程可能在重写 web/dist，embed 会拿到半成品。
-  # 这不是代码问题，重建前端再试一次即可。
-  echo "  go build 失败（多半是 web/dist 正被重写），重建前端后重试" >&2
-  (cd "$repo/web" && bun run build)
-  (cd "$repo" && go build -o "$run/apiduo" .)
-}
-build_gateway
 }
 build_gateway
 (cd "$here/fakes" && go build -o "$run/fakes" .)
@@ -173,6 +183,7 @@ suite trace "trace 端到端" "http://127.0.0.1:$GW_TRACE" trace.py
 suite off "关闭态等价" "http://127.0.0.1:$GW_OFF" off.py
 suite privacy "普通用户隐私" "http://127.0.0.1:$GW_TRACE" privacy.py
 suite image "图片协议 + 主端点" "http://127.0.0.1:$GW_IMAGE" image_primary.py
+suite adversarial "主端点对抗（坏配置/静默改道）" "http://127.0.0.1:$GW_IMAGE" primary_adversarial.py
 # 顺序有意义：discount 会关掉自用模式并只给 disc-model 配价，
 # 之后再跑 select 就会撞「price not configured」。select 必须排在它前面。
 suite select "渠道选择/权重/降级" "http://127.0.0.1:$GW_IMAGE" channel_select.py
@@ -192,6 +203,19 @@ if E2E_BASE="http://127.0.0.1:$GW_TRACE" node "$here/ui/trace_link.mjs"; then
 else
   failed=$((failed + 1))
   failed_names+=("ui/trace_link")
+fi
+
+# 主端点/图片协议的整条交互链。跑在 image 实例上，渠道由套件自己建、自己删。
+mkdir -p "$run/ui-artifacts"
+echo "== 浏览器：主端点 / 图片协议 =="
+if E2E_BASE="http://127.0.0.1:$GW_IMAGE" \
+   E2E_ADMIN=admin E2E_ADMIN_PW='apiduo-test-2026' \
+   E2E_ARTIFACT_DIR="$run/ui-artifacts" \
+   node "$here/ui/primary_endpoint.mjs"; then
+  passed=$((passed + 1))
+else
+  failed=$((failed + 1))
+  failed_names+=("ui/primary_endpoint")
 fi
 fi
 

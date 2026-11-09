@@ -22,8 +22,6 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
 | 网关 · trace 开启 | 39410 | `GW_TRACE` |
 | 假上游 #2（多渠道选路用） | 39404 | `UP2` |
 | 假 sink #2（占位） | 39405 | `SINK2` |
-| 假上游 #2（多渠道选路用） | 39404 | `UP2` |
-| 假 sink #2（占位） | 39405 | `SINK2` |
 | 网关 · 图片/主端点 | 39420 | `GW_IMAGE` |
 | 网关 · trace 关闭 | 39440 | `GW_OFF` |
 
@@ -112,6 +110,55 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
   新令牌会落到第二页；`find_token()` 逐页找，别只看第一页。
 - **参数覆盖模板的合并语义**：模板只补渠道没设过的键；要覆盖渠道已有的键，必须写成
   `operations`（渠道静态值先应用，模板 operations 后应用）。
+
+## 常驻开发实例（`bin/dev-e2e.sh`）
+
+`run_all.sh` 是**一次性回归**：三个实例、临时库、跑完即焚。要「起一个能点的实例，
+顺手跑几套」，用 `bin/dev-e2e.sh`：
+
+```bash
+bin/dev-e2e.sh                      # 起服务并前台守着，Ctrl-C 退出并清理
+bin/dev-e2e.sh --all                # 起服务 + 跑全部单实例套件（10 套）
+bin/dev-e2e.sh --suites multikey    # 只跑指定套件，逗号分隔
+bin/dev-e2e.sh --all --keep         # 跑完不清理，留实例手点
+```
+
+数据落在 `DATA`（默认 `/tmp/apiduo-dev-e2e`）：SQLite、二进制、假上游抓到的报文、
+各进程日志。**重启不丢账号和渠道**——bootstrap 是幂等的（同名渠道删了重建、令牌复用）。
+默认入口 `http://127.0.0.1:39300`，`root / E2ePassw0rd!2026`。
+
+| | `run_all.sh` | `bin/dev-e2e.sh` |
+|---|---|---|
+| 实例数 | 3（trace / image / off） | 1 |
+| 数据库 | 临时，跑完删 | 持久 |
+| 覆盖 | 13 套（含 `off` / `image`） | 10 套 |
+
+只有 `run_all.sh` 能跑的两套：`off.py`（要求特性全关的专用实例）、
+`image_primary.py`（要求带图片渠道 settings 的实例）。
+
+持久数据目录会带来两个只有它才有的假红，脚本已处理：跑 `trace` 前清空 sink 目录
+（否则旧 span 混进交叉核对，报「日志行指向错的 trace」）；`E2E_HOST_HINT` /
+`E2E_SECRET_KEY` 必须跟着端口和密钥覆盖（套件里的默认值写死成 39402 / `sk-lf-e2e`）。
+
+### 不在 CI 里的手动验证
+
+`e2e/live/manual/auto_enable_tick.py` —— 验「自动禁用 → 自动启用」的两条路径
+（手动批量测试 + 定时任务）。定时那条要等 scheduler 15s 一轮 **加上** Interval
+（默认 1 分钟），实测 140s 才收敛；而且它依赖一个活着的假上游，假上游掉了会先把
+所有渠道判死，后面每步都假红。所以只手动跑：
+
+```bash
+E2E_BASE=http://127.0.0.1:39300 python3 e2e/live/manual/auto_enable_tick.py
+```
+
+判据别看日志，看 `system_tasks.result`：
+
+```json
+{"tested":2,"succeeded":2,"failed":0,"disabled":0,"enabled":1}
+```
+
+`enabled` 就是 `ShouldEnableChannel` 真的返回 true 的次数。手动那条 1 秒收敛，
+定时那条 140 秒。
 
 ## 只跑单个套件
 
