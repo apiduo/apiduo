@@ -93,6 +93,9 @@
     "follows the environment": "suit l'environnement",
     "Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.": "URL de base uniquement — les spans sont envoyés à {host}/api/public/otel/v1/traces. Un nom de conteneur interne convient et est souvent plus rapide.",
     "same as the export endpoint": "identique à l'endpoint d'export",
-    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "Ce que le bouton « Langfuse » du tiroir de logs ouvre. Nécessaire seulement si l'endpoint d'export est joignable depuis la passerelle mais pas depuis un navigateur."
+    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "Ce que le bouton « Langfuse » du tiroir de logs ouvre. Nécessaire seulement si l'endpoint d'export est joignable depuis la passerelle mais pas depuis un navigateur.",
+    "Image {{index}}": "Image {{index}}",
+    "Preview unavailable": "Aperçu indisponible",
+    "{{count}} image(s) · click to enlarge": "{{count}} image(s) · cliquez pour agrandir"
   }
 }

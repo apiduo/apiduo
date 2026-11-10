@@ -92,6 +92,9 @@
     "follows the environment": "theo môi trường",
     "Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.": "Chỉ nhập địa chỉ gốc — span được POST tới {host}/api/public/otel/v1/traces. Tên container nội bộ cũng được và thường nhanh hơn.",
     "same as the export endpoint": "giống địa chỉ xuất",
-    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "Địa chỉ mà nút \"Langfuse\" trong ngăn kéo nhật ký mở ra. Chỉ cần khi địa chỉ xuất truy cập được từ gateway nhưng không từ trình duyệt."
+    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "Địa chỉ mà nút \"Langfuse\" trong ngăn kéo nhật ký mở ra. Chỉ cần khi địa chỉ xuất truy cập được từ gateway nhưng không từ trình duyệt.",
+    "Image {{index}}": "Ảnh {{index}}",
+    "Preview unavailable": "Không xem trước được",
+    "{{count}} image(s) · click to enlarge": "{{count}} ảnh · nhấn để phóng to"
   }
 }

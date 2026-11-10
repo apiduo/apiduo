@@ -189,6 +189,9 @@
     "follows the environment": "跟隨環境變數",
     "Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.": "只填基底位址 —— span 會 POST 到 {host}/api/public/otel/v1/traces。內網容器名稱也可以，通常還更快。",
     "same as the export endpoint": "與上報位址相同",
-    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "日誌抽屜裡「Langfuse」按鈕開啟的位址。只有當位址對閘道可達、對瀏覽器不可達時才需要單獨填。"
+    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "日誌抽屜裡「Langfuse」按鈕開啟的位址。只有當位址對閘道可達、對瀏覽器不可達時才需要單獨填。",
+    "Image {{index}}": "圖片 {{index}}",
+    "Preview unavailable": "無法預覽",
+    "{{count}} image(s) · click to enlarge": "{{count}} 張圖片 · 點擊放大"
   }
 }

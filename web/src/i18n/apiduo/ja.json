@@ -97,6 +97,9 @@
     "follows the environment": "環境変数に従う",
     "Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.": "ベース URL のみ — span は {host}/api/public/otel/v1/traces に POST されます。内部コンテナ名でも問題なく、多くの場合は高速です。",
     "same as the export endpoint": "送信先と同じ",
-    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "ログドロワーの「Langfuse」ボタンが開く先です。送信先がゲートウェイからは到達できてブラウザからは到達できない場合にのみ必要です。"
+    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "ログドロワーの「Langfuse」ボタンが開く先です。送信先がゲートウェイからは到達できてブラウザからは到達できない場合にのみ必要です。",
+    "Image {{index}}": "画像 {{index}}",
+    "Preview unavailable": "プレビューできません",
+    "{{count}} image(s) · click to enlarge": "画像 {{count}} 件 · クリックで拡大"
   }
 }

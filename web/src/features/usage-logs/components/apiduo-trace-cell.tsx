@@ -50,10 +50,11 @@ import { LOG_TYPE_ENUM } from '../constants'
 import type { UsageLog } from '../data/schema'
 import {
   parseJsonBody,
-  parsePayload,
   parseSseBody,
+  payloadFromDecoded,
   type ParsedPayload,
 } from '../lib/conversation'
+import { scanMedia } from '../lib/payload-media'
 import { parseLogOther } from '../lib/format'
 import { buildDeepTraceUrl, buildTraceUrl, type TraceConfig } from '../lib/trace-link'
 import {
@@ -61,6 +62,7 @@ import {
   type TraceDetailResult,
   type TraceObservation,
 } from '../lib/trace-detail-api'
+import { MediaStrip } from './apiduo-media-strip'
 import { JsonTree } from './payload-tree'
 
 function traceIdOf(log: UsageLog): string {
@@ -551,10 +553,12 @@ function SectionTitle({
 const MAX_PAYLOAD_CHARS = 6000
 
 // Parsing is synchronous, so the ceiling has to be a size the main thread can
-// swallow in one frame. 192 KB of JSON is ~2 ms to parse and comfortably more
-// than headtail capture ever keeps (32 KB head + 16 KB tail), so in practice
-// this only trips on bodies captured with body_mode=full.
-const MAX_PARSE_CHARS = 192 * 1024
+// swallow in one frame. 2.5 MB of JSON is ~25 ms, which is inside a single
+// drawer open, and it covers the 2 MB cap that body_mode=full writes. The
+// previous 192 KB ceiling was sized for headtail capture (48 KB); leaving it
+// there meant an image response captured in full could never be parsed, so its
+// base64 was never reachable by the viewer below.
+const MAX_PARSE_CHARS = 2500 * 1024
 
 // One message longer than this gets folded; the drawer is 520px wide and a
 // pasted document would push everything else out of reach.
@@ -617,17 +621,31 @@ function PayloadView({
   const { t } = useTranslation()
   const [raw, setRaw] = useState(false)
   const tooLarge = text.length > MAX_PARSE_CHARS
+  // One decode, shared by every view below. A 2 MB body used to be parsed
+  // twice inside a single open — once to look for a conversation, once to
+  // build the tree.
+  const decoded = useMemo(
+    () => (text && !tooLarge ? parseJsonBody(text) : null),
+    [text, tooLarge]
+  )
   const parsed = useMemo(
-    () => (text && !tooLarge ? parsePayload(text, kind) : null),
-    [text, kind, tooLarge]
+    () => (decoded ? payloadFromDecoded(decoded, kind) : null),
+    [decoded, kind]
+  )
+  // Images are lifted before the tree is drawn: scanMedia returns the body
+  // with every blob swapped for a short marker, so the tree never lays out a
+  // megabyte-long line.
+  const media = useMemo(
+    () => (decoded && !parsed ? scanMedia(decoded) : null),
+    [decoded, parsed]
   )
   // A body that is valid JSON but not a conversation — an image response is
   // `{created, data, usage}` — is the case the tree exists for. Parsing it
   // only when the conversation view declined keeps the common path at one
   // decode instead of two.
   const json = useMemo(
-    () => (text && !tooLarge && !parsed ? parseJsonBody(text) : null),
-    [text, tooLarge, parsed]
+    () => (decoded && !parsed ? (media?.view ?? decoded) : null),
+    [decoded, parsed, media]
   )
   // A streaming answer is neither one JSON document nor a conversation: it is
   // one object per delta. Both views above decline it, which is why a streamed
@@ -703,6 +721,7 @@ function PayloadView({
 
   return (
     <>
+      {media && media.items.length > 0 && <MediaStrip items={media.items} />}
       {(previewable || tooLarge) && (
         <div className='mb-1.5 flex items-center justify-end gap-2'>
           {tooLarge && (

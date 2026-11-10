@@ -551,6 +551,15 @@ function errorTextOf(
  * caller then shows the raw text, which is the only honest fallback for a
  * truncated payload, an SSE frame dump, or an error string.
  */
+export function payloadFromDecoded(
+  decoded: unknown,
+  kind: 'request' | 'response'
+): ParsedPayload | null {
+  const obj = asRecord(decoded)
+  if (!obj) return null
+  return kind === 'request' ? parseRequest(obj) : parseResponse(obj)
+}
+
 export function parsePayload(
   raw: string,
   kind: 'request' | 'response'
@@ -566,8 +575,5 @@ export function parsePayload(
     return null
   }
 
-  const obj = asRecord(decoded)
-  if (!obj) return null
-
-  return kind === 'request' ? parseRequest(obj) : parseResponse(obj)
+  return payloadFromDecoded(decoded, kind)
 }
