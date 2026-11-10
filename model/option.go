@@ -244,6 +244,14 @@ func validateOptionValue(key string, value string) error {
 	if err := operation_setting.ValidateQuotaOption(key, value); err != nil {
 		return err
 	}
+	// APIDUO:observability:BEGIN
+	// Reject at write time what the matcher would drop at read time. Repairing
+	// on load keeps the runtime correct but leaves the stored row claiming a
+	// window that is not in force; see ValidateRuleWindows.
+	if err := observability_setting.ValidateRuleWindows(key, value); err != nil {
+		return err
+	}
+	// APIDUO:observability:END
 	if key == "EmailProvider" || key == "ResendApiKey" || key == "ResendFrom" {
 		if key == "EmailProvider" && value != "smtp" && value != "resend" {
 			return common.NewMessage("Email sending method must be SMTP or Resend")

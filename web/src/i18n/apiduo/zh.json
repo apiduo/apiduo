@@ -165,6 +165,16 @@
     "Root always sees traces. Other users need to be listed here; leaving it empty keeps root-only access.": "root 始终可见；其他用户需要在这里列出，留空即维持仅 root 可见。",
     "Administrator user IDs, comma separated (optional)": "管理员用户 ID，逗号分隔（可选）",
     "Primary endpoint must be a path starting with /.": "主端点必须以 / 开头的路径。",
-    "Rule {{index}}: fill both ends of the time window, or neither.": "第 {{index}} 条规则：时间窗请两端都填，或都不填。"
+    "Rule {{index}}: fill both ends of the time window, or neither.": "第 {{index}} 条规则：时间窗请两端都填，或都不填。",
+    "Default when no rule matches": "未命中规则时的默认值",
+    "Rule {{index}}": "第 {{index}} 条",
+    "Move rule up": "上移",
+    "Move rule down": "下移",
+    "Window start": "开始时间",
+    "Window end": "结束时间",
+    "Rule metadata sampling (%)": "规则内元数据采样（%）",
+    "Rule content sampling (%)": "规则内内容采样（%）",
+    "Loading settings...": "正在读取设置...",
+    "Cannot read the current settings. Reload the page to retry.": "读不到当前设置，刷新页面重试。"
   }
 }

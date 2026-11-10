@@ -167,6 +167,16 @@
     "Primary endpoint must be a path starting with /.": "主端點必須以 / 開頭的路徑。",
     "Seedream single endpoint": "Seedream 單端點",
     "GPT Image 2 dual endpoint": "GPT Image 2 雙端點",
-    "Rule {{index}}: fill both ends of the time window, or neither.": "第 {{index}} 條規則：時間窗請兩端都填，或都不填。"
+    "Rule {{index}}: fill both ends of the time window, or neither.": "第 {{index}} 條規則：時間窗請兩端都填，或都不填。",
+    "Default when no rule matches": "未命中規則時的預設值",
+    "Rule {{index}}": "第 {{index}} 條",
+    "Move rule up": "上移",
+    "Move rule down": "下移",
+    "Window start": "開始時間",
+    "Window end": "結束時間",
+    "Rule metadata sampling (%)": "規則內中繼資料取樣（%）",
+    "Rule content sampling (%)": "規則內內容取樣（%）",
+    "Loading settings...": "正在讀取設定...",
+    "Cannot read the current settings. Reload the page to retry.": "讀不到目前設定，重新整理頁面再試。"
   }
 }

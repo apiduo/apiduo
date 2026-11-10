@@ -1,6 +1,7 @@
 package observability_setting
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -58,6 +59,11 @@ var observabilitySetting = ObservabilitySetting{
 	MetadataSampleRate:  trace.EnvDefaultRates().Metadata,
 	ContentSampleRate:   trace.EnvDefaultRates().Content,
 	ParentBasedSampling: true,
+	// Empty slices, not nil: the option store serializes a nil slice as
+	// "null", and every consumer (the console included) then has to special
+	// case it. "No rules" and "no extra viewers" are empty lists, not null.
+	Rules:              []Rule{},
+	TraceViewerUserIDs: []int{},
 }
 
 func init() {
@@ -71,13 +77,53 @@ func init() {
 // Get returns a copy safe for readers.
 func Get() ObservabilitySetting {
 	out := observabilitySetting
-	out.Rules = append([]Rule(nil), observabilitySetting.Rules...)
+	out.Rules = append([]Rule{}, observabilitySetting.Rules...)
 	for i := range out.Rules {
-		out.Rules[i].Models = append([]string(nil), out.Rules[i].Models...)
-		out.Rules[i].Days = append([]int(nil), out.Rules[i].Days...)
+		out.Rules[i].Models = append([]string{}, out.Rules[i].Models...)
+		out.Rules[i].Days = append([]int{}, out.Rules[i].Days...)
 	}
-	out.TraceViewerUserIDs = append([]int(nil), observabilitySetting.TraceViewerUserIDs...)
+	out.TraceViewerUserIDs = append([]int{}, observabilitySetting.TraceViewerUserIDs...)
 	return out
+}
+
+// RulesOptionKey is the one option whose write needs a structural check that
+// the generic "is it a string" validation cannot do.
+const RulesOptionKey = "observability_setting.rules"
+
+// ValidateRuleWindows refuses a save that would store a time window the matcher
+// will not honour.
+//
+// normalize() already drops a half-specified window (start without end) so the
+// runtime never sees it. Rejecting at write time instead of repairing at read
+// time is what keeps the stored value and the running policy equal: silently
+// repairing leaves the row claiming "09:00–" while the matcher samples all day,
+// and the console then shows a setting that is not in force. callers that need
+// the tolerant path (importing hand-edited rows, older data) still go through
+// normalize on load.
+func ValidateRuleWindows(key, value string) error {
+	if key != RulesOptionKey {
+		return nil
+	}
+	var rules []Rule
+	if err := json.Unmarshal([]byte(value), &rules); err != nil {
+		return fmt.Errorf("rules must be a JSON array: %s", err.Error())
+	}
+	for i, rule := range rules {
+		hasStart := strings.TrimSpace(rule.Start) != ""
+		hasEnd := strings.TrimSpace(rule.End) != ""
+		if hasStart != hasEnd {
+			return fmt.Errorf("rule %d: fill both ends of the time window, or neither", i+1)
+		}
+		if hasStart {
+			if _, canonical := parseClock(rule.Start); canonical == "" {
+				return fmt.Errorf("rule %d: start time must be HH:MM", i+1)
+			}
+			if _, canonical := parseClock(rule.End); canonical == "" {
+				return fmt.Errorf("rule %d: end time must be HH:MM", i+1)
+			}
+		}
+	}
+	return nil
 }
 
 // UpdateAndSync normalizes the stored form and pushes it into the trace

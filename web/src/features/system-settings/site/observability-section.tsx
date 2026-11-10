@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Info } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Info, Loader2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -38,7 +38,8 @@ import { api } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
-import { getSystemOptions, updateSystemOption } from '../api'
+import { updateSystemOptionsBatch } from '../apiduo-option-batch'
+import { getSystemOptions } from '../api'
 
 const OPTION_KEY = 'observability_setting'
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0] // Monday first, 0 = Sunday
@@ -250,34 +251,27 @@ export function ObservabilitySection() {
 
   const save = useMutation({
     mutationFn: async (payload: Payload) => {
-      // One request per field, in the shape the option system expects. Errors
-      // stop the run: a half-applied policy is worse than an obvious failure.
-      const rows: Array<{ key: string; value: string }> = [
-        {
-          key: `${OPTION_KEY}.metadata_sample_rate`,
-          value: String(payload.metadata_sample_rate),
-        },
-        {
-          key: `${OPTION_KEY}.content_sample_rate`,
-          value: String(payload.content_sample_rate),
-        },
-        {
-          key: `${OPTION_KEY}.parent_based_sampling`,
-          value: String(payload.parent_based_sampling),
-        },
-        { key: `${OPTION_KEY}.timezone`, value: payload.timezone },
-        {
-          key: `${OPTION_KEY}.rules`,
-          value: JSON.stringify(payload.rules),
-        },
-        {
-          key: `${OPTION_KEY}.trace_viewer_user_ids`,
-          value: JSON.stringify(payload.trace_viewer_user_ids),
-        },
-      ]
-      for (const row of rows) {
-        await requireServerSuccess(await updateSystemOption(row))
+      // One transaction for the whole form. Sending the six fields one by one
+      // would commit them one by one too: a value the backend rejects in the
+      // middle (a rule with half a time window) would leave the rest applied —
+      // new rates against old rules is worse than a refused save.
+      const options: Record<string, string> = {
+        [`${OPTION_KEY}.metadata_sample_rate`]: String(
+          payload.metadata_sample_rate
+        ),
+        [`${OPTION_KEY}.content_sample_rate`]: String(
+          payload.content_sample_rate
+        ),
+        [`${OPTION_KEY}.parent_based_sampling`]: String(
+          payload.parent_based_sampling
+        ),
+        [`${OPTION_KEY}.timezone`]: payload.timezone,
+        [`${OPTION_KEY}.rules`]: JSON.stringify(payload.rules),
+        [`${OPTION_KEY}.trace_viewer_user_ids`]: JSON.stringify(
+          payload.trace_viewer_user_ids
+        ),
       }
+      await requireServerSuccess(await updateSystemOptionsBatch(options))
     },
     onSuccess: async () => {
       toast.success(t('Saved. Sampling changes apply immediately.'))
@@ -292,6 +286,16 @@ export function ObservabilitySection() {
 
   const update = (patch: Partial<Draft>) =>
     setDraft((prev) => ({ ...(prev ?? current), ...patch }))
+
+  const moveRule = (index: number, delta: number) =>
+    setDraft((prev) => {
+      const base = prev ?? current
+      const target = index + delta
+      if (target < 0 || target >= base.rules.length) return base
+      const rules = [...base.rules]
+      ;[rules[index], rules[target]] = [rules[target], rules[index]]
+      return { ...base, rules }
+    })
 
   const updateRule = (index: number, patch: Partial<RuleDraft>) =>
     setDraft((prev) => {
@@ -343,6 +347,28 @@ export function ObservabilitySection() {
     (rule) => Boolean(rule.start.trim()) !== Boolean(rule.end.trim())
   )
 
+  // Do not render an editable form over placeholder values. EMPTY_DRAFT is
+  // 100/100 while the real rows may be 10/100: one keystroke before the query
+  // resolves would make 100/100 the base of the save and silently raise every
+  // other field. A spinner costs a moment; a wrong save costs an incident.
+  if (optionsQuery.data === undefined) {
+    return (
+      <div className='text-muted-foreground flex items-center gap-2 p-6 text-sm'>
+        {optionsQuery.isError ? (
+          <>
+            <Info className='size-4' />
+            {t('Cannot read the current settings. Reload the page to retry.')}
+          </>
+        ) : (
+          <>
+            <Loader2 className='size-4 animate-spin' />
+            {t('Loading settings...')}
+          </>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className='space-y-6'>
       {/* What is actually running. Without this strip the page can be edited
@@ -384,7 +410,7 @@ export function ObservabilitySection() {
             </div>
             <div className='space-y-1'>
               <dt className='text-muted-foreground text-xs'>
-                {t('In force right now')}
+                {t('Default when no rule matches')}
               </dt>
               <dd className='tabular-nums'>
                 {runningMeta == null
@@ -452,6 +478,7 @@ export function ObservabilitySection() {
                 type='number'
                 min={0}
                 max={100}
+                aria-label={t('Metadata sampling (%)')}
                 value={current.metadataRate}
                 onChange={(e) =>
                   update({ metadataRate: clampPercent(e.target.value) })
@@ -467,6 +494,7 @@ export function ObservabilitySection() {
                 type='number'
                 min={0}
                 max={100}
+                aria-label={t('Content sampling (%)')}
                 value={current.contentRate}
                 onChange={(e) =>
                   update({ contentRate: clampPercent(e.target.value) })
@@ -508,6 +536,7 @@ export function ObservabilitySection() {
               </p>
             </div>
             <Switch
+              aria-label={t('Follow client traceparent')}
               checked={current.parentBased}
               onCheckedChange={(checked) => update({ parentBased: checked })}
             />
@@ -518,6 +547,7 @@ export function ObservabilitySection() {
               <Label>{t('Schedule timezone')}</Label>
               <Input
                 placeholder='Asia/Shanghai'
+                aria-label={t('Schedule timezone')}
                 value={current.timezone}
                 onChange={(e) => update({ timezone: e.target.value })}
               />
@@ -558,6 +588,7 @@ export function ObservabilitySection() {
                 placeholder={t(
                   'Administrator user IDs, comma separated (optional)'
                 )}
+                aria-label={t('Trace visibility')}
                 value={current.viewerIds}
                 onChange={(e) => update({ viewerIds: e.target.value })}
               />
@@ -585,6 +616,38 @@ export function ObservabilitySection() {
 
           {current.rules.map((rule, index) => (
             <div key={index} className='space-y-3 rounded-lg border p-3'>
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground text-xs'>
+                  {t('Rule {{index}}', { index: index + 1 })}
+                </span>
+                {/* Order is the priority: the first match wins, so an operator
+                    must be able to move a rule without deleting and retyping
+                    it. */}
+                <div className='flex items-center gap-1'>
+                  <Button
+                    type='button'
+                    size='icon'
+                    variant='ghost'
+                    className='size-6'
+                    aria-label={t('Move rule up')}
+                    disabled={index === 0}
+                    onClick={() => moveRule(index, -1)}
+                  >
+                    <ChevronUp className='size-3.5' />
+                  </Button>
+                  <Button
+                    type='button'
+                    size='icon'
+                    variant='ghost'
+                    className='size-6'
+                    aria-label={t('Move rule down')}
+                    disabled={index === current.rules.length - 1}
+                    onClick={() => moveRule(index, 1)}
+                  >
+                    <ChevronDown className='size-3.5' />
+                  </Button>
+                </div>
+              </div>
               <div className='grid gap-3 sm:grid-cols-2'>
                 <div className='space-y-1'>
                   <Label className='text-xs'>
@@ -592,6 +655,7 @@ export function ObservabilitySection() {
                   </Label>
                   <Input
                     placeholder='gpt-4o-mini, doubao-*'
+                    aria-label={t('Models (comma separated)')}
                     value={rule.models}
                     onChange={(e) =>
                       updateRule(index, { models: e.target.value })
@@ -603,6 +667,7 @@ export function ObservabilitySection() {
                   <div className='flex items-center gap-2'>
                     <Input
                       placeholder='09:00'
+                      aria-label={t('Window start')}
                       value={rule.start}
                       onChange={(e) =>
                         updateRule(index, { start: e.target.value })
@@ -611,6 +676,7 @@ export function ObservabilitySection() {
                     <span className='text-muted-foreground text-xs'>–</span>
                     <Input
                       placeholder='18:00'
+                      aria-label={t('Window end')}
                       value={rule.end}
                       onChange={(e) =>
                         updateRule(index, { end: e.target.value })
@@ -654,6 +720,7 @@ export function ObservabilitySection() {
                     type='number'
                     min={0}
                     max={100}
+                    aria-label={t('Rule metadata sampling (%)')}
                     value={rule.metadataRate}
                     onChange={(e) =>
                       updateRule(index, {
@@ -668,6 +735,7 @@ export function ObservabilitySection() {
                     type='number'
                     min={0}
                     max={100}
+                    aria-label={t('Rule content sampling (%)')}
                     value={rule.contentRate}
                     onChange={(e) =>
                       updateRule(index, {
@@ -679,6 +747,7 @@ export function ObservabilitySection() {
                 <div className='flex items-end justify-between gap-2'>
                   <div className='flex items-center gap-2'>
                     <Switch
+                      aria-label={t('Never trace')}
                       checked={rule.exclude}
                       onCheckedChange={(checked) =>
                         updateRule(index, { exclude: checked })

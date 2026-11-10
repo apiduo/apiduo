@@ -26,7 +26,11 @@ type apiduoBatchOptionRequest struct {
 // The per-key endpoint writes one audit row per key, so a form that submits ten
 // fields leaves ten entries behind for what is really one operator action, and
 // pays one round trip per field. Settings forms submit their dirty fields here
-// instead: one request, one audit event, one list of changed keys.
+// instead: one request, one transaction, one audit event.
+//
+// Atomicity is the point, not a side effect: the per-key path commits each key
+// as it goes, so a rejected value in the middle of a form leaves the rest of
+// that form applied. Here every key is validated before the transaction opens.
 func UpdateOptionsBatch(c *gin.Context) {
 	var request apiduoBatchOptionRequest
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
@@ -61,21 +65,17 @@ func UpdateOptionsBatch(c *gin.Context) {
 		}
 	}
 
-	applied := make([]string, 0, len(keys))
+	values := make(map[string]string, len(keys))
 	for _, key := range keys {
-		value := common.Interface2String(request.Options[key])
-		if err := model.UpdateOption(key, value); err != nil {
-			// UpdateOption has no transaction across keys, so values written
-			// before the failure stay applied. Report which ones landed instead
-			// of pretending nothing changed.
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": err.Error(),
-				"data":    gin.H{"applied": applied, "failed": key},
-			})
-			return
-		}
-		applied = append(applied, key)
+		values[key] = common.Interface2String(request.Options[key])
+	}
+	// One transaction for the whole save. A settings form that submits six
+	// fields is one operator action, and a half-applied policy (new rates,
+	// old rules) is worse than a refusal — UpdateOptionsBulk validates every
+	// key first, then writes them in a single transaction.
+	if err := model.UpdateOptionsBulk(values); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
 	}
 
 	model.RecordOperationAuditLog(

@@ -1130,15 +1130,28 @@ Langfuse 摄入量直接 ×10。
 UTC 偏移（`Asia/Shanghai (UTC+08:00)`），因为未设 `TZ` 时 `time.Local.String()` 只是
 `Local`，看不出规则是按 UTC 还是东八区读的。
 
-### 20.4 验证（真进程 + 真浏览器）
+### 20.4 验证（真进程 + 真浏览器，72 条断言）
 
-空库、`LANGFUSE_SAMPLE_RATE=10`、`TZ=Asia/Shanghai` 起真网关，Chrome 登录后 15 条断言全过：
+套件：`e2e/live/ui/observability_settings.mjs`（手动运行，依赖见文件头与 README）。
+环境：空库 + `LANGFUSE_SAMPLE_RATE=10` + `TZ=Asia/Shanghai` 起网关 A（trace 开）与
+网关 B（`LANGFUSE_ENABLED=false`）+ 假上游 + 假 Langfuse；账号 root / mgr(role=10) / alice(role=1)。
 
-- 侧边栏「扩展」分组可展开，`可观测性` 出现在该分组之后；旧路径落到 `operations/behavior`。
-- 状态条：已启用、上报地址、`10% 有链接 · 100% 含内容`、`Asia/Shanghai (UTC+08:00)`。
-- 元数据输入框预填 **10**（证明默认值来自 env，不是写死的 100）。
-- 点「全量采集」→ 表单 100、提示未保存 → 保存 → 状态条变 `100/100`（无重启）。
-- `/api/option/` 首启返回 `metadata_sample_rate=10`、`content_sample_rate=100`。
+| 组 | 断言 | 关键事实 |
+|---|---|---|
+| A 导航 | 7 | 「扩展」可展开且含该页、点击进入、深链与刷新、`data-apiduo=self` 标题标记、运维分组不含它 |
+| B 状态条 | 6 | 已启用 / 上报地址 / 首尾截取 / `10% 有链接 · 100% 含内容` / `Asia/Shanghai (UTC+08:00)` / 输入框预填 **10**（默认值来自 env） |
+| C 关闭态 | 4 | 「已禁用」+ 指认 `LANGFUSE_ENABLED` + 仍可编辑 + config 接口仍 200 |
+| D 表单 | 14 | 150→100、-5→0、清空→0、0% 警告、4 个预设、脏状态深比较（改回原值即消失）、放弃修改 |
+| E 规则 | 13 | 增删、字段完整落库、刷新还原、排除规则、**半截时间窗被前端拦下并指名第几条**、直连 API 仍容错 |
+| F 权限 | 8 | mgr/alice 403、设置页 403、白名单后 mgr 200 而 alice 仍 403、白名单不放宽设置页 |
+| G 联动 | 7 | 100% 采样 3 次 → sink **3 个 span**；详情出现「在 Langfuse 中查看」且 href 带 project+trace id；0% 时 sink 不增、链接消失 |
+| H 健壮 | 6 | 1440/1024/390 无横向溢出、深色模式生效且正文亮度 0.96、保存按钮可聚焦、0 条 JS 报错 |
+
+另外 `/api/option/` 首启返回 `metadata_sample_rate=10`、`content_sample_rate=100`。
+
+一条只有真浏览器才抓得到的缺陷：**半截时间窗**（只填 `09:00` 不填结束）后端会丢弃两端
+（运行时正确），但 `OptionMap` 保留原值，于是界面显示「已保存 22:00」而实际按全天算。
+修法是提交前拦下并指出第几条规则；后端容错保留给直连 API 的场景。
 
 另：`go test ./router/` 的「每条面板路由都要有 scope 规则」用例此前因并行开发的
 `/pg/video|images/generations` 未登记而红，本轮补了三条 `accessTokenSessionRule`
@@ -1148,3 +1161,51 @@ UTC 偏移（`Asia/Shanghai (UTC+08:00)`），因为未设 `TZ` 时 `time.Local.
 
 - 预设不会自动保存：填表后仍需点「保存」，因为这一页改的是生产。
 - 「恢复出厂」只回到表单默认，不能删除数据库里已有的行（选项系统没有删除语义）。
+
+### 20.6 第一性修复：让「存下来的」「跑起来的」「显示出来的」是同一个东西
+
+测试报告里的问题看起来是三个 bug，根因只有一个：**同一份配置在数据库、运行时、表单、
+状态条四处各说一套**。所以修的都不是症状：
+
+| 原来 | 现在 | 为什么 |
+|---|---|---|
+| 半窗口在**读取时**修补（normalize 丢掉两端），库里留着 `09:00–` | 在 `validateOptionValue` 里**写入即拒绝**（`ValidateRuleWindows`） | 读取时修补保证运行时不犯错，但库和界面继续撒谎。normalize 保留给老数据/手工导入 |
+| 表单 6 个字段逐个 PUT，第 5 个失败时前 4 个已落库 | 前端 1 个 `PUT /api/option/batch`，后端 `UpdateOptionsBulk`：全量校验 → 单事务 → 一次审计 | 「新速率 + 旧规则」的半套策略比保存失败更难排查 |
+| 规则顺序只能靠「删了重加」 | 卡片带编号 + 上移/下移（首尾禁用） | 顺序就是优先级，优先级不能编排等于规则只有一半可用 |
+| `rules`/`trace_viewer_user_ids` 空值序列化成 `null` | 初始值与 `Get()` 都返回 `[]` | 每个消费方都要特判 null，迟早有一个漏掉 |
+| 视觉 Label 是兄弟节点，输入框没有可访问名 | 全部补 `aria-label`（含开关） | 屏幕阅读器读不出「元数据采样」还是「内容采样」 |
+| 状态条写「当前生效」，实际只反映未命中规则的默认值 | 改成「未命中规则时的默认值」 | 配了规则之后这个数字对多数模型是错的 |
+
+验证：浏览器套件从 72 条增到 **80 条**（新增：直连 API 被拒绝且库未变、批量失败整批不落地、
+上移/下移真的改了后端顺序、`main` 内所有输入与开关都有可访问名），全绿。
+另单独验证「一次保存只发一个 `PUT /api/option/batch`」（原来 6 个）。
+
+### 20.7 收口：标记闸门、合并面与一个慢网竞态
+
+**1) 数据没到就别让人编辑（真 bug，单测抓到的）**
+
+`optionsQuery` 还没 resolve 时，表单以 `EMPTY_DRAFT`（100/100）为基底渲染。此时改一个字段
+再保存，提交的是「改过的字段 + 100/100」，而不是库里的 10/100 —— 慢网下一次误操作就能把
+采样率从 10% 拉到 100%。修法：`optionsQuery.data === undefined` 时只渲染「正在读取设置…」，
+读失败时给重试提示，**不渲染可编辑表单**。测试里 `timezone` 从 `Asia/Shanghai` 变成空串，
+就是这条的指纹。
+
+**2) 批量助手移出上游文件**
+
+`updateSystemOptionsBatch` 原来加在 `web/src/features/system-settings/api.ts`（上游文件）里，
+21 行未标记。真正的修法不是补标记块，而是**挪出去**：新建
+`web/src/features/system-settings/apiduo-option-batch.ts`，`api.ts` 与 HEAD 字节一致，
+合并面归零。
+
+**3) go.mod 不该按行标记**
+
+它是 `require` 列表，`go mod tidy` 会按模块名重排；包块注释或加行尾注释都会被下一次 tidy
+打散。依赖冲突是版本号的语义冲突，靠 tidy + 编译解决。已加入 `markercheck` 的 `skipName`
+（与 `routeTree.gen.ts` 同类：生成物，手写标记会被覆盖）。
+
+**4) 预算**
+
+`markercheck` 从红转绿：遗留欠账 36 文件/444 行 → **35 文件/433 行**；预算
+108/320/3048/109 → **107/324/3065/104**（文件数与删除行下降，标记块 +4、插入行 +17，
+增量来自两处不可挪的挂接点：`access_token_routes.go` 的 playground 路由规则、
+`model/option.go` 的写入校验钩子）。

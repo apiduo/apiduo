@@ -93,3 +93,40 @@ func TestResolveLocationFallsBack(t *testing.T) {
 		t.Fatalf("valid zone must load, got %v", loc)
 	}
 }
+
+// A half-specified window has exactly one honest outcome: refuse the write.
+// normalize() would drop both ends at read time, leaving the row claiming a
+// window that never applies — the console then shows a setting that is not in
+// force, which is the defect this check exists to prevent.
+func TestValidateRuleWindowsRejectsHalfWindow(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		bad   bool
+	}{
+		{"both ends", `[{"models":["a"],"start":"09:00","end":"18:00"}]`, false},
+		{"no window", `[{"models":["a"]}]`, false},
+		{"start only", `[{"start":"09:00"}]`, true},
+		{"end only", `[{"end":"18:00"}]`, true},
+		{"bad start", `[{"start":"25:00","end":"18:00"}]`, true},
+		{"bad end", `[{"start":"09:00","end":"noon"}]`, true},
+		{"not json", `{"start":"09:00"}`, true},
+		{"empty list", `[]`, false},
+	}
+	for _, tc := range cases {
+		err := ValidateRuleWindows(RulesOptionKey, tc.value)
+		if tc.bad && err == nil {
+			t.Fatalf("%s: expected rejection, got nil", tc.name)
+		}
+		if !tc.bad && err != nil {
+			t.Fatalf("%s: unexpected rejection: %s", tc.name, err.Error())
+		}
+	}
+}
+
+// The check must be keyed: other option rows pass through untouched.
+func TestValidateRuleWindowsIgnoresOtherKeys(t *testing.T) {
+	if err := ValidateRuleWindows("observability_setting.metadata_sample_rate", `{"start":"09:00"}`); err != nil {
+		t.Fatalf("unrelated key must not be validated: %s", err.Error())
+	}
+}
