@@ -101,6 +101,28 @@ const FALLBACK: Record<string, string> = {
   Loading: '加载中…',
   'enabled {{count}}': '已启用 {{count}}',
   'Log store': '日志库',
+  Form: '表单',
+  Default: '默认',
+  'Set as default': '设为默认',
+  'Remove value': '删除取值',
+  'Add value': '添加取值',
+  Enum: '枚举',
+  Range: '范围',
+  Min: '最小值',
+  Max: '最大值',
+  'Add parameter': '添加参数',
+  'Remove parameter': '删除参数',
+  'Lowercase letters, digits and _, starting with a letter':
+    '小写字母开头，只能含小写字母、数字、下划线',
+  'Not valid JSON — switch back to Form after fixing it':
+    '不是合法 JSON —— 改好后可切回表单',
+  'No constraints yet — add one, or switch to JSON.':
+    '还没有约束，可以加一条，或切到 JSON。',
+  'Enum or range, per parameter. Both views write the same JSON.':
+    '按参数声明枚举或范围；表单与 JSON 写的是同一份内容。',
+  'No declarations yet — click New model to start':
+    '还没有能力声明，点右上角「新建模型」开始',
+
   '{{count}} models': '{{count}} 个模型',
   '{{count}} samples': '{{count}} 次样本',
 

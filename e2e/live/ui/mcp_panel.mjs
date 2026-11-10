@@ -423,6 +423,36 @@ try {
     });
     check('未改动时保存不可点（脏态判断接上了）', saveDisabled === true, String(saveDisabled));
 
+    // 参数约束：表单 / JSON 两个视图写同一份内容
+    const hasAddParam = await view.evaluate(() =>
+      [...document.querySelectorAll('button')].some((b) => (b.innerText || '').trim() === '添加参数'));
+    check('参数约束默认渲染成表单', hasAddParam, String(hasAddParam));
+
+    await view.evaluate(() => {
+      const b = [...document.querySelectorAll('button')].find((x) => (x.innerText || '').trim() === 'JSON');
+      if (b) b.click();
+    });
+    await sleep(500);
+    const jsonText = await view.evaluate(() => {
+      const ta = document.querySelector('textarea');
+      return ta ? ta.value : null;
+    });
+    let jsonOk = false;
+    try {
+      const trimmed = (jsonText || '').trim();
+      jsonOk = trimmed === '' || (typeof JSON.parse(trimmed) === 'object');
+    } catch { jsonOk = false; }
+    check('切到 JSON 后是同一份合法 JSON', jsonOk, String(jsonText).slice(0, 60));
+
+    await view.evaluate(() => {
+      const b = [...document.querySelectorAll('button')].find((x) => (x.innerText || '').trim() === '表单');
+      if (b) b.click();
+    });
+    await sleep(500);
+    const backToForm = await view.evaluate(() =>
+      [...document.querySelectorAll('button')].some((b) => (b.innerText || '').trim() === '添加参数'));
+    check('能切回表单视图', backToForm, String(backToForm));
+
     // ── 14. 未保存拦截：原生分区走路由守卫，不再依赖 postMessage ──────────
     // 按标签找「显示名」那个输入框，别用「第一个非只读 input」——
     // 左侧搜索框在 DOM 里更靠前，改它不会让表单变脏。

@@ -34,12 +34,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import { FormNavigationGuard } from '@/features/system-settings/components/form-navigation-guard'
 import { cn } from '@/lib/utils'
 
 import { mcpApi, mcpKeys } from './api'
 import { useMcpCopy } from './copy'
+import { ParametersEditor } from './parameters-editor'
 import {
   EMPTY_DRAFT,
   toDraft,
@@ -280,7 +280,9 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
 
           {!props.loading && rows.length === 0 ? (
             <p className='text-muted-foreground py-6 text-xs'>
-              {t('No models match')}
+              {props.profiles.length === 0
+                ? t('No declarations yet — click New model to start')
+                : t('No models match')}
             </p>
           ) : null}
 
@@ -527,15 +529,16 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
                 <CardTitle className='text-sm'>
                   {t('Parameter constraints')}
                 </CardTitle>
-                <p className='text-muted-foreground font-mono text-[11px]'>
-                  {t('JSON, e.g. {"size":{"enum":["1K","2K"],"default":"2K"}}')}
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Enum or range, per parameter. Both views write the same JSON.'
+                  )}
                 </p>
               </CardHeader>
               <CardContent>
-                <Textarea
-                  className='min-h-24 font-mono text-xs'
+                <ParametersEditor
                   value={draft.parameters}
-                  onChange={(e) => setField('parameters', e.target.value)}
+                  onChange={(next) => setField('parameters', next)}
                 />
               </CardContent>
             </Card>
