@@ -69,6 +69,23 @@ type QualitySettings struct {
 	Environment     string
 }
 
+// EndpointSettings is where spans are POSTed and where the jump link points.
+//
+// Both used to be environment-only on the grounds that "a bad settings row
+// must never redirect exports". That reasoning still holds — which is why the
+// values are validated on write (http/https, no userinfo, no query) and why
+// only root can save them — but a Langfuse migration should not require a
+// redeploy, and the operator who owns the keys is the one person who may point
+// them somewhere else.
+//
+// Host is the export target (often an internal container name); ConsoleURL is
+// what a browser can reach. Empty ConsoleURL means "same as Host", exactly as
+// it does in the environment.
+type EndpointSettings struct {
+	Host       string
+	ConsoleURL string
+}
+
 // Settings is what the console writes; ApplySettings compiles it.
 type Settings struct {
 	Defaults      Rates
@@ -81,6 +98,8 @@ type Settings struct {
 	// Quality is nil when the caller does not manage failure sampling,
 	// redaction or the environment tag.
 	Quality *QualitySettings
+	// Endpoint is nil when the caller does not manage the export target.
+	Endpoint *EndpointSettings
 }
 
 // compile lowers a rule into lookup structures so matching allocates nothing.
@@ -213,6 +232,23 @@ func ApplySettings(s Settings) {
 		base.ErrorSampleRate = clampRate(s.Quality.ErrorSampleRate)
 		base.Redact = s.Quality.Redact
 		base.Environment = strings.TrimSpace(s.Quality.Environment)
+	}
+	if s.Endpoint != nil {
+		host := strings.TrimRight(strings.TrimSpace(s.Endpoint.Host), "/")
+		console := strings.TrimRight(strings.TrimSpace(s.Endpoint.ConsoleURL), "/")
+		// A change of export target cannot be applied to a worker that already
+		// captured the old one: its route is fixed for the lifetime of the
+		// goroutine, on purpose (a stale worker must never be re-aimed
+		// mid-flight, or a batch queued for the canary lands in production).
+		// Dropping the exporter makes the next enqueue build a worker aimed at
+		// the new endpoint; the old goroutine drains what it already holds and
+		// blocks forever on a channel nobody feeds — one idle goroutine per
+		// endpoint change, which is a fair price for not restarting the gateway.
+		if host != base.Host {
+			resetExporter(&base)
+		}
+		base.Host = host
+		base.ConsoleURL = console
 	}
 	currentConf.Store(&base)
 	enabledFast.Store(base.Enabled)

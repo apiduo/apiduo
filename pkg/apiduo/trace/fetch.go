@@ -116,6 +116,7 @@ const observationFields = "basic,io,usage,metadata,model,time,trace_context"
 //   - freshly ingested span, small body:      < 1 s
 //   - backfilled span (virtual root "t-<id>"): ~6.6 s on first read
 //   - large body parked in blob storage:        ~2.3 s per read
+//
 // Four seconds turned the backfilled case into a 502 that looked like an
 // outage; eight was fine until a body had to come back from object storage on
 // a cold path. The query itself is milliseconds — this budget is for the blob

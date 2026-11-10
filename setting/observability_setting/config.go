@@ -71,6 +71,18 @@ type ObservabilitySetting struct {
 	// Empty means no tag at all, which is different from the default word
 	// "production" and is why it is a plain string rather than a boolean.
 	Environment string `json:"environment"`
+	// ExportHost is where spans are POSTed (LANGFUSE_HOST). Empty means
+	// "follow the environment", which is why neither field is seeded with the
+	// environment value: a frozen copy would stop following a redeploy.
+	//
+	// These two used to be environment-only. An operator migrating Langfuse
+	// should not need a release to change one string, and the write path
+	// already refuses anything that is not a bare http(s) origin.
+	ExportHost string `json:"export_host"`
+	// ConsoleURL is what a browser can reach (LANGFUSE_CONSOLE_URL); it can
+	// differ from ExportHost when the exporter talks to a container name.
+	// Empty means "same as ExportHost".
+	ConsoleURL string `json:"console_url"`
 }
 
 // newObservabilitySetting seeds the console form from the environment, not
@@ -96,6 +108,10 @@ func newObservabilitySetting() ObservabilitySetting {
 		// case it. "No rules" and "no extra viewers" are empty lists, not null.
 		Rules:              []Rule{},
 		TraceViewerUserIDs: []int{},
+		// ExportHost / ConsoleURL stay empty on purpose: empty means "keep
+		// following LANGFUSE_*", and the console shows the running value as the
+		// input's placeholder. Seeding them from the environment would freeze
+		// today's address into the options table on first save.
 	}
 }
 
@@ -166,6 +182,7 @@ func ValidateRuleWindows(key, value string) error {
 // so a change takes effect without restarting the gateway.
 func UpdateAndSync() {
 	normalized, rules := normalize(observabilitySetting)
+	envHost, envConsole := trace.EnvDefaultEndpoints()
 	observabilitySetting = normalized
 	// normalize() canonicalizes the mode, so this parse cannot fail; the
 	// fallback exists only to keep the zero value meaningful if that ever
@@ -186,6 +203,10 @@ func UpdateAndSync() {
 			ErrorSampleRate: normalized.ErrorSampleRate,
 			Redact:          normalized.Redact,
 			Environment:     normalized.Environment,
+		},
+		Endpoint: &trace.EndpointSettings{
+			Host:       firstNonEmpty(normalized.ExportHost, envHost),
+			ConsoleURL: firstNonEmpty(normalized.ConsoleURL, envConsole),
 		},
 	})
 }
@@ -212,6 +233,8 @@ func normalize(in ObservabilitySetting) (ObservabilitySetting, []trace.Rule) {
 		ErrorSampleRate:     clampRate(in.ErrorSampleRate),
 		Redact:              in.Redact,
 		Environment:         normalizeEnvironment(in.Environment),
+		ExportHost:          normalizeEndpoint(in.ExportHost),
+		ConsoleURL:          normalizeEndpoint(in.ConsoleURL),
 	}
 	compiled := make([]trace.Rule, 0, len(in.Rules))
 	for _, rule := range in.Rules {
@@ -261,6 +284,23 @@ func normalize(in ObservabilitySetting) (ObservabilitySetting, []trace.Rule) {
 		out.TraceViewerUserIDs = append(out.TraceViewerUserIDs, id)
 	}
 	return out, compiled
+}
+
+// normalizeEndpoint trims a stored URL and drops the trailing slash. It does
+// not validate: the write path refuses anything that is not a bare http(s)
+// origin, and a hand-edited row that got past it falls back to the environment
+// in ApplySettings rather than being silently rewritten here.
+func normalizeEndpoint(in string) string {
+	return strings.TrimRight(strings.TrimSpace(in), "/")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // normalizeEnvironment keeps the tag short and printable. Langfuse treats it

@@ -39,7 +39,12 @@ func GetApiduoTraceConfig(c *gin.Context) {
 		"success": true,
 		"data": gin.H{
 			"enabled":               conf.Enabled,
+			// host 是浏览器可访问的基址（跳转链接用），export_host 是 span
+			// 真正 POST 过去的地址 —— 生产上前者是 https://langfuse.1task.cn、
+			// 后者是容器名。设置页两个都要显示，否则「上报地址」一栏
+			// 写着公网域名，实际导出却打到内网，改地址时无从判断在改哪个。
 			"host":                  conf.ConsoleBase(),
+			"export_host":           conf.Host,
 			"project_id":            conf.ProjectID,
 			"body_mode":             conf.BodyModeName(),
 			"body_head_bytes":       conf.HeadBytes,

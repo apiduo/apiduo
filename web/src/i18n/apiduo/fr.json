@@ -82,6 +82,17 @@
     "Pulse": "Impulsion",
     "Restore defaults": "Rétablir les valeurs par défaut",
     "Appearance presets": "Présélections d'apparence",
-    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "Ce span ne porte ni requête ni réponse. Soit l'échantillonnage du contenu l'a retiré, soit le span a été écrit au moment du règlement — les tâches asynchrones et les tests de canal n'envoient pas de corps."
+    "This row was written when the request settled — async task settlement, a channel test, or a fee adjustment. Nothing in that path hands a prompt to the gateway, so there is no body to show; the cost and tokens above are the whole record.": "Cette ligne a été écrite au moment du règlement — règlement de tâche asynchrone, test de canal ou ajustement de frais. Ces chemins ne transmettent jamais de prompt à la passerelle : il n'y a donc pas de corps à afficher ; le coût et les jetons ci-dessus constituent tout l'enregistrement.",
+    "Metadata sampling kept the span but content sampling stripped the body. Raise the content rate in System Settings → Observability if you need prompts for this model.": "L'échantillonnage des métadonnées a conservé ce span, mais celui du contenu en a retiré le corps. Augmentez le taux de contenu dans Système → Observabilité si vous avez besoin des prompts pour ce modèle.",
+    "Where traces are written and where the log drawer links to. Leave a field empty to keep following the deployment environment — the greyed text is what is running right now. Saving a new export endpoint takes effect on the next batch, no restart.": "Où les traces sont écrites et vers quoi pointe le tiroir de logs. Laissez vide pour suivre l'environnement de déploiement — le texte grisé indique la valeur active. Un nouvel endpoint d'export s'applique au lot suivant, sans redémarrage.",
+    "Rebuilt from {{count}} stream events": "Reconstruit à partir de {{count}} événements de flux",
+    "{{count}} stream events · first {{shown}} shown": "{{count}} événements de flux · {{shown}} premiers affichés",
+    "{{count}} frame(s) did not decode": "{{count}} trame(s) non décodée(s)",
+    "Console URL": "URL de la console",
+    "Connection": "Connexion",
+    "follows the environment": "suit l'environnement",
+    "Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.": "URL de base uniquement — les spans sont envoyés à {host}/api/public/otel/v1/traces. Un nom de conteneur interne convient et est souvent plus rapide.",
+    "same as the export endpoint": "identique à l'endpoint d'export",
+    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "Ce que le bouton « Langfuse » du tiroir de logs ouvre. Nécessaire seulement si l'endpoint d'export est joignable depuis la passerelle mais pas depuis un navigateur."
   }
 }

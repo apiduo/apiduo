@@ -82,6 +82,17 @@
     "Pulse": "Пульс",
     "Restore defaults": "Сбросить настройки",
     "Appearance presets": "Пресеты оформления",
-    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "У этого спана нет тела запроса или ответа. Либо его срезала выборка контента, либо спан записан при расчёте — асинхронные задачи и тесты канала тело не передают."
+    "This row was written when the request settled — async task settlement, a channel test, or a fee adjustment. Nothing in that path hands a prompt to the gateway, so there is no body to show; the cost and tokens above are the whole record.": "Эта строка записана в момент расчёта — расчёт асинхронной задачи, тест канала или корректировка стоимости. На этом пути промпт не передаётся шлюзу, поэтому тела запроса нет; стоимость и токены выше — это вся запись.",
+    "Metadata sampling kept the span but content sampling stripped the body. Raise the content rate in System Settings → Observability if you need prompts for this model.": "Метаданные прошли сэмплирование, но содержимое было удалено на этапе сэмплирования контента. Повысьте долю контента в «Система → Наблюдаемость», если нужны промпты для этой модели.",
+    "Where traces are written and where the log drawer links to. Leave a field empty to keep following the deployment environment — the greyed text is what is running right now. Saving a new export endpoint takes effect on the next batch, no restart.": "Куда пишутся трейсы и куда ведёт ссылка в панели логов. Пустое поле означает «следовать окружению» — серый текст показывает текущее значение. Новый адрес экспорта применяется со следующей пачки, без перезапуска.",
+    "Rebuilt from {{count}} stream events": "Восстановлено из {{count}} событий потока",
+    "{{count}} stream events · first {{shown}} shown": "Событий потока: {{count}} · показаны первые {{shown}}",
+    "{{count}} frame(s) did not decode": "Не удалось декодировать кадров: {{count}}",
+    "Console URL": "URL консоли",
+    "Connection": "Подключение",
+    "follows the environment": "как в окружении",
+    "Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.": "Только базовый URL — спаны отправляются на {host}/api/public/otel/v1/traces. Внутреннее имя контейнера подойдёт и обычно быстрее.",
+    "same as the export endpoint": "как адрес экспорта",
+    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "Что открывает кнопка «Langfuse» в панели логов. Нужно, только если адрес экспорта доступен шлюзу, но не браузеру."
   }
 }

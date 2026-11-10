@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/apiduo/trace"
+	"github.com/QuantumNous/new-api/setting/observability_setting"
 )
 
 // apiduo 扩展设置（「设置 → 扩展」五个模块）的写入期校验。
@@ -66,6 +68,14 @@ var apiduoOptionKeys = map[string]struct{}{
 	"observability_setting.rules":                 {},
 	"observability_setting.timezone":              {},
 	"observability_setting.trace_viewer_user_ids": {},
+	"observability_setting.body_mode":             {},
+	"observability_setting.body_head_bytes":       {},
+	"observability_setting.body_tail_bytes":       {},
+	"observability_setting.error_sample_rate":     {},
+	"observability_setting.redact":                {},
+	"observability_setting.environment":           {},
+	"observability_setting.export_host":           {},
+	"observability_setting.console_url":           {},
 }
 
 // apiduoAppearanceStyles 与前端的外观预设保持一致。
@@ -113,7 +123,7 @@ func ValidateApiduoOptionValue(key, value string) error {
 
 	case "apiduo_appearance_setting.enabled", "apiduo_appearance_setting.glow",
 		"artifact_storage_setting.enabled", "artifact_storage_setting.path_style",
-		"observability_setting.parent_based_sampling":
+		"observability_setting.parent_based_sampling", "observability_setting.redact":
 		if v != "true" && v != "false" {
 			return bad("%s 只能是 true 或 false", key)
 		}
@@ -177,6 +187,22 @@ func ValidateApiduoOptionValue(key, value string) error {
 		if v != "" && (!apiduoTimezone.MatchString(v) || len(v) > 64) {
 			return bad("时区名不合法：%q", v)
 		}
+	case "observability_setting.body_mode":
+		if _, ok := trace.BodyModeFromName(v); !ok {
+			return bad("内容采集模式只能是 off / headtail / full")
+		}
+	case "observability_setting.body_head_bytes", "observability_setting.body_tail_bytes":
+		return apiduoRange(key, v, 0, trace.MaxBodyWindowBytes)
+	case "observability_setting.error_sample_rate":
+		return apiduoRange(key, v, 0, 100)
+	case "observability_setting.environment":
+		// 空串是合法值：表示「不给这批 span 打环境标签」，与默认的
+		// "production" 不是一回事。
+		if len(v) > 64 {
+			return bad("环境标签最长 64 个字符（收到 %d）", len(v))
+		}
+	case "observability_setting.export_host", "observability_setting.console_url":
+		return apiduoValidateOrigin(key, v)
 	}
 	return nil
 }
@@ -186,6 +212,9 @@ func ValidateApiduoOptionValue(key, value string) error {
 // 单独一条 enabled=true 是合法的，但它和 targets 合起来才决定「有没有可写的目标」。
 // 逐键校验看不到同一批里另一个键的新值，所以只能在合并视图上判。
 func ValidateApiduoOptionSet(incoming map[string]string) error {
+	if err := apiduoValidateBodyWindowSet(incoming); err != nil {
+		return err
+	}
 	_, touchesEnabled := incoming["artifact_storage_setting.enabled"]
 	_, touchesTargets := incoming["artifact_storage_setting.targets"]
 	if !touchesEnabled && !touchesTargets {
@@ -210,6 +239,58 @@ func ValidateApiduoOptionSet(incoming map[string]string) error {
 	}
 	if apiduoCountStorageTargets(targets) == 0 {
 		return fmt.Errorf("启用对象存储前，先添加至少一个带端点和存储桶的目标")
+	}
+	return nil
+}
+
+// apiduoValidateBodyWindowSet 拦住「两个合法单值、合起来超预算」的组合。
+//
+// head=128K 与 tail=128K 各自都过单键校验，却是每请求 256 KB 的窗口 ——
+// 千并发就是 256 MB 的采集缓冲，这正是 body 模式要设上限的理由。
+// 单键校验看不到同批里的另一条，只能在合并视图上判。
+func apiduoValidateBodyWindowSet(incoming map[string]string) error {
+	_, hasHead := incoming["observability_setting.body_head_bytes"]
+	_, hasTail := incoming["observability_setting.body_tail_bytes"]
+	if !hasHead && !hasTail {
+		return nil
+	}
+	setting := observability_setting.Get()
+	head := setting.BodyHeadBytes
+	tail := setting.BodyTailBytes
+	if v, ok := incoming["observability_setting.body_head_bytes"]; ok {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			head = n
+		}
+	}
+	if v, ok := incoming["observability_setting.body_tail_bytes"]; ok {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			tail = n
+		}
+	}
+	if head+tail > trace.MaxBodyWindowBytes {
+		return fmt.Errorf("头部与尾部窗口合计 %d 字节，超出上限 %d 字节（%d KB）",
+			head+tail, trace.MaxBodyWindowBytes, trace.MaxBodyWindowBytes/1024)
+	}
+	return nil
+}
+
+// apiduoValidateOrigin 只接受裸 http(s) 源地址。
+//
+// 导出路径是 {host}/api/public/otel/v1/traces 直接拼上去的，所以带 path 的
+// 值（https://x/langfuse）不会报错，只会静默 404 —— 那正是「排查半天发现是
+// 少写了一个斜杠」的典型。用户名密码、query、fragment 同理：它们会被原样拼进
+// 请求地址，而不是「顺手支持一下」。空串合法 = 跟随环境变量。
+func apiduoValidateOrigin(key, v string) error {
+	if v == "" {
+		return nil
+	}
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("%s 必须是 http(s) 地址，或留空跟随环境变量", key)
+	}
+	if u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+		(u.Path != "" && u.Path != "/") {
+		return fmt.Errorf("%s 只能是源地址（协议 + 域名 + 端口），不要带路径、账号或查询参数", key)
 	}
 	return nil
 }

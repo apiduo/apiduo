@@ -310,6 +310,231 @@ export function parseJsonBody(raw: string): unknown | null {
 }
 
 /**
+ * A streamed body after decoding: the frames themselves, plus the answer they
+ * add up to.
+ *
+ * Splitting these two matters. `parsed` answers "what did the model say",
+ * which is the question the drawer exists for; `frames` answers "what did the
+ * upstream actually send", which is what an operator reads when the answer
+ * never assembled (an error frame mid-stream, a protocol nobody taught the
+ * assembler).
+ */
+export interface SseBody {
+  /** Decoded JSON payloads, in arrival order. */
+  frames: unknown[]
+  /** Lines that did not decode — a headtail cut, or a non-JSON event. */
+  badFrames: number
+  /** Assembled answer, or null when the frames carry no text. */
+  parsed: ParsedPayload | null
+}
+
+/**
+ * Decodes an SSE body, or null when the text is not one.
+ *
+ * Why it exists: a streaming answer reaches the drawer as `data: {…}` lines,
+ * one JSON object per token delta. That is neither a conversation (several
+ * objects, not one) nor a single JSON document, so both of the other views
+ * decline and the drawer fell back to a wall of frames — the exact complaint
+ * that produced this function.
+ *
+ * Frames are collected defensively: a headtail capture can cut the last line
+ * mid-object, and a stream can carry non-JSON keep-alives. Those are counted,
+ * not fatal.
+ */
+export function parseSseBody(raw: string): SseBody | null {
+  const trimmed = raw.trim()
+  if (!trimmed.includes('\n')) return null
+  // The first line is often `event: …`, which carries the name but no payload.
+  // Look at the first line that could actually hold JSON before deciding.
+  const firstPayload = trimmed
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith('event:') && !line.startsWith(':'))
+  if (!firstPayload) return null
+  if (!firstPayload.startsWith('data:') && !firstPayload.startsWith('{')) {
+    return null
+  }
+
+  const frames: unknown[] = []
+  let badFrames = 0
+  for (const line of trimmed.split('\n')) {
+    const text = line.trim()
+    // SSE framing lines (event/id/comment) carry no payload of their own.
+    if (!text || text.startsWith(':') || text.startsWith('event:')) continue
+    const payload = text.startsWith('data:') ? text.slice(5).trim() : text
+    if (!payload || payload === '[DONE]') continue
+    try {
+      frames.push(JSON.parse(payload))
+    } catch {
+      badFrames++
+    }
+  }
+  if (frames.length === 0) return null
+  return { frames, badFrames, parsed: assembleFrames(frames) }
+}
+
+/**
+ * Folds stream frames into the normalised response body that `parseResponse`
+ * already understands, so the bubble renderer needs no stream-specific path.
+ *
+ * Four wire formats reach this gateway and each puts the token somewhere
+ * different: OpenAI chat in `choices[].delta.content`, the Responses API in
+ * `response.output_text.delta`, Anthropic in `content_block_delta`, Gemini in
+ * a chunk array. A frame nobody recognises is skipped — silent, because the
+ * caller still has the frames.
+ */
+function assembleFrames(frames: unknown[]): ParsedPayload | null {
+  let text = ''
+  let finish = ''
+  let model = ''
+  let promptTokens: number | string = ''
+  let completionTokens: number | string = ''
+  let error = ''
+  const tools = new Map<number, { name: string; arguments: string }>()
+
+  const noteTokens = (usage: Record<string, unknown> | null) => {
+    if (!usage) return
+    const prompt = scalarToString(usage.input_tokens ?? usage.prompt_tokens)
+    const completion = scalarToString(
+      usage.output_tokens ?? usage.completion_tokens
+    )
+    if (prompt !== null) promptTokens = prompt
+    if (completion !== null) completionTokens = completion
+  }
+
+  const noteTool = (
+    index: number,
+    fn: Record<string, unknown> | null,
+    fallbackName?: unknown
+  ) => {
+    const acc = tools.get(index) ?? { name: '', arguments: '' }
+    const name = scalarToString(fn?.name) ?? scalarToString(fallbackName)
+    if (name) acc.name = name
+    const args = scalarToString(fn?.arguments)
+    if (args) acc.arguments += args
+    tools.set(index, acc)
+  }
+
+  for (const frame of frames) {
+    // Gemini emits one JSON array per chunk.
+    if (Array.isArray(frame)) {
+      for (const chunk of frame) {
+        const candidate = asRecord(
+          (asRecord(chunk)?.candidates as unknown[] | undefined)?.[0]
+        )
+        const parts = asRecord(candidate?.content)?.parts
+        if (Array.isArray(parts)) {
+          for (const part of parts) {
+            const t = scalarToString(asRecord(part)?.text)
+            if (t) text += t
+          }
+        }
+        const reason = scalarToString(candidate?.finishReason)
+        if (reason) finish = reason
+      }
+      continue
+    }
+
+    const obj = asRecord(frame)
+    if (!obj) continue
+    const type = scalarToString(obj.type) ?? ''
+
+    // OpenAI Responses API.
+    if (type === 'response.output_text.delta') {
+      text += scalarToString(obj.delta) ?? ''
+      continue
+    }
+    if (type === 'response.output_text.done' && !text) {
+      text += scalarToString(obj.text) ?? ''
+      continue
+    }
+    if (type.startsWith('response.')) {
+      const resp = asRecord(obj.response)
+      noteTokens(asRecord(resp?.usage))
+      model ||= scalarToString(resp?.model) ?? ''
+      const status = scalarToString(resp?.status)
+      if (status && status !== 'completed') finish = status
+      if (type === 'response.failed' || type === 'response.error') {
+        const err = asRecord(resp?.error) ?? asRecord(obj.error)
+        error ||= scalarToString(err?.message) ?? errorTextOf(obj, resp)
+      }
+      continue
+    }
+
+    // Anthropic.
+    if (type === 'content_block_delta') {
+      const delta = asRecord(obj.delta)
+      if (scalarToString(delta?.type) === 'text_delta') {
+        text += scalarToString(delta?.text) ?? ''
+      }
+      continue
+    }
+    if (type === 'message_delta') {
+      const delta = asRecord(obj.delta)
+      const reason = scalarToString(delta?.stop_reason)
+      if (reason) finish = reason
+      noteTokens(asRecord(obj.usage))
+      continue
+    }
+    if (type === 'error') {
+      error ||= scalarToString(asRecord(obj.error)?.message) ?? ''
+      continue
+    }
+
+    // OpenAI chat/completions.
+    const choices = obj.choices
+    if (Array.isArray(choices) && choices.length > 0) {
+      const choice = asRecord(choices[0])
+      const delta = asRecord(choice?.delta) ?? asRecord(choice?.message)
+      text += scalarToString(delta?.content) ?? ''
+      const reason = scalarToString(choice?.finish_reason)
+      if (reason) finish = reason
+      const calls = delta?.tool_calls
+      if (Array.isArray(calls)) {
+        for (const call of calls) {
+          const c = asRecord(call)
+          noteTool(Number(c?.index) || 0, asRecord(c?.function), c?.name)
+        }
+      }
+      noteTokens(asRecord(obj.usage))
+    }
+  }
+
+  if (!text && tools.size === 0) return null
+
+  const body: Record<string, unknown> = { text }
+  if (finish) body.finish_reason = finish
+  if (model) body.model = model
+  if (error) body.error = error
+  if (tools.size > 0) {
+    body.tool_calls = [...tools.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, call]) => ({
+        function: { name: call.name, arguments: call.arguments },
+      }))
+  }
+  if (promptTokens !== '' || completionTokens !== '') {
+    body.usage = {
+      prompt_tokens: promptTokens === '' ? undefined : promptTokens,
+      completion_tokens: completionTokens === '' ? undefined : completionTokens,
+    }
+  }
+  return parseResponse(body)
+}
+
+/** Error text from either the nested response or the frame itself. */
+function errorTextOf(
+  frame: Record<string, unknown>,
+  resp: Record<string, unknown> | null
+): string {
+  return (
+    scalarToString(frame.message) ??
+    scalarToString(resp?.message) ??
+    'stream failed'
+  )
+}
+
+/**
  * Returns null whenever the body is not a recognisable conversation — the
  * caller then shows the raw text, which is the only honest fallback for a
  * truncated payload, an SSE frame dump, or an error string.

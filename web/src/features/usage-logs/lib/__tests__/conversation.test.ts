@@ -18,7 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import { parseJsonBody, parsePayload, scrubBase64 } from '../conversation'
+import {
+  parseJsonBody,
+  parsePayload,
+  parseSseBody,
+  scrubBase64,
+} from '../conversation'
 
 describe('parsePayload request', () => {
   it('renders an OpenAI chat body as turns and keeps the knobs apart', () => {
@@ -226,5 +231,70 @@ describe('parseJsonBody', () => {
     })
     expect(parseJsonBody(raw)).not.toBeNull()
     expect(parseJsonBody(raw.slice(0, 40))).toBeNull()
+  })
+})
+
+describe('parseSseBody', () => {
+  it('rebuilds a Responses API answer from its deltas', () => {
+    const raw = [
+      'event: response.created',
+      'data: {"type":"response.created","response":{"model":"deepseek-v4","status":"in_progress"}}',
+      '',
+      'data: {"type":"response.output_text.delta","delta":"Hel"}',
+      'data: {"type":"response.output_text.delta","delta":"lo"}',
+      'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":9,"output_tokens":2}}}',
+    ].join('\n')
+
+    const body = parseSseBody(raw)
+    expect(body?.frames).toHaveLength(4)
+    expect(body?.parsed?.turns).toEqual([{ role: 'assistant', text: 'Hello' }])
+    const extras = Object.fromEntries(
+      (body?.parsed?.extras ?? []).map((extra) => [extra.key, extra.value])
+    )
+    expect(extras.prompt_tokens).toBe('9')
+    expect(extras.completion_tokens).toBe('2')
+  })
+
+  it('handles chat-completions frames, data prefixes and [DONE]', () => {
+    const raw = [
+      'data: {"choices":[{"delta":{"role":"assistant"},"index":0}]}',
+      'data: {"choices":[{"delta":{"content":"hi"},"index":0}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}',
+      'data: [DONE]',
+    ].join('\n')
+
+    const body = parseSseBody(raw)
+    expect(body?.parsed?.turns[0]).toEqual({ role: 'assistant', text: 'hi' })
+    expect(body?.parsed?.extras).toContainEqual({
+      key: 'finish_reason',
+      value: 'stop',
+    })
+  })
+
+  it('keeps the frames when nothing assembles, so the error stays visible', () => {
+    const raw = [
+      'data: {"type":"response.created","response":{"status":"in_progress"}}',
+      'data: {"type":"error","error":{"message":"upstream overloaded"}}',
+    ].join('\n')
+
+    const body = parseSseBody(raw)
+    expect(body?.parsed).toBeNull()
+    expect(body?.frames).toHaveLength(2)
+    expect(body?.badFrames).toBe(0)
+  })
+
+  it('counts a cut-off tail instead of failing the whole body', () => {
+    const raw =
+      'data: {"type":"response.output_text.delta","delta":"ok"}\n' +
+      'data: {"type":"response.output_text.delta","del'
+
+    const body = parseSseBody(raw)
+    expect(body?.parsed?.turns[0].text).toBe('ok')
+    expect(body?.badFrames).toBe(1)
+  })
+
+  it('returns null for text that is not a stream at all', () => {
+    expect(parseSseBody('upstream 500: rate limited')).toBeNull()
+    expect(parseSseBody('{"messages":[]}')).toBeNull()
   })
 })

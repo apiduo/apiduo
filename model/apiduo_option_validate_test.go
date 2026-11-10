@@ -1,10 +1,13 @@
 package model
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/apiduo/trace"
+	"github.com/QuantumNous/new-api/setting/observability_setting"
 )
 
 // 线上实测：批量接口对任何键名都回 200 并落库，拼错的键名同样「保存成功」。
@@ -54,6 +57,14 @@ func TestValidateApiduoOptionValue(t *testing.T) {
 		{"artifact_storage_setting.targets", `[{"endpoint":"https://s3","bucket":"b"}]`},
 		{"observability_setting.rules", "[]"},
 		{"observability_setting.rules", `[{"days":[1,7],"start":"09:00","end":"18:00","metadata_rate":10,"content_rate":50}]`},
+		{"observability_setting.body_mode", "off"},
+		{"observability_setting.body_mode", "headtail"},
+		{"observability_setting.body_mode", "FULL"}, // 大小写不该决定成败
+		{"observability_setting.body_head_bytes", "0"},
+		{"observability_setting.body_head_bytes", strconv.Itoa(trace.MaxBodyWindowBytes)},
+		{"observability_setting.export_host", "http://apiduo-langfuse-web:3000"},
+		{"observability_setting.export_host", ""}, // 空 = 跟随环境变量
+		{"observability_setting.console_url", "https://langfuse.1task.cn"},
 	}
 	for _, c := range ok {
 		if err := ValidateApiduoOptionValue(c.key, c.val); err != nil {
@@ -77,6 +88,15 @@ func TestValidateApiduoOptionValue(t *testing.T) {
 		{"observability_setting.rules", `[{"days":[9]}]`, "星期只能是 1-7"},
 		{"observability_setting.rules", `[{"metadata_rate":999}]`, "元数据采样率"},
 		{"observability_setting.rules", `[{"start":"18:00","end":"09:00"}]`, "结束时间要晚于开始时间"},
+		{"observability_setting.body_mode", "hedtali", "off / headtail / full"},
+		{"observability_setting.body_head_bytes", strconv.Itoa(trace.MaxBodyWindowBytes + 1), "超出范围"},
+		{"observability_setting.export_host", "langfuse.1task.cn", "http(s)"},
+		{"observability_setting.export_host", "ftp://langfuse", "http(s)"},
+		// 导出路径是 {host}/api/public/otel/v1/traces 直接拼的：带路径不报错，
+		// 只会静默 404，所以写入期就必须拒。
+		{"observability_setting.export_host", "https://langfuse.1task.cn/langfuse", "源地址"},
+		{"observability_setting.console_url", "https://user:pw@langfuse.1task.cn", "源地址"},
+		{"observability_setting.console_url", "https://langfuse.1task.cn?x=1", "源地址"},
 	}
 	for _, c := range bad {
 		err := ValidateApiduoOptionValue(c.key, c.val)
@@ -92,6 +112,42 @@ func TestValidateApiduoOptionValue(t *testing.T) {
 	// 非扩展键不受影响
 	if err := ValidateApiduoOptionValue("SystemName", "任何值"); err != nil {
 		t.Errorf("不认识的键应当放行给上游，实际 %v", err)
+	}
+}
+
+// 单条 128 KB 合法、两条合起来 256 KB 也「各自合法」，只有合并视图能拦住。
+// 拦不住的后果不是多收数据，是每请求 256 KB 的采集缓冲 —— 千并发 256 MB。
+func TestValidateApiduoOptionSetBodyWindow(t *testing.T) {
+	limit := strconv.Itoa(trace.MaxBodyWindowBytes)
+
+	if err := ValidateApiduoOptionSet(map[string]string{
+		"observability_setting.body_head_bytes": limit,
+		"observability_setting.body_tail_bytes": limit,
+	}); err == nil {
+		t.Fatal("批内两条合计超预算，应当被拒")
+	}
+
+	if err := ValidateApiduoOptionSet(map[string]string{
+		"observability_setting.body_head_bytes": "65536",
+		"observability_setting.body_tail_bytes": "16384",
+	}); err != nil {
+		t.Fatalf("合法组合不该被拒：%v", err)
+	}
+
+	// 只改一条时，另一条要按现存值合并 —— 拿不到现存值就会漏判。
+	head := observability_setting.Get().BodyHeadBytes
+	overflow := strconv.Itoa(trace.MaxBodyWindowBytes - head + 1024)
+	if err := ValidateApiduoOptionSet(map[string]string{
+		"observability_setting.body_tail_bytes": overflow,
+	}); err == nil {
+		t.Fatal("与现存头窗口合并后超预算，应当被拒")
+	}
+
+	// 不碰这两个键的保存不该被这段逻辑影响。
+	if err := ValidateApiduoOptionSet(map[string]string{
+		"observability_setting.metadata_sample_rate": "10",
+	}); err != nil {
+		t.Fatalf("无关的键不该触发窗口校验：%v", err)
 	}
 }
 

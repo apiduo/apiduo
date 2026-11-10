@@ -79,6 +79,8 @@ type Draft = {
   errorRate: number
   redact: boolean
   environment: string
+  exportHost: string
+  consoleURL: string
   rules: RuleDraft[]
 }
 
@@ -94,6 +96,8 @@ type Payload = {
   error_sample_rate: number
   redact: boolean
   environment: string
+  export_host: string
+  console_url: string
   rules: Array<{
     models: string[]
     days: number[]
@@ -107,7 +111,10 @@ type Payload = {
 
 type TraceConfig = {
   enabled: boolean
+  /** Browser-facing base — what the drawer's Langfuse link opens. */
   host?: string
+  /** What spans are actually POSTed to; may be an internal container name. */
+  export_host?: string
   body_mode?: string
   body_head_bytes?: number
   body_tail_bytes?: number
@@ -217,6 +224,8 @@ const EMPTY_DRAFT: Draft = {
   errorRate: 100,
   redact: true,
   environment: 'production',
+  exportHost: '',
+  consoleURL: '',
   rules: [],
 }
 
@@ -264,6 +273,8 @@ function toDraft(raw: unknown): Draft {
     errorRate: value.error_sample_rate ?? 100,
     redact: value.redact ?? true,
     environment: value.environment ?? 'production',
+    exportHost: value.export_host ?? '',
+    consoleURL: value.console_url ?? '',
     rules: (value.rules ?? []).map((rule, i) => ({
       uid: i,
       models: (rule.models ?? []).join(', '),
@@ -293,6 +304,11 @@ function toPayload(draft: Draft): Payload {
     error_sample_rate: clampPercent(String(draft.errorRate)),
     redact: draft.redact,
     environment: draft.environment.trim(),
+    // Empty is a meaningful value here ("keep following LANGFUSE_*"), so it
+    // must survive the round trip instead of being filled in from the running
+    // config — otherwise opening the page and saving would pin today's address.
+    export_host: draft.exportHost.trim(),
+    console_url: draft.consoleURL.trim(),
     rules: draft.rules.map((rule) => ({
       models: rule.models
         .split(',')
@@ -363,6 +379,8 @@ export function ObservabilitySection() {
         ),
         redact: values.get(`${OPTION_KEY}.redact`) !== 'false',
         environment: values.get(`${OPTION_KEY}.environment`) ?? 'production',
+        export_host: values.get(`${OPTION_KEY}.export_host`) ?? '',
+        console_url: values.get(`${OPTION_KEY}.console_url`) ?? '',
       } as Payload)
     },
     staleTime: 30 * 1000,
@@ -417,6 +435,8 @@ export function ObservabilitySection() {
         ),
         [`${OPTION_KEY}.redact`]: String(payload.redact),
         [`${OPTION_KEY}.environment`]: payload.environment,
+        [`${OPTION_KEY}.export_host`]: payload.export_host,
+        [`${OPTION_KEY}.console_url`]: payload.console_url,
       }
       await requireServerSuccess(await updateSystemOptionsBatch(options))
     },
@@ -460,12 +480,16 @@ export function ObservabilitySection() {
     })
 
   const status = traceConfig.data
-  // The export host comes from LANGFUSE_CONSOLE_URL / LANGFUSE_HOST. Rendering
-  // it straight into an href would turn a misconfigured value into a clickable
-  // javascript: URL, so only http(s) becomes a link and everything else stays
-  // plain text.
-  const exportHost = status?.host?.trim() ?? ''
-  const exportHostIsLink = /^https?:\/\//i.test(exportHost)
+  // Two addresses, two jobs: export_host is where spans are POSTed (often an
+  // internal container name), host is what a browser can reach. The page used
+  // to label the browser-facing one "export endpoint", which is how an operator
+  // ends up editing the wrong string.
+  const runningExportHost = status?.export_host?.trim() ?? ''
+  const consoleBase = status?.host?.trim() ?? ''
+  // Rendering an operator-supplied value straight into an href would turn a
+  // misconfiguration into a clickable javascript: URL, so only http(s) becomes
+  // a link and everything else stays plain text.
+  const consoleIsLink = /^https?:\/\//i.test(consoleBase)
   const zone = status?.server_zone ?? t('server local zone')
   const zoneTime = status?.server_time ?? ''
   const runningMeta = status?.metadata_sample_rate
@@ -582,21 +606,29 @@ export function ObservabilitySection() {
               <dt className='text-muted-foreground text-xs'>
                 {t('Export endpoint')}
               </dt>
+              <dd className='font-mono text-xs break-all'>
+                {runningExportHost || '—'}
+              </dd>
+            </div>
+            <div className='space-y-1'>
+              <dt className='text-muted-foreground text-xs'>
+                {t('Console URL')}
+              </dt>
               <dd className='font-mono text-xs'>
-                {exportHostIsLink ? (
+                {consoleIsLink ? (
                   // The whole row is the hit target, but only the trailing icon
                   // is coloured: an underlined URL next to a dot-separated list
                   // of settings reads as body text, while the ↗ matches how the
                   // console already marks "this leaves the app".
                   <a
-                    href={exportHost}
+                    href={consoleBase}
                     target='_blank'
                     rel='noopener noreferrer'
                     title={t('Open in a new tab')}
                     data-apiduo='text'
                     className='group inline-flex max-w-full items-center gap-1.5 align-bottom hover:underline'
                   >
-                    <span className='break-all'>{exportHost}</span>
+                    <span className='break-all'>{consoleBase}</span>
                     <ExternalLink
                       className='size-3.5 shrink-0 transition-transform group-hover:-translate-y-0.5'
                       style={{ color: 'var(--apiduo-ink)' }}
@@ -604,7 +636,7 @@ export function ObservabilitySection() {
                     />
                   </a>
                 ) : (
-                  <span className='break-all'>{exportHost || '—'}</span>
+                  <span className='break-all'>{consoleBase || '—'}</span>
                 )}
               </dd>
             </div>
@@ -643,6 +675,56 @@ export function ObservabilitySection() {
               </dd>
             </div>
           </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Connection')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Where traces are written and where the log drawer links to. Leave a field empty to keep following the deployment environment — the greyed text is what is running right now. Saving a new export endpoint takes effect on the next batch, no restart.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='grid gap-4 sm:grid-cols-2'>
+          <div className='space-y-1.5'>
+            <Label htmlFor='apiduo-export-host'>{t('Export endpoint')}</Label>
+            <Input
+              id='apiduo-export-host'
+              value={current.exportHost}
+              placeholder={runningExportHost || t('follows the environment')}
+              onChange={(event) => update({ exportHost: event.target.value })}
+              autoComplete='off'
+              spellCheck={false}
+              className='font-mono text-xs'
+              data-apiduo='text'
+            />
+            <p className='text-muted-foreground text-[11px] leading-relaxed'>
+              {t(
+                'Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.',
+                { host: current.exportHost.trim() || runningExportHost || '…' }
+              )}
+            </p>
+          </div>
+          <div className='space-y-1.5'>
+            <Label htmlFor='apiduo-console-url'>{t('Console URL')}</Label>
+            <Input
+              id='apiduo-console-url'
+              value={current.consoleURL}
+              placeholder={consoleBase || t('same as the export endpoint')}
+              onChange={(event) => update({ consoleURL: event.target.value })}
+              autoComplete='off'
+              spellCheck={false}
+              className='font-mono text-xs'
+              data-apiduo='text'
+            />
+            <p className='text-muted-foreground text-[11px] leading-relaxed'>
+              {t(
+                'What the "Langfuse" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.'
+              )}
+            </p>
+          </div>
         </CardContent>
       </Card>
 

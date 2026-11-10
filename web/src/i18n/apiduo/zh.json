@@ -176,6 +176,17 @@
     "Rule content sampling (%)": "规则内内容采样（%）",
     "Loading settings...": "正在读取设置...",
     "Cannot read the current settings. Reload the page to retry.": "读不到当前设置，刷新页面重试。",
-    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "这条 span 没有请求或响应正文：要么是内容采样把它剥掉了，要么它是在结算时补写的 —— 异步任务结算和渠道测试本来就不带正文。"
+    "This row was written when the request settled — async task settlement, a channel test, or a fee adjustment. Nothing in that path hands a prompt to the gateway, so there is no body to show; the cost and tokens above are the whole record.": "这条记录是在请求结算时补写的 —— 异步任务结算、渠道测试或费用调整。这些路径本来就不会把提示词交给网关，所以没有正文可看；上面的费用与 token 就是全部记录。",
+    "Metadata sampling kept the span but content sampling stripped the body. Raise the content rate in System Settings → Observability if you need prompts for this model.": "元数据采样留下了这条 span，但内容采样把正文剥掉了。如果这个模型需要看提示词，去「系统设置 → 可观测性」提高内容采样率。",
+    "Where traces are written and where the log drawer links to. Leave a field empty to keep following the deployment environment — the greyed text is what is running right now. Saving a new export endpoint takes effect on the next batch, no restart.": "轨迹写到哪、日志抽屉的跳转链接指向哪。留空表示继续跟随部署环境 —— 灰色文字是当前实际在用的值。改上报地址保存后下一批即生效，不用重启。",
+    "Rebuilt from {{count}} stream events": "由 {{count}} 个流式事件还原",
+    "{{count}} stream events · first {{shown}} shown": "{{count}} 个流式事件 · 显示前 {{shown}} 个",
+    "{{count}} frame(s) did not decode": "{{count}} 个帧解析失败",
+    "Console URL": "控制台地址",
+    "Connection": "连接",
+    "follows the environment": "跟随环境变量",
+    "Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.": "只填基址 —— span 会 POST 到 {host}/api/public/otel/v1/traces。内网容器名也可以，通常还更快。",
+    "same as the export endpoint": "与上报地址相同",
+    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "日志抽屉里「Langfuse」按钮打开的地址。只有当地址对网关可达、对浏览器不可达时才需要单独填。"
   }
 }

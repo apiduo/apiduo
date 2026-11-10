@@ -51,6 +51,7 @@ import type { UsageLog } from '../data/schema'
 import {
   parseJsonBody,
   parsePayload,
+  parseSseBody,
   type ParsedPayload,
 } from '../lib/conversation'
 import { parseLogOther } from '../lib/format'
@@ -372,6 +373,12 @@ function TraceBody({ obs, log }: { obs: TraceObservation; log: UsageLog }) {
   const ttftText = ttft > 0 && ttft < 0.01 ? '<0.01' : ttft.toFixed(2)
   const promptTokens = obs.prompt_tokens || log.prompt_tokens || 0
   const outputTokens = obs.completion_tokens || log.completion_tokens || 0
+  // Two different reasons for an empty body, and they read the same unless we
+  // separate them here. `consume <model>` spans come from RecordConsume — the
+  // settlement path (async tasks, MJ, channel tests) that never receives a
+  // request body at all, so "sampling stripped it" is simply false there.
+  const settlement = /^consume\b/.test(obs.name)
+  const hasBody = obs.content_sampled || obs.input !== '' || obs.output !== ''
 
   return (
     <>
@@ -423,9 +430,13 @@ function TraceBody({ obs, log }: { obs: TraceObservation; log: UsageLog }) {
 
       {!obs.content_sampled && (
         <Notice tone='info' title={t('Content was not captured')}>
-          {t(
-            'This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.'
-          )}
+          {settlement
+            ? t(
+                'This row was written when the request settled — async task settlement, a channel test, or a fee adjustment. Nothing in that path hands a prompt to the gateway, so there is no body to show; the cost and tokens above are the whole record.'
+              )
+            : t(
+                'Metadata sampling kept the span but content sampling stripped the body. Raise the content rate in System Settings → Observability if you need prompts for this model.'
+              )}
         </Notice>
       )}
 
@@ -438,15 +449,21 @@ function TraceBody({ obs, log }: { obs: TraceObservation; log: UsageLog }) {
         </section>
       )}
 
-      <section>
-        <SectionTitle meta={t('Input')}>{t('Request')}</SectionTitle>
-        <PayloadView text={obs.input} empty={t('Not captured')} kind='request' />
-      </section>
+      {/* 正文没有就不画两个空框：抽屉宽度只有 520px，两个 "Not captured"
+          占了首屏一半，却不比上面那句解释多说一个字。 */}
+      {hasBody && (
+        <section>
+          <SectionTitle meta={t('Input')}>{t('Request')}</SectionTitle>
+          <PayloadView text={obs.input} empty={t('Not captured')} kind='request' />
+        </section>
+      )}
 
-      <section>
-        <SectionTitle meta={t('Output')}>{t('Response')}</SectionTitle>
-        <PayloadView text={obs.output} empty={t('Not captured')} kind='response' />
-      </section>
+      {hasBody && (
+        <section>
+          <SectionTitle meta={t('Output')}>{t('Response')}</SectionTitle>
+          <PayloadView text={obs.output} empty={t('Not captured')} kind='response' />
+        </section>
+      )}
 
       {/* 元信息（渠道/令牌/环境/release）不再整块列出：日志行本身有渠道和
           令牌，attributes 全量在 Langfuse 侧。抽屉只留直观的三样：时间轴、
@@ -543,6 +560,42 @@ const MAX_PARSE_CHARS = 192 * 1024
 // pasted document would push everything else out of reach.
 const TURN_COLLAPSE_AT = 400
 
+// Frames drawn when a stream could not be assembled. Each frame is an open
+// object in the tree, so this is ~6 rows apiece; 30 keeps the sheet responsive
+// while still showing the opening events where the request echo lives.
+const FRAME_ROWS = 30
+
+/**
+ * Says where the view above came from. An assembled answer is a
+ * reconstruction, not the bytes on the wire — an operator reading a truncated
+ * answer has to know that, or a missing sentence looks like a model failure
+ * instead of a capture window.
+ */
+function StreamNote({
+  frames,
+  bad,
+  shown,
+  assembled,
+}: {
+  frames: number
+  bad: number
+  shown?: number
+  assembled?: boolean
+}) {
+  const { t } = useTranslation()
+  return (
+    <p className='text-muted-foreground mt-1 text-[10.5px]'>
+      {assembled
+        ? t('Rebuilt from {{count}} stream events', { count: frames })
+        : t('{{count}} stream events · first {{shown}} shown', {
+            count: frames,
+            shown: shown ?? frames,
+          })}
+      {bad > 0 ? ` · ${t('{{count}} frame(s) did not decode', { count: bad })}` : ''}
+    </p>
+  )
+}
+
 /**
  * Payload with a conversation view on top and the raw body one click away.
  *
@@ -576,6 +629,17 @@ function PayloadView({
     () => (text && !tooLarge && !parsed ? parseJsonBody(text) : null),
     [text, tooLarge, parsed]
   )
+  // A streaming answer is neither one JSON document nor a conversation: it is
+  // one object per delta. Both views above decline it, which is why a streamed
+  // reply used to land in the raw <pre> as a wall of frames.
+  const sse = useMemo(
+    () => (text && !tooLarge && !parsed && !json ? parseSseBody(text) : null),
+    [text, tooLarge, parsed, json]
+  )
+  const streamTurns = sse?.parsed ?? null
+  // No assembled answer? Then the frames themselves are the evidence — an
+  // error frame mid-stream, or a protocol the assembler does not know.
+  const streamFrames = !streamTurns && sse ? sse.frames : null
 
   if (!text) {
     return (
@@ -587,8 +651,55 @@ function PayloadView({
 
   const truncated = text.length > MAX_PAYLOAD_CHARS
   const body = truncated ? text.slice(0, MAX_PAYLOAD_CHARS) : text
-  const previewable = parsed !== null || json !== null
+  const previewable = parsed !== null || json !== null || sse !== null
   const showTree = !raw && json !== null
+  const showStream = !raw && sse !== null
+
+  // Which view wins, in order of how much it says: a conversation, a stream
+  // rebuilt into one, a tree, the frames that never assembled, then the bytes.
+  // Written as early returns rather than a chained ternary — four conditions
+  // deep, the ternary stopped being readable and started being a lint error.
+  const content = (() => {
+    if (raw) {
+      return (
+        <pre className='bg-muted/50 max-h-52 overflow-auto rounded-lg border p-3 text-xs whitespace-pre-wrap break-words'>
+          {body}
+        </pre>
+      )
+    }
+    if (parsed) return <Turns parsed={parsed} />
+    if (streamTurns) {
+      return (
+        <>
+          <Turns parsed={streamTurns} />
+          <StreamNote
+            frames={sse?.frames.length ?? 0}
+            bad={sse?.badFrames ?? 0}
+            assembled
+          />
+        </>
+      )
+    }
+    if (json !== null) return <JsonTree value={json} />
+    if (streamFrames) {
+      const shown = Math.min(streamFrames.length, FRAME_ROWS)
+      return (
+        <>
+          <JsonTree value={streamFrames.slice(0, FRAME_ROWS)} />
+          <StreamNote
+            frames={streamFrames.length}
+            bad={sse?.badFrames ?? 0}
+            shown={shown}
+          />
+        </>
+      )
+    }
+    return (
+      <pre className='bg-muted/50 max-h-52 overflow-auto rounded-lg border p-3 text-xs whitespace-pre-wrap break-words'>
+        {body}
+      </pre>
+    )
+  })()
 
   return (
     <>
@@ -610,16 +721,8 @@ function PayloadView({
           )}
         </div>
       )}
-      {!raw && parsed ? (
-        <Turns parsed={parsed} />
-      ) : showTree ? (
-        <JsonTree value={json} />
-      ) : (
-        <pre className='bg-muted/50 max-h-52 overflow-auto rounded-lg border p-3 text-xs whitespace-pre-wrap break-words'>
-          {body}
-        </pre>
-      )}
-      {truncated && !showTree && (
+      {content}
+      {truncated && !showTree && !showStream && (
         <p className='text-muted-foreground mt-1 text-[10.5px]'>
           … {Math.round(text.length / 1024)} KB · {t('Truncated for display')}
         </p>

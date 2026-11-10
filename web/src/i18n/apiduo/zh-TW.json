@@ -178,6 +178,17 @@
     "Rule content sampling (%)": "規則內內容取樣（%）",
     "Loading settings...": "正在讀取設定...",
     "Cannot read the current settings. Reload the page to retry.": "讀不到目前設定，重新整理頁面再試。",
-    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "這條 span 沒有請求或回應內文：要麼是內容取樣把它剝掉了，要麼它是在結算時補寫的 —— 非同步任務結算和頻道測試本來就不帶內文。"
+    "This row was written when the request settled — async task settlement, a channel test, or a fee adjustment. Nothing in that path hands a prompt to the gateway, so there is no body to show; the cost and tokens above are the whole record.": "這筆記錄是在請求結算時補寫的 —— 非同步任務結算、渠道測試或費用調整。這些路徑本來就不會把提示詞交給閘道，所以沒有內容可看；上方的費用與 token 就是全部紀錄。",
+    "Metadata sampling kept the span but content sampling stripped the body. Raise the content rate in System Settings → Observability if you need prompts for this model.": "中繼資料取樣留下了這條 span，但內容取樣把內容剝掉了。如果這個模型需要看提示詞，到「系統設定 → 可觀測性」提高內容取樣率。",
+    "Where traces are written and where the log drawer links to. Leave a field empty to keep following the deployment environment — the greyed text is what is running right now. Saving a new export endpoint takes effect on the next batch, no restart.": "軌跡寫到哪、日誌抽屜的跳轉連結指向哪。留空表示繼續跟隨部署環境 —— 灰色文字是目前實際在用的值。改上報位址儲存後下一批即生效，不用重啟。",
+    "Rebuilt from {{count}} stream events": "由 {{count}} 個串流事件還原",
+    "{{count}} stream events · first {{shown}} shown": "{{count}} 個串流事件 · 顯示前 {{shown}} 個",
+    "{{count}} frame(s) did not decode": "{{count}} 個幀解析失敗",
+    "Console URL": "主控台位址",
+    "Connection": "連線",
+    "follows the environment": "跟隨環境變數",
+    "Base URL only — spans are POSTed to {host}/api/public/otel/v1/traces. An internal container name is fine and usually faster.": "只填基底位址 —— span 會 POST 到 {host}/api/public/otel/v1/traces。內網容器名稱也可以，通常還更快。",
+    "same as the export endpoint": "與上報位址相同",
+    "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "日誌抽屜裡「Langfuse」按鈕開啟的位址。只有當位址對閘道可達、對瀏覽器不可達時才需要單獨填。"
   }
 }

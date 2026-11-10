@@ -186,6 +186,15 @@ func EnvDefaultQuality() (errorRate int, redact bool, environment string) {
 		envStr("LANGFUSE_ENVIRONMENT", "production")
 }
 
+// EnvDefaultEndpoints is where the environment points the exporter and the
+// jump link. The console edits both; an empty stored value must fall back to
+// these rather than to "", or the first save of an unrelated field would
+// silently stop export.
+func EnvDefaultEndpoints() (host, consoleURL string) {
+	return strings.TrimRight(strings.TrimSpace(os.Getenv("LANGFUSE_HOST")), "/"),
+		strings.TrimRight(strings.TrimSpace(os.Getenv("LANGFUSE_CONSOLE_URL")), "/")
+}
+
 // EnvDefaultRates is the sampling pair the environment asks for.
 //
 // The settings module seeds its console form with this instead of a literal
@@ -202,11 +211,12 @@ func EnvDefaultRates() Rates {
 
 func loadFromEnv() *Config {
 	defaultHead, defaultTail := EnvDefaultBodyWindow()
+	defaultHost, defaultConsoleURL := EnvDefaultEndpoints()
 	defaultErrorRate, defaultRedact, defaultEnvironment := EnvDefaultQuality()
 	return &Config{
 		Enabled:         envBool("LANGFUSE_ENABLED"),
-		Host:            strings.TrimRight(os.Getenv("LANGFUSE_HOST"), "/"),
-		ConsoleURL:      strings.TrimRight(os.Getenv("LANGFUSE_CONSOLE_URL"), "/"),
+		Host:            defaultHost,
+		ConsoleURL:      defaultConsoleURL,
 		PublicKey:       os.Getenv("LANGFUSE_PUBLIC_KEY"),
 		SecretKey:       os.Getenv("LANGFUSE_SECRET_KEY"),
 		ProjectID:       os.Getenv("LANGFUSE_PROJECT_ID"),
