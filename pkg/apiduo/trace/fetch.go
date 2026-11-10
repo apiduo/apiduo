@@ -123,14 +123,19 @@ const observationFields = "basic,io,usage,metadata,model,time,trace_context"
 // round-trip, not for ClickHouse.
 const fetchTimeout = 12 * time.Second
 
-// FetchObservation returns the root observation of one trace.
+// FetchObservation returns the span that represents one request.
 //
 // Langfuse v4 removed the single-observation endpoint (GET
-// /api/public/v2/observations/{id} → 404), so the only way in is the list
-// filtered by traceId. A request that arrived with a traceparent is a tree, and
-// only the root carries the gateway's own prompt/answer — child spans belong to
-// the calling agent. So we pick isRootObservation, falling back to the earliest
-// span when the flag is missing.
+// /api/public/v2/observations/{id} → 404, "not available in events_only mode"),
+// so the only way in is the list filtered by traceId. A request that arrived
+// with a traceparent is a tree, and only the root carries the gateway's own
+// prompt/answer — child spans belong to the calling agent.
+//
+// The page is streamed, not buffered. It holds up to twenty full payloads and
+// we want exactly one, and "full" means up to the capture budget per body — a
+// two-image trace is several megabytes. Reading the page into memory behind a
+// fixed 4 MB limit made that trace fail as a JSON parse error while the row we
+// wanted sat complete in the first few hundred kilobytes.
 func FetchObservation(traceID string) (*Observation, error) {
 	conf := current()
 	if !conf.Enabled || conf.Host == "" || conf.PublicKey == "" || conf.SecretKey == "" {
@@ -158,12 +163,6 @@ func FetchObservation(traceID string) (*Observation, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Cap the read: a 20-observation page with two 32K payloads is already
-	// ~64KB, and anything beyond a few MB means something is wrong upstream.
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		return nil, fmt.Errorf("langfuse read: %w", err)
-	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		// A wrong key is a deployment problem, not a missing trace. Say so
 		// loudly enough that it is not mistaken for "sampling dropped it".
@@ -173,29 +172,101 @@ func FetchObservation(traceID string) (*Observation, error) {
 		return nil, fmt.Errorf("langfuse HTTP %d", resp.StatusCode)
 	}
 
-	var payload struct {
-		Data []rawObservation `json:"data"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, fmt.Errorf("langfuse response: %w", err)
-	}
-	if len(payload.Data) == 0 {
+	// No byte ceiling here on purpose. The previous io.ReadAll(LimitReader)
+	// had to cap memory because it materialized the whole page; streaming
+	// decodes one observation at a time, so the peak is one row — and a row is
+	// already bounded by the capture budget. Wall clock is bounded by
+	// fetchTimeout instead.
+	row, err := decodeRootObservation(resp.Body)
+	if errors.Is(err, ErrObservationNotFound) {
 		return nil, ErrObservationNotFound
 	}
+	if err != nil {
+		return nil, fmt.Errorf("langfuse response: %w", err)
+	}
 
-	return mapObservation(pickRoot(payload.Data)), nil
+	return mapObservation(row), nil
 }
 
-// pickRoot selects the span that represents "this request".
-func pickRoot(rows []rawObservation) rawObservation {
-	for _, row := range rows {
-		if row.IsRoot {
-			return row
+// decodeRootObservation walks the list response one observation at a time and
+// returns the row that represents the request: the one Langfuse flags as root,
+// or — when no row carries the flag (older or backfilled data) — the earliest
+// start. Rows after the chosen one are never decoded, so a page of twenty large
+// payloads costs one payload, not twenty.
+//
+// Field order is not part of the contract: `meta` may precede `data`, and an
+// unknown key is skipped rather than treated as an error.
+func decodeRootObservation(r io.Reader) (rawObservation, error) {
+	dec := json.NewDecoder(r)
+	if err := expectDelim(dec, '{'); err != nil {
+		return rawObservation{}, err
+	}
+
+	var earliest rawObservation
+	var haveEarliest bool
+
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return rawObservation{}, err
+		}
+		if name, _ := key.(string); name != "data" {
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				return rawObservation{}, err
+			}
+			continue
+		}
+
+		if err := expectDelim(dec, '['); err != nil {
+			return rawObservation{}, err
+		}
+		for dec.More() {
+			var row rawObservation
+			if err := dec.Decode(&row); err != nil {
+				return rawObservation{}, err
+			}
+			if row.IsRoot {
+				return row, nil
+			}
+			if !haveEarliest || startsBefore(row, earliest) {
+				earliest, haveEarliest = row, true
+			}
+		}
+		if err := expectDelim(dec, ']'); err != nil {
+			return rawObservation{}, err
 		}
 	}
-	// No root flag (older data, or a tree whose root is a client span we never
-	// saw): the first row is the earliest span, which is the closest thing.
-	return rows[0]
+
+	if !haveEarliest {
+		return rawObservation{}, ErrObservationNotFound
+	}
+	return earliest, nil
+}
+
+// startsBefore compares two spans by start time. Langfuse returns the page in
+// startTime DESC order, so "the first row" is the latest span, not the
+// earliest — the fallback below has to compare instead of trusting position.
+func startsBefore(a, b rawObservation) bool {
+	ta, errA := time.Parse(time.RFC3339Nano, a.StartTime)
+	tb, errB := time.Parse(time.RFC3339Nano, b.StartTime)
+	if errA == nil && errB == nil {
+		return ta.Before(tb)
+	}
+	// A malformed timestamp leaves text order as the only signal; it is still
+	// deterministic, which is what the caller needs.
+	return a.StartTime < b.StartTime
+}
+
+func expectDelim(dec *json.Decoder, want json.Delim) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if d, ok := tok.(json.Delim); !ok || d != want {
+		return fmt.Errorf("expected %q, got %v", want, tok)
+	}
+	return nil
 }
 
 func mapObservation(row rawObservation) *Observation {

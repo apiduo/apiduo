@@ -2,6 +2,10 @@ package trace
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -77,18 +81,114 @@ func TestContentSampledFallback(t *testing.T) {
 	}
 }
 
-func TestPickRootPrefersFlaggedRoot(t *testing.T) {
-	rows := []rawObservation{
-		{ID: "child", TraceID: "t"},
-		{ID: "root", TraceID: "t", IsRoot: true},
+func TestDecodeRootPrefersFlaggedRoot(t *testing.T) {
+	// Real page order: startTime DESC, root somewhere in the middle.
+	body := `{"data":[
+		{"id":"later","startTime":"2026-11-08T12:15:43.185Z"},
+		{"id":"root","startTime":"2026-11-08T11:31:07.011Z","isRootObservation":true},
+		{"id":"earliest","startTime":"2026-11-08T11:00:00.000Z"}
+	],"meta":{}}`
+	got, err := decodeRootObservation(strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
 	}
-	if got := pickRoot(rows); got.ID != "root" {
+	if got.ID != "root" {
 		t.Fatalf("picked %q, want root", got.ID)
 	}
-	// No flag anywhere: earliest row is the closest thing to the request itself.
-	if got := pickRoot([]rawObservation{{ID: "first"}, {ID: "second"}}); got.ID != "first" {
-		t.Fatalf("picked %q, want first", got.ID)
+}
+
+// The page arrives in startTime DESC order, so the earliest span is the *last*
+// row. Picking rows[0] here would return the newest child span instead of the
+// request itself.
+func TestDecodeRootFallsBackToEarliestNotFirst(t *testing.T) {
+	body := `{"data":[
+		{"id":"latest","startTime":"2026-11-08T12:15:43.185Z"},
+		{"id":"earliest","startTime":"2026-11-08T11:00:00.000Z"},
+		{"id":"middle","startTime":"2026-11-08T11:30:00.000Z"}
+	]}`
+	got, err := decodeRootObservation(strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
 	}
+	if got.ID != "earliest" {
+		t.Fatalf("picked %q, want earliest", got.ID)
+	}
+}
+
+// Order of keys is not part of the API contract.
+func TestDecodeRootToleratesMetaBeforeData(t *testing.T) {
+	body := `{"meta":{"page":1},"data":[{"id":"root","isRootObservation":true}]}`
+	got, err := decodeRootObservation(strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.ID != "root" {
+		t.Fatalf("picked %q, want root", got.ID)
+	}
+}
+
+func TestDecodeRootEmptyPage(t *testing.T) {
+	if _, err := decodeRootObservation(strings.NewReader(`{"data":[],"meta":{}}`)); err != ErrObservationNotFound {
+		t.Fatalf("err = %v, want ErrObservationNotFound", err)
+	}
+	if _, err := decodeRootObservation(strings.NewReader(`{"meta":{}}`)); err != ErrObservationNotFound {
+		t.Fatalf("missing data key: err = %v, want ErrObservationNotFound", err)
+	}
+}
+
+// The whole point of streaming: a page far larger than the old 4 MB ceiling
+// must still resolve, and must not be read to the end to do it.
+func TestDecodeRootStopsAtTheRoot(t *testing.T) {
+	const tail = 8 << 20
+	blob := strings.Repeat("A", tail) // the b64 of a large image
+	body := `{"data":[{"id":"root","isRootObservation":true,"output":"` + blob[:1024] + `"},` +
+		`{"id":"child","output":"` + blob + `"}]}`
+
+	cr := &countingReader{r: strings.NewReader(body)}
+	got, err := decodeRootObservation(cr)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.ID != "root" {
+		t.Fatalf("picked %q, want root", got.ID)
+	}
+	if cr.n > 1<<20 {
+		t.Fatalf("read %d bytes of a %d-byte page; the tail was buffered", cr.n, len(body))
+	}
+}
+
+// End to end through the HTTP path: the old code failed this as
+// "langfuse response: unexpected end of JSON input".
+func TestFetchHandlesPagesLargerThanTheOldCap(t *testing.T) {
+	blob := strings.Repeat("B", 6<<20)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"id":"root","isRootObservation":true,"input":"hi","output":"`+blob+`"}]}`)
+	}))
+	defer srv.Close()
+
+	prev := current()
+	setConfig(&Config{Enabled: true, Host: srv.URL, PublicKey: "pk", SecretKey: "sk"})
+	defer setConfig(prev)
+
+	obs, err := FetchObservation("6c65e85975171df231e8bcc957efae7d")
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if obs.ObservationID != "root" || len(obs.Output) != 6<<20 {
+		t.Fatalf("body lost: id=%q output=%d", obs.ObservationID, len(obs.Output))
+	}
+}
+
+type countingReader struct {
+	r io.Reader
+	n int
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += n
+	return n, err
 }
 
 func TestAnyToTextFlattensObjects(t *testing.T) {
