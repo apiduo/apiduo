@@ -376,37 +376,99 @@ try {
   await incognito.close();
 
   // ── 13. 设置页里的入口（设置 → 扩展 → MCP）────────────────────
-  // 面板单独打开时靠 refresh 换令牌，而 refresh 与登录共用 CriticalRateLimit；
-  // 嵌进设置页后改为宿主 postMessage 递 token。这条链路只能在真浏览器里验：
-  // 少了它，面板会静默退回「每次打开烧一格额度」，或者干脆显示未登录。
+  // 这一页从 iframe 换成了原生分区。断言随之改变：重点不再是「嵌入地址与令牌传递」，
+  // 而是「真的长成了设置页的一部分」—— 没有 iframe、列表来自 /api/mcp/profiles、
+  // 四个标签页在、选中一条能渲染详情、没改动时保存按钮不可点。
   await view.goto(BASE + '/system-settings/site/mcp', { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await view.waitForSelector('iframe', { timeout: 30000 });
+  await view.waitForSelector('button', { timeout: 30000 });
+  await sleep(1500);
+
   const siteLinks = await view.$$eval('a', (as) =>
     as.map((a) => a.getAttribute('href') || '').filter((h) => h.includes('/system-settings/site/')));
   check('侧边栏出现 MCP 入口', siteLinks.includes('/system-settings/site/mcp'), siteLinks.join(','));
-  const embedSrc = await view.$eval('iframe', (el) => el.getAttribute('src') || '');
-  check('嵌入地址带 embed=1 与主题',
-    /embed=1/.test(embedSrc) && /theme=(light|dark)/.test(embedSrc), embedSrc);
 
-  const embedFrame = view.frames().find((f) => f.url().includes('/mcp/admin'));
-  let embedSummary = '';
-  let titleRowHidden = null;
-  if (embedFrame) {
-    await embedFrame.waitForFunction(() => {
-      const el = document.getElementById('summary');
-      return el && el.textContent && el.textContent !== '加载中…';
-    }, { timeout: 30000 }).catch(() => {});
-    embedSummary = await embedFrame.$eval('#summary', (el) => el.textContent.trim()).catch(() => '');
-    titleRowHidden = await embedFrame.$eval('.title-row', (el) =>
-      getComputedStyle(el).display === 'none').catch(() => null);
+  const frameCount = await view.$$eval('iframe', (els) => els.length);
+  check('页面不再套 iframe', frameCount === 0, 'iframes=' + frameCount);
+
+  const rowNames = await view.$$eval('button', (els) =>
+    els.map((el) => (el.innerText || '').trim().split('\n')[0])
+      .filter((name) => name.startsWith('mcp-e2e')));
+  check('原生列表渲染出已声明的模型', rowNames.length > 0, rowNames.join(','));
+
+  const tabLabels = await view.$$eval('[role=tab]', (els) =>
+    els.map((el) => (el.innerText || '').trim()));
+  check('四个标签页齐全',
+    ['模型', '错误规则', '观察记录', '巡检'].every((x) => tabLabels.includes(x)),
+    tabLabels.join(','));
+
+  if (rowNames.length > 0) {
+    const firstName = rowNames[0];
+    await view.evaluate((name) => {
+      const btn = [...document.querySelectorAll('button')]
+        .find((b) => (b.innerText || '').trim().startsWith(name));
+      if (btn) btn.click();
+    }, firstName);
+    await sleep(800);
+    const detailId = await view.evaluate(() => {
+      const hit = [...document.querySelectorAll('input')]
+        .find((i) => i.readOnly && i.value.startsWith('mcp-e2e'));
+      return hit ? hit.value : '';
+    });
+    check('选中后详情渲染同一条声明', detailId === firstName, detailId + ' vs ' + firstName);
+
+    const saveDisabled = await view.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find((b) => (b.innerText || '').trim() === '保存');
+      return btn ? btn.disabled : null;
+    });
+    check('未改动时保存不可点（脏态判断接上了）', saveDisabled === true, String(saveDisabled));
+
+    // ── 14. 未保存拦截：原生分区走路由守卫，不再依赖 postMessage ──────────
+    // 按标签找「显示名」那个输入框，别用「第一个非只读 input」——
+    // 左侧搜索框在 DOM 里更靠前，改它不会让表单变脏。
+    const dirtied = await view.evaluate(() => {
+      const label = [...document.querySelectorAll('label')]
+        .find((l) => (l.textContent || '').includes('显示名'));
+      const input = label?.parentElement?.querySelector('input');
+      if (!input) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(input, 'e2e-dirty-marker');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    });
+    check('能进入可编辑状态（显示名输入框存在）', dirtied === true, String(dirtied));
+    await sleep(400);
+    const saveEnabled = await view.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')]
+        .find((b) => (b.innerText || '').trim() === '保存');
+      return btn ? !btn.disabled : null;
+    });
+    check('改动后保存变可点', saveEnabled === true, String(saveEnabled));
+
+    await view.$eval("a[href='/system-settings/site/appearance']", (el) => el.click()).catch(() => {});
+    const blocked = await view.waitForFunction(
+      () => document.body.innerText.includes('未保存'),
+      { timeout: 8000 },
+    ).then(() => true).catch(() => false);
+    // 弹窗出现后路由必须还停在原页；只断言「有弹窗」会把「已经跳走了但页面上
+    // 恰好有这三个字」也算通过。
+    const stillHere = await view.evaluate(() => location.pathname.includes('/system-settings/site/mcp'));
+    check('改而未存时切走会被拦下', blocked && stillHere, `dialog=${blocked} stay=${stillHere}`);
+    await view.$$eval('button', (btns) => {
+      const hit = btns.find((b) => ['离开', '确定', '继续'].includes((b.innerText || '').trim()));
+      if (hit) hit.click();
+    }).catch(() => {});
+    await sleep(500);
   }
-  check('嵌入面板用的是宿主令牌（不是「未登录」）',
-    embedSummary.includes('个模型') && !embedSummary.includes('未登录'), embedSummary.slice(0, 60));
-  check('嵌入模式隐藏面板自己的标题行', titleRowHidden === true, String(titleRowHidden));
 
-  check('运行期间没有 JS 异常', jsErrors.length === 0, jsErrors.slice(0, 3).join(' | '));
+  check('运行期间没有预期外的 JS 异常', jsErrors.length === 0,
+    jsErrors.slice(0, 3).join(' | '));
 } catch (err) {
-  check('脚本执行完成', false, String(err).slice(0, 300));
+  // 只打 message 等于把「超时」当成唯一信息：60000ms exceeded 既可能是登录失败，
+  // 也可能是页面没渲染。带上栈顶三行，一眼能看出卡在哪个 waitFor。
+  const where = String(err?.stack || '').split('\n').slice(0, 4).join(' | ');
+  check('脚本执行完成', false, (String(err?.message || err) + ' @ ' + where).slice(0, 300));
+  await view?.screenshot({ path: `${ART}/mcp-panel-failure.png`, fullPage: true }).catch(() => {});
 } finally {
   await browser.close();
 }

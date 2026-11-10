@@ -31,7 +31,7 @@ import { LoginThemeSection } from '@/features/apiduo-login/login-theme-section'
 import { ObservabilitySection } from './observability-section'
 // APIDUO:observability:END
 // APIDUO:mcp-panel:BEGIN
-import { McpSection } from '@/features/mcp/mcp-section'
+import { McpSection } from '@/features/mcp'
 // APIDUO:mcp-panel:END
 import {
   parseHeaderNavModules,
