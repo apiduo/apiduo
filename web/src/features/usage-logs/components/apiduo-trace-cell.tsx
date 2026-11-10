@@ -635,10 +635,11 @@ function PayloadView({
   // Images are lifted before the tree is drawn: scanMedia returns the body
   // with every blob swapped for a short marker, so the tree never lays out a
   // megabyte-long line.
-  const media = useMemo(
-    () => (decoded && !parsed ? scanMedia(decoded) : null),
-    [decoded, parsed]
-  )
+  //
+  // This runs even when `parsed` wins, because the two are not exclusive: a
+  // vision request *is* a conversation and *does* carry pictures. Gating on
+  // `!parsed` hid exactly the case where seeing the image matters most.
+  const media = useMemo(() => (decoded ? scanMedia(decoded) : null), [decoded])
   // A body that is valid JSON but not a conversation — an image response is
   // `{created, data, usage}` — is the case the tree exists for. Parsing it
   // only when the conversation view declined keeps the common path at one
