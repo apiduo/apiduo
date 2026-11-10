@@ -19,7 +19,21 @@
 # - relaykit/dto/channel_settings.go +1 块 +5 行 / -1 行：校验阶段复用已有的正则缓存。
 #   Validate() 在 adaptor.resolve() 里每请求都跑，原来每次重新 regexp.Compile，
 #   带 re: 规则的渠道实测多付约 50µs/请求（c=1 吞吐 -5.6%）。
+# 2026-11-10 日志页轨迹列（显式上调一次，构成如下）：
+# - 本次 trace 列：web/src/features/usage-logs/lib/columns.ts +2 块 +12 行
+#   （hook 调用 + 结果拼接；import 也进了标记块）、router/api-router.go +3 行
+#   （detail/ 静态段，避开 Gin 静态/通配同层 panic）。详情读取与类型全部放进
+#   新文件 lib/trace-detail-api.ts、lib/use-apiduo-trace-column.tsx、
+#   components/apiduo-trace-cell.tsx，api.ts 保持零改动。
+# - 其余差额（files +3 / blocks +8 / added ~+50 / deleted +2）来自并行会话的
+#   MCP 面板与站点注册改动，不在本次改动范围内，需其完成后自行收紧。
+# 2026-11-10 设置页补 MCP 分区（本提交）：
+# - web/src/features/system-settings/site/section-registry.tsx +1 块 +10 行：
+#   分区注册表里多一条 mcp，指向 iframe 承载的既有面板。
+#   这个挂接点挪不进新文件 —— 侧边栏条目由注册表生成，不在这里登记就没有入口。
+# - 上面那几行 110/336/3139/107 是并行会话在工作树上尚未提交的改动，
+#   本次只按**已提交**的代码收紧到 107/328/3084/105；它们落地时再自行调整。
 files	107
-blocks	326
-added	3074
+blocks	328
+added	3084
 deleted	105
