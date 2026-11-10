@@ -89,6 +89,41 @@ class Handler(BaseHTTPRequestHandler):
                 entry["prompt_hint"] = body.get("prompt")
         record(entry)
 
+        # /pg/chat/completions（MCP 表单的「一键补全」）走的是 chat 形状：
+        # 回一份固定 JSON，让 e2e 能确认「AI 路径」真的被解析并填进了表单，
+        # 而不是每次都悄悄降级到本地规则还以为通过了。
+        if "/chat/completions" in self.path:
+            content = json.dumps({
+                "summary": "e2e 图像模型：文生图 / 图生图",
+                "tags": ["文生图", "图生图", "多参考图"],
+                "async": False,
+                "max_ref_images": 2,
+                "max_ref_videos": None,
+                "max_prompt_chars": 1000,
+                "parameters": {"size": {"enum": ["1K", "2K"], "default": "1K"}},
+                "confidence": "high",
+                "notes": "mock assistant",
+            }, ensure_ascii=False)
+            payload = json.dumps({
+                "id": "chatcmpl-mock",
+                "object": "chat.completion",
+                "created": 1700000000,
+                "model": entry.get("json", {}).get("model") or "mock",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": content},
+                    "finish_reason": "stop",
+                }],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 50,
+                          "total_tokens": 60},
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         payload = json.dumps(
             {
                 "created": 1700000000,

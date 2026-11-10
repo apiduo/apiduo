@@ -33,6 +33,11 @@ import (
 type ProtocolHint struct {
 	Kind     string `json:"kind,omitempty"`
 	Protocol string `json:"protocol,omitempty"`
+	// Category 是给下拉分组的展示分类，比 Kind 宽：kind 只服务 image/video
+	// 两种协议，而候选里混着文本、检索、向量模型，它们不适用但需要被看见 ——
+	// 平铺成一片「未识别?」等于把所有模型都变成噪音。
+	// 取值：image / video / search / audio / embedding / text / unknown。
+	Category string `json:"category"`
 	// Confidence 为 high / medium 时 Kind/Protocol 可直接带出；low 带出但需确认。
 	Confidence string `json:"confidence"`
 	// Conflict 表示名称与其它判据（渠道类型、模型端点）互相矛盾。
@@ -69,6 +74,12 @@ var (
 	// gpt-image / qwen-image / doubao-seedream / doubao-seedance 都已在前面命中；
 	// doubao-seed-1-6 是豆包文本模型，与 seedream/seedance 靠数字区分。
 	textFamilyPattern = regexp.MustCompile(`(?i)(^|[-_/])(gpt-[0-9]|chatgpt|claude|gemini-[0-9]|deepseek|llama|mistral|mixtral|command-r|ernie|glm-[0-9]|qwen-(max|plus|turbo|long)|doubao-seed-[0-9]|o[134][-_])`)
+
+	// 非生成类模型的分组标签。它们和文本模型一样「无需声明」，但混在一起
+	// 会让人以为网关只支持聊天；分开列出来，一眼能看出这批模型是干别的用的。
+	searchPattern    = regexp.MustCompile(`(?i)(search|fetch|browse|crawl)`)
+	audioPattern     = regexp.MustCompile(`(?i)(whisper|tts|speech|audio|voice-clone|music|suno)`)
+	embeddingPattern = regexp.MustCompile(`(?i)(embedding|embed-|rerank|bge-|gte-)`)
 )
 
 // nameKind 只按模型名判断产物类型，返回命中的依据用于展示。
@@ -94,6 +105,29 @@ func nameKind(modelID string) (kind, reason string) {
 		}
 	}
 	return "", ""
+}
+
+// Category 把模型分到下拉分组里。它与 Kind 是两件事：
+// Kind 决定协议与拦截行为，只有 image/video 有值；Category 只影响展示，
+// 让「文本/检索/向量」这些不适用 MCP 的模型也有归属，而不是统一显示成未识别。
+//
+// 顺序即优先级，且复用 nameKind 的判据 —— 图像/视频的家族名可能包含
+// 其它词（qwen-image、doubao-seedance），必须先判，否则会被 text 抢走。
+func Category(modelID string, kind string) string {
+	if kind != "" {
+		return kind
+	}
+	switch {
+	case searchPattern.MatchString(modelID):
+		return "search"
+	case audioPattern.MatchString(modelID):
+		return "audio"
+	case embeddingPattern.MatchString(modelID):
+		return "embedding"
+	case textFamilyPattern.MatchString(modelID):
+		return "text"
+	}
+	return "unknown"
 }
 
 // channelKindHint 用渠道类型的端点映射做佐证。
@@ -170,7 +204,7 @@ func endpointKind(endpoints []constant.EndpointType) (kind, reason string) {
 //
 // channelTypes 与 endpoints 都可以为空：调用方拿不到就传 nil，
 // 判据少一层只会降低置信度，不会给出错误结论。
-func SuggestProtocol(modelID string, channelTypes []int, endpoints []constant.EndpointType) ProtocolHint {
+func suggestProtocol(modelID string, channelTypes []int, endpoints []constant.EndpointType) ProtocolHint {
 	kind, nameReason := nameKind(modelID)
 	chKind, chReason := channelKindHint(channelTypes)
 	epKind, epReason := endpointKind(endpoints)
@@ -236,4 +270,14 @@ func SuggestProtocol(modelID string, channelTypes []int, endpoints []constant.En
 		}
 	}
 	return ProtocolHint{Confidence: hintNone, Reason: "模型名与端点都没有明确线索，请手动选择"}
+}
+
+// SuggestProtocol 在纯判据之外统一补上展示分类。
+//
+// 分类不放在各调用点填：新增一个入口就会漏，下拉里立刻又冒出「未识别?」。
+// 只留一个出口，测试与线上走的是同一条路径。
+func SuggestProtocol(modelID string, channelTypes []int, endpoints []constant.EndpointType) ProtocolHint {
+	hint := suggestProtocol(modelID, channelTypes, endpoints)
+	hint.Category = Category(modelID, hint.Kind)
+	return hint
 }

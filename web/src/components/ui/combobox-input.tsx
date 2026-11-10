@@ -30,6 +30,13 @@ export type ComboboxInputOption = {
   icon?: React.ReactNode
   disabled?: boolean
   description?: string
+  // APIDUO:mcp-category-group:BEGIN
+  /**
+   * 分组标题。相同 group 的选项必须相邻 —— 这里不做排序归并，
+   * 顺序由调用方决定（它才知道业务上哪个组该在前）。
+   */
+  group?: string
+  // APIDUO:mcp-category-group:END
 }
 
 interface ComboboxInputProps {
@@ -213,7 +220,13 @@ export function ComboboxInput({
   // Scroll highlighted item into view
   React.useEffect(() => {
     if (highlightedIndex < 0 || !listRef.current) return
-    const item = listRef.current.children[highlightedIndex] as HTMLElement
+    // APIDUO:mcp-category-group:BEGIN
+    // 按属性定位而不是 children[index]：列表里会插分组标题（role=presentation），
+    // 用下标取节点会在第一个标题之后整体错位一格。
+    const item = listRef.current.querySelector<HTMLElement>(
+      '[data-highlighted="true"]'
+    )
+    // APIDUO:mcp-category-group:END
     item?.scrollIntoView({ block: 'nearest' })
   }, [highlightedIndex])
 
@@ -307,35 +320,54 @@ export function ComboboxInput({
                 role='listbox'
                 className='max-h-[200px] overflow-y-auto p-1'
               >
-                {filteredOptions.map((option, index) => (
-                  <li
-                    key={option.value}
-                    id={`${listId}-${index}`}
-                    role='option'
-                    aria-selected={value === option.value}
-                    data-highlighted={index === highlightedIndex}
-                    className={cn(
-                      'relative flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm select-none',
-                      index === highlightedIndex &&
-                        'bg-accent text-accent-foreground',
-                      value === option.value && 'font-medium'
-                    )}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    onMouseDown={(e) => {
-                      e.preventDefault() // Prevent blur
-                      handleSelect(option.value)
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        'size-4 shrink-0',
-                        value === option.value ? 'opacity-100' : 'opacity-0'
-                      )}
-                    />
-                    {option.icon && <span aria-hidden>{option.icon}</span>}
-                    <span className='truncate'>{option.label}</span>
-                  </li>
-                ))}
+                {/* APIDUO:mcp-category-group:BEGIN */}
+                {filteredOptions.map((option, index) => {
+                  const prev = filteredOptions[index - 1]
+                  const showGroup =
+                    !!option.group && option.group !== prev?.group
+                  return (
+                    <React.Fragment key={option.value}>
+                      {showGroup ? (
+                        // role=presentation + aria-hidden：只是视觉分节，
+                        // 屏幕阅读器仍按 option 顺序读，键盘索引也不受影响。
+                        <li
+                          role='presentation'
+                          aria-hidden='true'
+                          className='text-muted-foreground px-2 pt-2 pb-1 text-[10px] font-medium tracking-wide'
+                        >
+                          {option.group}
+                        </li>
+                      ) : null}
+                      <li
+                        id={`${listId}-${index}`}
+                        role='option'
+                        aria-selected={value === option.value}
+                        data-highlighted={index === highlightedIndex}
+                        className={cn(
+                          'relative flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm select-none',
+                          index === highlightedIndex &&
+                            'bg-accent text-accent-foreground',
+                          value === option.value && 'font-medium'
+                        )}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        onMouseDown={(e) => {
+                          e.preventDefault() // Prevent blur
+                          handleSelect(option.value)
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            'size-4 shrink-0',
+                            value === option.value ? 'opacity-100' : 'opacity-0'
+                          )}
+                        />
+                        {option.icon && <span aria-hidden>{option.icon}</span>}
+                        <span className='truncate'>{option.label}</span>
+                      </li>
+                    </React.Fragment>
+                  )
+                })}
+                {/* APIDUO:mcp-category-group:END */}
               </ul>
             ) : (
               <div className='px-2 py-6 text-center text-sm'>

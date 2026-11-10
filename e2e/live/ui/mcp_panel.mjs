@@ -555,6 +555,97 @@ try {
   const customValue = await view.$eval('#mcp-model-id', (el) => el.value).catch(() => '');
   check('也能手输不在候选里的 ID', customValue === 'mcp-e2e-custom-id', customValue);
 
+  // ── 候选按一级分类分组 ────────────────────────────────────────────────────
+  await view.evaluate(() => {
+    const b = [...document.querySelectorAll('button')]
+      .find((x) => (x.innerText || '').trim() === '新建模型');
+    if (b) b.click();
+  });
+  await sleep(400);
+  await view.focus('#mcp-model-id');
+  await sleep(700);
+  // 刚按过回车选过值，下拉可能处于关闭态：聚焦一个已经聚焦的输入框不会再触发
+  // 展开。这时断言失败说的不是「没分组」而是「没展开」，先确保列表在。
+  if (!(await view.$('[role=listbox]'))) {
+    await view.click('#mcp-model-id');
+    await sleep(400);
+  }
+  const groupTitles = await view.$$eval('[role=listbox] [role=presentation]', (els) =>
+    els.map((e) => (e.innerText || '').trim()).filter(Boolean));
+  check('候选下拉按一级分类分组', groupTitles.length > 0,
+    groupTitles.slice(0, 6).join(' | ') || '(没有分组标题)');
+  check('分组标题是可读的分类名',
+    groupTitles.every((g) => g.length <= 6),
+    groupTitles.join(' | '));
+
+  // 键盘上下键必须还能走完整个列表：分组标题是 presentation 节点，
+  // 若高亮索引把它们算进去，回车就会选错模型。
+  await view.keyboard.press('ArrowDown');
+  await view.keyboard.press('ArrowDown');
+  await sleep(200);
+  const highlighted = await view.$$eval('[role=option][data-highlighted=true]',
+    (els) => els.length);
+  check('键盘高亮只落在选项上（分组标题不参与）', highlighted === 1, String(highlighted));
+
+  // ── 一键补全 ─────────────────────────────────────────────────────────────
+  // 先填模型 ID：没有模型名，AI 与规则都无从下手，按钮会保持禁用。
+  await view.click('#mcp-model-id');
+  await view.type('#mcp-model-id', 'e2e-img', { delay: 12 });
+  await view.keyboard.press('Enter');
+  await sleep(400);
+  const assistDisabled = await view.$eval('#assist-run', (el) => el.disabled);
+  check('填了模型 ID 之后补全按钮可用', assistDisabled === false, String(assistDisabled));
+
+  // 先选辅助模型：不选就只会走本地规则，AI 那条路等于没测。
+  // e2e-img 的渠道指向假上游，它的 /chat/completions 会回一份固定 JSON。
+  await view.click('#assist-model');
+  await sleep(400);
+  // Radix 的 Select 只认真实指针事件：合成 mousedown 能「看起来选中」，
+  // 但 onValueChange 不会触发，值仍然是占位符。这里按选项的实际坐标点。
+  const assistBox = await view.evaluate(() => {
+    const opt = [...document.querySelectorAll('[role=option]')]
+      .find((e) => (e.innerText || '').trim() === 'e2e-img');
+    if (!opt) return null;
+    opt.scrollIntoView({ block: 'nearest' });
+    const r = opt.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  if (assistBox) await view.mouse.click(assistBox.x, assistBox.y);
+  await sleep(500);
+  // 浮层没关就会盖在「一键补全」按钮上面，click 落到浮层上表现为「点了没反应」。
+  if (await view.$('[role=listbox]')) await view.keyboard.press('Escape');
+  await sleep(300);
+  const assistValue = await view.$eval('#assist-model', (el) =>
+    (el.innerText || '').trim()).catch(() => '');
+  check('能选中辅助模型', !!assistBox && assistValue.includes('e2e-img'), assistValue);
+  const beforeSummary = await view.$eval('#profile-summary', (el) => el.value).catch(() => '');
+  await view.click('#assist-run');
+  await sleep(3000);
+  const afterSummary = await view.$eval('#profile-summary', (el) => el.value).catch(() => '');
+  const afterTags = await view.$eval('#profile-tags', (el) => el.value).catch(() => '');
+  check('一键补全填上了能力描述',
+    afterSummary !== '' && afterSummary !== beforeSummary,
+    (afterSummary || '(空)').slice(0, 80));
+  // 假上游回的是「e2e 图像模型：文生图 / 图生图」。命中这句才说明走的是
+  // 模型返回并解析成功，而不是悄悄降级成本地规则（规则只会写「：图像生成模型」）。
+  check('补全内容来自模型返回（不是本地兜底）',
+    afterSummary.includes('e2e 图像模型'),
+    afterSummary.slice(0, 60));
+  check('一键补全同时填了标签', afterTags !== '', afterTags.slice(0, 60));
+
+  // 已填字段不被模型覆盖：手写一个值，再点一次，必须还是手写的。
+  await view.$eval('#profile-summary', (el) => {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype, 'value').set;
+    setter.call(el, '手写摘要-不要覆盖');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await sleep(300);
+  await view.click('#assist-run');
+  await sleep(3000);
+  const keptSummary = await view.$eval('#profile-summary', (el) => el.value).catch(() => '');
+  check('已填字段不被一键补全覆盖', keptSummary === '手写摘要-不要覆盖', keptSummary);
+
   check('运行期间没有预期外的 JS 异常', jsErrors.length === 0,
     jsErrors.slice(0, 3).join(' | '));
 } catch (err) {

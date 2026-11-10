@@ -32,11 +32,27 @@ export type McpProtocol = 'openai_image' | 'openai_video'
  * 模型名给出 —— 名称是唯一直接描述模型的信号，渠道只描述「能承载什么」 ——
  * 但标签必须加问号，不能当成干净结论。
  */
+/**
+ * 下拉分组的展示分类。比 McpKind 宽：MCP 只服务 image/video 两种协议，
+ * 但候选里混着文本、检索、向量模型 —— 它们不适用，却需要被看见，
+ * 否则整片都是「未识别?」，真正能声明的模型反而被淹没。
+ */
+export type HintCategory =
+  | 'image'
+  | 'video'
+  | 'search'
+  | 'audio'
+  | 'embedding'
+  | 'text'
+  | 'unknown'
+
 export type ProtocolHint = {
   kind?: McpKind
   protocol?: McpProtocol
   confidence: 'high' | 'medium' | 'low' | 'none'
   conflict?: boolean
+  /** 旧版后端没有这个字段，按 unknown 降级。 */
+  category?: HintCategory
   reason: string
 }
 export type RuleScope = 'global' | 'model'

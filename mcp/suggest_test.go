@@ -180,3 +180,32 @@ func TestSuggestProtocolEndpointFallback(t *testing.T) {
 			h.Kind, h.Confidence, h.Conflict)
 	}
 }
+
+// 分类只影响下拉分组，不能反过来改 kind：文本模型仍然 kind 为空，
+// 图像/视频模型不能被 family 里的词抢走。
+func TestCategoryGroups(t *testing.T) {
+	cases := []struct {
+		modelID string
+		want    string
+	}{
+		{"doubao-seedream-5-0-flash", "image"},
+		{"doubao-seedance-1-0-pro", "video"},
+		{"gpt-4o-mini", "text"},
+		{"claude-3-5-sonnet", "text"},
+		{"deepseek-search", "search"},
+		{"deepseek-fetch", "search"},
+		{"text-embedding-3-large", "embedding"},
+		{"whisper-1", "audio"},
+		{"my-own-alias-7", "unknown"},
+	}
+	for _, c := range cases {
+		got := SuggestProtocol(c.modelID, nil, nil)
+		if got.Category != c.want {
+			t.Errorf("%s: category 期望 %q，实际 %q", c.modelID, c.want, got.Category)
+		}
+		// 分类不能把 kind 带出来：文本/检索/向量一律不适用 MCP 协议。
+		if c.want != "image" && c.want != "video" && got.Kind != "" {
+			t.Errorf("%s: 非生成类模型不应有 kind，实际 %q", c.modelID, got.Kind)
+		}
+	}
+}
