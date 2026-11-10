@@ -284,15 +284,32 @@ func apiduoValidateOrigin(key, v string) error {
 	if v == "" {
 		return nil
 	}
+	// 报错里说「上报地址」而不是 observability_setting.export_host：这一条
+	// 是管理员在输入框里手打出来的，回一个内部键名等于让他自己去猜是哪一格。
+	label := apiduoOptionLabel(key)
 	u, err := url.Parse(v)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return fmt.Errorf("%s 必须是 http(s) 地址，或留空跟随环境变量", key)
+		return fmt.Errorf("%s 必须是 http(s) 地址，或留空跟随环境变量", label)
 	}
 	if u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
 		(u.Path != "" && u.Path != "/") {
-		return fmt.Errorf("%s 只能是源地址（协议 + 域名 + 端口），不要带路径、账号或查询参数", key)
+		return fmt.Errorf("%s 只能是源地址（协议 + 域名 + 端口），不要带路径、账号或查询参数", label)
 	}
 	return nil
+}
+
+// apiduoOptionLabel 给少数「用户会手输」的键配一个人话名字。
+//
+// 其余键（采样率、窗口字节数）只出现在滑块与数字框旁边，回内部键名不影响
+// 定位；而地址类字段是纯手输，报错必须指回界面上的那一格。
+func apiduoOptionLabel(key string) string {
+	switch key {
+	case "observability_setting.export_host":
+		return "上报地址"
+	case "observability_setting.console_url":
+		return "控制台地址"
+	}
+	return key
 }
 
 // apiduoRange 解析数字并检查区间，错误文案直接说清允许范围。

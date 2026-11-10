@@ -109,6 +109,23 @@ func TestValidateApiduoOptionValue(t *testing.T) {
 		}
 	}
 
+	// 地址类字段是纯手输的，报错必须指回界面上的那一格，不能甩内部键名。
+	for _, c := range []struct{ key, want string }{
+		{"observability_setting.export_host", "上报地址"},
+		{"observability_setting.console_url", "控制台地址"},
+	} {
+		err := ValidateApiduoOptionValue(c.key, "https://langfuse.1task.cn/langfuse")
+		if err == nil {
+			t.Fatalf("%s 应当被拒", c.key)
+		}
+		if !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s 的报错应点名 %q，实际 %v", c.key, c.want, err)
+		}
+		if strings.Contains(err.Error(), "observability_setting.") {
+			t.Errorf("%s 的报错不该出现内部键名，实际 %v", c.key, err)
+		}
+	}
+
 	// 非扩展键不受影响
 	if err := ValidateApiduoOptionValue("SystemName", "任何值"); err != nil {
 		t.Errorf("不认识的键应当放行给上游，实际 %v", err)

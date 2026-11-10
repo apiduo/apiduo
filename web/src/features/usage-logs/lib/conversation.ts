@@ -452,8 +452,20 @@ function assembleFrames(frames: unknown[]): ParsedPayload | null {
       const resp = asRecord(obj.response)
       noteTokens(asRecord(resp?.usage))
       model ||= scalarToString(resp?.model) ?? ''
+      // The lifecycle frames all carry a status, and they arrive in order:
+      // `response.created`/`in_progress` say "in_progress", only the closing
+      // `response.completed` says "completed". Taking the last one that is
+      // *not* completed leaves a finished stream labelled `in_progress`.
       const status = scalarToString(resp?.status)
-      if (status && status !== 'completed') finish = status
+      if (status === 'completed') {
+        finish = 'stop'
+      } else if (status === 'incomplete') {
+        finish =
+          scalarToString(asRecord(resp?.incomplete_details)?.reason) ??
+          'incomplete'
+      } else if (status) {
+        finish = status
+      }
       if (type === 'response.failed' || type === 'response.error') {
         const err = asRecord(resp?.error) ?? asRecord(obj.error)
         error ||= scalarToString(err?.message) ?? errorTextOf(obj, resp)

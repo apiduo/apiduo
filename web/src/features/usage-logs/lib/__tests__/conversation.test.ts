@@ -253,6 +253,22 @@ describe('parseSseBody', () => {
     )
     expect(extras.prompt_tokens).toBe('9')
     expect(extras.completion_tokens).toBe('2')
+    // created 说的是 in_progress，只有 completed 说 stop；取最后一个状态，
+    // 否则一条跑完的流会顶着「未完成」的标签出现在抽屉里。
+    expect(extras.finish_reason).toBe('stop')
+  })
+
+  it('keeps the real reason when a Responses stream stops early', () => {
+    const raw = [
+      'data: {"type":"response.created","response":{"status":"in_progress"}}',
+      'data: {"type":"response.output_text.delta","delta":"partial"}',
+      'data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}',
+    ].join('\n')
+
+    const extras = Object.fromEntries(
+      (parseSseBody(raw)?.parsed?.extras ?? []).map((e) => [e.key, e.value])
+    )
+    expect(extras.finish_reason).toBe('max_output_tokens')
   })
 
   it('handles chat-completions frames, data prefixes and [DONE]', () => {
