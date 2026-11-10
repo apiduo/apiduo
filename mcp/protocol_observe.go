@@ -134,6 +134,32 @@ func snapshotParams(payload map[string]any) map[string]string {
 	return out
 }
 
+// snapshotInput 把「还没走到 payload」的入参也收成一份结构快照。
+//
+// 本地校验失败时没有 payload 可快照，但拒绝的原因往往就在这些参数上
+// （size 越界、n 太大、参考图超限），所以按同一份白名单从入参重新挑一遍。
+// 提示词照样不进快照 —— 它和「参数分布」无关，且可能是用户隐私。
+func snapshotInput(in generateInput, refs []string) map[string]string {
+	raw := make(map[string]any, 3+len(in.Extra))
+	if in.Size != "" {
+		raw["size"] = in.Size
+	}
+	if in.Quality != "" {
+		raw["quality"] = in.Quality
+	}
+	if in.N != nil {
+		raw["n"] = *in.N
+	}
+	for k, v := range in.Extra {
+		raw[k] = v
+	}
+	out := snapshotParams(raw)
+	if len(refs) > 0 {
+		out["reference_images"] = fmt.Sprint(len(refs))
+	}
+	return out
+}
+
 func errText(err error) string {
 	if err == nil {
 		return ""

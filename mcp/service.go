@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -44,7 +43,7 @@ var paramNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 // 只读它。查询必须带 model_name 与时间范围 —— CH 靠分区裁剪，漏了范围会扫全表。
 func Observations(p ModelProfile, days int) ([]ParamStat, error) {
 	if model.LOG_DB == nil {
-		return nil, errors.New("日志库未初始化")
+		return nil, userErrf("日志库未初始化，观察与巡检暂不可用")
 	}
 	if days <= 0 || days > 90 {
 		days = 7

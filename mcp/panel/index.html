@@ -212,16 +212,30 @@ function showErr(msg){
 // 为什么不直接靠 cookie：apiduo 的管理 API 要的是 Authorization: Bearer <JWT>，
 // cookie 只在 /api/user/auth 路径上有效。浏览器同源访问本页时 refresh cookie 会自动带上，
 // 换一次 token 后所有请求显式带 Bearer —— 这样面板不需要知道前端把 token 存在哪。
-async function bootstrapAuth(){
-  try{
-    const r = await fetch('/api/user/auth/refresh', {method:'POST', credentials:'same-origin'});
-    const j = await r.json();
-    if(j && j.success && j.data && j.data.access_token){
-      authToken = j.data.access_token;
-      return true;
-    }
-  }catch(e){ /* 落到下面统一提示 */ }
-  return false;
+
+// 同一时刻只允许一个刷新在飞。
+//
+// api() 在每个 401 上都会调这里，而 selectProfile() 一次并发发
+// observations / audit / rules 三个请求：access token（实测 20 分钟）一过期
+// 就是 3 个 401 同时打 refresh。refresh 与登录、agent 握手共用同一个
+// CriticalRateLimit 计数器（30 次 / 1800s），并发刷新会顺带烧掉用户自己的
+// 登录额度，症状是「面板开久了，重新登录被 429」。
+let authInFlight = null;
+function bootstrapAuth(){
+  if(!authInFlight){
+    authInFlight = (async () => {
+      try{
+        const r = await fetch('/api/user/auth/refresh', {method:'POST', credentials:'same-origin'});
+        const j = await r.json();
+        if(j && j.success && j.data && j.data.access_token){
+          authToken = j.data.access_token;
+          return true;
+        }
+      }catch(e){ /* 落到下面统一提示 */ }
+      return false;
+    })().finally(() => { authInFlight = null; });
+  }
+  return authInFlight;
 }
 
 async function api(path, opt){
@@ -258,7 +272,11 @@ async function loadOverview(){
   try{
     const d = await api('/api/mcp/overview');
     const kinds = Object.entries(d.kinds || {}).map(([k,v])=>k+' '+v).join(' · ');
-    $('summary').textContent = `${d.profiles} 个模型 · 已启用 ${d.enabled} · ${kinds} · 日志库 ${d.log_db}`;
+    // 没有声明时 kinds 为空串，直接拼会得到「已启用 0 ·  · 日志库」这种空段。
+    const parts = [`${d.profiles} 个模型`, `已启用 ${d.enabled}`];
+    if(kinds) parts.push(kinds);
+    parts.push(`日志库 ${d.log_db}`);
+    $('summary').textContent = parts.join(' · ');
   }catch(e){ $('summary').textContent = '概览读取失败'; }
 }
 

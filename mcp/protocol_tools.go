@@ -140,6 +140,13 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 	}
 	payload, err := buildPayload(m, in, refs)
 	if err != nil {
+		// 本地拒绝必须留样本：它正是「这条声明是不是收得太紧」的唯一信号。
+		//
+		// 之前这里直接 return，而 observeCall 排在出站之后，于是被本地拒掉的调用
+		// 一条都不落库 —— 面板「观察记录」永远 0 次样本，巡检还会把它判成
+		// 「参数从未探测」，等于把「声明写错了」显示成「还没人用过」。
+		// 这里没有出站，Latency 记 0；只记结构性参数，提示词不进快照。
+		observeCall(callObservation{ModelID: m.ID, Params: snapshotInput(in, refs), ErrorMsg: errText(err)})
 		return nil, generateOutput{}, err
 	}
 

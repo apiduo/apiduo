@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,25 @@ type profileView struct {
 	ModelCard map[string]any `json:"model_card,omitempty"`
 }
 
+// apiWriteErr 是控制面的统一错误出口。
+//
+// 只有两类错误能原样回前端：本包写的 userErr（「产物类型不合法」这类），
+// 以及两个已知哨兵（不存在 / 已存在）。其余一律当内部错误处理 ——
+// 驱动返回的原文里带表名、索引名，甚至约束里的值，回出去既泄露结构，
+// 又给不出「该怎么办」。原文落 SysError，排障去日志里翻。
+func apiWriteErr(c *gin.Context, action string, err error) {
+	var ue userErr
+	switch {
+	case errors.As(err, &ue):
+		common.ApiErrorMsg(c, string(ue))
+	case errors.Is(err, ErrProfileNotFound), errors.Is(err, ErrProfileDuplicate):
+		common.ApiErrorMsg(c, err.Error())
+	default:
+		common.SysError("[mcp] " + action + " 失败: " + err.Error())
+		common.ApiErrorMsg(c, action+"失败：内部错误，详情见网关日志")
+	}
+}
+
 func toView(p ModelProfile, withCard bool) profileView {
 	v := profileView{ModelProfile: p}
 	if withCard {
@@ -30,7 +50,7 @@ func toView(p ModelProfile, withCard bool) profileView {
 func apiListProfiles(c *gin.Context) {
 	list, err := ListProfiles()
 	if err != nil {
-		common.ApiErrorMsg(c, "读取模型声明失败: "+err.Error())
+		apiWriteErr(c, "读取能力声明", err)
 		return
 	}
 	out := make([]profileView, 0, len(list))
@@ -47,7 +67,7 @@ func apiGetProfile(c *gin.Context) {
 	}
 	p, err := GetProfile(id)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "读取能力声明", err)
 		return
 	}
 	common.ApiSuccess(c, toView(p, true))
@@ -61,7 +81,7 @@ func apiCreateProfile(c *gin.Context) {
 	}
 	p.Id = 0
 	if err := SaveProfile(&p); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "保存能力声明", err)
 		return
 	}
 	common.ApiSuccess(c, toView(p, true))
@@ -81,7 +101,7 @@ func apiUpdateProfile(c *gin.Context) {
 	}
 	p, err := UpdateProfile(id, patch)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "保存能力声明", err)
 		return
 	}
 	common.ApiSuccess(c, toView(p, true))
@@ -93,7 +113,7 @@ func apiDeleteProfile(c *gin.Context) {
 		return
 	}
 	if err := DeleteProfile(id); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "删除能力声明", err)
 		return
 	}
 	common.ApiSuccess(c, gin.H{"deleted": id})
@@ -114,12 +134,12 @@ func apiToggleProfile(c *gin.Context) {
 		return
 	}
 	if err := SetProfileEnabled(id, body.Enabled); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "切换模型启停", err)
 		return
 	}
 	p, err := GetProfile(id)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "读取能力声明", err)
 		return
 	}
 	common.ApiSuccess(c, toView(p, true))
@@ -129,7 +149,7 @@ func apiListErrorRules(c *gin.Context) {
 	modelId := strings.TrimSpace(c.Query("model_id"))
 	rules, err := ListErrorRules(modelId)
 	if err != nil {
-		common.ApiErrorMsg(c, "读取错误规则失败: "+err.Error())
+		apiWriteErr(c, "读取错误规则", err)
 		return
 	}
 	common.ApiSuccess(c, gin.H{"items": rules, "total": len(rules)})
@@ -147,7 +167,7 @@ func apiUpdateErrorRule(c *gin.Context) {
 	}
 	r, err := UpdateErrorRule(id, patch)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "保存错误规则", err)
 		return
 	}
 	common.ApiSuccess(c, r)
@@ -162,12 +182,12 @@ func apiObservations(c *gin.Context) {
 	days, _ := strconv.Atoi(c.DefaultQuery("days", "7"))
 	p, err := GetProfile(id)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "读取能力声明", err)
 		return
 	}
 	stats, err := Observations(p, days)
 	if err != nil {
-		common.ApiErrorMsg(c, "查询观察数据失败: "+err.Error())
+		apiWriteErr(c, "查询观察数据", err)
 		return
 	}
 	total := int64(0)
@@ -191,12 +211,12 @@ func apiAudit(c *gin.Context) {
 	days, _ := strconv.Atoi(c.DefaultQuery("days", "7"))
 	p, err := GetProfile(id)
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		apiWriteErr(c, "读取能力声明", err)
 		return
 	}
 	stats, err := Observations(p, days)
 	if err != nil {
-		common.ApiErrorMsg(c, "查询观察数据失败: "+err.Error())
+		apiWriteErr(c, "查询观察数据", err)
 		return
 	}
 	issues := Audit(p, stats)
@@ -217,7 +237,7 @@ func apiAudit(c *gin.Context) {
 func apiOverview(c *gin.Context) {
 	list, err := ListProfiles()
 	if err != nil {
-		common.ApiErrorMsg(c, "读取模型声明失败: "+err.Error())
+		apiWriteErr(c, "读取能力声明", err)
 		return
 	}
 	enabled := 0
@@ -252,7 +272,7 @@ func apiCandidates(c *gin.Context) {
 	names := model.GetEnabledModels()
 	declared, err := ListProfiles()
 	if err != nil {
-		common.ApiErrorMsg(c, "读取模型声明失败: "+err.Error())
+		apiWriteErr(c, "读取能力声明", err)
 		return
 	}
 	known := make(map[string]bool, len(declared))

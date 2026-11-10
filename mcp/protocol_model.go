@@ -117,10 +117,13 @@ func pickView(views []modelView, kind, want string) (modelView, error) {
 			byKind = append(byKind, v)
 		}
 	}
-	if len(byKind) == 0 {
-		return modelView{}, errNoModelOfKind(kind)
-	}
-	if strings.TrimSpace(want) != "" {
+	// 调用方点名了模型，就先回答「这个模型到底能不能用」。
+	//
+	// 反过来（先判 len(byKind)==0）会把「你挑错了模型」说成「你去注册模型」：
+	// 线上实测给 image.generate 传一个 search 模型，收到的是
+	// 「没有已启用的 image 模型，请先在能力注册里添加」，agent 会照着去建声明，
+	// 而真正要改的是 model 参数。
+	if want = strings.TrimSpace(want); want != "" {
 		for _, v := range byKind {
 			if v.ID == want {
 				return v, nil
@@ -133,6 +136,9 @@ func pickView(views []modelView, kind, want string) (modelView, error) {
 			}
 		}
 		return modelView{}, &errModelNotAvailable{Model: want}
+	}
+	if len(byKind) == 0 {
+		return modelView{}, errNoModelOfKind(kind)
 	}
 	return byKind[0], nil
 }

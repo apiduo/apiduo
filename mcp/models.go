@@ -77,6 +77,35 @@ func (ErrorRule) TableName() string { return "mcp_error_rules" }
 // ErrProfileNotFound 表示模型声明不存在。
 var ErrProfileNotFound = errors.New("模型声明不存在")
 
+// ErrProfileDuplicate 表示这个模型已经有能力声明了。
+//
+// 单独一个哨兵是为了让接口层能回一句人话：把 gorm 的
+// `Error 1062 (23000): Duplicate entry 'x' for key 'mcp_model_profiles.uk_...'`
+// 原样回给前端，等于把表结构和索引名贴到面板上，管理员还看不懂要做什么。
+var ErrProfileDuplicate = errors.New("该模型已有能力声明，直接编辑它即可，不要重复新建")
+
+// userErr 标记「可以原样展示给用户」的错误。
+//
+// 与数据库/内部错误的区别必须显式标出来：错误文案会出现在面板红条里，
+// 只有本包自己写的中文提示能出去，驱动返回的原始报文一律留日志。
+type userErr string
+
+func (e userErr) Error() string { return string(e) }
+
+func userErrf(format string, a ...any) error { return userErr(fmt.Sprintf(format, a...)) }
+
+// isDuplicateKeyErr 只兜「并发插入撞唯一索引」这一种情况。
+//
+// 主库要同时支持 MySQL / PostgreSQL / SQLite，而 gorm.Config 没开 TranslateError，
+// 所以按三家各自会写进错误里的固定片段识别。认不出来就走通用错误分支，
+// 那条分支不会把原文回给前端，所以漏识别最多是文案不够准，不会泄露。
+func isDuplicateKeyErr(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "duplicate entry") || // MySQL 1062
+		strings.Contains(s, "unique constraint failed") || // SQLite
+		strings.Contains(s, "duplicate key value") // PostgreSQL 23505
+}
+
 // Migrate 建表并写入全局默认错误规则。
 //
 // 由本包自己调用，不进 model/main.go —— 那是既有文件，改一处就多一个冲突点。
@@ -155,15 +184,37 @@ func GetProfileByModelId(modelId string) (ModelProfile, bool) {
 	return p, true
 }
 
+// createProfile 建一条新声明，并把「这个模型已经有声明」变成一句能照着做的话。
+//
+// 先查一次是为了稳定文案（唯一索引报错在三种库上文案都不一样），
+// 但并发下仍可能两个请求同时通过检查，所以 Create 失败还要再认一次重复键。
+func createProfile(p *ModelProfile) error {
+	var exists ModelProfile
+	err := model.DB.Select("id").Where("model_id = ?", p.ModelId).First(&exists).Error
+	if err == nil {
+		return ErrProfileDuplicate
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if err := model.DB.Create(p).Error; err != nil {
+		if isDuplicateKeyErr(err) {
+			return ErrProfileDuplicate
+		}
+		return err
+	}
+	return nil
+}
+
 // SaveProfile 新建或更新。更新时不允许改 ModelId —— 它是与渠道对齐的业务键，
 // 改名等于换一个模型，应该新建一条而不是原地改。
 func SaveProfile(p *ModelProfile) error {
 	p.ModelId = strings.TrimSpace(p.ModelId)
 	if p.ModelId == "" {
-		return errors.New("模型 ID 不能为空")
+		return userErrf("模型 ID 不能为空")
 	}
 	if p.Kind != "image" && p.Kind != "video" && p.Kind != "search" {
-		return fmt.Errorf("产物类型不合法: %q", p.Kind)
+		return userErrf("产物类型不合法: %q", p.Kind)
 	}
 	if p.Protocol == "" {
 		p.Protocol = defaultProtocol(p.Kind)
@@ -172,14 +223,14 @@ func SaveProfile(p *ModelProfile) error {
 		p.Source = "manual"
 	}
 	if p.Parameters != "" && !json.Valid([]byte(p.Parameters)) {
-		return errors.New("参数约束不是合法 JSON")
+		return userErrf("参数约束不是合法 JSON")
 	}
 	now := common.GetTimestamp()
 	p.UpdatedAt = now
 
 	if p.Id == 0 {
 		p.CreatedAt = now
-		return model.DB.Create(p).Error
+		return createProfile(p)
 	}
 	var existing ModelProfile
 	if err := model.DB.First(&existing, p.Id).Error; err != nil {
@@ -222,7 +273,7 @@ var profilePatchKeys = []string{
 // UpdateProfile 以库里的行做底稿，只覆盖请求里出现的字段。
 func UpdateProfile(id int64, patch map[string]json.RawMessage) (ModelProfile, error) {
 	if len(patch) == 0 {
-		return ModelProfile{}, errors.New("请求体没有任何字段")
+		return ModelProfile{}, userErrf("请求体没有任何字段")
 	}
 	merged, err := GetProfile(id)
 	if err != nil {
@@ -234,7 +285,7 @@ func UpdateProfile(id int64, patch map[string]json.RawMessage) (ModelProfile, er
 		return ModelProfile{}, err
 	}
 	if err := json.Unmarshal(raw, &incoming); err != nil {
-		return ModelProfile{}, fmt.Errorf("请求体不是合法 JSON: %w", err)
+		return ModelProfile{}, userErrf("请求体不是合法 JSON: %v", err)
 	}
 	for _, key := range profilePatchKeys {
 		if _, given := patch[key]; !given {
@@ -317,12 +368,12 @@ func ListErrorRules(modelId string) ([]ErrorRule, error) {
 // SaveErrorRule 更新一条规则。全局规则不允许改 Match（它是识别依据）。
 func SaveErrorRule(r *ErrorRule) error {
 	if r.Id == 0 {
-		return errors.New("规则不存在")
+		return userErrf("规则不存在")
 	}
 	var existing ErrorRule
 	if err := model.DB.First(&existing, r.Id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("规则不存在")
+			return userErrf("规则不存在")
 		}
 		return err
 	}
@@ -352,7 +403,7 @@ var errorRulePatchKeys = []string{
 // 而 agent 拿到的是「不要重试」——比多试一次贵得多。
 func UpdateErrorRule(id int64, patch map[string]json.RawMessage) (ErrorRule, error) {
 	if len(patch) == 0 {
-		return ErrorRule{}, errors.New("请求体没有任何字段")
+		return ErrorRule{}, userErrf("请求体没有任何字段")
 	}
 	merged, err := GetErrorRule(id)
 	if err != nil {
@@ -364,7 +415,7 @@ func UpdateErrorRule(id int64, patch map[string]json.RawMessage) (ErrorRule, err
 		return ErrorRule{}, err
 	}
 	if err := json.Unmarshal(raw, &incoming); err != nil {
-		return ErrorRule{}, fmt.Errorf("请求体不是合法 JSON: %w", err)
+		return ErrorRule{}, userErrf("请求体不是合法 JSON: %v", err)
 	}
 	for _, key := range errorRulePatchKeys {
 		if _, given := patch[key]; !given {
@@ -399,7 +450,7 @@ func GetErrorRule(id int64) (ErrorRule, error) {
 	var r ErrorRule
 	if err := model.DB.First(&r, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrorRule{}, errors.New("规则不存在")
+			return ErrorRule{}, userErrf("规则不存在")
 		}
 		return ErrorRule{}, err
 	}
