@@ -7,6 +7,9 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	// APIDUO:mcp:BEGIN
+	mcpserver "github.com/QuantumNous/new-api/mcp"
+	// APIDUO:mcp:END
 	"github.com/QuantumNous/new-api/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +21,9 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	SetRelayRouter(router)
 	SetTaskPluginProtocolRouter(router)
 	SetVideoRouter(router)
+	// APIDUO:mcp:BEGIN
+	mcpserver.Register(router)
+	// APIDUO:mcp:END
 	// APIDUO:ark-task-alias:BEGIN
 	SetApiduoArkTaskAliasRoutes(router)
 	// APIDUO:ark-task-alias:END

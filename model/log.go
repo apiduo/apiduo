@@ -106,6 +106,20 @@ func createLog(log *Log) error {
 	return LOG_DB.Create(log).Error
 }
 
+// APIDUO:mcp:BEGIN
+// EnqueueLog 写入一整行日志，走 createLog 的统一路径：补 request_id → 异步批量 → 同步回落。
+//
+// 供 mcp 包的观察埋点使用。它不能调 RecordXxx 系列（那些函数自己拼 content/other，
+// 塞不进 param_snapshot），但**必须**和它们走同一条写入路径，否则：
+//   - 每条观察单行 INSERT，ClickHouse 每次生成一个 part，量上来就是 Too many parts；
+//   - request_id 为空，而线上 logs 是 ReplacingMergeTree(ORDER BY created_at, request_id)，
+//     同一秒内的观察会被后台合并折叠成一行，样本静默丢失。
+func EnqueueLog(log *Log) error {
+	return createLog(log)
+}
+
+// APIDUO:mcp:END
+
 func clickHouseLogOrder(prefix string) string {
 	return prefix + "created_at desc, " + prefix + "request_id desc"
 }

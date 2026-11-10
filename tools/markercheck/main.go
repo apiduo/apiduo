@@ -84,8 +84,14 @@ var skipExt = map[string]struct{}{
 }
 
 // skipName 是生成文件：内容由生成器决定，手写标记会被下次生成覆盖。
+//
+// go.mod 属于同一类，只是它没有扩展名。依赖行是 require 列表的一部分，
+// `go mod tidy` 会按模块名重排并合并同块的行——把新依赖包进 /* */ 或加行尾
+// // APIDUO 注释，下一次 tidy 就会打散，标记变成噪音。上游合并时的依赖冲突
+// 是版本号的语义冲突，靠 tidy + 编译解决，不是行级标记能表达的。
 var skipName = map[string]struct{}{
 	"routeTree.gen.ts": {},
+	"go.mod":           {},
 }
 
 type fileReport struct {
