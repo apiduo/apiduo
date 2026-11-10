@@ -146,7 +146,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 		// 一条都不落库 —— 面板「观察记录」永远 0 次样本，巡检还会把它判成
 		// 「参数从未探测」，等于把「声明写错了」显示成「还没人用过」。
 		// 这里没有出站，Latency 记 0；只记结构性参数，提示词不进快照。
-		observeCall(callObservation{ModelID: m.ID, Params: snapshotInput(in, refs), ErrorMsg: errText(err)})
+		observeCall(ctx, callObservation{Tool: kind + ".generate", ModelID: m.ID, Params: snapshotInput(in, refs), ErrorMsg: errText(err)})
 		return nil, generateOutput{}, err
 	}
 
@@ -160,7 +160,8 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 
 	// 观察埋点：无论成败都记一条，失败的样本比成功的更值钱。
 	// 只记结构性参数，提示词内容一个字都不落盘。
-	observeCall(callObservation{
+	observeCall(ctx, callObservation{
+		Tool:     kind + ".generate",
 		ModelID:  m.ID,
 		Params:   snapshotParams(payload),
 		OK:       err == nil,

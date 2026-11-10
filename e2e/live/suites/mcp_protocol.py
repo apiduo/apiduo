@@ -454,6 +454,46 @@ def main():
     check("巡检接口可用（声明 vs 观察）", r.status_code == 200 and (r.json().get("data") or {}).get("issues") is not None,
           r.text[:160])
 
+    # ── 9. 协议调用落普通日志，且归属到调用者 ────────────────────
+    # MCP 调用不单独建审计，进普通 logs 表即可（type=2/5、quota 记 0）。
+    # 但必须归属到人：user_id 为空时日志记成「系统」，用户在自己的日志页
+    # 看不到这些调用，用量也对不上人。
+    def mcp_log_rows():
+        r = api(at, "GET", "/api/log/?p=0&page_size=100&type=2")
+        page = ((r.json().get("data") or {}).get("items") or [])
+        return [row for row in page if str(row.get("content", "")).startswith("mcp ")]
+
+    mcp_logs = mcp_log_rows()
+    for _ in range(20):
+        if mcp_logs:
+            break
+        time.sleep(0.2)
+        mcp_logs = mcp_log_rows()
+
+    check("MCP 调用进普通日志表", len(mcp_logs) >= 1, f"got {len(mcp_logs)}")
+    if mcp_logs:
+        contents = {row.get("content") for row in mcp_logs}
+        check("日志正文带工具名", "mcp image.generate" in contents, str(sorted(contents))[:160])
+
+        row = mcp_logs[0]
+        check("日志归属到调用者", (row.get("user_id") or 0) > 0 and bool(row.get("username")),
+              f"user_id={row.get('user_id')} username={row.get('username')}")
+        check("日志带令牌 id", (row.get("token_id") or 0) > 0, str(row.get("token_id")))
+
+        other = row.get("other")
+        if isinstance(other, str):
+            try:
+                other = json.loads(other)
+            except Exception:
+                other = {}
+        info = (other or {}).get("admin_info") or {}
+        check("日志标了 mcp 与 tool",
+              info.get("mcp") is True and info.get("tool") in ("image.generate", "video.generate"),
+              json.dumps(info, ensure_ascii=False)[:160])
+        check("日志不落提示词", "prompt" not in json.dumps(other, ensure_ascii=False).lower(),
+              json.dumps(other, ensure_ascii=False)[:160])
+        check("日志额度记 0（计费在 relay 侧）", row.get("quota") == 0, str(row.get("quota")))
+
     print()
     if any(not ok for ok, _, _ in rows):
         failed = [n for ok, n, _ in rows if not ok]

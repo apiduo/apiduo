@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,7 +53,7 @@ func Register(engine *gin.Engine) {
 	// 必须挂在中间件之后：空令牌在入口就被拒，不会出现「没带 key 却用了服务身份」
 	// 的回落路径 —— 那是公网部署最容易出事的地方。
 	proto := injectBearer(protocolHandler())
-	engine.Any("/mcp", middleware.TokenAuthReadOnly(), gin.WrapH(proto))
+	engine.Any("/mcp", middleware.TokenAuthReadOnly(), captureCaller(), gin.WrapH(proto))
 
 	// 面板页面。不进 web/ 目录 —— 那是 React 构建产物，动它会把
 	// 上游前端的每次更新都变成冲突。
@@ -68,4 +69,21 @@ func servePanel(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+}
+
+// captureCaller 把令牌归属搬进 request context，供协议层写日志时归属到人。
+//
+// 必须挂在 TokenAuthReadOnly 之后：身份就来自它设置的 id / token_id。
+// 协议端点是 gin.WrapH 包出来的 http.Handler，那之后 gin.Context 已经不可见，
+// 所以这一搬是唯一时机。
+func captureCaller() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		caller := mcpCaller{UserId: c.GetInt("id"), TokenId: c.GetInt("token_id")}
+		if caller.UserId > 0 {
+			// fromDB=false：走用户缓存。为一条旁路日志开一次库查询不值。
+			caller.Username, _ = model.GetUsernameById(caller.UserId, false)
+		}
+		c.Request = c.Request.WithContext(withCaller(c.Request.Context(), caller))
+		c.Next()
+	}
 }

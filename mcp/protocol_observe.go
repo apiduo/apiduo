@@ -24,11 +24,41 @@ func apiKeyFrom(ctx context.Context) string {
 	return s
 }
 
+// callerCtxKey 承载本次调用的令牌归属。
+//
+// 协议端点挂在 gin.WrapH 后面，http.Handler 拿不到 gin.Context，所以由
+// captureCaller 中间件搬一次。不搬的后果是日志只能记成 userId=0（系统）：
+// 用户在「我的日志」里看不到自己发起的 MCP 调用，用量也对不上人。
+type callerCtxKey struct{}
+
+// mcpCaller 是日志归属需要的调用者信息，只取三项 —— 够定位到人、到令牌，
+// 又不把用户档案整份搬进 context。
+type mcpCaller struct {
+	UserId   int
+	Username string
+	TokenId  int
+}
+
+func withCaller(ctx context.Context, caller mcpCaller) context.Context {
+	return context.WithValue(ctx, callerCtxKey{}, caller)
+}
+
+func callerFrom(ctx context.Context) mcpCaller {
+	caller, _ := ctx.Value(callerCtxKey{}).(mcpCaller)
+	return caller
+}
+
 // callObservation 是一次调用的观察样本。
 //
 // 只记结构性参数：尺寸、时长、数量这类可枚举的值。提示词内容一个字都不落盘 ——
 // 它可能含用户隐私，而且对「参数分布」这个统计目的没有价值。
 type callObservation struct {
+	// Tool 是工具名（image.generate / video.generate）。写进日志正文，
+	// 让日志页一眼看出「这是 MCP 的哪个动作」，而不是一片 "mcp call"。
+	Tool     string
+	UserId   int
+	Username string
+	TokenId  int
 	ModelID  string
 	Params   map[string]string
 	OK       bool
@@ -64,7 +94,12 @@ func startObserver() {
 }
 
 // observeCall 把样本投进队列，永不阻塞调用方。
-func observeCall(o callObservation) {
+//
+// 归属从 ctx 补，而不是让每个调用点自己填：调用点只关心「哪个模型、什么参数、
+// 成没成」，把身份复制三遍迟早漏一处。
+func observeCall(ctx context.Context, o callObservation) {
+	caller := callerFrom(ctx)
+	o.UserId, o.Username, o.TokenId = caller.UserId, caller.Username, caller.TokenId
 	startObserver()
 	select {
 	case observeQueue <- o:
@@ -77,15 +112,17 @@ func writeObservation(o callObservation) {
 	if model.LOG_DB == nil {
 		return
 	}
-	other := map[string]any{
-		"admin_info": map[string]any{
-			"param_snapshot": o.Params,
-			"mcp":            true,
-		},
+	adminInfo := map[string]any{
+		"param_snapshot": o.Params,
+		"mcp":            true,
+	}
+	if o.Tool != "" {
+		adminInfo["tool"] = o.Tool
 	}
 	if o.ErrorMsg != "" {
-		other["admin_info"].(map[string]any)["upstream_error"] = o.ErrorMsg
+		adminInfo["upstream_error"] = o.ErrorMsg
 	}
+	other := map[string]any{"admin_info": adminInfo}
 	raw, err := json.Marshal(other)
 	if err != nil {
 		return
@@ -94,15 +131,22 @@ func writeObservation(o callObservation) {
 	if !o.OK {
 		logType = logTypeError
 	}
+	content := "mcp call"
+	if o.Tool != "" {
+		content = "mcp " + o.Tool
+	}
 	row := &model.Log{
+		UserId:    o.UserId,
+		Username:  o.Username,
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		ModelName: o.ModelID,
+		TokenId:   o.TokenId,
 		// quota 留 0：MCP 层的这条日志只用于观察，计费由 relay 完成。
 		// 记成 0 而不是真实额度，避免运营看日志页时把两笔账加在一起。
 		Quota:   0,
 		UseTime: int(o.Latency.Seconds()),
-		Content: "mcp call",
+		Content: content,
 		Other:   string(raw),
 	}
 	// 必须走 model.EnqueueLog（= createLog）：它会补 request_id 并交给异步批量写入器。

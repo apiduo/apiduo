@@ -8,6 +8,7 @@
 import json
 import os
 import sys
+import time
 
 import httpx
 
@@ -290,6 +291,81 @@ def main():
     left = ((body(api(at, "GET", "/api/mcp/profiles")).get("data") or {}).get("items") or [])
     check("删除后查不到", all(i["id"] not in (pid, pid2) for i in left),
           str([i["model_id"] for i in left]))
+
+    # ── 10. 控制面审计 ─────────────────────────────────────────
+    # 鉴权链路有 generic 兜底，所以「审计里有记录」不是充分条件。要证明的是：
+    # action 落到具体动作、params 带 before/after，否则「谁把参考图上限从 3
+    # 改成未声明」在审计里查不出来 —— 那正是这次要修的东西。
+    items = []
+    for _ in range(10):
+        # 不带尾斜杠：/api/audit/ 会 301 到 /api/audit，而 httpx 默认不跟随，
+        # 拿到的是 HTML 重定向页，解析出来永远是空列表 —— 会误判成「审计没写」。
+        audit_items = ((body(api(at, "GET", "/api/audit?p=0&page_size=100")).get("data") or {}).get("items") or [])
+        items = audit_items
+        if any(str(i.get("action", "")).startswith("mcp.") for i in items):
+            break
+        time.sleep(0.5)
+
+    def op_params(item):
+        other = item.get("other") or {}
+        op = other.get("op") if isinstance(other, dict) else None
+        return (op.get("params") or {}) if isinstance(op, dict) else {}
+
+    mcp_rows = [i for i in items if str(i.get("action", "")).startswith("mcp.")]
+    actions = {i.get("action") for i in mcp_rows}
+    for want_action in ("mcp.profile_create", "mcp.profile_update",
+                        "mcp.profile_toggle", "mcp.profile_delete"):
+        check(f"审计有 {want_action}", want_action in actions, str(sorted(actions))[:180])
+
+    generic_mcp = [i for i in items
+                   if i.get("action") == "generic" and str(i.get("route", "")).startswith("/api/mcp")]
+    # generic 兜底本身是设计行为：校验不过的请求在 handler 里提前 return，
+    # 只有兜底看得到，那些失败也应该留痕。真正要证明的是不重复 ——
+    # 同一个请求不能既落一条 generic、又落一条精细记录。
+    kinds_by_request = {}
+    for row in mcp_rows + generic_mcp:
+        kind = "generic" if row.get("action") == "generic" else "precise"
+        kinds_by_request.setdefault(row.get("request_id"), set()).add(kind)
+    doubled = [rid for rid, kinds in kinds_by_request.items() if len(kinds) > 1]
+    check("同一请求不会既记 generic 又记精细", not doubled, str(doubled[:3]))
+
+    updates = [i for i in mcp_rows if i.get("action") == "mcp.profile_update"]
+    changes = [op_params(i).get("changed") for i in updates]
+    changes = [c for c in changes if isinstance(c, dict)]
+
+    name_diffs = [c["display_name"] for c in changes if isinstance(c.get("display_name"), dict)]
+    check("改名留痕带具体前后值",
+          any(d.get("before") == "控制面模型" and d.get("after") == "改名后" for d in name_diffs),
+          json.dumps(name_diffs[:3], ensure_ascii=False))
+
+    # 三态是这套声明的核心语义：3 -> 未声明 必须能与 3 -> 0 区分开。
+    tri_diff = next((c["max_ref_images"] for c in changes
+                     if "max_ref_images" in c and c["max_ref_images"].get("before") == 3
+                     and c["max_ref_images"].get("after") is None), None)
+    check("三态留痕：3 -> 未声明 可分辨", isinstance(tri_diff, dict),
+          json.dumps(tri_diff, ensure_ascii=False))
+
+    toggles = [op_params(i).get("enabled") for i in mcp_rows if i.get("action") == "mcp.profile_toggle"]
+    toggles = [t for t in toggles if isinstance(t, dict)]
+    check("启停留痕带前后状态",
+          any(t.get("before") is not None and t.get("after") is not None and t["before"] != t["after"]
+              for t in toggles),
+          json.dumps(toggles[:2], ensure_ascii=False))
+
+    # 删除留痕的关键是「删掉之后还能知道删了什么」：model_id 在 params 顶层，
+    # 完整旧声明在 before 里，两者都要有。
+    delete_params = [op_params(i) for i in mcp_rows if i.get("action") == "mcp.profile_delete"]
+    check("删除留痕保留旧声明",
+          any(p.get("model_id") in (MODEL, MODEL2)
+              and isinstance(p.get("before"), dict) and p["before"].get("display_name")
+              for p in delete_params),
+          json.dumps(delete_params[:2], ensure_ascii=False)[:180])
+
+    check("审计归属到操作者",
+          bool(mcp_rows) and all(i.get("username") for i in mcp_rows), str(len(mcp_rows)))
+    check("审计标了鉴权方式",
+          bool(mcp_rows) and all(i.get("auth_method") in ("session", "access_token") for i in mcp_rows),
+          str({i.get("auth_method") for i in mcp_rows}))
 
     print()
     if any(not ok for ok, _, _ in rows):

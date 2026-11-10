@@ -84,6 +84,9 @@ func apiCreateProfile(c *gin.Context) {
 		apiWriteErr(c, "保存能力声明", err)
 		return
 	}
+	recordControlAudit(c, auditActionProfileCreate,
+		"Created MCP model profile "+p.ModelId,
+		map[string]any{"model_id": p.ModelId, "after": profileAuditSnapshot(p)})
 	common.ApiSuccess(c, toView(p, true))
 }
 
@@ -99,11 +102,21 @@ func apiUpdateProfile(c *gin.Context) {
 		common.ApiErrorMsg(c, "请求体不是合法 JSON: "+err.Error())
 		return
 	}
+	// 先取旧值：审计要记「从什么改成什么」，而 UpdateProfile 只回新值。
+	before, err := GetProfile(id)
+	if err != nil {
+		apiWriteErr(c, "读取能力声明", err)
+		return
+	}
 	p, err := UpdateProfile(id, patch)
 	if err != nil {
 		apiWriteErr(c, "保存能力声明", err)
 		return
 	}
+	changed := auditDiff(profileAuditSnapshot(before), profileAuditSnapshot(p))
+	recordControlAudit(c, auditActionProfileUpdate,
+		"Updated MCP model profile "+p.ModelId,
+		map[string]any{"model_id": p.ModelId, "changed": changed})
 	common.ApiSuccess(c, toView(p, true))
 }
 
@@ -112,10 +125,19 @@ func apiDeleteProfile(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// 删除后 model_id 就查不回来了，旧值必须在删除前取。
+	before, err := GetProfile(id)
+	if err != nil {
+		apiWriteErr(c, "删除能力声明", err)
+		return
+	}
 	if err := DeleteProfile(id); err != nil {
 		apiWriteErr(c, "删除能力声明", err)
 		return
 	}
+	recordControlAudit(c, auditActionProfileDelete,
+		"Deleted MCP model profile "+before.ModelId,
+		map[string]any{"model_id": before.ModelId, "before": profileAuditSnapshot(before)})
 	common.ApiSuccess(c, gin.H{"deleted": id})
 }
 
@@ -133,6 +155,11 @@ func apiToggleProfile(c *gin.Context) {
 		common.ApiErrorMsg(c, "请求体不是合法 JSON: "+err.Error())
 		return
 	}
+	before, err := GetProfile(id)
+	if err != nil {
+		apiWriteErr(c, "切换模型启停", err)
+		return
+	}
 	if err := SetProfileEnabled(id, body.Enabled); err != nil {
 		apiWriteErr(c, "切换模型启停", err)
 		return
@@ -142,6 +169,16 @@ func apiToggleProfile(c *gin.Context) {
 		apiWriteErr(c, "读取能力声明", err)
 		return
 	}
+	verb := "Disabled"
+	if p.Enabled {
+		verb = "Enabled"
+	}
+	recordControlAudit(c, auditActionProfileToggle,
+		verb+" MCP model profile "+p.ModelId,
+		map[string]any{
+			"model_id": p.ModelId,
+			"enabled":  map[string]any{"before": before.Enabled, "after": p.Enabled},
+		})
 	common.ApiSuccess(c, toView(p, true))
 }
 
@@ -165,11 +202,20 @@ func apiUpdateErrorRule(c *gin.Context) {
 		common.ApiErrorMsg(c, "请求体不是合法 JSON: "+err.Error())
 		return
 	}
+	before, err := GetErrorRule(id)
+	if err != nil {
+		apiWriteErr(c, "读取错误规则", err)
+		return
+	}
 	r, err := UpdateErrorRule(id, patch)
 	if err != nil {
 		apiWriteErr(c, "保存错误规则", err)
 		return
 	}
+	changed := auditDiff(errorRuleAuditSnapshot(before), errorRuleAuditSnapshot(r))
+	recordControlAudit(c, auditActionErrorRule,
+		"Updated MCP error rule "+r.Match,
+		map[string]any{"rule_id": id, "model_id": r.ModelId, "match": r.Match, "changed": changed})
 	common.ApiSuccess(c, r)
 }
 
