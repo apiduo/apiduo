@@ -26,6 +26,18 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900 });
 
+// A blank sign-in page has three very different causes (gateway down, asset
+// 404, JS exception). Keep the console so the failure says which one it was
+// instead of only "等待 input 超时".
+const consoleErrors = [];
+page.on('console', (msg) => {
+  if (msg.type() === 'error') consoleErrors.push(msg.text().slice(0, 200));
+});
+page.on('pageerror', (err) => consoleErrors.push('pageerror: ' + String(err).slice(0, 200)));
+page.on('requestfailed', (req) =>
+  consoleErrors.push('requestfailed: ' + req.url().slice(0, 120) + ' ' + (req.failure()?.errorText || ''))
+);
+
 const closeDialog = async () => {
   await page.keyboard.press('Escape');
   // 每行都渲染自己的 DetailsDialog，遮罩会吞掉下一次点击，必须等它消失
@@ -42,6 +54,8 @@ try {
     // 登录页没有输入框时，先把现场留下来：是白屏、向导页、还是 503 提示，
     // 光看一句超时分不出来。
     await page.screenshot({ path: '/tmp/apiduo-ui-signin-fail.png', fullPage: true }).catch(() => {});
+    const html = await page.evaluate(() => document.documentElement.outerHTML.length).catch(() => -1);
+    console.log(`  DIAG html_bytes=${html} console=${JSON.stringify(consoleErrors.slice(0, 6))}`);
     const text = await page.evaluate(() => document.body.innerText).catch(() => '');
     console.log('  DIAG url=' + page.url());
     console.log('  DIAG body=' + text.slice(0, 400).replace(/\s+/g, ' '));

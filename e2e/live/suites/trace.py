@@ -4,6 +4,7 @@
 断言三件事：span 形状（usage/输入输出/失败态）、日志里的 trace_id 与 span 一一对应、
 客户端 traceparent 能被采纳成同一条 trace。
 """
+import hashlib
 import json
 import os
 import sys
@@ -98,6 +99,37 @@ def main():
 
     st, res = call("GET", f"/api/channel/test/{chan_id}?model=gpt-4o-mini", token=token)
     check("channel test hits fake upstream", st == 200, f"HTTP {st} {str(res)[:120]}")
+
+    # The channel test writes a consume log from a request the relay never saw
+    # (gin.CreateTestContext). It used to land with an empty request_id, so the
+    # log page had nothing to derive a trace from and the row was unopenable.
+    # Pin both halves here: an id on the row, and the trace id derived from it.
+    chan_rid = chan_tid = ""
+    deadline = time.time() + 10
+    while time.time() < deadline and not chan_tid:
+        st, res = call("GET", "/api/log/?p=0&page_size=20&type=2", token=token)
+        rows = res.get("data") or []
+        if isinstance(rows, dict):
+            rows = rows.get("items") or rows.get("data") or []
+        for r in rows:
+            if r.get("token_name") != "Model test":
+                continue
+            other = r.get("other")
+            if isinstance(other, str):
+                try:
+                    other = json.loads(other)
+                except Exception:
+                    other = {}
+            tid = ((other or {}).get("admin_info") or {}).get("trace_id") or ""
+            if r.get("request_id") and tid:
+                chan_rid, chan_tid = r["request_id"], tid
+                break
+        if not chan_tid:
+            time.sleep(0.3)
+    check("channel test log carries a request id", bool(chan_rid), chan_rid or "empty")
+    expected = hashlib.sha256(("apiduo-trace\x00" + chan_rid).encode()).hexdigest()[:32]
+    check("channel test log points at the trace derived from it",
+          bool(chan_rid) and chan_tid == expected, f"{chan_tid or '-'} vs {expected}")
 
     # ---------- 3. token ----------
     st, res = call("POST", "/api/token/", {
@@ -255,6 +287,12 @@ def main():
     # f) parent span id absent for client-less requests
     plain = [s for s in spans if not s.get("parentSpanId") and s.get("traceId") != TP]
     check("derived spans have no parentSpanId", bool(plain), f"{len(plain)}")
+
+    # The settlement-style span for the channel test: no collector existed, so
+    # the fallback snapshot is the only chance to show this request in Langfuse.
+    check("channel test produced a span the log row points at",
+          bool(chan_tid) and any(s.get("traceId") == chan_tid for s in spans),
+          chan_tid or "no trace id")
 
     # ---------- 6. log API ----------
     st, res = call("GET", "/api/log/?p=0&page_size=20&type=0", token=token)
