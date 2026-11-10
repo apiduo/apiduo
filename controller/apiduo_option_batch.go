@@ -63,11 +63,24 @@ func UpdateOptionsBatch(c *gin.Context) {
 			common.ApiErrorMsg(c, "Compliance confirmation fields cannot be changed through this API")
 			return
 		}
+		// 不认识就拒。此前这里对任何键名都回 200 并落库 ——
+		// 改代码时手滑拼错一个键名，界面和接口都显示「保存成功、已生效」，
+		// 实际什么都没发生，而垃圾键会一直留在 options 表里。
+		if !model.OptionKeyWritable(key) {
+			common.ApiErrorMsg(c, "Unknown option key: "+key)
+			return
+		}
 	}
 
 	values := make(map[string]string, len(keys))
 	for _, key := range keys {
 		values[key] = common.Interface2String(request.Options[key])
+	}
+	// 跨键校验要看合并后的视图（例如「启用存储」是否真有目标），
+	// 逐键校验看不到同一批里另一个键的新值。
+	if err := model.ValidateApiduoOptionSet(values); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
 	}
 	// One transaction for the whole save. A settings form that submits six
 	// fields is one operator action, and a half-applied policy (new rates,

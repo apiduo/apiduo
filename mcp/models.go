@@ -463,6 +463,12 @@ func GetErrorRule(id int64) (ErrorRule, error) {
 // 取并集是为了不漏，多查一个空参数只多一次毫秒级查询。
 func ParamNames(p ModelProfile) []string {
 	set := map[string]bool{"size": true, "duration": true, "n": true, "resolution": true}
+	// 参考图张数也在观察范围内：max_ref_images 是声明过的上限，
+	// 没有对照就只能靠猜它合不合适。快照里本来就写了这个键
+	// （snapshotParams 会补 reference_images），此前却没人统计。
+	if p.MaxRefImages != nil {
+		set["reference_images"] = true
+	}
 	if p.Parameters != "" {
 		var declared map[string]any
 		if err := json.Unmarshal([]byte(p.Parameters), &declared); err == nil {

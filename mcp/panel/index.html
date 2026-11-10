@@ -221,11 +221,18 @@ function showErr(msg){
 // CriticalRateLimit 计数器（30 次 / 1800s），并发刷新会顺带烧掉用户自己的
 // 登录额度，症状是「面板开久了，重新登录被 429」。
 let authInFlight = null;
+// 刷新失败的原因要留给人看：限流（429）和「真的没登录」是两回事，
+// 前者让用户去重新登录只会撞上同一个计数器，越试越久。
+let authFailure = '';
 function bootstrapAuth(){
   if(!authInFlight){
     authInFlight = (async () => {
       try{
         const r = await fetch('/api/user/auth/refresh', {method:'POST', credentials:'same-origin'});
+        if(r.status === 429){
+          authFailure = '操作过于频繁，登录态刷新被限流；请等几分钟再试，别立刻重新登录（会撞同一个计数器）。';
+          return false;
+        }
         const j = await r.json();
         if(j && j.success && j.data && j.data.access_token){
           authToken = j.data.access_token;
@@ -245,6 +252,9 @@ async function api(path, opt){
     headers: headers,
     credentials: 'same-origin',
   }, opt || {}));
+  if(res.status === 429){
+    throw new Error('操作过于频繁（已触发限流），请等几分钟再重试');
+  }
   if(res.status === 401){
     // token 过期就再换一次，避免面板开久了所有操作都失败
     if(await bootstrapAuth()){
@@ -648,7 +658,7 @@ window.addEventListener('beforeunload', e=>{
   const ok = await bootstrapAuth();
   if(!ok){
     $('summary').textContent = '未登录';
-    showErr('未登录：请先在 apiduo 登录，再打开这个页面');
+    showErr(authFailure || '未登录：请先在 apiduo 登录，再打开这个页面');
     return;
   }
   loadOverview();

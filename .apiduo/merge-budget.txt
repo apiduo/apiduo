@@ -13,7 +13,13 @@
 # - model/option.go +1 块 +8 行：规则时间窗在写入期校验，别等读时静默修正。
 # - 开发期证据目录（mcp/screenshots、mcp/samples）走本机 .git/info/exclude，不占预算。
 # 注意：-cost -update 会重写本文件并丢掉注释，收紧后要补回。
+# 2026-11-10 扩展设置的写入期校验（线上回归抓到的两个 P2）：
+# - model/option.go +1 块 +4 行：validateOptionValue 挂 ValidateApiduoOptionValue，
+#   让单键与批量两条写入路径都校验形状/枚举/范围（此前只有前端夹，接口一条不夹）。
+# - relaykit/dto/channel_settings.go +1 块 +5 行 / -1 行：校验阶段复用已有的正则缓存。
+#   Validate() 在 adaptor.resolve() 里每请求都跑，原来每次重新 regexp.Compile，
+#   带 re: 规则的渠道实测多付约 50µs/请求（c=1 吞吐 -5.6%）。
 files	107
-blocks	324
-added	3065
-deleted	104
+blocks	326
+added	3074
+deleted	105

@@ -94,7 +94,8 @@ export function LoginThemeSection() {
           void updateOption.mutateAsync({ key: 'LoginTheme', value: selected })
         }}
         isSaving={updateOption.isPending}
-        saveLabel='Save sign-in style'
+        // 不传 saveLabel：默认走 t('Save Changes')，与其他四页一致。
+        // 这里原先硬编码英文 'Save sign-in style'，中文界面里会露出英文按钮。
         isSaveDisabled={!dirty}
       />
 

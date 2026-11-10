@@ -252,6 +252,11 @@ func validateOptionValue(key string, value string) error {
 		return err
 	}
 	// APIDUO:observability:END
+	// APIDUO:option-validate:BEGIN
+	if err := ValidateApiduoOptionValue(key, value); err != nil {
+		return err
+	}
+	// APIDUO:option-validate:END
 	if key == "EmailProvider" || key == "ResendApiKey" || key == "ResendFrom" {
 		if key == "EmailProvider" && value != "smtp" && value != "resend" {
 			return common.NewMessage("Email sending method must be SMTP or Resend")

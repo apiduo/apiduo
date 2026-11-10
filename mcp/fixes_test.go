@@ -182,3 +182,44 @@ func TestSnapshotInputKeepsOnlyStructuralFields(t *testing.T) {
 		}
 	}
 }
+
+// 声明了参考图上限，观察维度里就必须有它 —— 否则这条声明永远没有对照。
+func TestParamNamesIncludesReferenceImages(t *testing.T) {
+	two := 2
+	withLimit := ModelProfile{ModelId: "a", MaxRefImages: &two}
+	names := strings.Join(ParamNames(withLimit), ",")
+	if !strings.Contains(names, "reference_images") {
+		t.Fatalf("声明了上限就该观察参考图张数，实际 %s", names)
+	}
+
+	without := strings.Join(ParamNames(ModelProfile{ModelId: "b"}), ",")
+	if strings.Contains(without, "reference_images") {
+		t.Errorf("没声明上限就不必多查一个空维度，实际 %s", without)
+	}
+}
+
+// 巡检不能把「声明过的参考图上限」当成「未声明的参数」来报。
+func TestAuditKnowsReferenceImagesLimit(t *testing.T) {
+	two := 2
+	p := ModelProfile{ModelId: "img", MaxRefImages: &two}
+
+	// 3 张被拒（超过声明上限 2）：这是正确拒绝，不该报「未声明的边界」
+	issues := Audit(p, []ParamStat{{Param: "reference_images", Value: "3", OK: 0, Fail: 4}})
+	for _, i := range issues {
+		if strings.Contains(i.Detail, "未声明") {
+			t.Fatalf("声明过的上限不该报未声明：%+v", i)
+		}
+	}
+
+	// 只用到 1 张而声明 2 张：属于「上限可能偏大」，这是有用的提示
+	issues = Audit(p, []ParamStat{{Param: "reference_images", Value: "1", OK: 9, Fail: 0}})
+	found := false
+	for _, i := range issues {
+		if i.Level == AuditPending && strings.Contains(i.Object, "reference_images") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("声明 2 张只用到 1 张，应当提示上限偏大，实际 %+v", issues)
+	}
+}

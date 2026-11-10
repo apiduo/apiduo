@@ -271,6 +271,14 @@ func Audit(p ModelProfile, stats []ParamStat) []AuditIssue {
 
 	for _, name := range names {
 		spec, declared := specs[name]
+		// 参考图上限不是 parameters 里的一个参数，而是 ModelProfile.MaxRefImages。
+		// 不在这里对齐的话，巡检会把它当成「未声明的参数」，
+		// 对着一个明明声明过上上限的模型报「观察到未声明的边界，建议定为上限 N」。
+		if name == "reference_images" && p.MaxRefImages != nil {
+			max := float64(*p.MaxRefImages)
+			spec = ParamSpec{Max: &max}
+			declared = true
+		}
 		rows := byParam[name]
 
 		if len(rows) == 0 {

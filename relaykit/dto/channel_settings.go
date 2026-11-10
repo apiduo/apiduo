@@ -635,9 +635,12 @@ func validateAdvancedCustomRouteModelRule(index int, incomingPath string, model 
 	if pattern == "" {
 		return fmt.Errorf("advanced_custom.advanced_routes[%d].models regex is empty for incoming_path %s: %s", index, incomingPath, model)
 	}
-	if _, err := regexp.Compile(pattern); err != nil {
+	// APIDUO:route-validate-cache:BEGIN
+	// 复用带缓存的编译：Validate() 在 adaptor.resolve() 里每请求都跑。
+	if compileAdvancedCustomModelRegex(pattern) == nil {
 		return fmt.Errorf("advanced_custom.advanced_routes[%d].models regex is invalid for incoming_path %s: %s", index, incomingPath, model)
 	}
+	// APIDUO:route-validate-cache:END
 	return nil
 }
 
