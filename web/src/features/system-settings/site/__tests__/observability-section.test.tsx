@@ -46,6 +46,11 @@ const traceConfig = {
   enabled: true,
   host: 'http://sink:3411',
   body_mode: 'headtail',
+  body_head_bytes: 32768,
+  body_tail_bytes: 16384,
+  error_sample_rate: 100,
+  redact: true,
+  environment: 'production',
   metadata_sample_rate: 10,
   content_sample_rate: 100,
   server_zone: 'Asia/Shanghai (UTC+08:00)',
@@ -62,6 +67,12 @@ function options(overrides: Record<string, string> = {}) {
     [`${OPTION_KEY}.timezone`]: 'Asia/Shanghai',
     [`${OPTION_KEY}.rules`]: '[]',
     [`${OPTION_KEY}.trace_viewer_user_ids`]: '[]',
+    [`${OPTION_KEY}.body_mode`]: 'headtail',
+    [`${OPTION_KEY}.body_head_bytes`]: '32768',
+    [`${OPTION_KEY}.body_tail_bytes`]: '16384',
+    [`${OPTION_KEY}.error_sample_rate`]: '100',
+    [`${OPTION_KEY}.redact`]: 'true',
+    [`${OPTION_KEY}.environment`]: 'production',
     ...overrides,
   }
   return {
@@ -110,7 +121,8 @@ describe('ObservabilitySection', () => {
     await waitFor(() => {
       expect(screen.getByText('10% links · 100% content')).toBeTruthy()
     })
-    expect(screen.getByText('head + tail')).toBeTruthy()
+    // 运行值标签带实际窗口：只显示「Head + tail」看不出保留了多少。
+    expect(screen.getByText('Head + tail · 32/16 KB')).toBeTruthy()
     // 时区既出现在状态条也出现在输入框，取「至少有一处」即可。
     expect(
       screen.getAllByText(/Asia\/Shanghai \(UTC\+08:00\)/).length
@@ -179,6 +191,14 @@ describe('ObservabilitySection', () => {
     expect(rules[0].exclude).toBe(false)
     // 一次保存 = 一次请求：分键写会把「新比率 + 旧规则」这种半套状态落库。
     expect(payload[`${OPTION_KEY}.timezone`]).toBe('Asia/Shanghai')
+    // 采集窗口与质量参数同批写：body 模式单独落库而窗口没落，会得到
+    // 「headtail 但窗口是上一版」的半套状态。
+    expect(payload[`${OPTION_KEY}.body_mode`]).toBe('headtail')
+    expect(payload[`${OPTION_KEY}.body_head_bytes`]).toBe('32768')
+    expect(payload[`${OPTION_KEY}.body_tail_bytes`]).toBe('16384')
+    expect(payload[`${OPTION_KEY}.error_sample_rate`]).toBe('100')
+    expect(payload[`${OPTION_KEY}.redact`]).toBe('true')
+    expect(payload[`${OPTION_KEY}.environment`]).toBe('production')
   })
 
   it('refuses a rule with only one end of the time window', async () => {
@@ -197,6 +217,36 @@ describe('ObservabilitySection', () => {
 
     // 后端遇到半个窗口会把两端都丢掉、规则变成全天匹配 —— 那会让「已保存」
     // 与「实际行为」不一致，所以这里直接拒绝，而不是替用户改写。
+    expect(updateSystemOptionsBatch).not.toHaveBeenCalled()
+  })
+
+  it('keeps head and tail inside one budget while typing', async () => {
+    const user = userEvent.setup()
+    renderSection()
+
+    const head = await screen.findByLabelText('Head window (KB)')
+    await user.clear(head)
+    await user.type(head, '128')
+
+    // 两个 128 相加会被后端整批拒绝；表单在输入时就压尾，
+    // 让屏幕上看到的数字等于能存下的数字。
+    expect((head as HTMLInputElement).value).toBe('128')
+    expect(
+      (screen.getByLabelText('Tail window (KB)') as HTMLInputElement).value
+    ).toBe('0')
+  })
+
+  it('warns about the full-payload cost before it is saved', async () => {
+    const user = userEvent.setup()
+    renderSection()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Full payload' })).toBeTruthy()
+    })
+    await user.click(screen.getByRole('button', { name: 'Full payload' }))
+
+    expect(screen.getByText(/768 MB at 1000 concurrent streams/)).toBeTruthy()
+    // 只是填表，没保存。
     expect(updateSystemOptionsBatch).not.toHaveBeenCalled()
   })
 

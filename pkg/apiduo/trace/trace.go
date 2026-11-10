@@ -43,13 +43,20 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 	}
 
 	endNano := time.Now().UnixNano()
-	latencyMs := time.Duration(endNano - m.StartUnixNano).Milliseconds()
-	if m.StartUnixNano == 0 {
-		latencyMs = 0
+	// A missing start (nil RelayInfo) or a zero time.Time — whose UnixNano()
+	// is a large negative number, never 0 — would place the span decades
+	// outside the time axis and stretch its latency to match, poisoning the
+	// percentile of whichever bucket it lands in. Collapse it to a
+	// zero-length span at end time; TTFT then stays 0 because v4 requires
+	// completion_start_time to fall inside [start, end].
+	startNano := m.StartUnixNano
+	if startNano <= 0 {
+		startNano = endNano
 	}
+	latencyMs := time.Duration(endNano - startNano).Milliseconds()
 	ttftMs := int64(0)
-	if m.FirstByteNano > m.StartUnixNano {
-		ttftMs = time.Duration(m.FirstByteNano - m.StartUnixNano).Milliseconds()
+	if m.FirstByteNano > startNano {
+		ttftMs = time.Duration(m.FirstByteNano - startNano).Milliseconds()
 	}
 
 	sn := &Snapshot{
@@ -69,13 +76,21 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 		Success:       m.Success,
 		ErrorStatus:   m.ErrorStatus,
 		ErrorText:     clipRunes(m.ErrorText, maxErrorTextRunes),
-		StartUnixNano: m.StartUnixNano,
+		StartUnixNano: startNano,
 		EndUnixNano:   endNano,
 		TtftMs:        ttftMs,
 		LatencyMs:     latencyMs,
 		IsStream:      m.IsStream,
 		Retry:         m.Retry,
 	}
+	// Interrupted is diagnostics, not content. Keeping it inside the
+	// content-sampling branch erased every mid-stream failure whenever content
+	// sampling was off — which is precisely when no retained body exists to
+	// tell "upstream errored" from "stream was cut", so the flag cannot be
+	// reconstructed later. BodyOff remains the one blind spot: with no frame
+	// wrapping at all there is no byte count to test, and the ERROR level is
+	// the only failure signal left.
+	sn.Interrupted = !m.Success && col.totalFrameBytes > 0
 	if col.usageSet {
 		sn.PromptTokens = col.usage.PromptTokens
 		sn.CompletionTokens = col.usage.CompletionTokens
@@ -104,9 +119,6 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 		// "what did we send upstream" matters most.
 		sn.HasContent = len(sn.Input) > 0 || len(sn.Output) > 0
 		sn.ContentSampled = col.contentSampled
-		// A failed request that already produced frames was interrupted
-		// mid-stream — the most valuable sample for stream diagnostics.
-		sn.Interrupted = !m.Success && col.totalFrameBytes > 0
 	}
 
 	exporterFor(conf).enqueue(sn)

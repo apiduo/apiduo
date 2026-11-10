@@ -67,6 +67,54 @@ func TestGetApiduoTraceConfigAuthorization(t *testing.T) {
 	}
 }
 
+// 面板「当前生效」要显示运行值，接口就必须把 body 窗口与质量参数一并交出；
+// 少一个字段，界面就有一格只能显示占位符 —— 而且没人会发现。
+func TestGetApiduoTraceConfigReturnsBodyAndQuality(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	restore := snapshotTraceSettings()
+	t.Cleanup(restore)
+
+	trace.ApplySettings(trace.Settings{
+		Defaults:    trace.Rates{Metadata: 10, Content: 50},
+		ParentBased: true,
+		Body:        &trace.BodySettings{Mode: trace.BodyHeadTail, HeadBytes: 32768, TailBytes: 16384},
+		Quality:     &trace.QualitySettings{ErrorSampleRate: 100, Redact: true, Environment: "staging"},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/apiduo/trace/config", nil)
+	c.Set("role", common.RoleRootUser)
+	c.Set("id", 99)
+	GetApiduoTraceConfig(c)
+
+	var body struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v (%s)", err, rec.Body.String())
+	}
+	data := body.Data
+
+	want := map[string]any{
+		"body_mode":         "headtail",
+		"body_head_bytes":   float64(32768),
+		"body_tail_bytes":   float64(16384),
+		"error_sample_rate": float64(100),
+		"redact":            true,
+		"environment":       "staging",
+	}
+	for key, expect := range want {
+		got, ok := data[key]
+		if !ok {
+			t.Fatalf("response missing %q: %v", key, data)
+		}
+		if got != expect {
+			t.Fatalf("%s = %v, want %v", key, got, expect)
+		}
+	}
+}
+
 func applyTraceViewers(ids []int) {
 	conf := trace.CurrentConfig()
 	defaults := trace.Rates{}

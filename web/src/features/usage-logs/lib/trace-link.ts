@@ -51,3 +51,35 @@ export function buildTraceUrl(
   const host = config.host.replace(/\/+$/, '')
   return `${host}/project/${encodeURIComponent(config.project_id)}/traces/${id}`
 }
+
+/**
+ * Deep link that lands on the exact span, not on the trace list.
+ *
+ * The peek parameters are what Langfuse's own table sets when you click a row:
+ * `peek`/`observation` open the span detail, `traceId` scopes the list,
+ * `traceTab=attributes` skips the default overview. Without `peek` the URL
+ * only filters the list, and the operator has to find the row again — on a
+ * busy trace list that is a second navigation worth saving.
+ */
+export function buildDeepTraceUrl(
+  config: Pick<TraceConfig, 'enabled' | 'host' | 'project_id'>,
+  traceId: string | undefined,
+  observationId: string | undefined,
+  startTime: string | undefined
+): string | null {
+  if (!config.enabled || !config.host || !config.project_id) return null
+  const trace = traceId?.trim()
+  const span = observationId?.trim()
+  if (!trace || !/^[0-9a-f]{32}$/i.test(trace)) return null
+  if (!span) return null
+
+  const host = config.host.replace(/\/+$/, '')
+  const q = new URLSearchParams({
+    peek: span,
+    observation: span,
+    traceId: trace,
+    traceTab: 'attributes',
+  })
+  if (startTime) q.set('timestamp', startTime)
+  return `${host}/project/${encodeURIComponent(config.project_id)}/traces?${q.toString()}`
+}

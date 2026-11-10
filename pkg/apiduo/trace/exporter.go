@@ -162,11 +162,37 @@ func snapshotByteSize(sn *Snapshot) int {
 	return len(sn.Input) + len(sn.Output) + 512
 }
 
-func (e *exporter) flush(conf *Config, batch []*Snapshot) {
-	body := BuildExportBody(conf, batch)
-	if err := e.post(conf, body); err != nil {
+func (e *exporter) flush(route *Config, batch []*Snapshot) {
+	// Two configs, two lifetimes:
+	//
+	// Routing (host, credentials) belongs to the config this worker was
+	// started with. Those only change with a restart, and a stale worker
+	// must never be re-aimed at a different endpoint mid-flight — tests
+	// swap sinks, and an operator's canary host must not receive batches
+	// queued for the old one.
+	//
+	// Per-export decisions (redaction, environment tag, release) are read
+	// live, because the console edits them and an operator who turns
+	// redaction ON must not have to restart the process for it to take
+	// effect — a compliance switch that needs a deploy is a compliance
+	// switch that will be wrong for a while.
+	body := BuildExportBody(liveExportConfig(route), batch)
+	if err := e.post(route, body); err != nil {
 		log.Printf("[apiduo-trace] export failed (%d spans dropped after retry): %v", len(batch), err)
 	}
+}
+
+// liveExportConfig copies the worker's routing config and overlays the
+// per-export fields from the live one. nil live config (process shutting
+// down) keeps the captured values.
+func liveExportConfig(route *Config) *Config {
+	merged := *route
+	if cur := current(); cur != nil {
+		merged.Redact = cur.Redact
+		merged.Environment = cur.Environment
+		merged.Release = cur.Release
+	}
+	return &merged
 }
 
 func (e *exporter) post(conf *Config, body []byte) error {

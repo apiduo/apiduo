@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // OTLP/HTTP JSON encoding for a batch of snapshots. Hand-rolled on purpose:
@@ -83,6 +84,29 @@ func (j *jsonBuf) attrBoolAlways(key string, value bool) {
 	j.b.WriteString(`,"value":{"boolValue":false}},`)
 }
 
+// attrStrArray emits an OTLP string array. Langfuse reads
+// langfuse.trace.tags as string[] and — unlike langfuse.trace.metadata.*,
+// which can only be filtered — exposes tags as a groupable dimension in the
+// v2 metrics API. That is why carrying the same value in metadata does not
+// make the tag redundant: one can be sliced, the other cannot.
+func (j *jsonBuf) attrStrArray(key string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	j.b.WriteString(`{"key":`)
+	j.str(key)
+	j.b.WriteString(`,"value":{"arrayValue":{"values":[`)
+	for i, v := range values {
+		if i > 0 {
+			j.b.WriteByte(',')
+		}
+		j.b.WriteString(`{"stringValue":`)
+		j.str(v)
+		j.b.WriteByte('}')
+	}
+	j.b.WriteString(`]}}},`)
+}
+
 func (j *jsonBuf) attrBool(key string, value bool) {
 	if !value {
 		return
@@ -139,6 +163,14 @@ func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot) {
 	if sn.ChannelId > 0 {
 		j.attrStr("langfuse.trace.metadata.channel_id", strconv.Itoa(sn.ChannelId))
 	}
+	// Trace-level context that stays constant for the deployment. Langfuse v4
+	// keeps these on every observation row, so they work as filter columns
+	// ("all spans from build X in environment Y") without touching metadata.
+	j.attrStr("langfuse.release", conf.ReleaseName())
+	j.attrStr("langfuse.environment", conf.Environment)
+	// Grouping dimensions. Metadata entries above are filter-only, so without
+	// these "p95 latency per channel" is not expressible in Langfuse at all.
+	j.attrStrArray("langfuse.trace.tags", sn.tags())
 	j.attrStr("gen_ai.operation.name", sn.Operation)
 	// langfuse.observation.model.name wins over the gen_ai.* fallbacks.
 	j.attrStr("langfuse.observation.model.name", sn.Model)
@@ -146,6 +178,14 @@ func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot) {
 	j.attrStr("gen_ai.response.model", sn.Model)
 	j.attrInt("gen_ai.usage.input_tokens", int64(sn.PromptTokens))
 	j.attrInt("gen_ai.usage.output_tokens", int64(sn.CompletionTokens))
+	// completion_start_time is the field Langfuse renders as "time to first
+	// token". apiduo already measures TTFT; sending it as a custom attribute
+	// only left it in metadata.attributes, where the UI never reads it.
+	if sn.TtftMs > 0 && sn.StartUnixNano > 0 {
+		j.attrStr("langfuse.observation.completion_start_time",
+			time.Unix(0, sn.StartUnixNano+sn.TtftMs*int64(time.Millisecond)).
+				UTC().Format("2006-01-02T15:04:05.000Z"))
+	}
 	j.attrStr("langfuse.user.id", strconv.Itoa(sn.UserId))
 	j.attrStr("apiduo.request_id", sn.RequestID)
 	j.attrStr("apiduo.group", sn.Group)
@@ -236,6 +276,27 @@ func formatOutput(sn *Snapshot) string {
 		return raw
 	}
 	return string(encoded)
+}
+
+// tags lists the dimensions ops actually charts by. Channel and group are
+// per-request attributes; the stream flag is included because streaming and
+// buffered requests have systematically different latency distributions, so
+// one blended p95 describes neither. Values stay low-cardinality on purpose:
+// a request id in here would explode the dimension into uselessness.
+func (sn *Snapshot) tags() []string {
+	tags := make([]string, 0, 3)
+	if sn.ChannelId > 0 {
+		tags = append(tags, "channel:"+strconv.Itoa(sn.ChannelId))
+	}
+	if sn.Group != "" {
+		tags = append(tags, "group:"+sn.Group)
+	}
+	if sn.IsStream {
+		tags = append(tags, "stream")
+	} else {
+		tags = append(tags, "non-stream")
+	}
+	return tags
 }
 
 // maxErrorTextRunes bounds the failure reason we ship. Upstream error bodies

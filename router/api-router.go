@@ -87,6 +87,10 @@ func SetApiRouter(router *gin.Engine) {
 		// /api/status is public-by-design and must not leak the internal
 		// Langfuse host.
 		apiRouter.GET("/apiduo/trace/config", middleware.AdminAuth(), controller.GetApiduoTraceConfig)
+		// detail/ is a literal segment on purpose: Gin panics when a static and a
+		// wildcard segment share a level, so /apiduo/trace/:id cannot coexist with
+		// /apiduo/trace/config.
+		apiRouter.GET("/apiduo/trace/detail/:trace_id", middleware.AdminAuth(), controller.GetApiduoTraceDetail)
 		// APIDUO:trace:END
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)

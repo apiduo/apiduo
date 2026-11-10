@@ -72,6 +72,13 @@ type Config struct {
 	QueueContent    int
 	FlushIntervalMS int  // batch window; tests shorten it
 	Redact          bool // scrub API keys / phones / emails before export
+	// Release and Environment are trace-level attributes in the v4 data
+	// model: every observation row carries them, so both are filterable
+	// dimensions ("which gateway build produced this span"). Release is
+	// empty by default and falls back to the build stamp (SetBuildRelease);
+	// LANGFUSE_RELEASE pins it explicitly.
+	Release     string
+	Environment string
 }
 
 const (
@@ -83,6 +90,13 @@ const (
 	defaultTimeoutSeconds = 3
 	defaultSampleRate     = 100
 	defaultErrorRate      = 100
+	// MaxBodyWindowBytes caps head+tail when the window arrives from the
+	// console. The default 48 KB pair already costs ~74 MB at the worst case
+	// (docs §3.9); a form that could widen it into the megabytes would turn
+	// one save into an OOM on a busy instance. The environment variables are
+	// deliberately NOT subject to this cap — an operator editing .env is
+	// expected to have read the memory table first.
+	MaxBodyWindowBytes = 128 * 1024
 )
 
 func envInt(key string, def int) int {
@@ -105,6 +119,13 @@ func envBool(key string) bool {
 	return false
 }
 
+func envStr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func envBodyMode(key string) BodyMode {
 	switch os.Getenv(key) {
 	case "off":
@@ -114,6 +135,55 @@ func envBodyMode(key string) BodyMode {
 	default:
 		return BodyHeadTail
 	}
+}
+
+// String renders the capture mode for the option row and the console.
+func (m BodyMode) String() string {
+	switch m {
+	case BodyOff:
+		return "off"
+	case BodyFull:
+		return "full"
+	default:
+		return "headtail"
+	}
+}
+
+// BodyModeFromName parses the console spelling. ok=false means the caller has
+// to fall back instead of trusting a typo: "hedtail" must neither silently
+// disable capture nor silently enable the expensive full mode.
+func BodyModeFromName(name string) (BodyMode, bool) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "off":
+		return BodyOff, true
+	case "headtail":
+		return BodyHeadTail, true
+	case "full":
+		return BodyFull, true
+	}
+	return BodyHeadTail, false
+}
+
+// EnvDefaultBodyMode is what LANGFUSE_BODY_MODE asks for. Exported for the
+// settings module so an unsaved form shows the value actually in force — the
+// same reason EnvDefaultRates exists.
+func EnvDefaultBodyMode() BodyMode {
+	return envBodyMode("LANGFUSE_BODY_MODE")
+}
+
+// EnvDefaultBodyWindow is the head/tail pair the environment asks for.
+func EnvDefaultBodyWindow() (head, tail int) {
+	return envInt("LANGFUSE_BODY_HEAD_BYTES", defaultHeadBytes),
+		envInt("LANGFUSE_BODY_TAIL_BYTES", defaultTailBytes)
+}
+
+// EnvDefaultQuality is the (failure rate, redaction, environment) triple the
+// environment asks for. Same reason as EnvDefaultRates: the console must open
+// showing what is actually running, not a literal that happens to be nearby.
+func EnvDefaultQuality() (errorRate int, redact bool, environment string) {
+	return clampRate(envInt("LANGFUSE_ERROR_SAMPLE_RATE", defaultErrorRate)),
+		os.Getenv("LANGFUSE_REDACT") != "false", // default on
+		envStr("LANGFUSE_ENVIRONMENT", "production")
 }
 
 // EnvDefaultRates is the sampling pair the environment asks for.
@@ -131,26 +201,59 @@ func EnvDefaultRates() Rates {
 }
 
 func loadFromEnv() *Config {
+	defaultHead, defaultTail := EnvDefaultBodyWindow()
+	defaultErrorRate, defaultRedact, defaultEnvironment := EnvDefaultQuality()
 	return &Config{
-		Enabled:    envBool("LANGFUSE_ENABLED"),
-		Host:       strings.TrimRight(os.Getenv("LANGFUSE_HOST"), "/"),
-		ConsoleURL: strings.TrimRight(os.Getenv("LANGFUSE_CONSOLE_URL"), "/"),
-		PublicKey:  os.Getenv("LANGFUSE_PUBLIC_KEY"),
-		SecretKey:  os.Getenv("LANGFUSE_SECRET_KEY"),
-		ProjectID:  os.Getenv("LANGFUSE_PROJECT_ID"),
-		Policy:     &Policy{Defaults: EnvDefaultRates()},
+		Enabled:         envBool("LANGFUSE_ENABLED"),
+		Host:            strings.TrimRight(os.Getenv("LANGFUSE_HOST"), "/"),
+		ConsoleURL:      strings.TrimRight(os.Getenv("LANGFUSE_CONSOLE_URL"), "/"),
+		PublicKey:       os.Getenv("LANGFUSE_PUBLIC_KEY"),
+		SecretKey:       os.Getenv("LANGFUSE_SECRET_KEY"),
+		ProjectID:       os.Getenv("LANGFUSE_PROJECT_ID"),
+		Policy:          &Policy{Defaults: EnvDefaultRates()},
 		Location:        time.Local,
 		ParentBased:     true,
-		ErrorSampleRate: clampRate(envInt("LANGFUSE_ERROR_SAMPLE_RATE", defaultErrorRate)),
-		BodyMode:        envBodyMode("LANGFUSE_BODY_MODE"),
-		HeadBytes:       envInt("LANGFUSE_BODY_HEAD_BYTES", defaultHeadBytes),
-		TailBytes:       envInt("LANGFUSE_BODY_TAIL_BYTES", defaultTailBytes),
+		ErrorSampleRate: defaultErrorRate,
+		BodyMode:        EnvDefaultBodyMode(),
+		HeadBytes:       defaultHead,
+		TailBytes:       defaultTail,
 		TimeoutSeconds:  envInt("LANGFUSE_TIMEOUT_SECONDS", defaultTimeoutSeconds),
 		QueueMeta:       envInt("LANGFUSE_QUEUE_META", defaultQueueMeta),
 		QueueContent:    envInt("LANGFUSE_QUEUE_CONTENT", defaultQueueContent),
 		FlushIntervalMS: envInt("LANGFUSE_FLUSH_INTERVAL_MS", 5000),
-		Redact:          os.Getenv("LANGFUSE_REDACT") != "false", // default on
+		Redact:          defaultRedact,
+		Release:         os.Getenv("LANGFUSE_RELEASE"),
+		Environment:     defaultEnvironment,
 	}
+}
+
+// buildRelease carries the gateway build version into `langfuse.release`.
+//
+// The trace package imports nothing from this repository (docs §5), so the
+// version cannot be read here — the bridge injects it once from common.Version.
+// A pointer keeps the zero value meaningful: nil means "no build stamp yet".
+var buildRelease atomic.Pointer[string]
+
+// SetBuildRelease records the gateway version stamped at build time. Called
+// once from the bridge's init, before any request can arrive.
+func SetBuildRelease(v string) {
+	if v == "" {
+		return
+	}
+	buildRelease.Store(&v)
+}
+
+// ReleaseName is the value written to langfuse.release. An explicit
+// LANGFUSE_RELEASE wins over the build stamp: an operator who pinned a value
+// means it, even when the binary was built with a different stamp.
+func (c Config) ReleaseName() string {
+	if c.Release != "" {
+		return c.Release
+	}
+	if p := buildRelease.Load(); p != nil {
+		return *p
+	}
+	return ""
 }
 
 var (
@@ -234,12 +337,5 @@ func (c Config) ConsoleBase() string {
 
 // BodyModeName renders the capture mode for the admin config endpoint.
 func (c Config) BodyModeName() string {
-	switch c.BodyMode {
-	case BodyOff:
-		return "off"
-	case BodyFull:
-		return "full"
-	default:
-		return "headtail"
-	}
+	return c.BodyMode.String()
 }

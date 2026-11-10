@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -127,6 +128,74 @@ func TestEnabledEndToEnd(t *testing.T) {
 	}
 	if hdrs[0].Get("x-langfuse-ingestion-version") != "4" {
 		t.Fatal("ingestion version header missing")
+	}
+}
+
+// TestInterruptedSurvivesContentSamplingOff pins the decoupling between a
+// diagnostic flag and the expensive thing it used to depend on. Content
+// sampling off is exactly the configuration where an interrupted stream
+// cannot be recognised from the body afterwards, so the flag has to be
+// computed regardless of sampling.
+func TestInterruptedSurvivesContentSamplingOff(t *testing.T) {
+	s := newSink(t)
+	conf := testConfig(s.server.URL)
+	conf.FlushIntervalMS = 30
+	conf.Policy = &Policy{Defaults: Rates{Metadata: 100, Content: 0}}
+	setConfig(conf)
+
+	c := newTestContext(t)
+	c.Request.Header.Del("traceparent")
+	Begin(c)
+
+	wrapped := WrapStreamHandler(c, func(string, any) {})
+	wrapped(`{"choices":[{"delta":{"content":"partial"}}]}`, nil)
+
+	FinalizeRelay(c, RelayMeta{
+		Model: "m", ChannelId: 3, IsStream: true, Format: "openai",
+		Operation: "chat", Success: false, ErrorStatus: 502, ErrorText: "upstream exploded",
+		StartUnixNano: time.Now().Add(-time.Second).UnixNano(),
+	})
+
+	sp := s.waitSpans(t, 1, 3*time.Second)[0]
+	if !hasAttr(t, sp, "apiduo.interrupted") {
+		t.Fatal("interrupted flag must survive content sampling off")
+	}
+	if hasAttr(t, sp, "langfuse.observation.output") {
+		t.Fatal("content must stay out of the span when content sampling is 0")
+	}
+}
+
+// TestMissingStartTimeDoesNotEmit1970: Langfuse derives latency from the two
+// span timestamps, so a zero start time turns one degraded row into a
+// multi-decade outlier that owns the p95 of its whole bucket.
+func TestMissingStartTimeDoesNotEmit1970(t *testing.T) {
+	s := newSink(t)
+	conf := testConfig(s.server.URL)
+	conf.FlushIntervalMS = 30
+	setConfig(conf)
+
+	c := newTestContext(t)
+	c.Request.Header.Del("traceparent")
+	Begin(c)
+	FinalizeRelay(c, RelayMeta{Model: "m", Success: true, Format: "openai", Operation: "chat"})
+
+	sp := s.waitSpans(t, 1, 3*time.Second)[0]
+	start, err := strconv.ParseInt(sp["startTimeUnixNano"].(string), 10, 64)
+	if err != nil {
+		t.Fatalf("start timestamp not an int: %v", sp["startTimeUnixNano"])
+	}
+	end, err := strconv.ParseInt(sp["endTimeUnixNano"].(string), 10, 64)
+	if err != nil {
+		t.Fatalf("end timestamp not an int: %v", sp["endTimeUnixNano"])
+	}
+	if start < time.Now().Add(-time.Minute).UnixNano() {
+		t.Fatalf("start must be recent, got %s", time.Unix(0, start).UTC())
+	}
+	if end < start {
+		t.Fatalf("end %d precedes start %d", end, start)
+	}
+	if hasAttr(t, sp, "langfuse.observation.completion_start_time") {
+		t.Fatal("ttft must not be emitted once the start time was reconstructed")
 	}
 }
 
@@ -360,6 +429,20 @@ func TestBatchingUsesOneRequest(t *testing.T) {
 
 // hasAttr reports whether the span carries the key at all (int/bool/string
 // values live under different value fields).
+// attrStr reads a string attribute; ok=false means absent or not a string.
+func attrStr(span map[string]any, key string) (string, bool) {
+	attrs, _ := span["attributes"].([]any)
+	for _, a := range attrs {
+		m, _ := a.(map[string]any)
+		if m["key"] == key {
+			v, _ := m["value"].(map[string]any)
+			str, _ := v["stringValue"].(string)
+			return str, true
+		}
+	}
+	return "", false
+}
+
 func hasAttr(t *testing.T, span map[string]any, key string) bool {
 	t.Helper()
 	attrs, _ := span["attributes"].([]any)
@@ -370,6 +453,73 @@ func hasAttr(t *testing.T, span map[string]any, key string) bool {
 		}
 	}
 	return false
+}
+
+// TestConsoleEditsApplyWithoutRestart pins the hot-reload promise the console
+// page makes: a save must change redaction and the environment tag on the
+// very next export, without a restart. ApplySettings deliberately does NOT
+// rebuild the exporter (same queue capacities), so the worker serving the
+// second request is the same goroutine that served the first — which is
+// exactly why flush has to read the live config for per-export fields while
+// keeping routing on the config it started with.
+func TestConsoleEditsApplyWithoutRestart(t *testing.T) {
+	s := newSink(t)
+	conf := testConfig(s.server.URL)
+	conf.FlushIntervalMS = 30
+	conf.Redact = true
+	conf.Environment = "production"
+	setConfig(conf)
+
+	send := func(reqID, secret string) {
+		c := newTestContext(t)
+		c.Request.Header.Set("X-Oneapi-Request-Id", reqID)
+		c.Request.Header.Del("traceparent")
+		Begin(c)
+		wrapped := WrapStreamHandler(c, func(string, any) {})
+		wrapped(`{"choices":[{"delta":{"content":"key `+secret+` end"}}]}`, nil)
+		FinalizeRelay(c, RelayMeta{
+			Model: "m", ChannelId: 3, IsStream: true, Format: "openai",
+			Operation: "chat", Success: true,
+			StartUnixNano: time.Now().Add(-time.Second).UnixNano(),
+		})
+	}
+
+	// Phase 1: redaction on — the key must leave scrubbed.
+	send("hot-1", "sk-proj-AbCdEf0123456789xyz")
+	first := s.waitSpans(t, 1, 3*time.Second)[0]
+	firstOut, _ := attrStr(first, "langfuse.observation.output")
+	if strings.Contains(firstOut, "sk-proj-AbCdEf0123456789xyz") {
+		t.Fatal("redaction on: api key must be scrubbed before export")
+	}
+	if !strings.Contains(firstOut, "[REDACTED:api_key]") {
+		t.Fatalf("redaction on: marker missing, output=%q", firstOut)
+	}
+	firstEnv, _ := attrStr(first, "langfuse.environment")
+	if firstEnv != "production" {
+		t.Fatalf("environment tag must be the pre-save value, got %q", firstEnv)
+	}
+
+	// The console save: same worker, new quality settings.
+	ApplySettings(Settings{
+		Defaults:    Rates{Metadata: 100, Content: 100},
+		ParentBased: true,
+		Body:        &BodySettings{Mode: BodyHeadTail, HeadBytes: 64, TailBytes: 32},
+		Quality:     &QualitySettings{ErrorSampleRate: 100, Redact: false, Environment: "staging"},
+	})
+
+	// Phase 2: same process, no restart — the key now passes verbatim and the
+	// tag flipped.
+	send("hot-2", "sk-proj-ZzYyXw9876543210abcd")
+	spans := s.waitSpans(t, 2, 3*time.Second)
+	last := spans[len(spans)-1]
+	secondOut, _ := attrStr(last, "langfuse.observation.output")
+	if !strings.Contains(secondOut, "sk-proj-ZzYyXw9876543210abcd") {
+		t.Fatalf("redaction off must pass the key verbatim, output=%q", secondOut)
+	}
+	secondEnv, _ := attrStr(last, "langfuse.environment")
+	if secondEnv != "staging" {
+		t.Fatalf("environment tag must flip without restart, got %q", secondEnv)
+	}
 }
 
 // TestLogTraceIdMatchesEmittedSpan pins the front-back contract: the id

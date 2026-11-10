@@ -22,6 +22,9 @@ For commercial licensing, please contact support@quantumnous.com
 import type { ColumnDef } from '@tanstack/react-table'
 
 import { useCommonLogsColumns } from '../components/columns/common-logs-columns'
+// APIDUO:trace-column:BEGIN
+import { useApiduoTraceColumn } from './use-apiduo-trace-column'
+// APIDUO:trace-column:END
 import { useDrawingLogsColumns } from '../components/columns/drawing-logs-columns'
 import { useTaskLogsColumns } from '../components/columns/task-logs-columns'
 import type { LogCategory } from '../types'
@@ -40,10 +43,18 @@ export function useColumnsByCategory(
   const commonColumns = useCommonLogsColumns(isAdmin, isRoot, showBillingSource)
   const drawingColumns = useDrawingLogsColumns(isAdmin)
   const taskColumns = useTaskLogsColumns(isAdmin, isRoot)
+  // APIDUO:trace-column:BEGIN 轨迹列只挂在 common 分类上，且 hook 必须在
+  // switch 之前无条件调用（react-hooks/rules-of-hooks）；不需要时它返回 null。
+  const apiduoTraceColumn = useApiduoTraceColumn(isAdmin || isRoot)
+  // APIDUO:trace-column:END
 
   switch (logCategory) {
     case 'common':
-      return commonColumns
+      // APIDUO:trace-column:BEGIN 追加到末尾：定价列是计费口径，不该为可观测性让位
+      return apiduoTraceColumn
+        ? [...commonColumns, apiduoTraceColumn]
+        : commonColumns
+    // APIDUO:trace-column:END
     case 'drawing':
       return drawingColumns
     case 'task':

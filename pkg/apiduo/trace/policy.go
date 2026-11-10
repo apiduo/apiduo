@@ -44,6 +44,31 @@ type Policy struct {
 	Rules    []Rule `json:"rules"`
 }
 
+// BodySettings is the capture window as the console edits it. Kept behind a
+// pointer in Settings because nil must mean "leave the environment value
+// alone": every caller that only manages sampling (tests, older bridge code)
+// would otherwise zero BodyMode into BodyOff and silently stop capturing
+// content on every save.
+type BodySettings struct {
+	Mode      BodyMode
+	HeadBytes int
+	TailBytes int
+}
+
+// QualitySettings is the per-export half of the console config: how much of
+// the failed traffic is kept, whether it is scrubbed on the way out, and which
+// environment tag the rows carry.
+//
+// Pointered in Settings for the same reason BodySettings is: both zero values
+// here are meaningful and wrong as defaults (0% retry capture, redaction OFF),
+// so nil has to mean "leave the environment value alone" rather than "set it
+// to the Go zero value".
+type QualitySettings struct {
+	ErrorSampleRate int
+	Redact          bool
+	Environment     string
+}
+
 // Settings is what the console writes; ApplySettings compiles it.
 type Settings struct {
 	Defaults      Rates
@@ -51,6 +76,11 @@ type Settings struct {
 	Location      *time.Location
 	ParentBased   bool
 	ViewerUserIDs []int
+	// Body is nil when the caller does not manage the capture window.
+	Body *BodySettings
+	// Quality is nil when the caller does not manage failure sampling,
+	// redaction or the environment tag.
+	Quality *QualitySettings
 }
 
 // compile lowers a rule into lookup structures so matching allocates nothing.
@@ -175,8 +205,34 @@ func ApplySettings(s Settings) {
 	}
 	base.ParentBased = s.ParentBased
 	base.TraceViewerUserIDs = append([]int(nil), s.ViewerUserIDs...)
+	if s.Body != nil {
+		base.BodyMode = s.Body.Mode
+		base.HeadBytes, base.TailBytes = ClampBodyWindow(s.Body.HeadBytes, s.Body.TailBytes)
+	}
+	if s.Quality != nil {
+		base.ErrorSampleRate = clampRate(s.Quality.ErrorSampleRate)
+		base.Redact = s.Quality.Redact
+		base.Environment = strings.TrimSpace(s.Quality.Environment)
+	}
 	currentConf.Store(&base)
 	enabledFast.Store(base.Enabled)
+}
+
+// ClampBodyWindow bounds the console-editable window. Write-time validation
+// already refuses head+tail above MaxBodyWindowBytes; this is the runtime
+// backstop for a hand-edited option row, and it keeps the ratio the operator
+// chose instead of zeroing one end.
+//
+// Exported so the settings module normalizes with the same arithmetic rather
+// than growing a second copy that drifts.
+func ClampBodyWindow(head, tail int) (int, int) {
+	head = max(head, 0)
+	tail = max(tail, 0)
+	if total := head + tail; total > MaxBodyWindowBytes {
+		head = head * MaxBodyWindowBytes / total
+		tail = MaxBodyWindowBytes - head
+	}
+	return head, tail
 }
 
 // TraceViewerAllowed reports whether a non-root user is on the viewer list.

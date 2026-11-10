@@ -1,0 +1,316 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/**
+ * Turns a captured request/response body into conversation turns.
+ *
+ * Why this exists: the trace drawer used to show the raw JSON. That is fine for
+ * the person who wrote the gateway, and useless for the person who opens the
+ * drawer to answer "did we send the right prompt to this customer". Langfuse
+ * renders the same payload as User / Assistant blocks; this is the same idea,
+ * applied locally so the console does not have to round-trip to Langfuse for a
+ * view it can build itself.
+ *
+ * Contract: parse what you can, return null when nothing is recognisable, and
+ * let the caller fall back to the raw text. A half-parsed payload that silently
+ * drops fields is worse than a JSON blob — the operator would not know whether
+ * the missing part was never sent or was eaten by the renderer.
+ */
+
+export interface ConversationTurn {
+  role: string
+  /** Tool/function name, shown as a suffix on the role badge. */
+  name?: string
+  text: string
+}
+
+export interface ParsedPayload {
+  turns: ConversationTurn[]
+  /** Scalar request knobs (model, stream, temperature…) kept out of the bubbles. */
+  extras: Array<{ key: string; value: string }>
+}
+
+/** Keys that describe the call itself rather than a message. */
+const KNOB_KEYS = [
+  'model',
+  'stream',
+  'temperature',
+  'top_p',
+  'max_tokens',
+  'max_completion_tokens',
+  'stop',
+  'n',
+  'size',
+  'quality',
+  'style',
+  'response_format',
+  'tool_choice',
+  'parallel_tool_calls',
+  'reasoning_effort',
+  'frequency_penalty',
+  'presence_penalty',
+  'seed',
+  'user',
+]
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+/**
+ * Flattens a message body that may be a plain string, an array of content
+ * parts (OpenAI vision / Anthropic blocks), or missing entirely.
+ *
+ * Non-text parts become short placeholders rather than being dropped: an
+ * operator who sees "[image]" knows the model got a picture, which is often the
+ * thing they were checking.
+ */
+/**
+ * Replaces long base64 runs with a size marker.
+ *
+ * A data URI that arrives as message *text* (rather than as an `image_url`
+ * part) is several hundred KB of one unbroken token. The browser has to lay it
+ * out as a single line that cannot wrap, which is where the drawer freezes.
+ * The marker keeps the fact that there was an image and drops the payload,
+ * which the drawer cannot render usefully at any size.
+ */
+const BASE64_RUN = /[A-Za-z0-9+/]{300,}={0,2}/g
+
+export function scrubBase64(value: string): string {
+  if (value.length < 300) return value
+  return value.replace(
+    BASE64_RUN,
+    (run) => `[base64 ${Math.round(run.length / 1024)} KB]`
+  )
+}
+
+export function contentToText(content: unknown): string {
+  if (typeof content === 'string') return scrubBase64(content)
+  if (!Array.isArray(content)) return ''
+
+  const parts: string[] = []
+  for (const part of content) {
+    const p = asRecord(part)
+    if (!p) {
+      if (typeof part === 'string') parts.push(part)
+      continue
+    }
+    const type = typeof p.type === 'string' ? p.type : ''
+    if (type === 'image_url' || type === 'input_image' || type === 'image') {
+      parts.push('[image]')
+    } else if (typeof p.text === 'string') {
+      parts.push(scrubBase64(p.text))
+    } else if (type === 'tool_result' || type === 'tool_use') {
+      parts.push(`[${type}]`)
+    }
+  }
+  return parts.join('\n')
+}
+
+function toolCallsToText(calls: unknown): string {
+  if (!Array.isArray(calls) || calls.length === 0) return ''
+  const lines: string[] = []
+  for (const call of calls) {
+    const c = asRecord(call)
+    if (!c) continue
+    const fn = asRecord(c.function)
+    const name =
+      (typeof fn?.name === 'string' && fn.name) ||
+      (typeof c.name === 'string' && c.name) ||
+      'tool'
+    const args = fn?.arguments ?? c.arguments ?? c.input
+    let shown = ''
+    if (typeof args === 'string') shown = args
+    else if (args !== undefined) {
+      try {
+        shown = JSON.stringify(args)
+      } catch {
+        shown = ''
+      }
+    }
+    lines.push(`→ ${name}(${shown})`)
+  }
+  return lines.join('\n')
+}
+
+function scalarToString(value: unknown): string | null {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return null
+}
+
+function collectExtras(obj: Record<string, unknown>): Array<{ key: string; value: string }> {
+  const extras: Array<{ key: string; value: string }> = []
+  for (const key of KNOB_KEYS) {
+    const shown = scalarToString(obj[key])
+    if (shown !== null) extras.push({ key, value: shown })
+  }
+  return extras
+}
+
+/** Normalises one raw message object into a turn, or null if it has no role. */
+function messageToTurn(raw: unknown): ConversationTurn | null {
+  const msg = asRecord(raw)
+  if (!msg) return null
+
+  const role = typeof msg.role === 'string' ? msg.role : ''
+  if (!role) return null
+
+  const text = contentToText(msg.content)
+  const calls = toolCallsToText(msg.tool_calls ?? msg.tool_use)
+  const combined = [text, calls].filter(Boolean).join('\n')
+
+  let name: string | undefined
+  if (typeof msg.name === 'string') {
+    name = msg.name
+  } else {
+    // Legacy OpenAI function-calling nests the name one level down.
+    const fnName = asRecord(msg.function)?.name
+    if (typeof fnName === 'string') name = fnName
+  }
+
+  // A message with a role but no renderable body still carries information
+  // (an empty assistant turn before tool calls). Keep it with a placeholder
+  // rather than dropping it, so the turn order stays intact.
+  return { role, name, text: combined || '（空）' }
+}
+
+/**
+ * Request bodies. Covers the three shapes that actually reach this gateway:
+ * OpenAI chat (`messages`), Anthropic (`system` + `messages`), and the
+ * Responses API (`input` as string or array).
+ */
+function parseRequest(obj: Record<string, unknown>): ParsedPayload | null {
+  const turns: ConversationTurn[] = []
+
+  const system = obj.system
+  if (typeof system === 'string' && system.trim()) {
+    turns.push({ role: 'system', text: system })
+  } else {
+    const blocks = contentToText(system)
+    if (blocks.trim()) turns.push({ role: 'system', text: blocks })
+  }
+
+  const messages = obj.messages
+  if (Array.isArray(messages)) {
+    for (const raw of messages) {
+      const turn = messageToTurn(raw)
+      if (turn) turns.push(turn)
+    }
+  }
+
+  // Responses API: `input` is either a plain string or the same message array.
+  const input = obj.input
+  if (turns.length === 0 && typeof input === 'string' && input.trim()) {
+    turns.push({ role: 'user', text: input })
+  } else if (turns.length === 0 && Array.isArray(input)) {
+    for (const raw of input) {
+      if (typeof raw === 'string') {
+        turns.push({ role: 'user', text: raw })
+        continue
+      }
+      const turn = messageToTurn(raw)
+      if (turn) turns.push(turn)
+    }
+  }
+
+  if (turns.length === 0) return null
+  return { turns, extras: collectExtras(obj) }
+}
+
+/**
+ * Response bodies. The exporter already normalises the common case to
+ * `{text, tool_calls, finish_reason}`; the OpenAI and Anthropic raw shapes are
+ * handled too, because headtail capture can hand back the untouched body when
+ * the parser declines to claim a format.
+ */
+function parseResponse(obj: Record<string, unknown>): ParsedPayload | null {
+  const turns: ConversationTurn[] = []
+  const extras: Array<{ key: string; value: string }> = []
+
+  const finish = scalarToString(obj.finish_reason)
+  if (finish) extras.push({ key: 'finish_reason', value: finish })
+
+  const usage = asRecord(obj.usage)
+  if (usage) {
+    const prompt = scalarToString(usage.prompt_tokens)
+    const completion = scalarToString(usage.completion_tokens)
+    if (prompt) extras.push({ key: 'prompt_tokens', value: prompt })
+    if (completion) extras.push({ key: 'completion_tokens', value: completion })
+  }
+
+  // Anthropic puts tool calls inside `content` as tool_use blocks, so the
+  // generic path has to look there too — otherwise the drawer shows "[tool_use]"
+  // and hides which function was called with what.
+  const anthropicCalls = Array.isArray(obj.content)
+    ? obj.content.filter((b) => asRecord(b)?.type === 'tool_use')
+    : []
+
+  const text = contentToText(obj.text ?? obj.content)
+  const calls = toolCallsToText(obj.tool_calls ?? obj.tool_use ?? anthropicCalls)
+  const body = [text, calls].filter(Boolean).join('\n')
+  if (body) turns.push({ role: 'assistant', text: body })
+
+  // Stop reasons are reported per protocol; collect them unconditionally so a
+  // body that already produced a turn still shows why generation ended.
+  const stop = scalarToString(obj.stop_reason)
+  if (stop) extras.push({ key: 'stop_reason', value: stop })
+
+  // OpenAI raw completion: choices[0].message
+  const choices = obj.choices
+  if (turns.length === 0 && Array.isArray(choices) && choices.length > 0) {
+    const choice = asRecord(choices[0])
+    const message = asRecord(choice?.message)
+    if (message) {
+      const turn = messageToTurn({ ...message, role: message.role ?? 'assistant' })
+      if (turn) turns.push(turn)
+    }
+    const reason = scalarToString(choice?.finish_reason)
+    if (reason && !finish) extras.push({ key: 'finish_reason', value: reason })
+  }
+
+  if (turns.length === 0) return null
+  return { turns, extras }
+}
+
+/**
+ * Returns null whenever the body is not a recognisable conversation — the
+ * caller then shows the raw text, which is the only honest fallback for a
+ * truncated payload, an SSE frame dump, or an error string.
+ */
+export function parsePayload(
+  raw: string,
+  kind: 'request' | 'response'
+): ParsedPayload | null {
+  const trimmed = raw.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null
+
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(trimmed)
+  } catch {
+    // Truncated by headtail capture, or a stream of frames. Raw view it is.
+    return null
+  }
+
+  const obj = asRecord(decoded)
+  if (!obj) return null
+
+  return kind === 'request' ? parseRequest(obj) : parseResponse(obj)
+}

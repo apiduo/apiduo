@@ -310,7 +310,8 @@ finish_reason、usage。**采不到**的：agent 内部 planning / 记忆（在�
 
 ## 4. 配置项
 
-全部走环境变量（`common.GetEnvOrDefault` 风格），不新增系统设置页表单项：
+初始值全部来自环境变量（`common.GetEnvOrDefault` 风格）。§19 起后台多了配置页、
+§24 起常用参数在页面上热更新——**env 只在「从未保存过设置」时生效**：
 
 ```bash
 LANGFUSE_ENABLED=false                              # 总开关
@@ -320,8 +321,12 @@ LANGFUSE_CONSOLE_URL=https://langfuse.example.com   # 日志页跳转链接的�
 LANGFUSE_PUBLIC_KEY=pk-lf-...                       # 只用于 Basic 认证
 LANGFUSE_SECRET_KEY=sk-lf-...                       # 只用于 Basic 认证，永不外发
 LANGFUSE_PROJECT_ID=...                             # 从 Langfuse UI 地址栏取
-LANGFUSE_SAMPLE_RATE=10                             # 0-100，常规采样
+LANGFUSE_SAMPLE_RATE=10                             # 0-100，常规元数据采样
+LANGFUSE_CONTENT_SAMPLE_RATE=10                     # 0-100，内容（prompt/回答）采样，见 §3.6
 LANGFUSE_ERROR_SAMPLE_RATE=100                      # 失败请求采样（独立，默认全采，见 §3.8）
+LANGFUSE_REDACT=false                               # 仅认字面 false；任何其它值（含未设）= 开
+LANGFUSE_ENVIRONMENT=production                     # langfuse.environment 标签，空 = 不打标签
+LANGFUSE_RELEASE=                                   # 显式 pin 版本号；默认取构建版本（§21.1）
 LANGFUSE_BODY_MODE=headtail                         # off / headtail / full（§3.6）
 LANGFUSE_BODY_HEAD_BYTES=32768                      # headtail 头部上限
 LANGFUSE_BODY_TAIL_BYTES=16384                      # headtail 尾部上限
@@ -331,6 +336,8 @@ LANGFUSE_QUEUE_CONTENT=512                          # 内容队列深度（×48K
 ```
 
 运行时改 env 需重启；所有开关读取后缓存进 atomic 变量（§3.5 内联早退依赖它）。
+2026-11-10 起，采样、内容窗口、失败采样、脱敏、环境标签这五组改为**后台热更新**
+（§24）：保存即生效，无需重启；env 值只作为「从未保存过」时的初始值。
 
 认证头：`Authorization: Basic base64(pk:sk)`，同时带 `x-langfuse-ingestion-version: 4`（不带这个头，v4 数据可能延迟 10 分钟才可见）。
 
@@ -1209,3 +1216,300 @@ UTC 偏移（`Asia/Shanghai (UTC+08:00)`），因为未设 `TZ` 时 `time.Local.
 108/320/3048/109 → **107/324/3065/104**（文件数与删除行下降，标记块 +4、插入行 +17，
 增量来自两处不可挪的挂接点：`access_token_routes.go` 的 playground 路由规则、
 `model/option.go` 的写入校验钩子）。
+
+---
+
+## 21. 对齐 Langfuse v4（2026-11-10）
+
+上一轮（§18）对着 v3.225.15 做的验证，所有属性映射都在 v3 上确认过。v4 是
+**observations-first 数据模型**（`events_full` / `events_core` 两张新表，trace 变成
+root observation），属性命名空间没变，但有几个字段的语义从「可选」变成了「唯一入口」。
+本节记录两侧对齐的结果。
+
+### 21.1 代码侧：三个属性从「采集了但没人看」变成「官方字段」
+
+| 属性 | 原来 | 现在 | 为什么必须发 |
+|---|---|---|---|
+| `langfuse.observation.completion_start_time` | 只有 `apiduo.ttft_ms`（自定义键 ⇒ 沉到 `metadata.attributes`，UI 不读） | ISO 8601，`start + ttft` | v4 UI 的 "Time to first token" 只认这个字段。只发自定义键 = 数采了但永远不显示 |
+| `langfuse.release` | 无 | 构建版本（`common.Version`，桥接 `init()` 注入） | v4 把 trace 级属性复制到每一行，于是「哪个网关版本产生的这条 span」成了可筛列。发版后不用再靠时间戳猜 |
+| `langfuse.environment` | 无 | `LANGFUSE_ENVIRONMENT`，默认 `production` | 临时 e2e 网关和生产网关连同一个 Langfuse，没有它两类 trace 混在一个池子里；e2e 设 `e2e` 即可分开 |
+
+`langfuse.release` 的取值优先级：`LANGFUSE_RELEASE`（显式 pin） > `SetBuildRelease()`
+（构建注入） > 空（不写）。运维在 `.env` 里钉的值必须赢过二进制里的版本戳，
+否则一次「临时指向 canary」的验证会被构建号覆盖。
+
+trace 包不 import `common`（零内部依赖红线，§5），所以版本号由
+`controller/apiduo_trace_relay.go` 的 `init()` 注入 —— 那是已有的桥接文件，不新增挂接点。
+
+### 21.2 v4 里确认仍然有效的东西（不要误删）
+
+| 属性 | 状态 |
+|---|---|
+| `langfuse.observation.type=generation` | v4 扩充了可选值（`agent` / `tool` / `guardrail` 等），`generation` 仍是合法值 |
+| `langfuse.trace.name` / `langfuse.trace.metadata.*` | 有效，且仍是**唯一**能进顶层可筛 metadata 的写法 |
+| `langfuse.user.id` | 有效；v4 建议「每个 span 都带」，我们一请求一 span，天然满足 |
+| `gen_ai.prompt` / `gen_ai.completion` | 仍是 `langfuse.observation.input/output` 的 fallback，保留 |
+| `x-langfuse-ingestion-version: 4` | v4 下不带这个头会**延迟最多 15 分钟**才可见；已从 §4 起就有 |
+
+### 21.3 服务端：v3.225.15 → v4.77.0 的实际操作
+
+数据量极小（`langfuse` 库 634 KB / 823 行），backfill 秒级，所以没有走「保留
+retention 窗口等数据自然滚出」那条路。
+
+| 步骤 | 动作 | 结果 |
+|---|---|---|
+| 0 | 冷备到 `/www/data/apiduo/obs/backup/20261110-v4/` | PG `pg_dumpall`(102K) + ClickHouse **整目录**(405M) + MinIO 桶(953K) + 两份 compose + `.env` |
+| 1 | `clickhouse/clickhouse-server:25.8` → `25.12` | v4 硬性下限；25.8 → 25.12 同年度小版本，数据目录原地升级，`langfuse` 库 823 行无损 |
+| 2 | `langfuse/langfuse:3` → `:4`（web + worker） | 启动即跑 PG + CH 迁移，`All migrations have been successfully applied` |
+| 3 | `LANGFUSE_MIGRATION_V4_WRITE_MODE=dual` | v3 表与 v4 `events_*` 同时写；老 API 继续 200，回退窗口保留 |
+| 4 | `LANGFUSE_BACKGROUND_MIGRATION_V4_ENABLE_HISTORIC_BACKFILL=true` | 历史 203 traces → `events_full` 201 行、`events_core` 201 行，`observations_batch_staging` 清空 |
+| 5 | **未执行**：`events_only` | 见 21.5 |
+
+🔴 **ClickHouse 备份必须整目录**。25.x 把 part 放在 `store/<前缀>/<uuid>/`，`data/<db>/`
+里只有符号链接；`tar czf ... data/langfuse` 只会抓到 12 个链接（727 字节），看起来
+「备份成功」而实际内容是空的。第一次就踩了这个坑。
+
+🔴 **热 tar 也会坏**：CH 在跑 merge 时 part 会被删除/改名，`tar` 直接报
+`File removed before we read it`。必须先 `docker stop apiduo-clickhouse` 再打包。
+
+### 21.4 端到端验证（真 Langfuse、真 OTLP）
+
+```
+POST http://127.0.0.1:39196/api/public/otel/v1/traces   → 200 {"name":"otel-ingestion-job",...}
+```
+
+| 断言 | 结果 |
+|---|---|
+| 带 `x-langfuse-ingestion-version: 4` 的写入 | 12 秒内出现在 `events_full`，无需等 15 分钟 |
+| `langfuse.observation.type` → `type` | `GENERATION` |
+| `langfuse.environment` / `langfuse.release` | `probe` / `probe-release`，作为**列**存在（可筛） |
+| `langfuse.observation.model.name` | `provided_model_name` = `probe-model` |
+| `langfuse.observation.input` / `output` | `ping` / `pong` 原文 |
+| `langfuse.observation.completion_start_time` | `2026-11-10 07:25:01.500`（毫秒精度完整保留） |
+| `gen_ai.usage.*` | 进入 `usage_details` |
+| v4 Observations API v2 | `GET /api/public/v2/observations` 返回该行，`isRootObservation=true` |
+| v3 老 API（dual 模式） | `GET /api/public/traces/{id}` 仍 200 |
+| 健康检查 | `{"status":"OK","version":"4.77.0"}` |
+
+### 21.5 为什么停在 dual，不切 events_only
+
+`events_only` 之后：v3 的 ingestion / read API 全部 404、镜像回退无效（PG/CH schema
+已前进），只能靠 21.3 的冷备恢复。而 dual 模式的代价只有「多写一份 v3 表」——
+本库 634 KB，可以忽略。
+
+切换的前置条件（都满足后再动手，一条命令即可）：
+
+1. 观察满 24h，`events_full` 行数持续跟上 `traces`（dual 下两者应同量增长）
+2. 确认除了 apiduo 没有第二个客户端在走 v3 ingestion（`POST /api/public/traces|spans|generations|events`）
+3. `curl /api/health?failIfEventPropagationStuck=true` 不返回 503
+
+切完可选 `LANGFUSE_BACKGROUND_MIGRATION_V4_DROP_PID_TID_SORTING_TABLES=true` 回收旧排序表。
+
+### 21.6 悬而未决
+
+- ~~`langfuse.trace.tags` 未发~~ → **2026-11-10 已发**。原判断「metadata 里可筛，
+  标签属于重复信息」把「信息内容」和「通道能力」混成了一件东西：`metadata.*` 只能**过滤**，
+  而 tags 是 v2 metrics API 里唯一可**分组**的 trace 维度。不发 tags，「按渠道 / 分组看 p95」
+  在 Langfuse 里根本无法表达。现行标签为 `channel:<id>` / `group:<name>` / `stream|non-stream`，
+  全部低基数（塞 request_id 之类会让维度爆掉）。
+- **`langfuse.observation.model.parameters` 未发**（temperature / max_tokens 等）：
+  需要把它们带进 snapshot，属于采集面改动，等有「按 temperature 对比效果」的真实需求再说。
+- **apex 指标差异**：v4 的 `timeToFirstToken` 要求
+  `completion_start_time ∈ [start_time, end_time]`。探针里我写死了时间导致越界、该字段为
+  `null`，真实请求不会越界（`ttftMs` 由 `FirstByteNano - StartUnixNano` 得出，恒在区间内）。
+
+---
+
+## 22. 日志页「轨迹」列（2026-11-10 落地）
+
+§18 把入口放在详情弹窗里，理由是「列表页不该为可观测性让出空间」。这个判断对了一半：
+弹窗一次只看一行，而运维真正要回答的是 **「这 200 条里哪几条慢在首字节」** —— 那需要一列。
+
+### 22.1 形态
+
+表格最后一列（`详情` 之后），一请求一格，点开右侧抽屉。**不跳 Langfuse** ——
+数据全部走网关自建的代理接口，浏览器拿不到 Langfuse 的 secret。
+
+| 单元格状态 | 依据 | 说明 |
+|---|---|---|
+| 图标 + 绿点 | `admin_info.trace_id` 存在且日志类型不是错误 | 有 trace |
+| 图标 + 红点 | `log.type === LOG_TYPE_ENUM.ERROR` | 有 trace，请求失败 |
+| `—`（极淡） | 没有 `trace_id` | 元数据采样没命中，或该行对当前用户剥离了 `admin_info` |
+
+🔴 **列表里不区分「有内容 / 仅元数据」**。这个状态只有 trace 后端知道，逐行去查
+等于把日志列表变成 N 次 HTTP。它在抽屉里说清楚 —— 见 22.3。原型阶段画过三态灯，
+落地时砍掉第三态就是这个原因。
+
+### 22.2 后端：`GET /api/apiduo/trace/detail/:trace_id`
+
+- 权限与 `/apiduo/trace/config` 完全一致（root 恒可、其余看 `trace_viewer_user_ids`）；
+  普通用户拿不到 trace id，所以这一列对他们整列不渲染，而不是渲染成空
+- 返回白名单字段（`pkg/apiduo/trace/fetch.go` 的 `Observation`），**不透传 Langfuse 原始 JSON**
+- 三种「没有数据」不是 HTTP 错误：`reason=disabled` / `reason=not_found` 走 200 + 说明文案；
+  只有后端不可达才是 502
+
+🔴 **v4 删掉了单条 observation 端点**。`GET /api/public/v2/observations/{id}` 在
+`events_only` 模式直接 404（HTML）。唯一入口是列表 + `traceId` 过滤，而且**必须带 `fields`**：
+
+```
+GET /api/public/v2/observations?traceId=<32hex>&fields=basic,io,usage,metadata,model,time,trace_context
+```
+
+不带 `fields` 只回摘要行（和表格里那几列一样），没有 input/output/usage/metadata。
+这是本次实测踩到的第一个坑。
+
+取哪一行：带 `traceparent` 的请求是一棵树，只有 `isRootObservation=true` 的根节点才带
+网关自己的提示词与回复（子节点属于调用方 agent）。没有该标记的旧数据取最早一条。
+
+🔴 **`/apiduo/trace/detail/` 里的 `detail` 是静态段不是装饰**。Gin 在同一层不允许静态段和
+通配段共存，写成 `/apiduo/trace/:trace_id` 会和已有的 `/apiduo/trace/config` 冲突并在启动时 panic。
+
+### 22.3 抽屉里有什么
+
+时间轴（等待上游 / 生成两段，比例来自 `ttft_s / latency_s`）、6 格指标、失败原因、
+请求/响应原文、元数据（渠道/分组/令牌/格式/环境/release）。
+
+**「仅元数据」必须有专门文案**：
+
+> 该请求只做了元数据采样，提示词与回复从未离开网关内存，因此这里为空是策略所致，
+> 不是采集故障。可在「系统设置 → 可观测性」调整内容采样率。
+
+没有这句，空白 prompt 会被读成采集故障 —— 内容采样率默认 10%，这类行占多数。
+
+### 22.4 前端结构（为什么是三个文件）
+
+| 文件 | 职责 |
+|---|---|
+| `lib/trace-detail-api.ts` | 类型 + `getTraceDetail`。**独立于 `api.ts`**，让上游文件零改动 |
+| `lib/use-apiduo-trace-column.tsx` | 列定义。非管理员或追踪关闭时返回 `null`（不是禁用的空列） |
+| `components/apiduo-trace-cell.tsx` | 单元格 + 抽屉 |
+
+拆开的硬原因：一个文件同时 export hook 和组件会触发 `react(only-export-components)`
+（Fast Refresh 失效）。`.ts` 里写 JSX 也不行 —— 含 `cell: () => <X/>` 的列定义必须是 `.tsx`，
+否则报 `TS1005: ';' expected`，这个错看起来像语法问题，实际是扩展名。
+
+### 22.5 上游合并面
+
+`lib/columns.ts`（+2 标记块 / +12 行）与 `router/api-router.go`（+3 行）是仅有的两处上游改动，
+其余全是新文件。`api.ts` 一度加过 45 行，后来整段挪进 `lib/trace-detail-api.ts` ——
+能放进新文件的就不要留在上游文件里。
+
+---
+
+## 23. Langfuse 侧指标能力（2026-11-10 实测契约）
+
+远端实例 4.77.0 的 `/api/openapi.yaml` 给出的硬边界，直接决定「要不要再上 Prometheus」：
+
+| 想要 | 通道 | 备注 |
+|---|---|---|
+| QPS / 请求数 | `GET /api/public/v2/metrics` + `view=observations` + `measure=count` | v2 **没有** traces view |
+| P50/P95/P99 延迟 | `aggregation=p50/p75/p90/p95/p99`（另有 `histogram`） | 由 span 的 start/end 推导，时间戳错则分位数全废 |
+| TTFT | `measure=timeToFirstToken` | 前提 `completion_start_time ∈ [start, end]` |
+| 错误率 | filter `level=ERROR` 的 count ÷ 总 count | 两侧采样率不一致时会系统性失真 |
+| 按模型分组 | `dimensions=[providedModelName]` | |
+| 按渠道 / 分组**分组** | 只能靠 `langfuse.trace.tags` | `metadata.*` 可筛不可分组 |
+| 原生告警 | Alerts（v4+ 自托管无条数上限） | Slack / PagerDuty / Webhook / GitHub Actions；窗口最短 1h |
+
+采样配置有两条硬约束，弄错会让上面每一项都变成假数：
+
+1. `LANGFUSE_SAMPLE_RATE` 同时是 **Metadata 与 Content 的 fallback**（`config.go:142-143`）。
+   要「全量指标 + 少量内容」必须显式设 `LANGFUSE_CONTENT_SAMPLE_RATE`；只改前者会把内容体
+   （每请求 ≤48 KB）一起拉满。
+2. 控制台设置走 `ApplySettings` 覆盖环境变量（`setting/observability_setting`）。库里已有设置行时
+   改 `.env` 不生效。
+
+`ParentBased` 硬编码为 `true`（`config.go:157`，无 env 开关）：请求带 `traceparent` 且
+sampled bit = 0 时整条 trace 不发，采样率设 100 也救不回来。
+
+### 22.6 对话视图（2026-11-10 追加）
+
+原文 JSON 对写网关的人够用，对"这次到底给客户发了什么提示词"不够用 —— 要在
+`messages[].content` 里逐层找。所以请求/响应默认渲染成对话轮次，原文留一个切换按钮。
+
+| 元素 | 来源 |
+|---|---|
+| 角色分组（system / user / assistant / tool） | `messages[].role`；Anthropic 顶层 `system` 提到最前 |
+| 气泡内容 | `content` 字符串，或 content parts 数组（`text` 拼接、`image_url` → `[image]`） |
+| 工具调用 | `tool_calls[].function.name/arguments`；Anthropic 的 `tool_use` block 也认 |
+| 参数行（model / stream / temperature…） | 与消息分开，避免把"配置"当成"说过的话" |
+| `（空）` 占位 | 有 role 但没内容（assistant 调工具前的那一轮），保留以维持轮次顺序 |
+
+**解析失败一律回退原文**，不做"看起来完整"的重构。三种典型失败：headtail 截断
+（JSON 不完整）、SSE 帧堆、上游错误字符串。
+
+`web/src/features/usage-logs/lib/conversation.ts`，12 个单测覆盖上面每一种分支
+（`lib/__tests__/conversation.test.ts`）。纯函数，不碰 DOM，所以能在 vitest 里跑。
+
+🔴 **前端构建必须用 `bun run build`**。直调 `./node_modules/.bin/rsbuild build` 会
+静默丢掉 5MB 级的大 chunk（rsbuild 照样打印 `Total: 68096 kB`），页面表现为全空白 +
+`SyntaxError: Unexpected token '<'` —— 缺的 chunk 被 SPA fallback 成 index.html 了。
+
+### 22.7 取数延迟的实测基线
+
+| 场景 | 耗时 | 说明 |
+|---|---|---|
+| ClickHouse 单条查询 | **4 ms** | `system.query_log` 实测，read_rows=1 |
+| Langfuse API：查不存在的 trace | **1.2 s** | 空结果，纯应用层开销 |
+| Langfuse API：107 字符的 trace | 1.4 s | |
+| Langfuse API：51 KB 的 trace | 1.7–3.0 s | body 已外置到 MinIO |
+
+结论：**慢在 Langfuse 应用层与主机负载，不在查询、不在前端**。
+`time -p ssh … docker exec … clickhouse-client` 会报出 47 秒的假数字，
+那是 ssh + docker 启动开销；真实耗时只看 `system.query_log`。
+
+主机侧：`load average 36/94/86`（64 核），两个非 Langfuse 的 ClickHouse 各占 56–70% CPU，
+Langfuse 自己的 CH 只占 5.5%。所以要提速得挪机器或降负载，不是改 SQL。
+
+v4 会把**约 1 KB 以上**的 body 外置到 MinIO（`blob_storage_file_path` 非空），
+235 字符以下留在 CH。前端因此做了会话级缓存：同一条 trace 只读一次。
+
+---
+
+## 24. 配置面板热更新（2026-11-10）
+
+§4 的 env 列表是「从未保存过设置」时的初始值来源。此后可观测性页
+（系统设置 → 扩展 → 可观测性）接管以下参数，**保存即生效，无需重启**：
+
+| 参数 | option key | 默认（= env 未设时） | 热更新 |
+|---|---|---|---|
+| 常规元数据采样 | `observability_setting.metadata_sample_rate` | `LANGFUSE_SAMPLE_RATE`（100） | 采集时读实时值 |
+| 内容采样 | `observability_setting.content_sample_rate` | `LANGFUSE_CONTENT_SAMPLE_RATE`（10） | 同上 |
+| 失败请求采样 | `observability_setting.error_sample_rate` | `LANGFUSE_ERROR_SAMPLE_RATE`（100） | 同上 |
+| 内容模式 | `observability_setting.body_mode` | `LANGFUSE_BODY_MODE`（headtail） | 同上 |
+| 头/尾窗口 | `observability_setting.body_head_bytes` / `body_tail_bytes` | 32768 / 16384 | 同上 |
+| 脱敏 | `observability_setting.redact` | 开（`LANGFUSE_REDACT=false` 才关） | **导出时**读实时值 |
+| 环境标签 | `observability_setting.environment` | `LANGFUSE_ENVIRONMENT`（production） | 同上 |
+| 时区 / 规则 / 查看者 | 同 §19 | — | 同上 |
+
+窗口有合并上限 **128 KB**（head+tail，`trace.MaxBodyWindowBytes`）：写接口的跨键
+校验在合并视图上判（只改一条也要按现存另一条合并），运行时 `ClampBodyWindow`
+按比例压回，normalize 保留操作员选择的比例而不是清零一端。
+
+### 24.1 热更新的实现边界：两种配置、两种生命周期
+
+导出 worker 是按启动时的配置构建的，`flush` 分开读两种配置：
+
+- **路由配置**（host、密钥、project id）用 worker 启动时捕获的那份。这些只随
+  重启变化，且旧 worker 绝不能中途改发别的端点 —— 否则一个正在退役的 sink
+  会收到为旧端点排队的批次（测试里表现为跨用例污染，曾真实发生过：
+  `TestUnsampledLogHasNoTraceID` 稳定挂，直到拆分路由与实时配置）。
+- **逐批决策**（脱敏、环境标签、release）走 `liveExportConfig` 每批读实时值。
+  原因是合规开关：关掉脱敏的「下一批生效」必须是真的，一个要重启才生效的
+  合规开关在重启前一直是错的。
+
+回归钉子：`TestConsoleEditsApplyWithoutRestart`（e2e_test.go）用同一个 worker
+先发一批脱敏开启的 span、再 `ApplySettings` 关掉脱敏换环境标签、再发一批，
+断言第二批原样带 key 且标签已翻转 —— 同进程、不重启、不重建 exporter。
+
+### 24.2 仍然只认 env 的参数（面板上明示「需重启」）
+
+| env | 为什么不能热更 |
+|---|---|
+| `LANGFUSE_ENABLED` | 进程启动时 tracing 关 = 从未构建 exporter，热开缺整套管道 |
+| `LANGFUSE_HOST` / `KEYS` / `PROJECT_ID` | 路由与凭据，见 §24.1；且密钥不该能从管理表单读出 |
+| `LANGFUSE_QUEUE_META` / `QUEUE_CONTENT` | 队列是信道容量，worker 启动时固定 |
+| `LANGFUSE_FLUSH_INTERVAL_MS` | 是 ticker，worker 启动时固定 |
+| `LANGFUSE_TIMEOUT_SECONDS` | 是 HTTP client 创建参数 |
+
+面板把这些列成只读清单（含各自原因），并注明 `docker restart` 不重读 env ——
+要 `docker compose up -d --force-recreate`。

@@ -1,6 +1,10 @@
 package observability_setting
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/QuantumNous/new-api/pkg/apiduo/trace"
+)
 
 // normalize is the only gate between a hand-editable option row and the relay
 // hot path, so every clamp/dedupe rule gets a case.
@@ -91,6 +95,34 @@ func TestResolveLocationFallsBack(t *testing.T) {
 	}
 	if loc := resolveLocation("Asia/Shanghai"); loc == nil || loc.String() != "Asia/Shanghai" {
 		t.Fatalf("valid zone must load, got %v", loc)
+	}
+}
+
+// 控制台编辑的窗口必须有界：两个 96 KB 各自合法，合起来是每请求 192 KB。
+// normalize 是手改 DB 之后的最后一道闸门，比例要留住而不是清零一端。
+func TestNormalizeBodyWindow(t *testing.T) {
+	out, _ := normalize(ObservabilitySetting{
+		BodyMode:      "FULL",
+		BodyHeadBytes: 96 * 1024,
+		BodyTailBytes: 96 * 1024,
+	})
+	if out.BodyMode != "full" {
+		t.Fatalf("模式必须归一成小写规范名，得到 %q", out.BodyMode)
+	}
+	if out.BodyHeadBytes+out.BodyTailBytes != trace.MaxBodyWindowBytes {
+		t.Fatalf("合计必须压到上限，得到 %d + %d", out.BodyHeadBytes, out.BodyTailBytes)
+	}
+	if out.BodyHeadBytes != out.BodyTailBytes {
+		t.Fatalf("压回时要保持两边比例，得到 %d / %d", out.BodyHeadBytes, out.BodyTailBytes)
+	}
+
+	// 拼错不能决定最贵的那个开关：回落到环境值，而不是 full。
+	fallback, _ := normalize(ObservabilitySetting{BodyMode: "hedtali", BodyHeadBytes: -5})
+	if fallback.BodyMode != trace.EnvDefaultBodyMode().String() {
+		t.Fatalf("未知拼写应回落环境默认，得到 %q", fallback.BodyMode)
+	}
+	if fallback.BodyHeadBytes != 0 {
+		t.Fatalf("负数字节必须压到 0，得到 %d", fallback.BodyHeadBytes)
 	}
 }
 

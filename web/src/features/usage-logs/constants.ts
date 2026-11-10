@@ -188,6 +188,15 @@ export const TASK_ACTIONS = {
   FIRST_TAIL_GENERATE: 'firstTailGenerate', // 首尾生视频
   REFERENCE_GENERATE: 'referenceGenerate', // 参照生视频
   REMIX_GENERATE: 'remixGenerate', // 视频 Remix
+
+  // APIDUO:task-action-rename:BEGIN 后端 constant/task.go 已改名为新值，
+  // 上面的 camelCase 保留为历史别名，老任务行仍能命中。
+  IMAGE_TO_VIDEO: 'image_to_video',
+  TEXT_TO_VIDEO: 'text_to_video',
+  FIRST_TAIL_TO_VIDEO: 'first_tail_to_video',
+  REFERENCE_TO_VIDEO: 'reference_to_video',
+  REMIX: 'remix',
+  // APIDUO:task-action-rename:END
 } as const
 
 /**
@@ -304,6 +313,19 @@ export const TASK_ACTION_MAPPINGS: Record<string, StatusMapping> = {
     label: 'Video Remix',
     variant: 'blue',
   },
+  // APIDUO:task-action-rename:BEGIN
+  [TASK_ACTIONS.IMAGE_TO_VIDEO]: { label: 'Image to Video', variant: 'blue' },
+  [TASK_ACTIONS.TEXT_TO_VIDEO]: { label: 'Text to Video', variant: 'blue' },
+  [TASK_ACTIONS.FIRST_TAIL_TO_VIDEO]: {
+    label: 'First/Last Frame to Video',
+    variant: 'blue',
+  },
+  [TASK_ACTIONS.REFERENCE_TO_VIDEO]: {
+    label: 'Reference Video',
+    variant: 'blue',
+  },
+  [TASK_ACTIONS.REMIX]: { label: 'Video Remix', variant: 'blue' },
+  // APIDUO:task-action-rename:END
 }
 
 /**

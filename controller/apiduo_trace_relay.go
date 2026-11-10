@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/apiduo/trace"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -12,6 +13,15 @@ import (
 // controller/relay.go's marker blocks stay one line each while this side
 // translates *relaycommon.RelayInfo — a type pkg/apiduo/trace must not
 // import — into plain fields.
+
+// init hands the build version to the trace package. pkg/apiduo/trace must
+// not import common (zero internal imports, docs §5), so the bridge — which
+// already lives next to the call sites — is the one place that can read it.
+// Package init runs long before the first request, so no span is ever built
+// without a release.
+func init() {
+	trace.SetBuildRelease(common.Version)
+}
 
 // apiduoTraceFinalize is called exactly once from Relay()'s defer. It
 // covers success, failure, and panic paths: failed requests get traces

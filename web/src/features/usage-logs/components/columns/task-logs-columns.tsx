@@ -25,6 +25,9 @@ import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+// APIDUO:task-action-rename:BEGIN
+import { CHANNEL_TYPES } from '@/features/channels/constants'
+// APIDUO:task-action-rename:END
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatTimestampToDate } from '@/lib/format'
 import { translateServerText } from '@/lib/server-error-message'
@@ -41,6 +44,17 @@ import {
   createChannelColumn,
   createProgressColumn,
 } from './column-helpers'
+
+// APIDUO:task-action-rename:BEGIN 数字 platform 是渠道类型，名字在 CHANNEL_TYPES；
+// 任务插件用自己的字符串 key，按原样翻译。
+function taskPlatformLabel(platform: string): string {
+  const channelType = Number(platform)
+  if (!Number.isInteger(channelType)) {
+    return platform
+  }
+  return CHANNEL_TYPES[channelType as keyof typeof CHANNEL_TYPES] ?? platform
+}
+// APIDUO:task-action-rename:END
 
 function TaskDetailsCell(props: {
   log: TaskLog
@@ -218,7 +232,10 @@ export function useTaskLogsColumns(
                 className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
               />
               <span className='text-muted-foreground/60 truncate text-[11px]'>
-                {t(log.platform)} · {t(taskActionMapper.getLabel(log.action))}
+                {/* APIDUO:task-action-rename:BEGIN */}
+                {t(taskPlatformLabel(log.platform))} ·{' '}
+                  {t(taskActionMapper.getLabel(log.action))}
+                {/* APIDUO:task-action-rename:END */}
               </span>
             </div>
           )

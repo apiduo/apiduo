@@ -48,23 +48,58 @@ type ObservabilitySetting struct {
 	// TraceViewerUserIDs lets specific non-root users see trace ids. Empty
 	// means root only.
 	TraceViewerUserIDs []int `json:"trace_viewer_user_ids"`
+	// BodyMode decides how much of each prompt and answer is kept: "off"
+	// (metadata only), "headtail" (default) or "full". BodyHeadBytes and
+	// BodyTailBytes are the head/tail window in bytes and only matter in
+	// headtail mode.
+	//
+	// These three are seeded from the environment for exactly the reason the
+	// rates are: until the operator saves this page there is no row in the
+	// options table, and "no row" must mean "keep following LANGFUSE_BODY_*".
+	BodyMode      string `json:"body_mode"`
+	BodyHeadBytes int    `json:"body_head_bytes"`
+	BodyTailBytes int    `json:"body_tail_bytes"`
+	// ErrorSampleRate is an independent rate for FAILED requests, so a
+	// failure that sampling dropped still lands in the backend. Default 100:
+	// failures are the rows an operator opens the console for.
+	ErrorSampleRate int `json:"error_sample_rate"`
+	// Redact scrubs API keys, phone numbers, ID cards and emails on the way
+	// out. Default ON — the wrong default here leaks credentials into a
+	// third-party store, and "we forgot to flip it" is not a defence.
+	Redact bool `json:"redact"`
+	// Environment is the langfuse.environment tag ("production", "staging").
+	// Empty means no tag at all, which is different from the default word
+	// "production" and is why it is a plain string rather than a boolean.
+	Environment string `json:"environment"`
 }
 
-var observabilitySetting = ObservabilitySetting{
-	// Seeded from the environment, not from a literal 100. Until the operator
-	// saves this page there is no row in the options table, and "no row" must
-	// mean "keep using LANGFUSE_SAMPLE_RATE" — freezing 100 here would turn the
-	// first deploy of this version into an unannounced 10x ingestion increase
-	// on every instance that had been sampling at 10%.
-	MetadataSampleRate:  trace.EnvDefaultRates().Metadata,
-	ContentSampleRate:   trace.EnvDefaultRates().Content,
-	ParentBasedSampling: true,
-	// Empty slices, not nil: the option store serializes a nil slice as
-	// "null", and every consumer (the console included) then has to special
-	// case it. "No rules" and "no extra viewers" are empty lists, not null.
-	Rules:              []Rule{},
-	TraceViewerUserIDs: []int{},
+// newObservabilitySetting seeds the console form from the environment, not
+// from literals. Until the operator saves this page there is no row in the
+// options table, and "no row" must mean "keep using LANGFUSE_*" — freezing
+// 100 (or a hardcoded headtail) here would turn the first deploy of a version
+// into an unannounced change of what the running gateway exports.
+func newObservabilitySetting() ObservabilitySetting {
+	head, tail := trace.EnvDefaultBodyWindow()
+	errorRate, redact, environment := trace.EnvDefaultQuality()
+	return ObservabilitySetting{
+		MetadataSampleRate:  trace.EnvDefaultRates().Metadata,
+		ContentSampleRate:   trace.EnvDefaultRates().Content,
+		ParentBasedSampling: true,
+		BodyMode:            trace.EnvDefaultBodyMode().String(),
+		BodyHeadBytes:       head,
+		BodyTailBytes:       tail,
+		ErrorSampleRate:     errorRate,
+		Redact:              redact,
+		Environment:         environment,
+		// Empty slices, not nil: the option store serializes a nil slice as
+		// "null", and every consumer (the console included) then has to special
+		// case it. "No rules" and "no extra viewers" are empty lists, not null.
+		Rules:              []Rule{},
+		TraceViewerUserIDs: []int{},
+	}
 }
+
+var observabilitySetting = newObservabilitySetting()
 
 func init() {
 	config.GlobalConfig.Register("observability_setting", &observabilitySetting)
@@ -132,23 +167,51 @@ func ValidateRuleWindows(key, value string) error {
 func UpdateAndSync() {
 	normalized, rules := normalize(observabilitySetting)
 	observabilitySetting = normalized
+	// normalize() canonicalizes the mode, so this parse cannot fail; the
+	// fallback exists only to keep the zero value meaningful if that ever
+	// changes.
+	mode, _ := trace.BodyModeFromName(normalized.BodyMode)
 	trace.ApplySettings(trace.Settings{
 		Defaults:      trace.Rates{Metadata: normalized.MetadataSampleRate, Content: normalized.ContentSampleRate},
 		Rules:         rules,
 		Location:      resolveLocation(normalized.Timezone),
 		ParentBased:   normalized.ParentBasedSampling,
 		ViewerUserIDs: normalized.TraceViewerUserIDs,
+		Body: &trace.BodySettings{
+			Mode:      mode,
+			HeadBytes: normalized.BodyHeadBytes,
+			TailBytes: normalized.BodyTailBytes,
+		},
+		Quality: &trace.QualitySettings{
+			ErrorSampleRate: normalized.ErrorSampleRate,
+			Redact:          normalized.Redact,
+			Environment:     normalized.Environment,
+		},
 	})
 }
 
 // normalize clamps, trims and canonicalizes so a hand-edited option row cannot
 // smuggle in an out-of-range rate, a duplicate rule, or a malformed window.
 func normalize(in ObservabilitySetting) (ObservabilitySetting, []trace.Rule) {
+	// An unknown spelling must not decide the single most expensive knob on
+	// the page. Falling back to the environment keeps a typo at "whatever the
+	// deployment already does" instead of jumping to full capture.
+	bodyMode, ok := trace.BodyModeFromName(in.BodyMode)
+	if !ok {
+		bodyMode = trace.EnvDefaultBodyMode()
+	}
+	bodyHead, bodyTail := trace.ClampBodyWindow(in.BodyHeadBytes, in.BodyTailBytes)
 	out := ObservabilitySetting{
 		MetadataSampleRate:  clampRate(in.MetadataSampleRate),
 		ContentSampleRate:   clampRate(in.ContentSampleRate),
 		ParentBasedSampling: in.ParentBasedSampling,
 		Timezone:            strings.TrimSpace(in.Timezone),
+		BodyMode:            bodyMode.String(),
+		BodyHeadBytes:       bodyHead,
+		BodyTailBytes:       bodyTail,
+		ErrorSampleRate:     clampRate(in.ErrorSampleRate),
+		Redact:              in.Redact,
+		Environment:         normalizeEnvironment(in.Environment),
 	}
 	compiled := make([]trace.Rule, 0, len(in.Rules))
 	for _, rule := range in.Rules {
@@ -198,6 +261,17 @@ func normalize(in ObservabilitySetting) (ObservabilitySetting, []trace.Rule) {
 		out.TraceViewerUserIDs = append(out.TraceViewerUserIDs, id)
 	}
 	return out, compiled
+}
+
+// normalizeEnvironment keeps the tag short and printable. Langfuse treats it
+// as a filter column, so a stray newline or a 4 KB string would produce
+// unreadable facets rather than an error.
+func normalizeEnvironment(in string) string {
+	trimmed := strings.TrimSpace(in)
+	if len(trimmed) > 64 {
+		return trimmed[:64]
+	}
+	return trimmed
 }
 
 func normalizeModels(in []string) []string {

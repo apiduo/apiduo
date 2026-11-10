@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronDown, ChevronUp, Info, Loader2 } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Info,
+  Loader2,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -45,6 +52,10 @@ const OPTION_KEY = 'observability_setting'
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0] // Monday first, 0 = Sunday
 
 type RuleDraft = {
+  // Client-only identity for React keys. Rules have no server id, and keying
+  // by the editable fields remounts the row on every keystroke — the input
+  // loses focus mid-typing and the payload ends up with half a word.
+  uid: number
   models: string
   days: number[]
   start: string
@@ -54,12 +65,20 @@ type RuleDraft = {
   contentRate: number
 }
 
+type BodyModeId = 'off' | 'headtail' | 'full'
+
 type Draft = {
   metadataRate: number
   contentRate: number
   parentBased: boolean
   timezone: string
   viewerIds: string
+  bodyMode: BodyModeId
+  headKB: number
+  tailKB: number
+  errorRate: number
+  redact: boolean
+  environment: string
   rules: RuleDraft[]
 }
 
@@ -69,6 +88,12 @@ type Payload = {
   parent_based_sampling: boolean
   timezone: string
   trace_viewer_user_ids: number[]
+  body_mode: BodyModeId
+  body_head_bytes: number
+  body_tail_bytes: number
+  error_sample_rate: number
+  redact: boolean
+  environment: string
   rules: Array<{
     models: string[]
     days: number[]
@@ -84,6 +109,11 @@ type TraceConfig = {
   enabled: boolean
   host?: string
   body_mode?: string
+  body_head_bytes?: number
+  body_tail_bytes?: number
+  error_sample_rate?: number
+  redact?: boolean
+  environment?: string
   metadata_sample_rate?: number
   content_sample_rate?: number
   server_zone?: string
@@ -114,6 +144,61 @@ const PRESET_LABELS: Record<(typeof PRESETS)[number]['id'], string> = {
   quiet: 'Pause tracing',
 }
 
+/**
+ * The three capture modes, in the order a reader thinks about them: nothing,
+ * the useful ends, everything.
+ *
+ * The middle one is the default because an SSE stream is not information-
+ * uniform: role, model and the first delta are at the front, finish_reason and
+ * token usage at the back, and the middle is repeated text deltas.
+ */
+const BODY_MODES = [
+  { id: 'off', label: 'No body' },
+  { id: 'headtail', label: 'Head + tail' },
+  { id: 'full', label: 'Full payload' },
+] as const
+
+/**
+ * Total head+tail the console may ask for. Mirrors trace.MaxBodyWindowBytes:
+ * the write API refuses anything above it, so a form that offered more would
+ * only produce a save that cannot succeed.
+ */
+const MAX_WINDOW_KB = 128
+
+/**
+ * What this page deliberately cannot change.
+ *
+ * Three reasons, ordered by how much damage a wrong value does: credentials
+ * (a bad host silently redirects every span, and the key must never be
+ * readable through an admin form), pipeline resources (queue depth is a
+ * channel capacity, the flush interval is a ticker — both are fixed when the
+ * worker starts), and the master switch (a process that started with tracing
+ * off never built the exporter that turning it on would need).
+ */
+const ENV_ONLY_KEYS = [
+  { name: 'LANGFUSE_ENABLED', note: 'master switch' },
+  { name: 'LANGFUSE_HOST', note: 'export endpoint' },
+  {
+    name: 'LANGFUSE_CONSOLE_URL',
+    note: 'public link target when export uses an internal host',
+  },
+  { name: 'LANGFUSE_PUBLIC_KEY / SECRET_KEY', note: 'credentials' },
+  { name: 'LANGFUSE_PROJECT_ID', note: 'console project for the jump link' },
+  {
+    name: 'LANGFUSE_QUEUE_META / QUEUE_CONTENT',
+    note: 'queue depth, fixed at startup',
+  },
+  {
+    name: 'LANGFUSE_FLUSH_INTERVAL_MS',
+    note: 'batch window, fixed when the worker starts',
+  },
+  {
+    name: 'LANGFUSE_TIMEOUT_SECONDS',
+    note: 'export timeout, fixed with the HTTP client',
+  },
+  { name: 'LANGFUSE_RELEASE', note: 'defaults to the build version' },
+] as const
+
 const TIMEZONE_SHORTCUTS = [
   { label: 'Server local', value: '' },
   { label: 'Asia/Shanghai', value: 'Asia/Shanghai' },
@@ -126,6 +211,12 @@ const EMPTY_DRAFT: Draft = {
   parentBased: true,
   timezone: '',
   viewerIds: '',
+  bodyMode: 'headtail',
+  headKB: 32,
+  tailKB: 16,
+  errorRate: 100,
+  redact: true,
+  environment: 'production',
   rules: [],
 }
 
@@ -133,6 +224,29 @@ function clampPercent(value: string): number {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return 0
   return Math.min(100, Math.max(0, Math.round(parsed)))
+}
+
+// Two rules created in the same millisecond would collide on Date.now();
+// the counter guarantees uniqueness within the draft's lifetime.
+let ruleUidCounter = 0
+function nextRuleUid(): number {
+  ruleUidCounter += 1
+  return Date.now() + ruleUidCounter
+}
+
+function clampKB(value: string, max: number): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.min(max, Math.max(0, Math.round(parsed)))
+}
+
+/** Bytes on the wire, whole KB in the form: nobody wants to type 32768. */
+function bytesToKB(bytes: number): number {
+  return Math.max(0, Math.round(bytes / 1024))
+}
+
+function toBodyMode(value: unknown): BodyModeId {
+  return value === 'off' || value === 'full' ? value : 'headtail'
 }
 
 function toDraft(raw: unknown): Draft {
@@ -144,7 +258,14 @@ function toDraft(raw: unknown): Draft {
     parentBased: value.parent_based_sampling ?? true,
     timezone: value.timezone ?? '',
     viewerIds: (value.trace_viewer_user_ids ?? []).join(', '),
-    rules: (value.rules ?? []).map((rule) => ({
+    bodyMode: toBodyMode(value.body_mode),
+    headKB: bytesToKB(value.body_head_bytes ?? 32768),
+    tailKB: bytesToKB(value.body_tail_bytes ?? 16384),
+    errorRate: value.error_sample_rate ?? 100,
+    redact: value.redact ?? true,
+    environment: value.environment ?? 'production',
+    rules: (value.rules ?? []).map((rule, i) => ({
+      uid: i,
       models: (rule.models ?? []).join(', '),
       days: rule.days ?? [],
       start: rule.start ?? '',
@@ -166,6 +287,12 @@ function toPayload(draft: Draft): Payload {
       .split(',')
       .map((id) => Number(id.trim()))
       .filter((id) => Number.isInteger(id) && id > 0),
+    body_mode: draft.bodyMode,
+    body_head_bytes: Math.round(draft.headKB * 1024),
+    body_tail_bytes: Math.round(draft.tailKB * 1024),
+    error_sample_rate: clampPercent(String(draft.errorRate)),
+    redact: draft.redact,
+    environment: draft.environment.trim(),
     rules: draft.rules.map((rule) => ({
       models: rule.models
         .split(',')
@@ -224,6 +351,18 @@ export function ObservabilitySection() {
         rules: readJSON(`${OPTION_KEY}.rules`) ?? [],
         trace_viewer_user_ids:
           readJSON(`${OPTION_KEY}.trace_viewer_user_ids`) ?? [],
+        body_mode: values.get(`${OPTION_KEY}.body_mode`) ?? 'headtail',
+        body_head_bytes: Number(
+          values.get(`${OPTION_KEY}.body_head_bytes`) ?? 32768
+        ),
+        body_tail_bytes: Number(
+          values.get(`${OPTION_KEY}.body_tail_bytes`) ?? 16384
+        ),
+        error_sample_rate: Number(
+          values.get(`${OPTION_KEY}.error_sample_rate`) ?? 100
+        ),
+        redact: values.get(`${OPTION_KEY}.redact`) !== 'false',
+        environment: values.get(`${OPTION_KEY}.environment`) ?? 'production',
       } as Payload)
     },
     staleTime: 30 * 1000,
@@ -270,6 +409,14 @@ export function ObservabilitySection() {
         [`${OPTION_KEY}.trace_viewer_user_ids`]: JSON.stringify(
           payload.trace_viewer_user_ids
         ),
+        [`${OPTION_KEY}.body_mode`]: payload.body_mode,
+        [`${OPTION_KEY}.body_head_bytes`]: String(payload.body_head_bytes),
+        [`${OPTION_KEY}.body_tail_bytes`]: String(payload.body_tail_bytes),
+        [`${OPTION_KEY}.error_sample_rate`]: String(
+          payload.error_sample_rate
+        ),
+        [`${OPTION_KEY}.redact`]: String(payload.redact),
+        [`${OPTION_KEY}.environment`]: payload.environment,
       }
       await requireServerSuccess(await updateSystemOptionsBatch(options))
     },
@@ -286,6 +433,12 @@ export function ObservabilitySection() {
 
   const update = (patch: Partial<Draft>) =>
     setDraft((prev) => ({ ...(prev ?? current), ...patch }))
+
+  const updateHead = (kb: number) =>
+    update({ headKB: kb, tailKB: Math.min(current.tailKB, MAX_WINDOW_KB - kb) })
+
+  const updateTail = (kb: number) =>
+    update({ tailKB: kb, headKB: Math.min(current.headKB, MAX_WINDOW_KB - kb) })
 
   const moveRule = (index: number, delta: number) =>
     setDraft((prev) => {
@@ -307,27 +460,58 @@ export function ObservabilitySection() {
     })
 
   const status = traceConfig.data
+  // The export host comes from LANGFUSE_CONSOLE_URL / LANGFUSE_HOST. Rendering
+  // it straight into an href would turn a misconfigured value into a clickable
+  // javascript: URL, so only http(s) becomes a link and everything else stays
+  // plain text.
+  const exportHost = status?.host?.trim() ?? ''
+  const exportHostIsLink = /^https?:\/\//i.test(exportHost)
   const zone = status?.server_zone ?? t('server local zone')
   const zoneTime = status?.server_time ?? ''
   const runningMeta = status?.metadata_sample_rate
   const runningContent = status?.content_sample_rate
 
   const bodyModeLabel = useMemo(() => {
-    switch (status?.body_mode) {
-      case 'off':
-        return t('No body')
-      case 'full':
-        return t('full payload')
-      case 'headtail':
-        return t('head + tail')
-      default:
-        return '—'
+    const active = BODY_MODES.find((mode) => mode.id === status?.body_mode)
+    if (!active) return '—'
+    // The running window belongs next to the mode: "Head + tail" alone does
+    // not say whether the gateway keeps 48 KB or 8 KB per request, and that
+    // number is what explains a missing finish_reason in a truncated trace.
+    if (active.id === 'headtail' && status?.body_head_bytes != null) {
+      return t('{{mode}} · {{head}}/{{tail}} KB', {
+        mode: t(active.label),
+        head: bytesToKB(status.body_head_bytes),
+        tail: bytesToKB(status.body_tail_bytes ?? 0),
+      })
     }
-  }, [status?.body_mode, t])
+    return t(active.label)
+  }, [status?.body_mode, status?.body_head_bytes, status?.body_tail_bytes, t])
+
+  // One budget, two fields: raising head has to lower tail in the form, or
+  // the save would be refused by the cross-key check after the operator
+  // already saw both numbers on screen.
+  const windowKB = current.headKB + current.tailKB
+  const windowMB = Math.round((windowKB * 1000) / 1024)
+
+  // Early returns instead of a nested ternary: the two sentences are
+  // separate translations anyway, and nesting them hides that from the
+  // reader.
+  const failureSummary = (() => {
+    if (status?.error_sample_rate == null) return '—'
+    if (status.redact) {
+      return t('{{rate}}% failed · redaction on', {
+        rate: status.error_sample_rate,
+      })
+    }
+    return t('{{rate}}% failed · redaction off', {
+      rate: status.error_sample_rate,
+    })
+  })()
 
   const ruleSummary = useMemo(() => {
-    if (current.rules.length === 0)
+    if (current.rules.length === 0) {
       return t('No rules yet — defaults apply to every request.')
+    }
     return t('{{count}} rule(s), evaluated top to bottom, first match wins', {
       count: current.rules.length,
     })
@@ -398,8 +582,30 @@ export function ObservabilitySection() {
               <dt className='text-muted-foreground text-xs'>
                 {t('Export endpoint')}
               </dt>
-              <dd className='font-mono text-xs break-all'>
-                {status?.host || '—'}
+              <dd className='font-mono text-xs'>
+                {exportHostIsLink ? (
+                  // The whole row is the hit target, but only the trailing icon
+                  // is coloured: an underlined URL next to a dot-separated list
+                  // of settings reads as body text, while the ↗ matches how the
+                  // console already marks "this leaves the app".
+                  <a
+                    href={exportHost}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    title={t('Open in a new tab')}
+                    data-apiduo='text'
+                    className='group inline-flex max-w-full items-center gap-1.5 align-bottom hover:underline'
+                  >
+                    <span className='break-all'>{exportHost}</span>
+                    <ExternalLink
+                      className='size-3.5 shrink-0 transition-transform group-hover:-translate-y-0.5'
+                      style={{ color: 'var(--apiduo-ink)' }}
+                      aria-hidden
+                    />
+                  </a>
+                ) : (
+                  <span className='break-all'>{exportHost || '—'}</span>
+                )}
               </dd>
             </div>
             <div className='space-y-1'>
@@ -420,6 +626,12 @@ export function ObservabilitySection() {
                       content: runningContent ?? 0,
                     })}
               </dd>
+            </div>
+            <div className='space-y-1'>
+              <dt className='text-muted-foreground text-xs'>
+                {t('Failures and redaction')}
+              </dt>
+              <dd className='tabular-nums'>{failureSummary}</dd>
             </div>
             <div className='space-y-1'>
               <dt className='text-muted-foreground text-xs'>
@@ -604,6 +816,207 @@ export function ObservabilitySection() {
 
       <Card>
         <CardHeader>
+          <CardTitle>{t('Captured body')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Sampling decides whether a trace keeps a body at all; this decides how much of it survives. The head carries role, model and the first delta, the tail carries finish_reason and token usage, and the middle is repeated text.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-5'>
+          <div className='flex flex-wrap items-center gap-2'>
+            {BODY_MODES.map((mode) => {
+              const active = current.bodyMode === mode.id
+              return (
+                <Button
+                  key={mode.id}
+                  type='button'
+                  size='sm'
+                  variant={active ? 'default' : 'outline'}
+                  className='h-7 gap-1 px-2.5 text-xs'
+                  aria-pressed={active}
+                  onClick={() => update({ bodyMode: mode.id })}
+                >
+                  {active ? <Check className='size-3' /> : null}
+                  {t(mode.label)}
+                </Button>
+              )
+            })}
+          </div>
+
+          {current.bodyMode === 'headtail' ? (
+            <div className='grid gap-5 sm:grid-cols-2'>
+              <div className='space-y-2'>
+                <Label>{t('Head window (KB)')}</Label>
+                <Input
+                  type='number'
+                  min={0}
+                  max={MAX_WINDOW_KB}
+                  aria-label={t('Head window (KB)')}
+                  value={current.headKB}
+                  onChange={(e) =>
+                    updateHead(clampKB(e.target.value, MAX_WINDOW_KB))
+                  }
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t('Kept from the start: role, model, the first delta.')}
+                </p>
+              </div>
+              <div className='space-y-2'>
+                <Label>{t('Tail window (KB)')}</Label>
+                <Input
+                  type='number'
+                  min={0}
+                  max={MAX_WINDOW_KB}
+                  aria-label={t('Tail window (KB)')}
+                  value={current.tailKB}
+                  onChange={(e) =>
+                    updateTail(clampKB(e.target.value, MAX_WINDOW_KB))
+                  }
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t('Kept from the end: finish_reason and token usage.')}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {current.bodyMode === 'off' ? (
+            <p className='bg-muted/40 flex items-start gap-2 rounded-lg border p-3 text-xs'>
+              <Info className='mt-0.5 size-3.5 shrink-0' />
+              {t(
+                'Traces keep timing, model, token usage and status, but neither prompt nor answer. The content sampling rate has no effect in this mode, and the log page link keeps working.'
+              )}
+            </p>
+          ) : null}
+
+          {current.bodyMode === 'headtail' ? (
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'At most {{kb}} KB kept per request — roughly {{mb}} MB of capture buffers at 1000 concurrent streams. Cutting to whole frames, so a single oversized frame is kept intact instead of being sliced into invalid JSON.',
+                { kb: windowKB, mb: windowMB }
+              )}
+            </p>
+          ) : null}
+
+          {current.bodyMode === 'full' ? (
+            <p className='flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300'>
+              <Info className='mt-0.5 size-3.5 shrink-0' />
+              {t(
+                'Full capture keeps up to 2 MB per request: about 6.8% of one core and 768 MB at 1000 concurrent streams. Turn it on while diagnosing one specific request, then switch back.'
+              )}
+            </p>
+          ) : null}
+
+          <p className='text-muted-foreground text-xs'>
+            {t(
+              'The two windows share a {{cap}} KB budget. A save above it is refused, so what the form shows is what gets stored.',
+              { cap: MAX_WINDOW_KB }
+            )}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Failed requests and redaction')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Failures get their own rate because they are the rows worth reading: when normal sampling drops one, this rate brings it back. Redaction scrubs credentials before anything leaves the gateway.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-5'>
+          <div className='grid gap-5 sm:grid-cols-2'>
+            <div className='space-y-2'>
+              <Label>{t('Failed request sampling (%)')}</Label>
+              <Input
+                type='number'
+                min={0}
+                max={100}
+                aria-label={t('Failed request sampling (%)')}
+                value={current.errorRate}
+                onChange={(e) =>
+                  update({ errorRate: clampPercent(e.target.value) })
+                }
+              />
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Default 100%: a failure the rate above dropped is sampled again here. Set 0 to keep only the failures normal sampling already kept.'
+                )}
+              </p>
+            </div>
+            <div className='space-y-2'>
+              <Label>{t('Environment tag')}</Label>
+              <Input
+                placeholder='production'
+                aria-label={t('Environment tag')}
+                value={current.environment}
+                onChange={(e) => update({ environment: e.target.value })}
+              />
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Written to every span as langfuse.environment, so production and staging can be filtered apart. Leave empty for no tag at all.'
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className='flex items-start justify-between gap-4 rounded-lg border p-3'>
+            <div className='space-y-1'>
+              <Label>{t('Redact credentials and personal data')}</Label>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Default on. Scrubs API keys, phone numbers, ID card numbers and email addresses before export. Turning it off sends prompt and answer verbatim to the tracing backend.'
+                )}
+              </p>
+            </div>
+            <Switch
+              aria-label={t('Redact credentials and personal data')}
+              checked={current.redact}
+              onCheckedChange={(checked) => update({ redact: checked })}
+            />
+          </div>
+
+          {!current.redact ? (
+            <p className='flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300'>
+              <Info className='mt-0.5 size-3.5 shrink-0' />
+              {t(
+                'Redaction is off: prompts and answers leave the gateway exactly as received, including any credential a user pasted into the conversation.'
+              )}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Environment variables (need a restart)')}</CardTitle>
+          <CardDescription>
+            {t(
+              'Deliberately not on this page: they either rebuild the export pipeline or carry credentials, and a bad value would silently redirect or stop exports. Change them in the deployment and recreate the container — docker restart does not re-read env.'
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='space-y-3 text-xs'>
+          <dl className='grid gap-x-6 gap-y-2 sm:grid-cols-2'>
+            {ENV_ONLY_KEYS.map((item) => (
+              <div key={item.name} className='flex flex-wrap gap-x-2'>
+                <dt className='font-mono'>{item.name}</dt>
+                <dd className='text-muted-foreground'>{t(item.note)}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className='text-muted-foreground'>
+            {t(
+              'Saving this page overrides the matching environment variables immediately; until you save, the environment is what runs.'
+            )}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>{t('Sampling rules')}</CardTitle>
           <CardDescription>
             {t(
@@ -615,7 +1028,7 @@ export function ObservabilitySection() {
           <p className='text-muted-foreground text-xs'>{ruleSummary}</p>
 
           {current.rules.map((rule, index) => (
-            <div key={index} className='space-y-3 rounded-lg border p-3'>
+            <div key={rule.uid} className='space-y-3 rounded-lg border p-3'>
               <div className='flex items-center justify-between'>
                 <span className='text-muted-foreground text-xs'>
                   {t('Rule {{index}}', { index: index + 1 })}
@@ -786,6 +1199,7 @@ export function ObservabilitySection() {
                 rules: [
                   ...(prev ?? current).rules,
                   {
+                    uid: nextRuleUid(),
                     models: '',
                     days: [],
                     start: '',
