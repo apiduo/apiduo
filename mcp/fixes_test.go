@@ -223,3 +223,64 @@ func TestAuditKnowsReferenceImagesLimit(t *testing.T) {
 		t.Fatalf("声明 2 张只用到 1 张，应当提示上限偏大，实际 %+v", issues)
 	}
 }
+
+// 前端有下拉框，接口层此前一条都没校验：直连 API 能写出 protocol=grpc 的声明。
+// 那条声明看起来保存成功，实际每次工具调用都在 getTransport 处失败。
+func TestValidateProfileShapeRejectsUnknownProtocol(t *testing.T) {
+	p := ModelProfile{ModelId: "m", Kind: "image", Protocol: "grpc"}
+	err := validateProfileShape(&p)
+	if err == nil || !strings.Contains(err.Error(), "传输协议") {
+		t.Fatalf("未知协议必须在写入时拒掉，实际 %v", err)
+	}
+
+	for _, ok := range []string{"openai_image", "openai_video"} {
+		p := ModelProfile{ModelId: "m", Kind: "image", Protocol: ok}
+		if err := validateProfileShape(&p); err != nil {
+			t.Errorf("%s 应当合法，实际 %v", ok, err)
+		}
+	}
+}
+
+// 负数上限在运行时按「不支持参考图」处理，提示还写「上限 0」——
+// 数据本身是错的，得在写入时拦。
+func TestValidateProfileShapeRejectsNegativeLimits(t *testing.T) {
+	neg := -1
+	for _, tc := range []struct {
+		name string
+		p    ModelProfile
+	}{
+		{"参考图", ModelProfile{ModelId: "m", Protocol: "openai_image", MaxRefImages: &neg}},
+		{"参考视频", ModelProfile{ModelId: "m", Protocol: "openai_video", MaxRefVideos: &neg}},
+		{"提示词", ModelProfile{ModelId: "m", Protocol: "openai_image", MaxPromptChars: &neg}},
+	} {
+		if err := validateProfileShape(&tc.p); err == nil || !strings.Contains(err.Error(), "不能为负数") {
+			t.Errorf("%s上限为负应被拒，实际 %v", tc.name, err)
+		}
+	}
+
+	zero := 0
+	if err := validateProfileShape(&ModelProfile{ModelId: "m", Protocol: "openai_image", MaxRefImages: &zero}); err != nil {
+		t.Errorf("0 是「明确不支持」，必须仍然合法，实际 %v", err)
+	}
+	if err := validateProfileShape(&ModelProfile{ModelId: "m", Protocol: "openai_image"}); err != nil {
+		t.Errorf("留空是「未声明」，必须仍然合法，实际 %v", err)
+	}
+}
+
+// 长度上限对齐 GORM 的 size：SQLite 不强制，MySQL 会报 1406。
+func TestValidateProfileShapeRejectsOverlongText(t *testing.T) {
+	p := ModelProfile{
+		ModelId:     "m",
+		Protocol:    "openai_image",
+		DisplayName: strings.Repeat("长", 192),
+	}
+	err := validateProfileShape(&p)
+	if err == nil || !strings.Contains(err.Error(), "显示名") {
+		t.Fatalf("192 字的显示名应被拒，实际 %v", err)
+	}
+
+	p.DisplayName = strings.Repeat("长", 191)
+	if err := validateProfileShape(&p); err != nil {
+		t.Errorf("191 字正好等于列宽，不该被拒，实际 %v", err)
+	}
+}

@@ -225,6 +225,9 @@ func SaveProfile(p *ModelProfile) error {
 	if p.Parameters != "" && !json.Valid([]byte(p.Parameters)) {
 		return userErrf("参数约束不是合法 JSON")
 	}
+	if err := validateProfileShape(p); err != nil {
+		return err
+	}
 	now := common.GetTimestamp()
 	p.UpdatedAt = now
 
@@ -254,6 +257,54 @@ func SaveProfile(p *ModelProfile) error {
 		"max_ref_images", "max_ref_videos", "max_prompt_chars",
 		"parameters", "summary", "tags", "source", "updated_at",
 	).Updates(p).Error
+}
+
+// validateProfileShape 校验声明的形状与长度。
+//
+// 前端每个字段都有下拉、数字框和长度约束，但接口层此前只校验了 kind 与
+// parameters 的 JSON 合法性，于是直连 API 能写出这些「前端造不出来」的声明：
+//
+//	protocol=grpc          → 每次工具调用在 getTransport 处失败，错误要到 agent
+//	                         真的调用时才出现，而声明看起来是保存成功的
+//	max_ref_images=-1      → 运行时按「不支持参考图」处理，提示还写「上限 0」
+//	display_name 20 万字符 → 列表接口原样回传，面板每选一次模型就多背一份体积
+//
+// 长度上限对齐 GORM 的 size（191/512/255）：SQLite 不强制，MySQL 会报 1406，
+// 那条错误对管理员没有意义；这里提前拒掉，文案能直接照着改。
+func validateProfileShape(p *ModelProfile) error {
+	if _, ok := transports[p.Protocol]; !ok {
+		return userErrf("传输协议只能是 openai_image / openai_video，收到 %q", p.Protocol)
+	}
+	for _, f := range []struct {
+		name  string
+		value string
+		limit int
+	}{
+		{"模型 ID", p.ModelId, 191},
+		{"显示名", p.DisplayName, 191},
+		{"简介", p.Summary, 512},
+		{"标签", p.Tags, 255},
+		{"来源", p.Source, 16},
+		// 参数约束是整份 JSON，按字符数放宽；它不该长到几十 KB。
+		{"参数约束", p.Parameters, 16384},
+	} {
+		if n := len([]rune(f.value)); n > f.limit {
+			return userErrf("%s最多 %d 个字符，收到 %d", f.name, f.limit, n)
+		}
+	}
+	for _, f := range []struct {
+		name  string
+		value *int
+	}{
+		{"参考图上限", p.MaxRefImages},
+		{"参考视频上限", p.MaxRefVideos},
+		{"提示词上限", p.MaxPromptChars},
+	} {
+		if f.value != nil && *f.value < 0 {
+			return userErrf("%s不能为负数（0 表示不支持，留空表示未声明），收到 %d", f.name, *f.value)
+		}
+	}
+	return nil
 }
 
 // profilePatchKeys 是「保存声明」允许改的字段。
