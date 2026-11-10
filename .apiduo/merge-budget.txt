@@ -3,22 +3,17 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 #
-# 2026-11-10 发版收口后的实际值（上次提交 104/308/2838/99）。
-# 相比上一版 +4 文件 / +12 块 / +206 行 / +10 删除，来源按功能：
-# - 主端点与图片协议（最大头）：primary-endpoint-editor 重写成单端点/双端点一份，
-#   图片协议区并进来后删掉独立的 image-protocol-section；channel-mutate-drawer 254 行、
-#   channel-form 114 行、advanced-custom-editor-dialog 136 行、model/channel.go 87 行
-#   （保存期校验 + 尾斜杠归一）。
-# - 可观测性：四处挂接各一个标记块（controller/log.go、model/option.go、
-#   model/log_other.go、relay/helper/stream_scanner.go），都在「读日志 / 配置热更 /
-#   结算 / 流式回调」这种不可替代的位置。
-# - playground：/pg 三条路由登记 middleware/access_token_routes.go（+5 行）。
-# - 8001 类型：选择器测试补 8 行（断言 Custom 页签三项）。
-# - 减少项：i18n 冗余键清掉 2 行、constants.ts 少 1 行，已反映在总数里。
-# 2026-11-10 追加 +4 行：改主端点不再逐字符清 image_protocol、抽屉徽标改读协议状态
-# （channel-mutate-drawer 净 +4；primary-endpoint-editor 是我方新文件，不计入合并面）。
+# 2026-11-10 MCP + 可观测性收口后的实际值（上一版 108/320/3048/109）。
+# 变化逐项对得上：
+# - go.mod 进生成文件豁免（go mod tidy 会重排 require 块，行级标记留不住）
+#   ⇒ 文件 -1、新增 -11、删除 -5；遗留欠账基线同时去掉 go.mod 的 11 行。
+# - router/main.go +2 块 +6 行：MCP 的 import 与 Register 两处接缝。
+# - model/log.go +1 块 +14 行：EnqueueLog 转调私有的 createLog，让观察埋点
+#   与普通日志走同一条写入路径（ClickHouse 的 Too many parts / 合并折叠）。
+# - model/option.go +1 块 +8 行：规则时间窗在写入期校验，别等读时静默修正。
+# - 开发期证据目录（mcp/screenshots、mcp/samples）走本机 .git/info/exclude，不占预算。
 # 注意：-cost -update 会重写本文件并丢掉注释，收紧后要补回。
-files	108
-blocks	320
-added	3048
-deleted	109
+files	107
+blocks	324
+added	3065
+deleted	104

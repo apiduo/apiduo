@@ -14,6 +14,7 @@ SINK=${SINK:-39402}
 IMG_UP=${IMG_UP:-39403}
 UP2=${UP2:-39404}
 SINK2=${SINK2:-39405}
+MCP_UP=${MCP_UP:-39430}
 GW_TRACE=${GW_TRACE:-39410}
 GW_IMAGE=${GW_IMAGE:-39420}
 GW_OFF=${GW_OFF:-39440}
@@ -30,9 +31,10 @@ export E2E_SINK_DIR="$run/sink"
 export E2E_IMAGE_LOG="$run/image.log"
 export E2E_PROJECT_ID="e2e-project"
 export E2E_CONSOLE="http://127.0.0.1:$SINK"
+export E2E_MCP_UP="http://127.0.0.1:$MCP_UP"
 
 pids=()
-PORTS=("$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF")
+PORTS=("$TRACE_UP" "$SINK" "$IMG_UP" "$UP2" "$SINK2" "$MCP_UP" "$GW_TRACE" "$GW_IMAGE" "$GW_OFF")
 
 cleanup() {
   # 一、直接子进程。二、按端口兜底：管道被中断（SIGPIPE）或脚本被顶掉时，
@@ -124,6 +126,10 @@ disown "$!" 2>/dev/null || true
 python3 "$here/fakes/image_mock.py" --port "$IMG_UP" --log "$E2E_IMAGE_LOG" >"$run/image-mock.log" 2>&1 &
 pids+=($!)
 disown "$!" 2>/dev/null || true
+# MCP 专用：图片同步 + 视频异步两套形状，带 /__log 与 /__control
+python3 "$here/fakes/mcp_upstream.py" --port "$MCP_UP" >"$run/mcp-upstream.log" 2>&1 &
+pids+=($!)
+disown "$!" 2>/dev/null || true
 
 gw_env() {
   # GLOBAL_API_RATE_LIMIT 默认 360 次/180s/IP：所有套件都从 127.0.0.1 发，
@@ -194,6 +200,12 @@ suite multikey "多 key 渠道（粘性/上限/换 key）" "http://127.0.0.1:$GW
 suite autogroup "跨分组重试（auto 分组）" "http://127.0.0.1:$GW_IMAGE" auto_group.py
 suite override "亲和参数覆盖模板" "http://127.0.0.1:$GW_IMAGE" affinity_override.py
 suite combo "auto 分组 + 多 key 组合" "http://127.0.0.1:$GW_IMAGE" combo_group_multikey.py
+# MCP 套件自己建渠道（图片走 OpenAI 兼容、视频走 8001 高级异步）与能力声明，
+# 但**必须在 discount 之前**：那两个套件靠自用模式免定价出图/出视频，
+# 而 discount 会把自用模式关掉、只给 disc-model 配价，之后所有模型都撞
+# 「price not configured」。（和 select 同一个约束，见上面那条注释。）
+suite mcp "MCP 协议（工具/渠道/计费/观察）" "http://127.0.0.1:$GW_IMAGE" mcp_protocol.py
+suite mcpadmin "MCP 控制面（管理 API/权限/面板）" "http://127.0.0.1:$GW_IMAGE" mcp_admin.py
 suite discount "折扣 + PAT + 审计" "http://127.0.0.1:$GW_IMAGE" discount_pat.py
 
 echo
@@ -217,6 +229,18 @@ if E2E_BASE="http://127.0.0.1:$GW_IMAGE" \
 else
   failed=$((failed + 1))
   failed_names+=("ui/primary_endpoint")
+fi
+
+echo "== 浏览器：MCP 面板 =="
+if E2E_BASE="http://127.0.0.1:$GW_IMAGE" \
+   E2E_ADMIN=admin E2E_ADMIN_PW='apiduo-test-2026' \
+   E2E_ARTIFACT_DIR="$run/ui-artifacts" \
+   E2E_MCP_TARGET=mcp-e2e-image \
+   node "$here/ui/mcp_panel.mjs"; then
+  passed=$((passed + 1))
+else
+  failed=$((failed + 1))
+  failed_names+=("ui/mcp_panel")
 fi
 fi
 

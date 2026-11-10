@@ -22,6 +22,7 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
 | 网关 · trace 开启 | 39410 | `GW_TRACE` |
 | 假上游 #2（多渠道选路用） | 39404 | `UP2` |
 | 假 sink #2（占位） | 39405 | `SINK2` |
+| 假上游（MCP：图片同步 + 视频异步） | 39430 | `MCP_UP` |
 | 网关 · 图片/主端点 | 39420 | `GW_IMAGE` |
 | 网关 · trace 关闭 | 39440 | `GW_OFF` |
 
@@ -50,7 +51,28 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
 | `suites/affinity_override.py` | 亲和参数覆盖模板：模板只补空缺（渠道值优先）、`operations` 在渠道静态值之后执行、规则未命中/亲和关闭时完全不参与、日志 `override_template` 标记 |
 | `suites/combo_group_multikey.py` | auto 分组 + 多 key 组合：组内换 key 不切组、组内 key 全坏才切组、跨渠道尝试与日志 `use_channel` 一致 |
 | `suites/discount_pat.py` | 折扣首条命中且不相乘、按次定价对账、审计 before/after、PAT 声明式作用域（未声明路由 fail-closed） |
+| `suites/mcp_protocol.py` | MCP 协议：入口鉴权三层（无/错/空令牌）、tools/list、models.list 三态、四个工具全链路、本地校验**零出站**、上游 5xx 的 key 脱敏、task_id 换 key 失效、观察落库不含提示词 |
+| `suites/mcp_admin.py` | MCP 控制面：/api/mcp/* 全接口、普通用户 403、`max_ref_images` 三态、更新不改 `model_id`、规则播种与 match 不可改、面板页不内联凭证 |
+| `ui/mcp_panel.mjs` | 真实 Chrome：登录态复用（refresh cookie 换 token）、列表/详情/保存/三态/启停/规则/观察/巡检、新建→删除闭环、三档视口 + 深色 + 未登录自解释 |
 | `ui/trace_link.mjs` | 真实 Chrome：日志详情里出现「在 Langfuse 查看」，href 主机/项目/32 位 id/`rel=noopener` 全对 |
+| `ui/observability_settings.mjs` | **手动运行**（未接入 `run_all.sh`）：设置页归位到「扩展」、状态条回显（开关/地址/正文模式/生效速率/时区偏移）、预设与边界值、脏状态深比较、规则增删与持久化、半截时间窗被拦、白名单权限、改采样率后 sink 的 span 数与日志页链接同步变化、三档视口/深色/无 JS 报错。依赖见文件头 |
+
+## 手动套件：可观测性配置页
+
+`ui/observability_settings.mjs` 需要 `run_all.sh` 没有的三样东西，所以单独跑：
+
+```bash
+# 1) 两个实例：A 开 trace（SAMPLE_RATE=10、TZ=Asia/Shanghai），B 关 trace。
+#    两者都要起假上游与假 sink（fakes），A 的 FLUSH_INTERVAL_MS 调小到 300。
+# 2) 两个账号：管理员 mgr(id=2) + 普通用户 alice(id=3)
+E2E_BASE=http://127.0.0.1:39510 E2E_DB=/tmp/apiduo-observe/gw/one-api.db \
+  python3 e2e/live/lib/observability_accounts.py
+# 3) 跑套件（RELAY_KEY 用 bootstrap 打印的中继 key）
+RELAY_KEY=... node e2e/live/ui/observability_settings.mjs
+```
+
+断言里有一条**必须用干净库**：初始元数据/内容采样要等于 `LANGFUSE_SAMPLE_RATE`
+（证明默认值来自环境而不是写死的 100）。跑过一次保存后这条会红，重跑前清库重启。
 
 ## 环境前提（不满足会一片红，先看这条）
 
@@ -84,6 +106,21 @@ KEEP=1 e2e/live/run_all.sh   # 保留临时目录（日志、SQLite、sink 落�
   `run_all.sh` 已设成 200000。
 - 🔴 **令牌按名字查要翻页**：`/api/token/` 单页最多 100 条，前面的套件建了几十个令牌后，
   新令牌会落到第二页；`find_token()` 逐页找，别只看第一页。
+- **MCP 的视频渠道必须是 type=8001**（`ChannelTypeAdvancedAsync`），不是 64。写成 64 会被
+  `invalid api platform: 64` 直接拒掉；`settings.advanced_async.incoming_paths` 复用 host 已有的
+  `/v1/video/generations`，自定义路径会落到 SPA 首页。
+- **MCP 的 `task.get` 打的是 `/v1/video/generations/:id`**，该端点回 `{code,message,data}` 包装
+  （生成端点是扁平结构）。MCP 层必须先解包再读 `status`/`result_url`，否则任务永远读成 working。
+  这条只有真网关能暴露 —— 进程内单测的 mock 一直是扁平形状。
+- **异步任务靠系统任务轮询推进**（`UPDATE_TASK=true`，默认开，`async_task_poll` 每 15s）。
+  提交后立刻查是 `NOT_START`，套件按 5s 间隔最多等 75s；别把「首次 working」当成 bug。
+- **MCP 套件需要足够余额**：视频任务每次提交都预扣一次 per_call 费用（约 $18.75），
+  反复回归几十次就会把初始额度吃光，表现为 `403 insufficient_user_quota` ——
+  看起来像功能坏了，其实是测试环境耗尽。`mcp_protocol.py` 自己调 `/api/user/manage`
+  充到 $500 以上，不必手工处理。
+- **MCP 套件自己建渠道与声明**，跑完不删（下次跑先删同名再建）。UI 套件会改 `mcp-e2e-image`
+  的 display_name 与 max_ref_images，跑完还原成 2；顺序是 mcp → mcpadmin → ui/mcp_panel。
+
 - **参数覆盖模板的合并语义**：模板只补渠道没设过的键；要覆盖渠道已有的键，必须写成
   `operations`（渠道静态值先应用，模板 operations 后应用）。
 - **内存缓存必须开**：`MEMORY_CACHE_ENABLED=true`（生产就是开的）。优先级与权重只在

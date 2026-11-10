@@ -4,7 +4,6 @@
 22	controller/access_token.go
 3	controller/audit.go
 1	docker-compose.dev.yml
-11	go.mod
 11	middleware/access_token_routes.go
 3	middleware/audit.go
 22	middleware/auth_test.go
