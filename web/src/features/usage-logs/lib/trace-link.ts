@@ -56,10 +56,14 @@ export function buildTraceUrl(
  * Deep link that lands on the exact span, not on the trace list.
  *
  * The peek parameters are what Langfuse's own table sets when you click a row:
- * `peek`/`observation` open the span detail, `traceId` scopes the list,
- * `traceTab=attributes` skips the default overview. Without `peek` the URL
- * only filters the list, and the operator has to find the row again — on a
+ * `peek`/`observation` open the span detail, `traceId` scopes the list, and
+ * `traceTab` picks which pane of that detail is in front. Without `peek` the
+ * URL only filters the list, and the operator has to find the row again — on a
  * busy trace list that is a second navigation worth saving.
+ *
+ * `traceTab=preview` on purpose: preview is the pane that shows what was sent
+ * and what came back. The attribute dump (`traceTab=attributes`) is one extra
+ * click away inside Langfuse and is not what a log row is opened for.
  */
 export function buildDeepTraceUrl(
   config: Pick<TraceConfig, 'enabled' | 'host' | 'project_id'>,
@@ -78,7 +82,7 @@ export function buildDeepTraceUrl(
     peek: span,
     observation: span,
     traceId: trace,
-    traceTab: 'attributes',
+    traceTab: 'preview',
   })
   if (startTime) q.set('timestamp', startTime)
   return `${host}/project/${encodeURIComponent(config.project_id)}/traces?${q.toString()}`

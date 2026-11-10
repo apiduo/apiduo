@@ -20,7 +20,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { ApiduoTraceLink } from '../trace-link'
-import { buildTraceUrl } from '../../lib/trace-link'
+import { buildDeepTraceUrl, buildTraceUrl } from '../../lib/trace-link'
 
 // The component fetches its config through the shared api client; mock the
 // feature api module so tests never touch the network.
@@ -134,5 +134,30 @@ describe('ApiduoTraceLink', () => {
     const { container } = renderLink(VALID_ID)
     await waitFor(() => expect(mockConfig).toHaveBeenCalled())
     await waitFor(() => expect(container.querySelector('a')).toBeNull())
+  })
+})
+
+describe('deep link', () => {
+  const config = { enabled: true, host: 'https://langfuse.example/', project_id: 'apiduo' }
+  const TRACE = 'd60b7f3c843d6a7b9e3a12bf6a942c4d'
+  const SPAN = 'c7307b0be5b65c42d7aa9d3404ca5ae7'
+
+  test('lands on the span and opens the preview pane', () => {
+    const url = buildDeepTraceUrl(config, TRACE, SPAN, '2026-11-10T12:50:31.000Z')
+    expect(url).not.toBeNull()
+    const parsed = new URL(url as string)
+    expect(parsed.pathname).toBe('/project/apiduo/traces')
+    // peek+observation are what open the row; traceTab must be the pane that
+    // shows the request/response, not the attribute dump.
+    expect(parsed.searchParams.get('peek')).toBe(SPAN)
+    expect(parsed.searchParams.get('observation')).toBe(SPAN)
+    expect(parsed.searchParams.get('traceId')).toBe(TRACE)
+    expect(parsed.searchParams.get('traceTab')).toBe('preview')
+    expect(parsed.searchParams.get('timestamp')).toBe('2026-11-10T12:50:31.000Z')
+  })
+
+  test('refuses a missing span so the caller falls back to the trace page', () => {
+    expect(buildDeepTraceUrl(config, TRACE, '', undefined)).toBeNull()
+    expect(buildDeepTraceUrl(config, TRACE, undefined, undefined)).toBeNull()
   })
 })

@@ -177,6 +177,7 @@
     "Rule metadata sampling (%)": "規則內中繼資料取樣（%）",
     "Rule content sampling (%)": "規則內內容取樣（%）",
     "Loading settings...": "正在讀取設定...",
-    "Cannot read the current settings. Reload the page to retry.": "讀不到目前設定，重新整理頁面再試。"
+    "Cannot read the current settings. Reload the page to retry.": "讀不到目前設定，重新整理頁面再試。",
+    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "這條 span 沒有請求或回應內文：要麼是內容取樣把它剝掉了，要麼它是在結算時補寫的 —— 非同步任務結算和頻道測試本來就不帶內文。"
   }
 }

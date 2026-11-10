@@ -85,6 +85,7 @@
     "Sheen": "光沢",
     "Pulse": "パルス",
     "Restore defaults": "既定値に戻す",
-    "Appearance presets": "外観プリセット"
+    "Appearance presets": "外観プリセット",
+    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "このスパンにはリクエスト／レスポンス本文がありません。コンテンツサンプリングで削除されたか、決済時に書き起こされたスパンです（非同期タスクの決済やチャネルテストは本文を送りません）。"
   }
 }

@@ -175,6 +175,7 @@
     "Rule metadata sampling (%)": "规则内元数据采样（%）",
     "Rule content sampling (%)": "规则内内容采样（%）",
     "Loading settings...": "正在读取设置...",
-    "Cannot read the current settings. Reload the page to retry.": "读不到当前设置，刷新页面重试。"
+    "Cannot read the current settings. Reload the page to retry.": "读不到当前设置，刷新页面重试。",
+    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "这条 span 没有请求或响应正文：要么是内容采样把它剥掉了，要么它是在结算时补写的 —— 异步任务结算和渠道测试本来就不带正文。"
   }
 }

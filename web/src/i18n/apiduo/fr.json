@@ -81,6 +81,7 @@
     "Sheen": "Lustre",
     "Pulse": "Impulsion",
     "Restore defaults": "Rétablir les valeurs par défaut",
-    "Appearance presets": "Présélections d'apparence"
+    "Appearance presets": "Présélections d'apparence",
+    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "Ce span ne porte ni requête ni réponse. Soit l'échantillonnage du contenu l'a retiré, soit le span a été écrit au moment du règlement — les tâches asynchrones et les tests de canal n'envoient pas de corps."
   }
 }

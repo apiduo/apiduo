@@ -151,6 +151,13 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		requestPath = strings.Replace(requestPath, ":generateContent", ":streamGenerateContent", 1)
 	}
 	c.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil)
+	// APIDUO:channel-test-trace:BEGIN
+	// 合成请求不过 request-id 中间件：request id 为空则消费日志没有 trace 可跳，
+	// 中间过程日志也串不起来。gin 键与请求 context 都写，两处都有人读。
+	testRequestId := common.NewRequestId()
+	c.Set(common.RequestIdKey, testRequestId)
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), common.RequestIdKey, testRequestId))
+	// APIDUO:channel-test-trace:END
 
 	cache, err := model.GetUserCache(testUserID)
 	if err != nil {

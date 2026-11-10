@@ -290,6 +290,26 @@ function parseResponse(obj: Record<string, unknown>): ParsedPayload | null {
 }
 
 /**
+ * Decodes a body for the JSON tree, or null when it is not an object/array.
+ *
+ * Separate from parsePayload because the two answer different questions: a
+ * payload can be perfectly good JSON and still not be a conversation (an image
+ * response is `{created, data, usage}`), and that is exactly the case the tree
+ * exists for. A headtail-truncated body fails to decode and falls back to raw
+ * text, which is the honest rendering of "we only kept both ends".
+ */
+export function parseJsonBody(raw: string): unknown | null {
+  const trimmed = raw.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null
+  try {
+    const decoded: unknown = JSON.parse(trimmed)
+    return decoded !== null && typeof decoded === 'object' ? decoded : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Returns null whenever the body is not a recognisable conversation — the
  * caller then shows the raw text, which is the only honest fallback for a
  * truncated payload, an SSE frame dump, or an error string.

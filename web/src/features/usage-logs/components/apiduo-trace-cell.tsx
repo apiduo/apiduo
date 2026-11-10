@@ -48,7 +48,11 @@ import { cn } from '@/lib/utils'
 
 import { LOG_TYPE_ENUM } from '../constants'
 import type { UsageLog } from '../data/schema'
-import { parsePayload, type ParsedPayload } from '../lib/conversation'
+import {
+  parseJsonBody,
+  parsePayload,
+  type ParsedPayload,
+} from '../lib/conversation'
 import { parseLogOther } from '../lib/format'
 import { buildDeepTraceUrl, buildTraceUrl, type TraceConfig } from '../lib/trace-link'
 import {
@@ -56,6 +60,7 @@ import {
   type TraceDetailResult,
   type TraceObservation,
 } from '../lib/trace-detail-api'
+import { JsonTree } from './payload-tree'
 
 function traceIdOf(log: UsageLog): string {
   return parseLogOther(log.other)?.admin_info?.trace_id?.trim() ?? ''
@@ -419,7 +424,7 @@ function TraceBody({ obs, log }: { obs: TraceObservation; log: UsageLog }) {
       {!obs.content_sampled && (
         <Notice tone='info' title={t('Content was not captured')}>
           {t(
-            'The request was sampled for metadata only. The prompt and the answer never left the gateway’s memory, so this is empty by policy — not a capture failure. Adjust the content sample rate in System Settings → Observability.'
+            'This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.'
           )}
         </Notice>
       )}
@@ -444,8 +449,8 @@ function TraceBody({ obs, log }: { obs: TraceObservation; log: UsageLog }) {
       </section>
 
       {/* 元信息（渠道/令牌/环境/release）不再整块列出：日志行本身有渠道和
-          令牌，attributes 全量在 Langfuse 的 traceTab=attributes 里。抽屉只留
-          直观的三样：时间轴、指标、对话。深链在标题右上角。 */}
+          令牌，attributes 全量在 Langfuse 侧。抽屉只留直观的三样：时间轴、
+          指标、对话。深链在标题右上角，落在 Langfuse 的 preview 页签。 */}
     </>
   )
 }
@@ -563,6 +568,14 @@ function PayloadView({
     () => (text && !tooLarge ? parsePayload(text, kind) : null),
     [text, kind, tooLarge]
   )
+  // A body that is valid JSON but not a conversation — an image response is
+  // `{created, data, usage}` — is the case the tree exists for. Parsing it
+  // only when the conversation view declined keeps the common path at one
+  // decode instead of two.
+  const json = useMemo(
+    () => (text && !tooLarge && !parsed ? parseJsonBody(text) : null),
+    [text, tooLarge, parsed]
+  )
 
   if (!text) {
     return (
@@ -574,18 +587,19 @@ function PayloadView({
 
   const truncated = text.length > MAX_PAYLOAD_CHARS
   const body = truncated ? text.slice(0, MAX_PAYLOAD_CHARS) : text
-  const showTurns = parsed !== null && !raw
+  const previewable = parsed !== null || json !== null
+  const showTree = !raw && json !== null
 
   return (
     <>
-      {(parsed || tooLarge) && (
+      {(previewable || tooLarge) && (
         <div className='mb-1.5 flex items-center justify-end gap-2'>
           {tooLarge && (
             <span className='text-muted-foreground text-[10.5px]'>
               {t('Too large to preview')}
             </span>
           )}
-          {parsed && (
+          {previewable && (
             <button
               type='button'
               onClick={() => setRaw((v) => !v)}
@@ -596,14 +610,16 @@ function PayloadView({
           )}
         </div>
       )}
-      {showTurns ? (
+      {!raw && parsed ? (
         <Turns parsed={parsed} />
+      ) : showTree ? (
+        <JsonTree value={json} />
       ) : (
         <pre className='bg-muted/50 max-h-52 overflow-auto rounded-lg border p-3 text-xs whitespace-pre-wrap break-words'>
           {body}
         </pre>
       )}
-      {truncated && (
+      {truncated && !showTree && (
         <p className='text-muted-foreground mt-1 text-[10.5px]'>
           … {Math.round(text.length / 1024)} KB · {t('Truncated for display')}
         </p>

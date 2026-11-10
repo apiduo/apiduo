@@ -46,7 +46,16 @@
 # 后续提交顶穿的假下限。
 # 3139 → 3140：那次测量带着并行会话在 mcp/profiles-panel.tsx 里扣掉的一行，
 # 已提交树没有它，所以 CI 实测 3140。以 CI 为准。
-files	110
-blocks	336
-added	3140
+#
+# 2026-11-10 渠道测试补 request id（显式上调一次 files +1 / blocks +1 / added +6）：
+# - controller/channel-test.go +1 块 +7 行：testChannel 用 gin.CreateTestContext
+#   造合成请求，不过 request-id 中间件，RequestIdKey 一直空 ⇒ 消费日志没有
+#   trace 可跳（trace id 由 request id 派生）。这个补丁只能落在合成请求诞生的
+#   那一行后面，挪不进新文件 —— 换文件就等于换调用方。
+#   换来的是「Model test」这类日志行终于有轨迹入口，且中途过程日志也能串起来。
+# 3146 → 3147：工作树里并行会话在 mcp/profiles-panel.tsx 少了一行，已提交树没有它，
+# 干净工作树实测 3147。以 CI 为准（与上一版 3139 → 3140 同一个原因）。
+files	111
+blocks	337
+added	3147
 deleted	107

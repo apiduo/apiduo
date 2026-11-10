@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import { parsePayload, scrubBase64 } from '../conversation'
+import { parseJsonBody, parsePayload, scrubBase64 } from '../conversation'
 
 describe('parsePayload request', () => {
   it('renders an OpenAI chat body as turns and keeps the knobs apart', () => {
@@ -192,5 +192,39 @@ describe('scrubBase64', () => {
     const parsed = parsePayload(raw, 'request')!
     expect(parsed.turns[0].text).toContain('[base64')
     expect(parsed.turns[0].text.length).toBeLessThan(200)
+  })
+})
+
+describe('parseJsonBody', () => {
+  it('decodes a body the conversation view rejects', () => {
+    const raw = JSON.stringify({
+      created: 1762740000,
+      data: [{ b64_json: 'AAAA' }],
+      usage: { total_tokens: 12 },
+    })
+    // The conversation parser declines (no messages, no choices); the tree is
+    // the view that still makes an image response readable.
+    expect(parsePayload(raw, 'response')).toBeNull()
+    expect(parseJsonBody(raw)).toEqual({
+      created: 1762740000,
+      data: [{ b64_json: 'AAAA' }],
+      usage: { total_tokens: 12 },
+    })
+  })
+
+  it('returns null for anything that is not an object or array', () => {
+    expect(parseJsonBody('"just a string"')).toBeNull()
+    expect(parseJsonBody('123')).toBeNull()
+    expect(parseJsonBody('true')).toBeNull()
+    expect(parseJsonBody('null')).toBeNull()
+    expect(parseJsonBody('upstream 500: rate limited')).toBeNull()
+  })
+
+  it('returns null for a truncated body so the caller shows raw text', () => {
+    const raw = JSON.stringify({
+      messages: [{ role: 'user', content: 'x'.repeat(80) }],
+    })
+    expect(parseJsonBody(raw)).not.toBeNull()
+    expect(parseJsonBody(raw.slice(0, 40))).toBeNull()
   })
 })

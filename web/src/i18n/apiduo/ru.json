@@ -81,6 +81,7 @@
     "Sheen": "Блеск",
     "Pulse": "Пульс",
     "Restore defaults": "Сбросить настройки",
-    "Appearance presets": "Пресеты оформления"
+    "Appearance presets": "Пресеты оформления",
+    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "У этого спана нет тела запроса или ответа. Либо его срезала выборка контента, либо спан записан при расчёте — асинхронные задачи и тесты канала тело не передают."
   }
 }

@@ -80,6 +80,7 @@
     "Rainbow": "Cầu vồng",
     "Sheen": "Ánh sáng",
     "Pulse": "Xung",
-    "Appearance presets": "Bộ cài sẵn giao diện"
+    "Appearance presets": "Bộ cài sẵn giao diện",
+    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "Span này không có nội dung yêu cầu hay phản hồi. Có thể do lấy mẫu nội dung đã loại bỏ, hoặc span được ghi lúc quyết toán — tác vụ bất đồng bộ và kiểm thử kênh không gửi nội dung."
   }
 }

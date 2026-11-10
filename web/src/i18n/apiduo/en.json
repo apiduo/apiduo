@@ -116,6 +116,7 @@
     "Rainbow": "Rainbow",
     "Sheen": "Sheen",
     "Pulse": "Pulse",
-    "Appearance presets": "Appearance presets"
+    "Appearance presets": "Appearance presets",
+    "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body.": "This span carries no request or response body. Either content sampling stripped it, or the span was written at settlement time — async task settlement and channel tests never send a body."
   }
 }
