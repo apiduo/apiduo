@@ -16,11 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
+import { ComboboxInput } from '@/components/ui/combobox-input'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,7 @@ import {
   type McpKind,
   type McpProtocol,
   type ModelProfile,
+  type ProtocolHint,
   type ProfileDraft,
 } from './types'
 
@@ -125,9 +127,66 @@ const KIND_LABEL: Record<McpKind, (t: (key: string) => string) => string> = {
   search: (t) => t('Search'),
 }
 
+// 候选项的分类来自服务端 mcp/suggest.go，前端不再自带正则：
+// 规则只能有一份，两份一旦漂移，标签和选中后实际填的值就会打架。
+//
+// 置信度决定提示口径：
+//   high / medium → 标「图片」「视频」
+//   low           → 标「图片?」「视频?」，问号表示有线索但不可靠
+//   none          → 「未识别?」，选中后不自动改 kind，由人手动选
+//   conflict      → 结论按模型名给，但其它判据（渠道/端点）说的是另一类，
+//                   同样加问号：medium 不代表没有争议。
+function candidateShort(
+  hint: ProtocolHint | undefined,
+  t: (key: string) => string
+): string {
+  const unsure = hint?.confidence === 'low' || hint?.conflict === true
+  if (hint?.kind === 'video') {
+    return unsure ? `${t('Video')}?` : t('Video')
+  }
+  if (hint?.kind === 'image') {
+    return unsure ? `${t('Image')}?` : t('Image')
+  }
+  if (hint?.kind === 'search') return t('Search')
+  return t('Short unknown')
+}
+
+// ComboboxInput 只渲染 label 与 icon（description 会被忽略），所以提示做成
+// 一个带 title 的小标签挂在选项前，完整措辞留在悬停提示里。
+function candidateMark(
+  hint: ProtocolHint | undefined,
+  t: (key: string) => string
+): ReactNode {
+  const short = candidateShort(hint, t)
+  return (
+    <span
+      className='text-muted-foreground shrink-0 text-[10px]'
+      title={hint?.reason ? `${short} · ${hint.reason}` : short}
+    >
+      {short}
+    </span>
+  )
+}
+
 export function ProfilesPanel(props: ProfilesPanelProps) {
   const t = useMcpCopy()
   const queryClient = useQueryClient()
+
+  // 只读、零出站：候选来自本地 abilities 表，失败时静默降级为「可手输」。
+  const candidates = useQuery({
+    queryKey: mcpKeys.candidates(),
+    queryFn: mcpApi.candidates,
+    retry: false,
+  })
+  const candidateItems = candidates.data?.items ?? []
+  // 旧版后端没有 suggestions，按空对象降级：候选照样可选，只是没有类型提示。
+  const suggestions = candidates.data?.suggestions ?? {}
+  const candidateOptions = candidateItems.map((id) => ({
+    value: id,
+    label: id,
+    icon: candidateMark(suggestions[id], t),
+  }))
+
   const [keyword, setKeyword] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
@@ -174,6 +233,8 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: mcpKeys.profiles() })
+    // 刚声明的模型要从候选里消失，已删除的要重新出现。
+    void queryClient.invalidateQueries({ queryKey: mcpKeys.candidates() })
     props.onDataChanged()
   }
 
@@ -234,15 +295,38 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
       : props.profiles
   }, [props.profiles, keyword])
 
+  // 一次改多个字段必须走这里：setField 连续调用时每次都用同一份旧 draft，
+  // 后一次会把前一次覆盖掉（选模型要同时改 model_id / kind / protocol）。
+  const setFields = (patch: Partial<ProfileDraft>) => {
+    if (!draft) return
+    setOverride({ key: baseKey, draft: { ...draft, ...patch } })
+  }
+
   const setField = <K extends keyof ProfileDraft>(
     key: K,
     value: ProfileDraft[K]
   ) => {
-    if (!draft) return
-    setOverride({ key: baseKey, draft: { ...draft, [key]: value } })
+    setFields({ [key]: value } as Partial<ProfileDraft>)
   }
 
   const isNew = draft !== null && draft.id === 0
+
+  let emptyHint = t('No declarations yet — click New model to start')
+  if (props.profiles.length > 0) emptyHint = t('No models match')
+  else if (candidateItems.length > 0) {
+    emptyHint = t(
+      'No declarations yet — {{count}} enabled models are available to declare',
+      { count: candidateItems.length }
+    )
+  }
+
+  // 空态里点候选 = 新建并预填 ID；仍要人工填完 kind/协议再保存，
+  // 不因为「点了一下」就往库里写声明。
+  const startCreateWith = (modelId: string) => {
+    setSelectedId(null)
+    setCreating(true)
+    setOverride({ key: 'new', draft: { ...EMPTY_DRAFT, model_id: modelId } })
+  }
 
   return (
     <div className='grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start'>
@@ -255,11 +339,7 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
             <Button
               size='sm'
               variant='outline'
-              onClick={() => {
-                setSelectedId(null)
-                setOverride(null)
-                setCreating(true)
-              }}
+              onClick={() => startCreateWith('')}
             >
               {t('New model')}
             </Button>
@@ -279,11 +359,47 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
           ) : null}
 
           {!props.loading && rows.length === 0 ? (
-            <p className='text-muted-foreground py-6 text-xs'>
-              {props.profiles.length === 0
-                ? t('No declarations yet — click New model to start')
-                : t('No models match')}
-            </p>
+            <div className='space-y-2 py-6'>
+              <p className='text-muted-foreground text-xs'>{emptyHint}</p>
+              {props.profiles.length === 0 && candidateItems.length > 0 ? (
+                <div className='space-y-1.5'>
+                  <p className='text-muted-foreground text-[11px]'>
+                    {t('Enabled models you can declare')}
+                  </p>
+                  <ul className='space-y-1'>
+                    {candidateItems.slice(0, 5).map((id) => (
+                      <li key={id}>
+                        <button
+                          type='button'
+                          onClick={() => startCreateWith(id)}
+                          className='hover:bg-accent flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors'
+                        >
+                          <span className='truncate font-mono text-[11px]'>
+                            {id}
+                          </span>
+                          <span
+                            className='text-muted-foreground shrink-0 text-[10px]'
+                            title={
+                              suggestions[id]?.reason ??
+                              t('Type not detected · confirm before declaring')
+                            }
+                          >
+                            {candidateShort(suggestions[id], t)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {candidateItems.length > 5 ? (
+                    <p className='text-muted-foreground text-[11px]'>
+                      {t('{{count}} more to declare', {
+                        count: candidateItems.length - 5,
+                      })}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           {rows.length > 0 ? (
@@ -382,15 +498,56 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
                   )}
                 </p>
 
+                {isNew ? (
+                  <p className='text-muted-foreground text-[11px]'>
+                    {t(
+                      'Candidates come from enabled models; MCP serves image and video only'
+                    )}
+                  </p>
+                ) : null}
+
                 <div className='grid gap-3 sm:grid-cols-3'>
                   <div className='space-y-1.5'>
                     <Label className='text-xs'>{t('Model ID')}</Label>
-                    <Input
-                      className='font-mono'
-                      value={draft.model_id}
-                      readOnly={!isNew}
-                      onChange={(e) => setField('model_id', e.target.value)}
-                    />
+                    {isNew ? (
+                      <ComboboxInput
+                        id='mcp-model-id'
+                        options={candidateOptions}
+                        value={draft.model_id}
+                        onValueChange={(v) => {
+                          const hint = suggestions[v]
+                          // 有建议就一次带出三个字段；没有建议时只改模型 ID，
+                          // 保留管理员已经选好的 kind —— 那是他手动判断的结果。
+                          if (hint?.kind && hint.protocol) {
+                            setFields({
+                              model_id: v,
+                              kind: hint.kind,
+                              protocol: hint.protocol,
+                            })
+                            return
+                          }
+                          setField('model_id', v)
+                        }}
+                        allowCustomValue
+                        placeholder={t(
+                          'Pick an enabled model, or type a custom ID'
+                        )}
+                        emptyText={
+                          candidates.isError
+                            ? t('Candidate list unavailable — type an ID manually')
+                            : t('No enabled model found — type an ID manually')
+                        }
+                        className='font-mono'
+                        aria-label={t('Model ID')}
+                      />
+                    ) : (
+                      <Input className='font-mono' value={draft.model_id} readOnly />
+                    )}
+                    {isNew && suggestions[draft.model_id]?.reason ? (
+                      <p className='text-muted-foreground text-[11px]'>
+                        {suggestions[draft.model_id].reason}
+                      </p>
+                    ) : null}
                   </div>
                   <div className='space-y-1.5'>
                     <Label className='text-xs'>{t('Output kind')}</Label>
@@ -398,15 +555,16 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
                       value={draft.kind}
                       onValueChange={(v) => {
                         const kind = (v ?? 'image') as McpKind
-                        setField('kind', kind)
                         // 换产物类型就换协议：视频只认 openai_video，
                         // 留一个对不上的协议只会在调用时失败。
-                        setField(
-                          'protocol',
-                          (kind === 'video'
+                        // 两个字段必须一次改 —— 连续 setField 会互相覆盖，
+                        // 结果是 kind=image 配 openai_video 这种错配。
+                        setFields({
+                          kind,
+                          protocol: (kind === 'video'
                             ? 'openai_video'
-                            : 'openai_image') as McpProtocol
-                        )
+                            : 'openai_image') as McpProtocol,
+                        })
                       }}
                     >
                       <SelectTrigger>

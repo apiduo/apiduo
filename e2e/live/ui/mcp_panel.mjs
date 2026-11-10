@@ -491,6 +491,70 @@ try {
     await sleep(500);
   }
 
+  // ── 15. 候选模型：新建表单接上 /api/mcp/candidates ──────────────────
+  // 重新整页导航，丢掉上一段留下的未保存草稿（路由守卫只拦 SPA 内跳转）。
+  await view.goto(BASE + '/system-settings/site/mcp', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await view.waitForSelector('button', { timeout: 30000 });
+  await sleep(1200);
+
+  const candidatesRequested = await view.evaluate(() =>
+    performance.getEntriesByType('resource')
+      .some((e) => e.name.includes('/api/mcp/candidates')));
+  check('原生分区请求了候选模型接口', candidatesRequested, String(candidatesRequested));
+
+  await view.evaluate(() => {
+    const b = [...document.querySelectorAll('button')]
+      .find((x) => (x.innerText || '').trim() === '新建模型');
+    if (b) b.click();
+  });
+  await sleep(500);
+  const comboShape = await view.evaluate(() => {
+    const el = document.querySelector('#mcp-model-id');
+    return el
+      ? { role: el.getAttribute('role'), readOnly: el.readOnly,
+          placeholder: el.getAttribute('placeholder') }
+      : null;
+  });
+  check('新建表单用可手输的候选下拉',
+    comboShape?.role === 'combobox' && comboShape?.readOnly === false,
+    JSON.stringify(comboShape));
+
+  await view.focus('#mcp-model-id');
+  await sleep(500);
+  const optionTexts = await view.$$eval('[role=option]', (els) =>
+    els.map((e) => (e.innerText || '').trim()));
+  check('下拉里真的列出候选模型', optionTexts.length > 0,
+    optionTexts.slice(0, 4).join(' | '));
+
+  let pickedId = '';
+  if (optionTexts.length > 0) {
+    pickedId = await view.evaluate(() => {
+      const opt = document.querySelector('[role=option]');
+      const label = opt?.querySelector('span.truncate');
+      const id = label ? (label.textContent || '').trim() : '';
+      opt?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      return id;
+    });
+    await sleep(400);
+  }
+  const comboValue = await view.$eval('#mcp-model-id', (el) => el.value).catch(() => '');
+  check('点候选项能填入模型 ID',
+    pickedId !== '' && comboValue === pickedId, comboValue + ' vs ' + pickedId);
+
+  // 手动输入一个不在候选里的 ID：allowCustomValue 应当实时接住。
+  await view.evaluate(() => {
+    const b = [...document.querySelectorAll('button')]
+      .find((x) => (x.innerText || '').trim() === '新建模型');
+    if (b) b.click();
+  });
+  await sleep(400);
+  await view.click('#mcp-model-id');
+  await view.type('#mcp-model-id', 'mcp-e2e-custom-id', { delay: 12 });
+  await view.keyboard.press('Enter');
+  await sleep(400);
+  const customValue = await view.$eval('#mcp-model-id', (el) => el.value).catch(() => '');
+  check('也能手输不在候选里的 ID', customValue === 'mcp-e2e-custom-id', customValue);
+
   check('运行期间没有预期外的 JS 异常', jsErrors.length === 0,
     jsErrors.slice(0, 3).join(' | '));
 } catch (err) {

@@ -19,6 +19,26 @@ For commercial licensing, please contact support@quantumnous.com
 
 export type McpKind = 'image' | 'video' | 'search'
 export type McpProtocol = 'openai_image' | 'openai_video'
+
+/**
+ * 服务端（mcp/suggest.go）对候选模型的协议建议。
+ *
+ * confidence 决定前端怎么用：
+ *   high / medium → 选中时自动带出 kind + protocol
+ *   low           → 同样带出，但标签加问号，提示需要人工确认
+ *   none          → kind/protocol 为空，绝不自动填，交给管理员选
+ *
+ * conflict 表示名称与其它判据（渠道类型、模型端点）矛盾。此时 kind 仍按
+ * 模型名给出 —— 名称是唯一直接描述模型的信号，渠道只描述「能承载什么」 ——
+ * 但标签必须加问号，不能当成干净结论。
+ */
+export type ProtocolHint = {
+  kind?: McpKind
+  protocol?: McpProtocol
+  confidence: 'high' | 'medium' | 'low' | 'none'
+  conflict?: boolean
+  reason: string
+}
 export type RuleScope = 'global' | 'model'
 
 export type ModelProfile = {

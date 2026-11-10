@@ -212,6 +212,22 @@ def main():
     cand_items = cand.get("items") or []
     check("candidates 不包含已声明的模型", MODEL not in cand_items, str(cand_items[:8]))
 
+    # 候选要带协议建议，且建议必须与候选一一对应（suggestions 的键 == items）。
+    # 不能拿 MODEL 来断言：它在前面的用例里已经声明，按定义不在候选里。
+    #
+    # 关键的不变量是「没有依据时不能给结论」：声明会直接改变 /mcp 的本地拦截，
+    # 猜错等于让模型以一个不该有的形状对外服务。所以 confidence=none 的条目
+    # 必须留空 kind，由管理员手动选。
+    hints = cand.get("suggestions") or {}
+    check("每条候选都带协议建议", set(hints) == set(cand_items),
+          f"建议 {list(hints)[:5]} / 候选 {cand_items[:5]}")
+    bad = [m for m, h in hints.items()
+           if h.get("confidence") not in ("high", "medium", "low", "none")]
+    check("置信度取值合法", not bad, str(bad[:5]))
+    guessed = [m for m, h in hints.items()
+               if h.get("confidence") == "none" and h.get("kind")]
+    check("无依据时不填 kind", not guessed, str(guessed[:5]))
+
     # ── 6. error-rules ──────────────────────────────────────────
     rules = body(api(at, "GET", "/api/mcp/error-rules")).get("data") or {}
     items = rules.get("items") or []

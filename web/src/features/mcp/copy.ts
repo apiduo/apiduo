@@ -122,6 +122,22 @@ const FALLBACK: Record<string, string> = {
     '按参数声明枚举或范围；表单与 JSON 写的是同一份内容。',
   'No declarations yet — click New model to start':
     '还没有能力声明，点右上角「新建模型」开始',
+  'No declarations yet — {{count}} enabled models are available to declare':
+    '还没有能力声明。站点有 {{count}} 个启用模型可声明',
+  'Enabled models you can declare': '可声明的启用模型',
+  '{{count}} more to declare': '另有 {{count}} 个可声明',
+  'Pick an enabled model, or type a custom ID': '从启用模型里选，或手输模型 ID',
+  'Candidates come from enabled models; MCP serves image and video only':
+    '候选来自站点启用模型；MCP 目前只服务图片/视频生成',
+  'Likely image': '可能是图片模型',
+  'Likely video': '可能是视频模型',
+  'Type not detected · confirm before declaring': '未识别类型，声明前请确认',
+  'Short image': '图片?',
+  'Short video': '视频?',
+  'Short unknown': '未识别?',
+  'No enabled model found — type an ID manually': '没有匹配的启用模型，可手输模型 ID',
+  'Candidate list unavailable — type an ID manually':
+    '候选列表暂时不可用，可手输模型 ID',
 
   '{{count}} models': '{{count}} 个模型',
   '{{count}} samples': '{{count}} 次样本',

@@ -310,12 +310,23 @@ func logDBKind() string {
 	return "sql"
 }
 
-// apiCandidates 列出「上游有、但还没声明」的模型，用于新建时的选择器。
+// apiCandidates 列出「上游有、但还没声明」的模型，并为每个模型给出协议建议。
 //
 // 数据来自 model 包现有的模型查询，不额外调上游接口 —— 那要多一次往返，
 // 而且拿不到用户分组视角下的真实可用集合。
+//
+// 判据带两类本地佐证：渠道类型的端点映射（同一模型可能挂在多个渠道上，
+// 合并后再判）与模型端点（模型元数据、自定义渠道路由里声明过的
+// /v1/images/generations 之类）。
+// 端点缓存由定价刷新维护，这里先确保它至少算过一次：否则新实例上刚打开设置页时
+// 端点证据恒为空，那条兜底判据就等于不存在。
 func apiCandidates(c *gin.Context) {
-	names := model.GetEnabledModels()
+	model.GetPricing()
+	abilities, err := model.GetAllEnableAbilityWithChannels()
+	if err != nil {
+		apiWriteErr(c, "读取可用模型", err)
+		return
+	}
 	declared, err := ListProfiles()
 	if err != nil {
 		apiWriteErr(c, "读取能力声明", err)
@@ -325,13 +336,33 @@ func apiCandidates(c *gin.Context) {
 	for _, p := range declared {
 		known[p.ModelId] = true
 	}
-	out := make([]string, 0, len(names))
-	for _, n := range names {
-		if !known[n] {
-			out = append(out, n)
+
+	channelTypes := make(map[string][]int, len(abilities))
+	order := make([]string, 0, len(abilities))
+	for _, a := range abilities {
+		if a.Model == "" || known[a.Model] {
+			continue
 		}
+		if _, seen := channelTypes[a.Model]; !seen {
+			order = append(order, a.Model)
+		}
+		channelTypes[a.Model] = append(channelTypes[a.Model], a.ChannelType)
 	}
-	common.ApiSuccess(c, gin.H{"items": out})
+
+	items := make([]string, 0, len(order))
+	hints := make(map[string]ProtocolHint, len(order))
+	for _, modelID := range order {
+		items = append(items, modelID)
+		hints[modelID] = SuggestProtocol(
+			modelID,
+			channelTypes[modelID],
+			model.GetModelSupportEndpointTypes(modelID),
+		)
+	}
+
+	// items 仍然是字符串数组：旧版前端只读这一项，suggestions 是增量字段，
+	// 于是后端先发版时旧页面照样能用，不会因为多了个字段白屏。
+	common.ApiSuccess(c, gin.H{"items": items, "suggestions": hints})
 }
 
 func parseID(c *gin.Context) (int64, bool) {

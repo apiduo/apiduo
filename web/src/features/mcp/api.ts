@@ -25,6 +25,7 @@ import type {
   ModelProfile,
   Observations,
   Overview,
+  ProtocolHint,
 } from './types'
 
 type Envelope<T> = { success: boolean; message?: string; data: T }
@@ -47,6 +48,13 @@ export const mcpApi = {
 
   profiles: () =>
     unwrap<{ items: ModelProfile[]; total: number }>(api.get('/api/mcp/profiles')),
+
+  // 「站点已启用、但还没声明」的模型 ID。只读、零出站，来自本地 abilities 表。
+  // suggestions 是模型 ID → 协议建议；旧版后端没有这个字段，按空对象降级。
+  candidates: () =>
+    unwrap<{ items: string[]; suggestions?: Record<string, ProtocolHint> }>(
+      api.get('/api/mcp/candidates')
+    ),
 
   create: (body: Record<string, unknown>) =>
     unwrap<ModelProfile>(api.post('/api/mcp/profiles', body)),
@@ -85,6 +93,7 @@ export const mcpKeys = {
   all: ['mcp'] as const,
   overview: () => ['mcp', 'overview'] as const,
   profiles: () => ['mcp', 'profiles'] as const,
+  candidates: () => ['mcp', 'candidates'] as const,
   rules: (modelId?: string) => ['mcp', 'rules', modelId ?? 'global'] as const,
   observations: (id: number) => ['mcp', 'observations', id] as const,
   audit: (id: number) => ['mcp', 'audit', id] as const,
