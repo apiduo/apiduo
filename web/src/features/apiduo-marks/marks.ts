@@ -4,6 +4,7 @@ import {
   Database,
   LayoutTemplate,
   PanelsTopLeft,
+  Plug,
   Sparkles,
 } from 'lucide-react'
 
@@ -106,6 +107,7 @@ const APIDUO_SETTINGS_SECTIONS: ReadonlySet<string> = new Set([
   'appearance',
   'login-theme',
   'observability',
+  'mcp',
 ])
 
 /**
@@ -124,6 +126,7 @@ const APIDUO_SETTINGS_SECTION_ICONS: Record<string, LucideIcon> = {
   appearance: Sparkles,
   'login-theme': LayoutTemplate,
   observability: Activity,
+  mcp: Plug,
 }
 
 export function apiduoSettingsSectionIcon(

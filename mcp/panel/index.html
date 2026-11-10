@@ -11,18 +11,42 @@
     --line:rgba(0,0,0,.09);--line-2:rgba(0,0,0,.18);
     --warn:#a55a22;--danger:#a83226;--ok:#35713f;--radius:10px;
   }
+  /* 深色有两处来源：系统偏好，以及宿主页面显式指定。
+     嵌入到设置页时应用主题可能与操作系统不一致，iframe 里读不到宿主的 html.dark，
+     所以宿主用 data-theme 传进来。:not([data-theme="light"]) 让显式的浅色压过系统偏好。 */
   @media (prefers-color-scheme:dark){
-    :root{--bg:#131312;--surface:#1b1b1a;--surface-2:#232322;--surface-3:#2c2c2a;
+    :root:not([data-theme="light"]){--bg:#131312;--surface:#1b1b1a;--surface-2:#232322;--surface-3:#2c2c2a;
       --text:#efeeea;--text-2:#a2a19c;--text-3:#73726e;
       --line:rgba(255,255,255,.10);--line-2:rgba(255,255,255,.22);
       --warn:#dda06c;--danger:#e88a80;--ok:#8cc49b;}
   }
+  :root[data-theme="dark"]{--bg:#131312;--surface:#1b1b1a;--surface-2:#232322;--surface-3:#2c2c2a;
+    --text:#efeeea;--text-2:#a2a19c;--text-3:#73726e;
+    --line:rgba(255,255,255,.10);--line-2:rgba(255,255,255,.22);
+    --warn:#dda06c;--danger:#e88a80;--ok:#8cc49b;}
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{background:var(--bg);color:var(--text);overflow-x:hidden;
     font:13px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;
     -webkit-font-smoothing:antialiased;padding:24px 28px 56px}
   .wrap{max-width:1180px;margin:0 auto}
+  /* 嵌入模式（?embed=1）：整页由宿主的设置页承载，标题行重复一遍没有意义，
+     页边距与最大宽度也要放开，否则 iframe 里会出现双重留白。
+     画布由自己上色而不是设成透明 —— 即使 html 与 body 都写 transparent，
+     浏览器仍按默认底色绘制 iframe 画布，深色下卡片下方就是一整片白。 */
+  html.embed,body.embed{height:100%;background:var(--bg)}
+  html.embed{color-scheme:light dark}
+  :root[data-theme="light"]{color-scheme:light}
+  :root[data-theme="dark"]{color-scheme:dark}
+  body.embed{padding:0}
+  body.embed .wrap{max-width:none;height:100%;min-height:0;padding:12px 0 24px}
+  body.embed .title-row{display:none}
+  body.embed .foot{display:none}
+  /* 标签栏与卡片各自留出内边距：body 的外边距归零后，卡片会直接贴住宿主容器的边框。 */
+  body.embed header{padding:0 16px}
+  body.embed nav{padding:0 16px;margin-bottom:14px}
+  body.embed .panel{padding:0 16px}
+  body.embed .err{margin:0 16px 10px}
   header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
   h1{font-size:17px;font-weight:500;margin:0 0 3px;letter-spacing:-.01em}
   /* apiduo 新增功能的界面标识：与 web/src/styles/apiduo-marks.css 同构，
@@ -198,6 +222,45 @@ let current = null;      // 当前选中的 profile
 let profiles = [];
 let dirty = false;
 let authToken = '';      // apiduo 的 access token（JWT）
+
+// 嵌入到设置页时（?embed=1）由宿主用 postMessage 递 token 与主题进来。
+// 宿主（React）已经持有 access token，这里就不必再调 /api/user/auth/refresh ——
+// 那个接口与登录共用 CriticalRateLimit（30 次 / 1800s），
+// 每打开一次设置页烧掉一格额度是不可接受的。
+const PANEL_QUERY = new URLSearchParams(location.search);
+const EMBED = PANEL_QUERY.get('embed') === '1';
+const QUERY_THEME = PANEL_QUERY.get('theme');
+if(QUERY_THEME === 'dark' || QUERY_THEME === 'light'){
+  document.documentElement.dataset.theme = QUERY_THEME;
+}
+if(EMBED){
+  document.documentElement.classList.add('embed');
+  document.body.classList.add('embed');
+}
+
+let hostTokenResolve = null;
+window.addEventListener('message', e => {
+  if(e.origin !== location.origin) return;
+  const d = e.data;
+  if(!d) return;
+  if(d.type === 'apiduo:mcp-theme' && (d.theme === 'dark' || d.theme === 'light')){
+    document.documentElement.dataset.theme = d.theme;
+  }
+  if(d.type === 'apiduo:mcp-token' && typeof d.token === 'string' && hostTokenResolve){
+    hostTokenResolve(d.token);
+  }
+});
+// 等宿主递 token；超时就退回自己换（独立打开本页时走这条路）。
+function hostToken(timeoutMs){
+  if(window.parent === window) return Promise.resolve('');
+  return new Promise(resolve => {
+    hostTokenResolve = resolve;
+    setTimeout(() => {
+      if(hostTokenResolve === resolve) hostTokenResolve = null;
+      resolve('');
+    }, timeoutMs);
+  });
+}
 
 function showErr(msg){
   const el = $('err');
@@ -655,6 +718,16 @@ window.addEventListener('beforeunload', e=>{
 });
 
 (async function boot(){
+  if(EMBED){
+    const host = await hostToken(1500);
+    if(host){
+      authToken = host;
+      loadOverview();
+      loadProfiles();
+      loadRules('');
+      return;
+    }
+  }
   const ok = await bootstrapAuth();
   if(!ok){
     $('summary').textContent = '未登录';

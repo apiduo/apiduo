@@ -30,6 +30,9 @@ import { LoginThemeSection } from '@/features/apiduo-login/login-theme-section'
 // APIDUO:observability:BEGIN
 import { ObservabilitySection } from './observability-section'
 // APIDUO:observability:END
+// APIDUO:mcp-panel:BEGIN
+import { McpSection } from '@/features/mcp/mcp-section'
+// APIDUO:mcp-panel:END
 import {
   parseHeaderNavModules,
   parseSidebarModulesAdmin,
@@ -143,6 +146,13 @@ const SITE_SECTIONS = [
     build: () => <ObservabilitySection />,
   },
   // APIDUO:observability:END
+  // APIDUO:mcp-panel:BEGIN
+  {
+    id: 'mcp',
+    titleKey: 'MCP',
+    build: () => <McpSection />,
+  },
+  // APIDUO:mcp-panel:END
 ] as const
 
 export type SiteSectionId = (typeof SITE_SECTIONS)[number]['id']

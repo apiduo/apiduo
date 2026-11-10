@@ -375,6 +375,35 @@ try {
   await anon.screenshot({ path: `${ART}/mcp-panel-anon.png`, fullPage: true });
   await incognito.close();
 
+  // ── 13. 设置页里的入口（设置 → 扩展 → MCP）────────────────────
+  // 面板单独打开时靠 refresh 换令牌，而 refresh 与登录共用 CriticalRateLimit；
+  // 嵌进设置页后改为宿主 postMessage 递 token。这条链路只能在真浏览器里验：
+  // 少了它，面板会静默退回「每次打开烧一格额度」，或者干脆显示未登录。
+  await view.goto(BASE + '/system-settings/site/mcp', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await view.waitForSelector('iframe', { timeout: 30000 });
+  const siteLinks = await view.$$eval('a', (as) =>
+    as.map((a) => a.getAttribute('href') || '').filter((h) => h.includes('/system-settings/site/')));
+  check('侧边栏出现 MCP 入口', siteLinks.includes('/system-settings/site/mcp'), siteLinks.join(','));
+  const embedSrc = await view.$eval('iframe', (el) => el.getAttribute('src') || '');
+  check('嵌入地址带 embed=1 与主题',
+    /embed=1/.test(embedSrc) && /theme=(light|dark)/.test(embedSrc), embedSrc);
+
+  const embedFrame = view.frames().find((f) => f.url().includes('/mcp/admin'));
+  let embedSummary = '';
+  let titleRowHidden = null;
+  if (embedFrame) {
+    await embedFrame.waitForFunction(() => {
+      const el = document.getElementById('summary');
+      return el && el.textContent && el.textContent !== '加载中…';
+    }, { timeout: 30000 }).catch(() => {});
+    embedSummary = await embedFrame.$eval('#summary', (el) => el.textContent.trim()).catch(() => '');
+    titleRowHidden = await embedFrame.$eval('.title-row', (el) =>
+      getComputedStyle(el).display === 'none').catch(() => null);
+  }
+  check('嵌入面板用的是宿主令牌（不是「未登录」）',
+    embedSummary.includes('个模型') && !embedSummary.includes('未登录'), embedSummary.slice(0, 60));
+  check('嵌入模式隐藏面板自己的标题行', titleRowHidden === true, String(titleRowHidden));
+
   check('运行期间没有 JS 异常', jsErrors.length === 0, jsErrors.slice(0, 3).join(' | '));
 } catch (err) {
   check('脚本执行完成', false, String(err).slice(0, 300));
