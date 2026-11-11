@@ -135,6 +135,10 @@ export function ResultCard({ run, onReuse, onRetry, meta }: ResultCardProps) {
   return (
     <div
       className='apg-round'
+      /* One picture: the meta row and the tool shelf share its width, so the
+         block reads as one object. A two-up grid keeps the full column, because
+         there the picture and the caption are already the same width. */
+      data-solo={run.items.length === 1}
       style={cssVars({
         '--arn': ar,
         '--glow': glowOf(run),

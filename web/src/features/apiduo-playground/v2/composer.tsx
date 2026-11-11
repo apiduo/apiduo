@@ -20,7 +20,8 @@ import {
   ArrowUpIcon,
   CheckIcon,
   ChevronDownIcon,
-  CpuIcon,
+  ImageIcon,
+  Trash2Icon,
 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -35,6 +36,7 @@ import {
   sizeFor,
 } from './capabilities'
 import { FluidPopover } from './popover'
+import { ProviderMark } from './provider-mark'
 
 interface ComposerProps {
   models: ModelOption[]
@@ -52,8 +54,13 @@ interface ComposerProps {
   onSubmit: () => void
   /** Formatted per-image price, already group- and discount-adjusted. */
   priceLabel: string | null
-  totalLabel: string | null
   placeholder: string
+  /** Generations in flight and the ceiling for this mode. */
+  running: number
+  cap: number
+  /** Clear only makes sense once something has been generated. */
+  hasResults: boolean
+  onClear: () => void
 }
 
 function Tile({
@@ -121,8 +128,11 @@ export function Composer({
   busy,
   onSubmit,
   priceLabel,
-  totalLabel,
   placeholder,
+  running,
+  cap,
+  hasResults,
+  onClear,
 }: ComposerProps) {
   const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -187,7 +197,11 @@ export function Composer({
             onClick={(event) => openAt('model', event.currentTarget)}
             type='button'
           >
-            <CpuIcon />
+            <ProviderMark
+              fallback={<ImageIcon />}
+              model={model}
+              size={13}
+            />
             <span className='mono'>{currentModel?.label ?? model}</span>
             <ChevronDownIcon className='chev' />
           </button>
@@ -218,33 +232,61 @@ export function Composer({
             </button>
           ) : null}
 
-          <button
-            aria-haspopup='dialog'
-            aria-label={t('How many')}
-            className='apg-chip'
-            onClick={(event) => openAt('count', event.currentTarget)}
-            type='button'
-          >
-            <span className='mono'>×{count}</span>
-            <ChevronDownIcon className='chev' />
-          </button>
-
           {/* Price and the primary action travel together: once the chips wrap
               on a narrow screen they stay right-aligned as one block instead
               of stranding the amount at the far left under the avatar. */}
           <div className='apg-bar-end'>
+            {/* "how many" is a multiplier on "how much", so it belongs on the
+                receipt side of the row — and it keeps the price from being the
+                only thing pushed onto a second line on a narrow screen. */}
+            <button
+              aria-haspopup='dialog'
+              aria-label={t('How many')}
+              className='apg-chip'
+              onClick={(event) => openAt('count', event.currentTarget)}
+              type='button'
+            >
+              <span className='mono'>×{count}</span>
+              <ChevronDownIcon className='chev' />
+            </button>
+
             {priceLabel ? (
+              /* Unit price, always. Quoting the total with a "/image" suffix
+                 prints a number that is neither the price of one nor of the
+                 batch; the count chip sits next to it, so the multiplication
+                 is on screen. */
               <span className='apg-price'>
+                <span aria-hidden='true'>≈</span>
                 <b>{priceLabel}</b>
-                <span>{' '}{t('per image')}</span>
-                {totalLabel ? (
-                  <>
-                    <span aria-hidden='true'>·</span>
-                    <b>{totalLabel}</b>
-                  </>
-                ) : null}
+                <span>/{t('per image')}</span>
               </span>
             ) : null}
+
+            <button
+              aria-label={t('Clear results')}
+              className='apg-clear'
+              disabled={!hasResults}
+              onClick={onClear}
+              title={t('Clear results')}
+              type='button'
+            >
+              <Trash2Icon />
+            </button>
+
+            <span
+              className='apg-conc'
+              data-live={running > 0}
+              role='status'
+              title={t('{{running}} running · this mode allows {{cap}} at once', {
+                running,
+                cap,
+              })}
+            >
+              <i aria-hidden='true' />
+              <b>
+                {running}/{cap}
+              </b>
+            </span>
 
             <button
               className='apg-send'
@@ -260,9 +302,12 @@ export function Composer({
       </div>
 
       <p className='apg-hint'>
-        {size
-          ? t('Sends {{size}} · parameters apply to this request only', { size })
-          : t('Parameters apply to this request only')}
+        {size ? `${t('Sends {{size}}', { size })} · ` : ''}
+        {t('Parameters apply to this request only')}
+        {' · ⏎ '}
+        {t('Generate')}
+        {' · ⇧⏎ '}
+        {t('Line break')}
       </p>
 
       <FluidPopover

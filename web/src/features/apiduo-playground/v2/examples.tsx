@@ -16,9 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ShuffleIcon } from 'lucide-react'
+import { RotateCwIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import { cssVars } from './css-vars'
+import { ProviderMark } from './provider-mark'
 
 /**
  * The empty stage is a shelf of prompts, not a blank box with a placeholder.
@@ -34,40 +37,114 @@ import { useTranslation } from 'react-i18next'
 
 interface Example {
   id: string
+  /** Preferred label; falls back to the model actually selected. */
   model: string
   ratio: string
   title: string
+  /** What the card says in the shelf. */
+  desc: string
+  /** What goes on the wire. Never translated — the upstream reads English. */
   prompt: string
   art: 0 | 1 | 2
 }
 
 const EXAMPLES: Example[] = [
+  // Nine cards, three pages. 「换一批」 only earns its place if the deck is
+  // deeper than one turn of the page — with three cards it would just reorder
+  // the same three pictures.
+  //
+  // `art` is the family that fits the subject (0 iso, 1 line/map, 2 orb), laid
+  // out so every page carries one of each: the row has to look like a shelf,
+  // not like one picture repeated three times.
   {
     id: 'server-room',
-    model: 'flux-3-lage',
+    model: 'flux-3-image',
     ratio: '16:9',
     title: 'Isometric server room',
+    desc: 'An isometric server room at night, teal and amber light, data trails in the haze',
     prompt:
       'An isometric server room at night, teal and amber lighting, cables floating as light trails, clean vector look, deep shadows',
     art: 0,
   },
   {
     id: 'coastal-map',
-    model: 'gpt-image-1',
-    ratio: '3:2',
+    model: 'doubao-seedream-5-0-flash-260915',
+    ratio: '9:16',
     title: 'Hand-drawn coastal map',
+    desc: 'A coastal town drawn by hand on aged paper, pencil outlines and contour lines',
     prompt:
       'A hand-drawn map of a small coastal town, ink on aged paper, route line with a few marked stops, pencil contour lines, no labels',
     art: 1,
   },
   {
     id: 'glass-teapot',
-    model: 'sdream-3.0',
+    model: 'doubao-seedream-5-0-flash-260915',
     ratio: '1:1',
-    title: 'Glass teapot, morning light',
+    title: 'Glass teapot in morning light',
+    desc: 'A glass teapot at dawn, caustics on the table, pale grey wall behind',
     prompt:
       'A glass teapot on a windowsill in morning light, soft shadows, dust in the air, muted cream background, product photography',
     art: 2,
+  },
+  {
+    id: 'portrait-rim',
+    model: 'doubao-seedream-5-0-flash-260915',
+    ratio: '4:5',
+    title: 'Portrait with rim light',
+    desc: 'Side-backlit portrait, rim light picking out the hair, pale grey backdrop',
+    prompt:
+      'A side-backlit portrait, soft rim light along the hair, pale grey backdrop, real skin texture, 85mm look',
+    art: 2,
+  },
+  {
+    id: 'exploded-view',
+    model: 'flux-3-image',
+    ratio: '1:1',
+    title: 'Exploded product view',
+    desc: 'A floating exploded view with numbered leader lines, dark ground',
+    prompt:
+      'A floating exploded-view product diagram, numbered leader lines pointing at each part, dark background, technical drawing feel',
+    art: 0,
+  },
+  {
+    id: 'route-map',
+    model: 'flux-3-image',
+    ratio: '21:9',
+    title: 'Vintage route map',
+    desc: 'A vintage route map on aged paper, red arcs over a lat/long grid',
+    prompt:
+      'A vintage airline route map, latitude and longitude grid with red arcs, aged paper, worn corners',
+    art: 1,
+  },
+  {
+    id: 'contour-terrain',
+    model: 'doubao-seedream-5-0-flash-260915',
+    ratio: '16:9',
+    title: 'Contour terrain',
+    desc: 'Warm layered contour terrain, fine annotation lines and ridge shadows',
+    prompt:
+      'A contour-line terrain render, warm layered palette, fine annotation lines and ridge shadows',
+    art: 1,
+  },
+  {
+    id: 'glass-sphere',
+    model: 'flux-3-image',
+    ratio: '1:1',
+    title: 'Glass sphere',
+    desc: 'A translucent sphere, light through the rim, dark grey ground',
+    prompt:
+      'A translucent glass sphere, soft light passing through the rim, dark grey background, faint scratches',
+    art: 2,
+  },
+  {
+    id: 'small-gallery',
+    model: 'flux-3-image',
+    ratio: '3:4',
+    title: 'Small gallery',
+    desc: 'An isometric gallery, white walls, afternoon slant light',
+    prompt:
+      'An isometric view of a small gallery, white walls and a skylight, reflective floor, afternoon slant light',
+    art: 0,
   },
 ]
 
@@ -202,56 +279,89 @@ function ArtOrb() {
 const ART = [ArtIso, ArtMap, ArtOrb]
 
 interface ExamplesProps {
-  onPick: (prompt: string) => void
+  /** A card is a claim about one model and one shape, so it hands over both. */
+  onPick: (pick: { prompt: string; ratio: string; model: string }) => void
+  /** Models the account can actually call, so a card never names a ghost. */
+  available: string[]
+  /** Fallback label when a card's preferred model is not available here. */
+  model: string
 }
 
-export function ExamplesShelf({ onPick }: ExamplesProps) {
-  const { t } = useTranslation()
-  const [offset, setOffset] = useState(0)
+const PER_PAGE = 3
 
-  const visible = [0, 1, 2].map((i) => EXAMPLES[(i + offset) % EXAMPLES.length])
+export function ExamplesShelf({ onPick, available, model }: ExamplesProps) {
+  const { t } = useTranslation()
+  const [page, setPage] = useState(0)
+  /** Remount key for the arrow: a second turn has to restart the spin. */
+  const [turns, setTurns] = useState(0)
+
+  const pages = Math.ceil(EXAMPLES.length / PER_PAGE)
+  const visible = EXAMPLES.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE)
+
+  const badgeFor = (example: Example) =>
+    available.includes(example.model) ? example.model : model
 
   return (
     <section className='apg-suggest'>
       <div className='apg-suggest-head'>
-        <div>
-          <div className='apg-suggest-title'>{t('Start from an idea')}</div>
-          <div className='apg-suggest-sub'>
-            {t('A finished prompt, so you can see the shape of one')}
-          </div>
-        </div>
-        <button
-          className='apg-shuffle'
-          onClick={() => setOffset((value) => (value + 3) % EXAMPLES.length || 1)}
-          type='button'
-        >
-          <ShuffleIcon className='size-3' />
-          {t('Shuffle')}
-        </button>
+        <div className='apg-suggest-title'>{t('Start from an idea')}</div>
+        {pages > 1 ? (
+          <button
+            className='apg-shuffle'
+            onClick={() => {
+              setPage((value) => (value + 1) % pages)
+              setTurns((value) => value + 1)
+            }}
+            type='button'
+          >
+            <RotateCwIcon
+              data-turn={turns > 0 ? 'true' : undefined}
+              key={turns}
+            />
+            {t('Shuffle')}
+          </button>
+        ) : null}
+      </div>
+      <div className='apg-suggest-sub'>
+        {t('One picture from the latest model · open it and make it yours')}
       </div>
 
       <div className='apg-ex-row'>
         {visible.map((example, index) => {
           const Art = ART[example.art]
+          const badge = badgeFor(example)
           return (
             <button
               className='apg-ex'
               key={example.id}
-              onClick={() => onPick(example.prompt)}
-              style={{ animationDelay: `${index * 60}ms` }}
+              onClick={() =>
+                onPick({
+                  prompt: example.prompt,
+                  ratio: example.ratio,
+                  model: badge,
+                })
+              }
+              style={cssVars({ '--i': index })}
               type='button'
             >
+              {/* The badge rides the picture instead of taking a line of its
+                  own: a grey caption row spends a whole line saying what a
+                  corner badge says in place. */}
               <span className='apg-ex-thumb'>
                 <Art />
-              </span>
-              <span className='apg-ex-copy'>
-                <span className='apg-ex-meta'>
-                  <span className='apg-ex-model'>{example.model}</span>
-                  <span className='apg-ex-ratio'>{example.ratio}</span>
+                <span className='apg-ex-model' title={badge}>
+                  <ProviderMark model={badge} />
+                  <span className='apg-ex-model-text'>{badge}</span>
                 </span>
-                <span className='apg-ex-title'>{t(example.title)}</span>
-                <span className='apg-ex-p'>{t(example.prompt)}</span>
+                <span className='apg-ex-ratio'>{example.ratio}</span>
               </span>
+
+              <span className='apg-ex-name-row'>
+                <span className='apg-ex-title'>{t(example.title)}</span>
+                <em className='apg-ex-go'>{t('Try it')}</em>
+              </span>
+
+              <span className='apg-ex-p'>{t(example.desc)}</span>
             </button>
           )
         })}

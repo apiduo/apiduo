@@ -48,6 +48,14 @@ interface ImageStageProps {
 
 const AMBIENT = ['g0', 'g1', 'g2', 'g3'] as const
 
+/* Pictures are cheap to run in parallel and slow to wait for one at a time, so
+   the mode carries three slots. The cap is also printed in the composer
+   (`0/3`), which is the only place the ceiling is ever stated. */
+const IMAGE_CONCURRENCY = 3
+/* Two identical requests a few hundred ms apart are always a double click, not
+   a batch: the batch has a count chip. */
+const DUPLICATE_WINDOW_MS = 800
+
 /**
  * The image page: a shelf when there is nothing yet, a stream once there is,
  * and one composer under both.
@@ -74,28 +82,30 @@ export function ImageStage({
   const [resolution, setResolution] = useState('1024')
   const [count, setCount] = useState(1)
   const [runs, setRuns] = useState<StageRun[]>([])
-  const [busy, setBusy] = useState(false)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  /* A ref, not the rendered count: two clicks land in the same tick, before
+     any state has been committed, and the second one must already see the
+     first as in flight. */
+  const inFlight = useRef(0)
+  const lastSubmit = useRef({ text: '', at: 0 })
+
+  const running = runs.filter((item) => item.status === 'pending').length
+  const saturated = running >= IMAGE_CONCURRENCY
 
   const ambient = ambientOf(runs)
 
   const price = useMemo(() => {
     const info = findModel(ledger.pricing, model)
-    if (!info) return { unit: null as string | null, total: null as string | null }
+    if (!info) return { unit: null as string | null }
     const { effective } = resolveGroupRatio(ledger.pricing, group, model)
     const base = info.quotaType === 1 ? info.modelPrice : info.modelRatio * 2
-    const one = base * effective
     return {
-      unit: formatCurrencyFromUSD(one, { digitsLarge: 4, digitsSmall: 4 }),
-      total:
-        count > 1
-          ? formatCurrencyFromUSD(one * count, {
-              digitsLarge: 4,
-              digitsSmall: 4,
-            })
-          : null,
+      unit: formatCurrencyFromUSD(base * effective, {
+        digitsLarge: 4,
+        digitsSmall: 4,
+      }),
     }
-  }, [count, group, ledger.pricing, model])
+  }, [group, ledger.pricing, model])
 
   const run = useCallback(
     async (input: {
@@ -105,12 +115,12 @@ export function ImageStage({
       count: number
     }) => {
       const trimmed = input.prompt.trim()
-      if (!trimmed || busy) return
+      if (!trimmed || inFlight.current >= IMAGE_CONCURRENCY) return
 
       const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
       const size = sizeFor(input.ratio, input.resolution)
 
-      setBusy(true)
+      inFlight.current += 1
       setRuns((prev) => [
         ...prev,
         {
@@ -176,24 +186,37 @@ export function ImageStage({
         )
         toast.error(message)
       } finally {
-        setBusy(false)
+        inFlight.current -= 1
         // Let the new card mount before measuring: scrolling to the height of a
-        // node that does not exist yet lands short.
+        // node that does not exist yet lands short. Only follow the stream when
+        // the reader is already at the bottom — yanking the viewport while
+        // someone is comparing earlier results is the rudest thing a batch of
+        // three can do.
         requestAnimationFrame(() => {
           const node = stageRef.current
-          if (node) node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+          if (!node) return
+          const atBottom =
+            node.scrollHeight - node.scrollTop - node.clientHeight < 160
+          if (atBottom) {
+            node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+          }
         })
       }
     },
-    [busy, group, ledger, model]
+    [group, ledger, model]
   )
 
   const submit = useCallback(() => {
     const text = prompt.trim()
-    if (!text || busy) return
+    if (!text || inFlight.current >= IMAGE_CONCURRENCY) return
+    const at = Date.now()
+    if (text === lastSubmit.current.text && at - lastSubmit.current.at < DUPLICATE_WINDOW_MS) {
+      return
+    }
+    lastSubmit.current = { text, at }
     setPrompt('')
     void run({ prompt: text, ratio, resolution, count })
-  }, [busy, count, prompt, ratio, resolution, run])
+  }, [count, prompt, ratio, resolution, run])
 
   useEffect(() => {
     // A model swap can retire both the current ratio and the current bucket
@@ -223,7 +246,19 @@ export function ImageStage({
           data-empty={runs.length === 0 ? 'true' : 'false'}
         >
           {runs.length === 0 ? (
-            <ExamplesShelf onPick={setPrompt} />
+            <ExamplesShelf
+              available={models.map((item) => item.value)}
+              model={model}
+              onPick={({ prompt: next, ratio: nextRatio, model: nextModel }) => {
+                // A card is a claim about one model in one shape. Taking the
+                // prompt but leaving the composer on another model would run
+                // exactly the combination the card never showed — and the
+                // badge would name a model that is not about to be called.
+                if (nextModel !== model) onModelChange(nextModel)
+                setPrompt(next)
+                setRatio(nextRatio)
+              }}
+            />
           ) : (
             runs.map((item) => {
               const billing = ledger.billingByKey[item.id]
@@ -266,8 +301,11 @@ export function ImageStage({
       </div>
 
       <Composer
-        busy={busy}
+        busy={saturated}
+        cap={IMAGE_CONCURRENCY}
         count={count}
+        hasResults={runs.length > 0}
+        onClear={() => setRuns([])}
         model={model}
         models={models}
         onCountChange={setCount}
@@ -285,7 +323,7 @@ export function ImageStage({
         prompt={prompt}
         ratio={ratio}
         resolution={resolution}
-        totalLabel={price.total}
+        running={running}
       />
     </div>
   )
