@@ -292,7 +292,7 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 	}
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusPartialContent, http.StatusNotModified, http.StatusRequestedRangeNotSatisfiable:
-		copyTaskMediaResponseHeaders(c.Writer.Header(), resp.Header)
+		copyTaskMediaResponseHeaders(c.Writer.Header(), resp.Header, resp.StatusCode)
 		setTaskMediaResponseSecurityHeaders(c.Writer.Header())
 		c.Status(resp.StatusCode)
 		c.Writer.WriteHeaderNow()
@@ -617,7 +617,7 @@ func isTaskMediaFallbackLoop(rawURL, taskID string) bool {
 	return strings.HasPrefix(path, artifactPrefix) && strings.HasSuffix(path, "/content")
 }
 
-func copyTaskMediaResponseHeaders(destination, source http.Header) {
+func copyTaskMediaResponseHeaders(destination, source http.Header, statusCode int) {
 	for _, name := range []string{
 		"Content-Type",
 		"Content-Length",
@@ -627,6 +627,14 @@ func copyTaskMediaResponseHeaders(destination, source http.Header) {
 		"Last-Modified",
 		"Content-Disposition",
 	} {
+		// 上游回 200 说明它没按 Range 切分（反代链路里很常见）。这时把它的
+		// Accept-Ranges 一起转给浏览器，浏览器就会一直发 Range、拿回整包再中止
+		// （net::ERR_ABORTED），播放器永远停在「正在缓冲」。宁可不说支持分段。
+		if (name == "Accept-Ranges" || name == "Content-Range") &&
+			statusCode != http.StatusPartialContent &&
+			statusCode != http.StatusRequestedRangeNotSatisfiable {
+			continue
+		}
 		for _, value := range source.Values(name) {
 			destination.Add(name, value)
 		}

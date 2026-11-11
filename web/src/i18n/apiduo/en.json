@@ -179,6 +179,9 @@
     "Primary endpoint must be a path starting with /.": "Primary endpoint must be a path starting with /.",
     "Responses keeps its own route. With the image protocol on, chat entries are converted into image tasks, so keep that channel image-only.": "Responses keeps its own route. With the image protocol on, chat entries are converted into image tasks, so keep that channel image-only.",
     "This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.": "This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.",
-    "This path does not end with generations, so image requests will not land where the protocol expects.": "This path does not end with generations, so image requests will not land where the protocol expects."
+    "This path does not end with generations, so image requests will not land where the protocol expects.": "This path does not end with generations, so image requests will not land where the protocol expects.",
+    "Folded by the image protocol": "Folded by the image protocol",
+    "Override ignored": "Override ignored",
+    "The image protocol picks the endpoint itself; this entry does not use its own upstream.": "The image protocol picks the endpoint itself; this entry does not use its own upstream."
   }
 }

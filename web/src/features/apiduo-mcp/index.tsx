@@ -343,20 +343,20 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
               <ChevronDown className='apiduo-mcp-chev size-3.5 shrink-0 text-muted-foreground' />
               {t('Four tools')}
             </summary>
-            <div className='space-y-1 border-t border-border px-3.5 py-3 text-[12.8px] text-muted-foreground'>
-              <p>
+            <div className='divide-y divide-border border-t border-border text-[12.8px] text-muted-foreground'>
+              <p className='px-3.5 py-2'>
                 <code className='rounded bg-muted px-1 py-0.5 font-mono text-[11.5px]'>models.list</code>{' '}
                 {t('— available models and their parameter constraints')}
               </p>
-              <p>
+              <p className='px-3.5 py-2'>
                 <code className='rounded bg-muted px-1 py-0.5 font-mono text-[11.5px]'>image.generate</code>{' '}
                 {t('— generate images with reference images, aspect ratio and resolution')}
               </p>
-              <p>
+              <p className='px-3.5 py-2'>
                 <code className='rounded bg-muted px-1 py-0.5 font-mono text-[11.5px]'>video.generate</code>{' '}
                 {t('— submit a video job and get a task_id immediately')}
               </p>
-              <p>
+              <p className='px-3.5 py-2'>
                 <code className='rounded bg-muted px-1 py-0.5 font-mono text-[11.5px]'>task.get</code>{' '}
                 {t('— poll a job status and its artifact URLs')}
               </p>

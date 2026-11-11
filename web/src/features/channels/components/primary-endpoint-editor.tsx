@@ -192,7 +192,7 @@ export function PrimaryEndpointEditor(props: {
       className='flex flex-col gap-3'
       data-apiduo={apiduoBlockMark('channel:primary-endpoint')}
     >
-      <section className='rounded-lg border'>
+      <section className='overflow-hidden rounded-lg border'>
         <div className='flex items-start justify-between gap-4 px-4 py-3'>
           <div className='space-y-0.5'>
             <p
@@ -237,203 +237,203 @@ export function PrimaryEndpointEditor(props: {
             ) : null}
           </div>
         ) : null}
+
+        {enabled ? (
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger
+              render={
+                <button
+                  type='button'
+                  className='hover:bg-muted/50 focus-visible:ring-ring/50 flex min-h-11 w-full items-center justify-between gap-3 border-t px-4 py-2.5 text-left outline-none focus-visible:ring-3'
+                />
+              }
+            >
+              <span className='inline-flex items-center gap-2'>
+                <ChevronRight
+                  className={cn(
+                    'text-muted-foreground size-4 transition-transform',
+                    advancedOpen && 'rotate-90'
+                  )}
+                  aria-hidden='true'
+                />
+                <span className='text-sm font-medium'>
+                  {t('Protocol details')}
+                </span>
+              </span>
+              <span className='text-muted-foreground text-xs'>
+                {protocolSummary}
+              </span>
+            </CollapsibleTrigger>
+
+            <CollapsibleContent className='border-t'>
+              <div className='space-y-4 p-4'>
+                <div className='flex items-start justify-between gap-3'>
+                  <div className='space-y-0.5'>
+                    <p className='text-sm'>{t('Image protocol')}</p>
+                    <p className='text-muted-foreground text-xs'>
+                      {t(
+                        'Fold image entries into one canonical request before sending.'
+                      )}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={protocolOn}
+                    aria-label={t('Image protocol')}
+                    disabled={!protocolOn && !looksLikeImagePath(declared)}
+                    onCheckedChange={(checked) => {
+                      props.onImageProtocolChange?.(
+                        checked
+                          ? {
+                              enabled: true,
+                              upstream: IMAGE_PROTOCOL_UPSTREAMS[1].value,
+                            }
+                          : null
+                      )
+                    }}
+                  />
+                </div>
+
+                {protocolOn && declared !== '' && !looksLikeImagePath(declared) ? (
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.'
+                    )}
+                  </p>
+                ) : null}
+
+                {protocolOn ? (
+                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                    <div className='space-y-1'>
+                      <p className='text-xs'>{t('Upstream layout')}</p>
+                      <Select
+                        value={upstreamLayout}
+                        onValueChange={(value) => {
+                          if (typeof value === 'string') {
+                            props.onImageProtocolChange?.({
+                              ...props.imageProtocol,
+                              enabled: true,
+                              upstream: value,
+                            })
+                          }
+                        }}
+                      >
+                        <SelectTrigger size='sm'>
+                          <span className='truncate'>
+                            {t(upstreamLayoutLabel)}
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent alignItemWithTrigger={false}>
+                          <SelectGroup>
+                            {IMAGE_PROTOCOL_UPSTREAMS.map((option) => (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {t(option.label)}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <p className='text-muted-foreground text-[11px] leading-relaxed'>
+                        {dualEndpoint
+                          ? t(
+                              'Image-to-image switches to the edit endpoint and is encoded as multipart files.'
+                            )
+                          : t(
+                              'Image-to-image stays on the same endpoint; image references travel in the JSON body and mask is not forwarded.'
+                            )}
+                      </p>
+                    </div>
+
+                    {dualEndpoint ? (
+                      <div className='space-y-1'>
+                        <p className='text-xs'>{t('Edit path override')}</p>
+                        <Input
+                          value={props.imageProtocol?.edit_path || ''}
+                          placeholder={t(
+                            'Derived from the image primary path when empty'
+                          )}
+                          onChange={(event) => {
+                            props.onImageProtocolChange?.({
+                              ...props.imageProtocol,
+                              enabled: true,
+                              edit_path: event.target.value,
+                            })
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        ) : null}
       </section>
 
       {enabled ? (
-        <>
-          <section className='rounded-lg border'>
-            <div className='flex flex-wrap items-center justify-between gap-2 px-4 py-3'>
-              <div className='flex items-center gap-2'>
-                <p className='text-sm font-medium'>{t('Entries')}</p>
-                <Badge variant='outline'>{derivations.length}</Badge>
-              </div>
-              <Combobox
-                options={availablePaths.map((option) => ({
-                  value: option.value,
-                  label: t(option.label),
-                }))}
-                value=''
-                placeholder={t('Add route')}
-                disabled={availablePaths.length === 0}
-                className='h-8 w-full sm:w-[13rem]'
-                onValueChange={(incomingPath) => {
-                  if (typeof incomingPath !== 'string') return
-                  props.onChange(
-                    addDerivation(props.routes, incomingPath, primary)
-                  )
-                }}
-              />
+        <section className='rounded-lg border'>
+          <div className='flex flex-wrap items-center justify-between gap-2 px-4 py-3'>
+            <div className='flex items-center gap-2'>
+              <p className='text-sm font-medium'>{t('Entries')}</p>
+              <Badge variant='outline'>{derivations.length}</Badge>
             </div>
+            <Combobox
+              options={availablePaths.map((option) => ({
+                value: option.value,
+                label: t(option.label),
+              }))}
+              value=''
+              placeholder={t('Add route')}
+              disabled={availablePaths.length === 0}
+              className='h-8 w-full sm:w-[13rem]'
+              onValueChange={(incomingPath) => {
+                if (typeof incomingPath !== 'string') return
+                props.onChange(
+                  addDerivation(props.routes, incomingPath, primary)
+                )
+              }}
+            />
+          </div>
 
-            {derivations.length === 0 ? (
-              <p className='text-muted-foreground border-t px-4 py-3 text-xs'>
-                {t('No derived endpoints yet.')}
-              </p>
-            ) : (
-              <div className='divide-y border-t'>
-                {derivations.map((row) => (
-                  <DerivationRow
-                    key={row.incomingPath}
-                    row={row}
-                    primary={primary}
-                    editing={editingPath === row.incomingPath}
-                    onStartEdit={() => setEditingPath(row.incomingPath)}
-                    onStopEdit={() => setEditingPath(null)}
-                    onPatch={(patch) =>
-                      props.onChange(
-                        patchDerivation(props.routes, row.incomingPath, patch)
-                      )
-                    }
-                    onRemove={() =>
-                      props.onChange(
-                        removeDerivation(props.routes, row.incomingPath)
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            )}
-
-            <p className='text-muted-foreground border-t px-4 py-2 text-[11px] leading-relaxed'>
-              {t(
-                'Responses keeps its own route. With the image protocol on, chat entries are converted into image tasks, so keep that channel image-only.'
-              )}
+          {derivations.length === 0 ? (
+            <p className='text-muted-foreground border-t px-4 py-3 text-xs'>
+              {t('No derived endpoints yet.')}
             </p>
-          </section>
+          ) : (
+            <div className='divide-y border-t'>
+              {derivations.map((row) => (
+                <DerivationRow
+                  key={row.incomingPath}
+                  row={row}
+                  primary={primary}
+                  protocolOn={protocolOn}
+                  editing={editingPath === row.incomingPath}
+                  onStartEdit={() => setEditingPath(row.incomingPath)}
+                  onStopEdit={() => setEditingPath(null)}
+                  onPatch={(patch) =>
+                    props.onChange(
+                      patchDerivation(props.routes, row.incomingPath, patch)
+                    )
+                  }
+                  onRemove={() =>
+                    props.onChange(
+                      removeDerivation(props.routes, row.incomingPath)
+                    )
+                  }
+                />
+              ))}
+            </div>
+          )}
 
-          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-            <section className='rounded-lg border'>
-              <CollapsibleTrigger
-                render={
-                  <button
-                    type='button'
-                    className='hover:bg-muted/50 focus-visible:ring-ring/50 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-4 py-2.5 text-left outline-none focus-visible:ring-3'
-                  />
-                }
-              >
-                <span className='inline-flex items-center gap-2'>
-                  <ChevronRight
-                    className={cn(
-                      'text-muted-foreground size-4 transition-transform',
-                      advancedOpen && 'rotate-90'
-                    )}
-                    aria-hidden='true'
-                  />
-                  <span className='text-sm font-medium'>
-                    {t('Protocol details')}
-                  </span>
-                </span>
-                <span className='text-muted-foreground text-xs'>
-                  {protocolSummary}
-                </span>
-              </CollapsibleTrigger>
+          <p className='text-muted-foreground border-t px-4 py-2 text-[11px] leading-relaxed'>
+            {t(
+              'Responses keeps its own route. With the image protocol on, chat entries are converted into image tasks, so keep that channel image-only.'
+            )}
+          </p>
+        </section>
 
-              <CollapsibleContent className='border-t'>
-                <div className='space-y-4 p-4'>
-                  <div className='flex items-start justify-between gap-3'>
-                    <div className='space-y-0.5'>
-                      <p className='text-sm'>{t('Image protocol')}</p>
-                      <p className='text-muted-foreground text-xs'>
-                        {t(
-                          'Fold image entries into one canonical request before sending.'
-                        )}
-                      </p>
-                    </div>
-                    <Switch
-                      checked={protocolOn}
-                      aria-label={t('Image protocol')}
-                      disabled={!protocolOn && !looksLikeImagePath(declared)}
-                      onCheckedChange={(checked) => {
-                        props.onImageProtocolChange?.(
-                          checked
-                            ? {
-                                enabled: true,
-                                upstream: IMAGE_PROTOCOL_UPSTREAMS[1].value,
-                              }
-                            : null
-                        )
-                      }}
-                    />
-                  </div>
-
-                  {protocolOn && declared !== '' && !looksLikeImagePath(declared) ? (
-                    <p className='text-muted-foreground text-xs'>
-                      {t(
-                        'This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.'
-                      )}
-                    </p>
-                  ) : null}
-
-                  {protocolOn ? (
-                    <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                      <div className='space-y-1'>
-                        <p className='text-xs'>{t('Upstream layout')}</p>
-                        <Select
-                          value={upstreamLayout}
-                          onValueChange={(value) => {
-                            if (typeof value === 'string') {
-                              props.onImageProtocolChange?.({
-                                ...props.imageProtocol,
-                                enabled: true,
-                                upstream: value,
-                              })
-                            }
-                          }}
-                        >
-                          <SelectTrigger size='sm'>
-                            <span className='truncate'>
-                              {t(upstreamLayoutLabel)}
-                            </span>
-                          </SelectTrigger>
-                          <SelectContent alignItemWithTrigger={false}>
-                            <SelectGroup>
-                              {IMAGE_PROTOCOL_UPSTREAMS.map((option) => (
-                                <SelectItem
-                                  key={option.value}
-                                  value={option.value}
-                                >
-                                  {t(option.label)}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <p className='text-muted-foreground text-[11px] leading-relaxed'>
-                          {dualEndpoint
-                            ? t(
-                                'Image-to-image switches to the edit endpoint and is encoded as multipart files.'
-                              )
-                            : t(
-                                'Image-to-image stays on the same endpoint; image references travel in the JSON body and mask is not forwarded.'
-                              )}
-                        </p>
-                      </div>
-
-                      {dualEndpoint ? (
-                        <div className='space-y-1'>
-                          <p className='text-xs'>{t('Edit path override')}</p>
-                          <Input
-                            value={props.imageProtocol?.edit_path || ''}
-                            placeholder={t(
-                              'Derived from the image primary path when empty'
-                            )}
-                            onChange={(event) => {
-                              props.onImageProtocolChange?.({
-                                ...props.imageProtocol,
-                                enabled: true,
-                                edit_path: event.target.value,
-                              })
-                            }}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              </CollapsibleContent>
-            </section>
-          </Collapsible>
-        </>
       ) : (
         <section className='rounded-lg border border-dashed p-4'>
           <p className='text-sm'>{t('Nothing is folded while this is off.')}</p>
@@ -448,9 +448,25 @@ export function PrimaryEndpointEditor(props: {
   )
 }
 
+/**
+ * 图片协议自己接管的入口：两个图片入口 + 对话（对话会被转成出图任务）。
+ * 与后端 `ImageProtocolConfig.ServesPath` 保持同一判断，chat 那一条来自
+ * `prepareImageProtocol` 的 `RelayModeChatCompletions` 分支——它不看主端点是不是
+ * 图片路径，只要协议开着就折叠。
+ */
+function isFoldedByImageProtocol(incomingPath: string): boolean {
+  const path = incomingPath.replace(/\/+$/, '')
+  return (
+    path.endsWith('/v1/images/generations') ||
+    path.endsWith('/v1/images/edits') ||
+    path.endsWith('/v1/chat/completions')
+  )
+}
+
 function DerivationRow(props: {
   row: RouteDerivation
   primary: string
+  protocolOn: boolean
   editing: boolean
   onStartEdit: () => void
   onStopEdit: () => void
@@ -464,11 +480,81 @@ function DerivationRow(props: {
   const { t } = useTranslation()
   const { row } = props
   const converterOptions = getAdvancedCustomConverterOptions(row.incomingPath)
+  // 图片协议一旦开启，它自己按 canonical 请求选端点：图片入口与对话入口的
+  // upstream_path 全部不参与决策（端点来自主端点 + 从端点推导）。这时行里再显示
+  // 一个「落点」，说的就是一件不会发生的事——端到端实测过：给 chat 配
+  // /v1/chat/completions，请求仍然打在主端点上。
+  const foldedByProtocol =
+    props.protocolOn && isFoldedByImageProtocol(row.incomingPath)
   const overridden = !row.followsPrimary
-  const showInput = props.editing || overridden
+  const showInput = !foldedByProtocol && (props.editing || overridden)
   // 转换器与透传收进菜单：这两个字段在「路由转发」页签里已经有一整行可编辑，
   // 在这里再摆两列，等于让同一份配置在页面上出现两次。
   const hasAdvanced = row.converter !== 'none' || row.passThrough
+
+  // 落点单元格三态：协议接管 / 可编辑输入 / 跟随主端点。写成变量而不是嵌套三元，
+  // 一是 lint 禁止，二是这三态各自有完整说明，塞进一个表达式读不出主次。
+  const followCell = (
+    <button
+      type='button'
+      className='text-muted-foreground hover:text-foreground hover:bg-muted/60 focus-visible:ring-ring/50 inline-flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] outline-none focus-visible:ring-3'
+      onClick={props.onStartEdit}
+    >
+      <CornerDownRight className='size-3 shrink-0' aria-hidden='true' />
+      <span className='truncate'>{t('Follows primary')}</span>
+    </button>
+  )
+
+  const editCell = (
+    <>
+      <Input
+        autoFocus={props.editing}
+        value={overridden ? row.upstreamPath : ''}
+        placeholder={props.primary || '/v1/images/generations'}
+        className='h-8 min-w-0 font-mono text-xs'
+        onChange={(event) =>
+          props.onPatch({ upstreamPath: event.target.value })
+        }
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') props.onStopEdit()
+          if (event.key === 'Escape') props.onStopEdit()
+        }}
+      />
+      <Button
+        type='button'
+        variant='ghost'
+        size='icon'
+        className='text-muted-foreground size-8 shrink-0'
+        aria-label={t('Follows primary')}
+        onClick={() => {
+          props.onPatch({ upstreamPath: '' })
+          props.onStopEdit()
+        }}
+      >
+        <CornerDownRight className='size-3.5' aria-hidden='true' />
+      </Button>
+    </>
+  )
+
+  const foldedCell = (
+    <span
+      className='text-muted-foreground inline-flex min-w-0 items-center gap-1.5 text-[11px]'
+      title={t(
+        'The image protocol picks the endpoint itself; this entry does not use its own upstream.'
+      )}
+    >
+      <span className='truncate'>{t('Folded by the image protocol')}</span>
+      {overridden ? (
+        <Badge variant='outline' className='shrink-0'>
+          {t('Override ignored')}
+        </Badge>
+      ) : null}
+    </span>
+  )
+
+  let landingCell = followCell
+  if (foldedByProtocol) landingCell = foldedCell
+  else if (showInput) landingCell = editCell
 
   return (
     <div className='grid grid-cols-1 items-center gap-2 px-4 py-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)_auto]'>
@@ -487,45 +573,7 @@ function DerivationRow(props: {
       </div>
 
       <div className='flex min-w-0 items-center gap-1.5'>
-        {showInput ? (
-          <>
-            <Input
-              autoFocus={props.editing}
-              value={overridden ? row.upstreamPath : ''}
-              placeholder={props.primary || '/v1/images/generations'}
-              className='h-8 min-w-0 font-mono text-xs'
-              onChange={(event) =>
-                props.onPatch({ upstreamPath: event.target.value })
-              }
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') props.onStopEdit()
-                if (event.key === 'Escape') props.onStopEdit()
-              }}
-            />
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon'
-              className='text-muted-foreground size-8 shrink-0'
-              aria-label={t('Follows primary')}
-              onClick={() => {
-                props.onPatch({ upstreamPath: '' })
-                props.onStopEdit()
-              }}
-            >
-              <CornerDownRight className='size-3.5' aria-hidden='true' />
-            </Button>
-          </>
-        ) : (
-          <button
-            type='button'
-            className='text-muted-foreground hover:text-foreground hover:bg-muted/60 focus-visible:ring-ring/50 inline-flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] outline-none focus-visible:ring-3'
-            onClick={props.onStartEdit}
-          >
-            <CornerDownRight className='size-3 shrink-0' aria-hidden='true' />
-            <span className='truncate'>{t('Follows primary')}</span>
-          </button>
-        )}
+        {landingCell}
         {hasAdvanced ? (
           <Badge variant='secondary' className='shrink-0'>
             {row.converter !== 'none'
