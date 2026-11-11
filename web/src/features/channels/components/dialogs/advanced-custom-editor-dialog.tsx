@@ -141,6 +141,8 @@ type AdvancedCustomEditorDialogProps = {
   channelModels?: string
   // APIDUO:coverage:END
   // APIDUO:primary-endpoint:BEGIN
+  /** 渠道 base_url，只用于主端点页签画数据流的第三段（上游），不写进配置。 */
+  baseUrl?: string
   /** settings.primary_endpoint；空表示还没声明，中心从路由推导。 */
   primaryEndpoint?: string
   onPrimaryEndpointChange?: (primary: string) => void
@@ -301,6 +303,7 @@ export function AdvancedCustomEditorDialog({
   channelModels,
   // APIDUO:coverage:END
   // APIDUO:primary-endpoint:BEGIN
+  baseUrl,
   primaryEndpoint,
   onPrimaryEndpointChange,
   imageProtocol,
@@ -843,6 +846,7 @@ export function AdvancedCustomEditorDialog({
           <PrimaryEndpointEditor
             routes={config.advanced_routes || []}
             models={channelModels}
+            baseUrl={baseUrl}
             primaryEndpoint={primaryEndpoint}
             onPrimaryEndpointChange={onPrimaryEndpointChange}
             imageProtocol={imageProtocol}

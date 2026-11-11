@@ -1,4 +1,5 @@
 import {
+  ArrowRight,
   ChevronRight,
   CornerDownRight,
   MoreHorizontal,
@@ -54,6 +55,29 @@ import type { AdvancedCustomRoute } from '@/features/channels/types'
 import { converterLabel } from '@/features/protocol-matrix/lib/mode-label'
 import { cn } from '@/lib/utils'
 
+// 顺序与 IMAGE_PROTOCOL_UPSTREAMS 一一对应（解构命名即文档）。
+// 每张卡只说两件事：图生图走哪、用什么编码——这正是两种布局的全部差别。
+const [IMAGE_SHAPE_SINGLE, IMAGE_SHAPE_DUAL] = IMAGE_PROTOCOL_UPSTREAMS
+
+const IMAGE_SHAPE_CARDS = [
+  {
+    value: IMAGE_SHAPE_SINGLE.value,
+    title: 'Same route',
+    subtitle: IMAGE_SHAPE_SINGLE.label,
+    note: 'Image references stay in the JSON body; mask is not forwarded.',
+    encoding: 'JSON',
+    dual: false,
+  },
+  {
+    value: IMAGE_SHAPE_DUAL.value,
+    title: 'A different route',
+    subtitle: IMAGE_SHAPE_DUAL.label,
+    note: 'Image and mask are uploaded as files.',
+    encoding: 'multipart',
+    dual: true,
+  },
+] as const
+
 /**
  * 主端点：一个渠道对上游只讲一种「母语」。
  *
@@ -69,6 +93,8 @@ import { cn } from '@/lib/utils'
 export function PrimaryEndpointEditor(props: {
   routes: AdvancedCustomRoute[]
   models?: string
+  /** 渠道的 base_url。数据流的第三段（上游）要它才讲得完整。 */
+  baseUrl?: string
   primaryEndpoint?: string
   onChange: (routes: AdvancedCustomRoute[]) => void
   onPrimaryEndpointChange?: (primary: string) => void
@@ -187,6 +213,15 @@ export function PrimaryEndpointEditor(props: {
     ? `${t('Image protocol on')} · ${t(upstreamLayoutLabel)}`
     : ''
 
+  // 数据流的第三段：上游是谁。只去掉协议头，保留 host 后面的路径段——
+  // 有些渠道的 base_url 带 /v1，砍掉就会让人以为请求打到别的目录。
+  const upstreamTarget = upstreamEndpointLabel(props.baseUrl)
+
+  // 图生图的落点预览：显式覆盖优先，否则按后端 `deriveEditPath` 的同一规则算，
+  // 卡片上写的路径就是请求真的会去的路径。前端只做预览，保存后仍以后端为准。
+  const editPathPreview =
+    (props.imageProtocol?.edit_path || '').trim() || deriveEditPathPreview(primary)
+
   return (
     <div
       className='flex flex-col gap-3'
@@ -203,7 +238,9 @@ export function PrimaryEndpointEditor(props: {
             </p>
             <p className='text-muted-foreground text-xs'>
               {enabled
-                ? t('Empty upstreams follow this address.')
+                ? t(
+                    'The shared landing address for every entry. A single entry can still point somewhere else.'
+                  )
                 : t(
                     'Off: every entry forwards on its own route, exactly like new-api.'
                   )}
@@ -218,13 +255,79 @@ export function PrimaryEndpointEditor(props: {
 
         {enabled ? (
           <div className='space-y-1.5 border-t px-4 py-3'>
-            <Input
-              value={declared}
-              spellCheck={false}
-              placeholder={derived || '/v1/images/generations'}
-              className='font-mono'
-              onChange={(event) => setPath(event.target.value)}
-            />
+            {/* 数据流：下游入口 → 收口点（主端点）→ 上游。
+                以前只有一行输入框，用户看不出它在链条里的位置，也看不出上游是谁；
+                把三段并排画出来，「多个入口收紧成一个出口」这件事就不用解释了。 */}
+            <div className='grid grid-cols-1 gap-x-2 gap-y-1.5 lg:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] lg:items-end'>
+              {/* 三段的高度必须一致（标签行 16px + 值行 32px），否则底部对齐时
+                  两侧的标签会被输入框顶下去，三个标题就落在三个高度上。 */}
+              <div className='min-w-0'>
+                <p className='text-muted-foreground text-[11px] leading-4'>
+                  {t('Downstream')}
+                </p>
+                <p className='flex h-8 min-w-0 items-center truncate text-xs font-medium'>
+                  {t('{{count}} entries', { count: derivations.length })}
+                </p>
+              </div>
+
+              <ArrowRight
+                className='text-muted-foreground/50 mx-auto size-4 rotate-90 lg:mx-1 lg:mb-2 lg:rotate-0'
+                aria-hidden='true'
+              />
+
+              <div className='min-w-0'>
+                <p className='text-muted-foreground text-[11px] leading-4'>
+                  {t('Converges to')}
+                </p>
+                <Input
+                  value={declared}
+                  spellCheck={false}
+                  placeholder={derived || '/v1/images/generations'}
+                  className='mt-1 h-8 font-mono'
+                  onChange={(event) => setPath(event.target.value)}
+                />
+              </div>
+
+              <ArrowRight
+                className='text-muted-foreground/50 mx-auto size-4 rotate-90 lg:mx-1 lg:mb-2 lg:rotate-0'
+                aria-hidden='true'
+              />
+
+              <div className='min-w-0'>
+                <p className='text-muted-foreground text-[11px] leading-4'>
+                  {t('Upstream')}
+                </p>
+                <div className='flex h-8 min-w-0 items-center gap-1.5'>
+                  <p
+                    className={cn(
+                      'min-w-0 truncate font-mono text-xs',
+                      upstreamTarget ? '' : 'text-muted-foreground italic'
+                    )}
+                    title={props.baseUrl || undefined}
+                  >
+                    {upstreamTarget || t('Not set')}
+                  </p>
+                  {/* 上游格直接标出「几个端点」：这是布局在数据流里的唯一含义，
+                      不用先展开协议细节才知道现在是什么形态。点一下跳过去改。 */}
+                  {protocolOn ? (
+                    <button
+                      type='button'
+                      className='focus-visible:ring-ring/50 shrink-0 rounded-md outline-none focus-visible:ring-3'
+                      title={t(
+                        'Open the protocol details to change how image-to-image reaches the upstream.'
+                      )}
+                      onClick={() => setAdvancedOpen(true)}
+                    >
+                      <Badge variant='outline' className='font-normal'>
+                        {dualEndpoint
+                          ? t('Two endpoints')
+                          : t('One endpoint')}
+                      </Badge>
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
             {declared ? null : (
               <p className='text-muted-foreground text-xs'>
                 {t(
@@ -302,58 +405,129 @@ export function PrimaryEndpointEditor(props: {
                 ) : null}
 
                 {protocolOn ? (
-                  <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                    <div className='space-y-1'>
-                      <p className='text-xs'>{t('Upstream layout')}</p>
-                      <Select
-                        value={upstreamLayout}
-                        onValueChange={(value) => {
-                          if (typeof value === 'string') {
-                            props.onImageProtocolChange?.({
-                              ...props.imageProtocol,
-                              enabled: true,
-                              upstream: value,
-                            })
-                          }
-                        }}
-                      >
-                        <SelectTrigger size='sm'>
-                          <span className='truncate'>
-                            {t(upstreamLayoutLabel)}
-                          </span>
-                        </SelectTrigger>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            {IMAGE_PROTOCOL_UPSTREAMS.map((option) => (
-                              <SelectItem
-                                key={option.value}
-                                value={option.value}
-                              >
-                                {t(option.label)}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                      <p className='text-muted-foreground text-[11px] leading-relaxed'>
-                        {dualEndpoint
-                          ? t(
-                              'Image-to-image switches to the edit endpoint and is encoded as multipart files.'
-                            )
-                          : t(
-                              'Image-to-image stays on the same endpoint; image references travel in the JSON body and mask is not forwarded.'
-                            )}
+                  <div className='space-y-3'>
+                    {/* 两个布局并排画成请求线，而不是一个只写名字的下拉：
+                        「单 / 双端点」本身不含信息，真正的差别只有一行——图生图
+                        走哪个路径、用什么编码。两卡同时可见才比得出来。 */}
+                    <div className='space-y-1.5'>
+                      <p className='text-xs'>
+                        {t('How does the upstream take image-to-image?')}
                       </p>
+                      <div
+                        role='radiogroup'
+                        aria-label={t('Upstream layout')}
+                        className='grid grid-cols-1 gap-2 sm:grid-cols-2'
+                      >
+                        {IMAGE_SHAPE_CARDS.map((card) => {
+                          const checked = upstreamLayout === card.value
+                          const imageToImage = card.dual
+                            ? editPathPreview
+                            : primary
+                          return (
+                            <button
+                              key={card.value}
+                              type='button'
+                              role='radio'
+                              aria-checked={checked}
+                              onClick={() => {
+                                props.onImageProtocolChange?.({
+                                  ...props.imageProtocol,
+                                  enabled: true,
+                                  upstream: card.value,
+                                })
+                              }}
+                              className={cn(
+                                'focus-visible:ring-ring/50 rounded-lg border p-3 text-left outline-none transition-colors focus-visible:ring-3',
+                                checked
+                                  ? 'border-primary bg-primary/5'
+                                  : 'hover:border-foreground/25'
+                              )}
+                            >
+                              <span className='flex items-start gap-2'>
+                                <span
+                                  className={cn(
+                                    'mt-1 flex size-3.5 shrink-0 items-center justify-center rounded-full border',
+                                    checked
+                                      ? 'border-primary'
+                                      : 'border-muted-foreground/50'
+                                  )}
+                                  aria-hidden='true'
+                                >
+                                  {checked ? (
+                                    <span className='bg-primary size-1.5 rounded-full' />
+                                  ) : null}
+                                </span>
+                                <span className='min-w-0'>
+                                  <span className='block text-xs font-medium'>
+                                    {t(card.title)}
+                                  </span>
+                                  <span className='text-muted-foreground block text-[11px]'>
+                                    {t(card.subtitle)}
+                                  </span>
+                                </span>
+                              </span>
+
+                              <span className='mt-2.5 block space-y-1'>
+                                <span className='flex items-center gap-1.5 text-[11px]'>
+                                  <span className='text-muted-foreground w-10 shrink-0'>
+                                    {t('Text to image')}
+                                  </span>
+                                  <ArrowRight
+                                    className='text-muted-foreground/60 size-3 shrink-0'
+                                    aria-hidden='true'
+                                  />
+                                  <span
+                                    className='bg-muted min-w-0 truncate rounded border px-1 py-0.5 font-mono text-[10px]'
+                                    title={primary || undefined}
+                                  >
+                                    {primary || t('Not set')}
+                                  </span>
+                                </span>
+                                <span className='flex items-center gap-1.5 text-[11px]'>
+                                  <span className='text-muted-foreground w-10 shrink-0'>
+                                    {t('Image to image')}
+                                  </span>
+                                  <ArrowRight
+                                    className='text-muted-foreground/60 size-3 shrink-0'
+                                    aria-hidden='true'
+                                  />
+                                  <span
+                                    className={cn(
+                                      'min-w-0 truncate rounded border px-1 py-0.5 font-mono text-[10px]',
+                                      card.dual ? 'bg-primary/10' : 'bg-muted'
+                                    )}
+                                    title={imageToImage || undefined}
+                                  >
+                                    {imageToImage || t('Not set')}
+                                  </span>
+                                  <span className='text-muted-foreground shrink-0 text-[10px]'>
+                                    {card.encoding}
+                                  </span>
+                                </span>
+                              </span>
+
+                              <span className='text-muted-foreground mt-2 block text-[11px] leading-relaxed'>
+                                {t(card.note)}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
 
                     {dualEndpoint ? (
                       <div className='space-y-1'>
-                        <p className='text-xs'>{t('Edit path override')}</p>
+                        <div className='flex items-baseline justify-between gap-2'>
+                          <p className='text-xs'>{t('Image-to-image path')}</p>
+                          <span className='text-muted-foreground text-[11px]'>
+                            {t('Derived automatically')}
+                          </span>
+                        </div>
                         <Input
                           value={props.imageProtocol?.edit_path || ''}
-                          placeholder={t(
-                            'Derived from the image primary path when empty'
-                          )}
+                          spellCheck={false}
+                          className='font-mono'
+                          placeholder={editPathPreview || t('Not set')}
                           onChange={(event) => {
                             props.onImageProtocolChange?.({
                               ...props.imageProtocol,
@@ -362,6 +536,11 @@ export function PrimaryEndpointEditor(props: {
                             })
                           }}
                         />
+                        <p className='text-muted-foreground text-[11px] leading-relaxed'>
+                          {t(
+                            'Left empty, the last segment of the primary endpoint is swapped from generations to edits. Fill it in only when the upstream path differs.'
+                          )}
+                        </p>
                       </div>
                     ) : null}
                   </div>
@@ -449,6 +628,33 @@ export function PrimaryEndpointEditor(props: {
 }
 
 /**
+ * 后端 `deriveEditPath` 的前端镜像：末段 `/generations` 换成 `/edits`。
+ * 末段不是 generations 时返回空串——后端在这种配置下会直接报错，
+ * 这里不猜路径，让上面的形状提示去说为什么。
+ */
+function deriveEditPathPreview(primary: string): string {
+  const trimmed = (primary || '').trim().replace(/\/+$/, '')
+  const suffix = '/generations'
+  if (!trimmed.endsWith(suffix)) return ''
+  return `${trimmed.slice(0, -suffix.length)}/edits`
+}
+
+/**
+ * 把渠道的 base_url 压成「数据流第三段」能放下的样子：去掉协议头，保留路径段。
+ *
+ * 不直接用 host 是有原因的：有些上游的接口根在子路径上（`https://api.x.com/v1`），
+ * 只显示 host 会让人以为请求打到站点根。解析失败时退回原串裁掉协议头——
+ * 这一格是给人看的，不是给请求用的，宁可粗糙也不要空着。
+ */
+function upstreamEndpointLabel(baseUrl?: string): string {
+  const raw = (baseUrl || '').trim()
+  if (!raw) return ''
+  const withoutScheme = raw.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
+  const [hostAndPath] = withoutScheme.split(/[?#]/)
+  return hostAndPath.replace(/\/+$/, '')
+}
+
+/**
  * 图片协议自己接管的入口：两个图片入口 + 对话（对话会被转成出图任务）。
  * 与后端 `ImageProtocolConfig.ServesPath` 保持同一判断，chat 那一条来自
  * `prepareImageProtocol` 的 `RelayModeChatCompletions` 分支——它不看主端点是不是
@@ -498,10 +704,11 @@ function DerivationRow(props: {
     <button
       type='button'
       className='text-muted-foreground hover:text-foreground hover:bg-muted/60 focus-visible:ring-ring/50 inline-flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] outline-none focus-visible:ring-3'
+      title={t('Click to give this entry its own upstream.')}
       onClick={props.onStartEdit}
     >
-      <CornerDownRight className='size-3 shrink-0' aria-hidden='true' />
-      <span className='truncate'>{t('Follows primary')}</span>
+      <ArrowRight className='size-3 shrink-0' aria-hidden='true' />
+      <span className='truncate'>{t('Primary endpoint')}</span>
     </button>
   )
 
@@ -543,12 +750,17 @@ function DerivationRow(props: {
         'The image protocol picks the endpoint itself; this entry does not use its own upstream.'
       )}
     >
-      <span className='truncate'>{t('Folded by the image protocol')}</span>
+      <ArrowRight className='size-3 shrink-0' aria-hidden='true' />
+      <span className='truncate'>{t('Primary endpoint')}</span>
       {overridden ? (
         <Badge variant='outline' className='shrink-0'>
           {t('Override ignored')}
         </Badge>
-      ) : null}
+      ) : (
+        <Badge variant='outline' className='shrink-0 font-normal'>
+          {t('Protocol')}
+        </Badge>
+      )}
     </span>
   )
 

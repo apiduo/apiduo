@@ -233,6 +233,22 @@
     "Folded by the image protocol": "圖片協議接管",
     "Override ignored": "覆蓋不生效",
     "The image protocol picks the endpoint itself; this entry does not use its own upstream.": "圖片協議自己選端點：這個入口不按自己的上游轉發，改這裡不會影響請求。",
-    "{{count}} routes": "{{count}} 條路由"
+    "{{count}} routes": "{{count}} 條路由",
+    "Downstream": "下游",
+    "Converges to": "收口到",
+    "{{count}} entries": "{{count}} 個入口",
+    "The shared landing address for every entry. A single entry can still point somewhere else.": "所有入口共用的落點；單個入口仍可單獨指定。",
+    "Click to give this entry its own upstream.": "點擊改成這個入口自己的上游。",
+    "How does the upstream take image-to-image?": "上游的圖生圖怎麼走？",
+    "Same route": "同一條路",
+    "A different route": "另一條路",
+    "Image references stay in the JSON body; mask is not forwarded.": "圖片引用寫在 JSON 裡，mask 不轉發。",
+    "Image and mask are uploaded as files.": "圖片和 mask 都作為檔案上傳。",
+    "Image-to-image path": "圖生圖的落點",
+    "Derived automatically": "自動推導",
+    "Left empty, the last segment of the primary endpoint is swapped from generations to edits. Fill it in only when the upstream path differs.": "留空時把主端點末段的 generations 換成 edits；上游路徑不按這個規則時再手填。",
+    "One endpoint": "1 個端點",
+    "Two endpoints": "2 個端點",
+    "Open the protocol details to change how image-to-image reaches the upstream.": "展開協議細節，改圖生圖的走法。"
   }
 }

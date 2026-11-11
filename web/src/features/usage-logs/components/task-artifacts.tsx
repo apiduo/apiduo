@@ -508,9 +508,14 @@ function LegacyVideoMedia(props: LegacyVideoMediaProps) {
   ) : (
     <video
       key={mediaRevision}
-      src={props.contentUrl}
+      // APIDUO:video-preview-first-frame:BEGIN
+      // 弹窗打开时就要看到画面：preload=metadata 只取元数据，Chrome 不会
+      // 绘制首帧，用户看到的是一个黑框 + 0:00，像是「预览失败」。
+      // #t=0.1 让浏览器 seek 到第一帧，preload=auto 保证数据真的到了。
+      src={`${props.contentUrl}#t=0.1`}
       controls
-      preload='metadata'
+      preload='auto'
+      // APIDUO:video-preview-first-frame:END
       className='max-h-[60vh] w-full rounded-md bg-black'
       onError={() => setMediaFailed(true)}
     />

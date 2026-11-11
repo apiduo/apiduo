@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>图片协议 · 单端点 / 双端点 怎么读</title>
+<style>
+  :root {
+    --bg: oklch(1 0 0);
+    --fg: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-fg: oklch(0.49 0 0);
+    --border: oklch(0.93 0 0);
+    --primary: oklch(0.692 0.141 243.716);
+    --primary-fg: oklch(0.99 0 0);
+    --primary-soft: oklch(0.96 0.02 243.716);
+    --warn: oklch(0.72 0.15 70);
+    --warn-soft: oklch(0.97 0.04 80);
+    --danger: oklch(0.58 0.2 25);
+    --radius: 12px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html[data-theme="dark"] {
+    --bg: oklch(0.235 0 0);
+    --fg: oklch(0.965 0 0);
+    --card: oklch(0.285 0 0);
+    --muted: oklch(0.305 0 0);
+    --muted-fg: oklch(0.78 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --primary: oklch(0.62 0.14 248);
+    --primary-fg: oklch(0.16 0 0);
+    --primary-soft: oklch(0.33 0.05 248);
+    --warn: oklch(0.8 0.14 80);
+    --warn-soft: oklch(0.33 0.05 80);
+    --danger: oklch(0.68 0.18 25);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Public Sans", -apple-system, "PingFang SC", "Hiragino Sans GB",
+      "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 26px; line-height: 1.3; margin: 0 0 10px; letter-spacing: -0.01em; }
+  h2 { font-size: 17px; margin: 56px 0 6px; letter-spacing: -0.01em; }
+  h2 .num {
+    color: var(--muted-fg); font-variant-numeric: tabular-nums;
+    font-weight: 500; margin-right: 8px;
+  }
+  h3 { font-size: 14px; margin: 0 0 8px; }
+  p { margin: 8px 0; }
+  .lede { color: var(--muted-fg); max-width: 68ch; margin: 0 0 4px; }
+  .muted { color: var(--muted-fg); }
+  .small { font-size: 12px; }
+  .tiny { font-size: 11px; }
+  code, .mono { font-family: var(--mono); font-size: 12px; }
+  code {
+    background: var(--muted); padding: 1px 5px; border-radius: 5px;
+    border: 1px solid var(--border);
+  }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .toggle {
+    flex: none; display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid var(--border); background: var(--card); color: var(--fg);
+    border-radius: 999px; padding: 6px 14px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  .toggle:hover { background: var(--muted); }
+
+  /* ---------- 机制对照表 ---------- */
+  .matrix {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px;
+  }
+  @media (max-width: 760px) { .matrix { grid-template-columns: 1fr; } }
+  .lane {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card); overflow: hidden;
+  }
+  .lane > header {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  }
+  .lane > header .name { font-weight: 600; font-size: 13px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 1px 8px; font-size: 11px; color: var(--muted-fg); white-space: nowrap;
+  }
+  .pill.solid { background: var(--primary-soft); border-color: transparent; color: var(--fg); }
+  .req { display: grid; grid-template-columns: 76px 1fr; gap: 12px; padding: 12px 16px; align-items: start; }
+  .req + .req { border-top: 1px dashed var(--border); }
+  .req .who { font-size: 12px; color: var(--muted-fg); padding-top: 2px; }
+  .req .line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .arrow { color: var(--muted-fg); font-family: var(--mono); }
+  .path {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 1px 7px; white-space: nowrap;
+  }
+  .enc { font-size: 11px; color: var(--muted-fg); }
+  .req.same .path { border-style: dashed; }
+  .req.diff { background: var(--primary-soft); }
+  html[data-theme="dark"] .req.diff { background: color-mix(in oklch, var(--primary) 14%, transparent); }
+  .marker {
+    font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--primary); font-weight: 700;
+  }
+  .note {
+    margin-top: 16px; border: 1px solid var(--border); border-left: 3px solid var(--primary);
+    background: var(--muted); border-radius: 8px; padding: 12px 16px;
+  }
+  .note strong { font-weight: 600; }
+
+  /* ---------- 现状还原 ---------- */
+  .dialog {
+    border: 1px solid var(--border); border-radius: 16px; background: var(--card);
+    box-shadow: 0 18px 48px -24px rgb(0 0 0 / 22%);
+    overflow: hidden; margin-top: 16px;
+  }
+  .dlg-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .dlg-body { padding: 16px 18px 20px; }
+  .section { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .section + .section { margin-top: 12px; }
+  .sec-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; }
+  .sec-row + .sec-row { border-top: 1px solid var(--border); }
+  .label { font-size: 13px; font-weight: 500; }
+  .sel {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--card);
+    padding: 6px 10px; font-size: 12px; min-width: 190px;
+  }
+  .sel .chev { color: var(--muted-fg); }
+  .sw {
+    width: 34px; height: 20px; border-radius: 999px; background: var(--primary);
+    position: relative; flex: none;
+  }
+  .sw::after {
+    content: ""; position: absolute; top: 2px; right: 2px;
+    width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  }
+  .issues { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+  @media (max-width: 860px) { .issues { grid-template-columns: 1fr; } }
+  .issue {
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--card);
+  }
+  .issue b { display: block; font-size: 12.5px; margin-bottom: 4px; }
+  .issue span { font-size: 12px; color: var(--muted-fg); }
+
+  /* ---------- 方案卡 ---------- */
+  .tag {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--primary); margin-bottom: 6px;
+  }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+  @media (max-width: 860px) { .choices { grid-template-columns: 1fr; } }
+  .choice {
+    text-align: left; font-family: inherit; color: inherit; cursor: pointer;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card); padding: 14px; transition: border-color .15s, background .15s;
+  }
+  .choice:hover { border-color: color-mix(in oklch, var(--primary) 40%, var(--border)); }
+  .choice[aria-checked="true"] {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary) inset;
+    background: color-mix(in oklch, var(--primary) 7%, var(--card));
+  }
+  .choice .top { display: flex; align-items: flex-start; gap: 10px; }
+  .dot {
+    flex: none; width: 16px; height: 16px; border-radius: 50%;
+    border: 1.5px solid var(--border); margin-top: 2px; position: relative;
+  }
+  .choice[aria-checked="true"] .dot { border-color: var(--primary); }
+  .choice[aria-checked="true"] .dot::after {
+    content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--primary);
+  }
+  .choice .t { font-size: 13px; font-weight: 600; line-height: 1.5; }
+  .choice .s { font-size: 11.5px; color: var(--muted-fg); }
+  .choice .diagram { margin-top: 12px; display: grid; gap: 6px; }
+  .dline { display: grid; grid-template-columns: 46px 1fr; gap: 6px; align-items: center; font-size: 11px; }
+  .dline .k { color: var(--muted-fg); }
+  .dline .v { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .dline .v .path { font-size: 10.5px; padding: 0 5px; }
+  .foot-note { font-size: 11px; color: var(--muted-fg); margin-top: 10px; }
+
+  .editpath {
+    margin-top: 12px; border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; background: var(--muted);
+  }
+  .editpath label { font-size: 11.5px; color: var(--muted-fg); display: block; margin-bottom: 6px; }
+  .input {
+    display: flex; align-items: center; gap: 8px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--card); padding: 6px 10px; font-family: var(--mono);
+    font-size: 12px;
+  }
+  .input .ph { color: var(--muted-fg); }
+  .ghost {
+    border: 0; background: transparent; color: var(--primary); font-family: inherit;
+    font-size: 11.5px; cursor: pointer; padding: 0;
+  }
+
+  /* ---------- 方案 B ---------- */
+  .flow {
+    display: grid; gap: 10px; align-items: end;
+    grid-template-columns: auto auto minmax(0,1fr) auto auto;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card); padding: 14px 16px;
+  }
+  @media (max-width: 760px) {
+    .flow { grid-template-columns: 1fr; }
+    .flow .ar { transform: rotate(90deg); margin: 0 auto; }
+  }
+  .flow .cell { min-width: 0; }
+  .flow .k { font-size: 11px; color: var(--muted-fg); line-height: 16px; }
+  .flow .v { font-size: 12px; font-weight: 500; height: 32px; display: flex; align-items: center; }
+  .flow .v.monoish { font-family: var(--mono); font-weight: 400; }
+  .flow .ar { color: var(--muted-fg); font-family: var(--mono); font-size: 14px; }
+  .upstream {
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    border: 1px dashed var(--border); border-radius: 7px; padding: 1px 8px;
+    background: var(--card); color: var(--fg); font-family: inherit;
+  }
+  .upstream:hover { border-color: var(--primary); }
+  .upstream .n { font-family: var(--mono); font-size: 12px; }
+  .pop {
+    margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card); padding: 10px; box-shadow: 0 20px 40px -28px rgb(0 0 0 / 30%);
+  }
+  .pop[hidden] { display: none; }
+
+  /* ---------- 落地 ---------- */
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted-fg); font-size: 11.5px; }
+  tr:last-child td { border-bottom: 0; }
+  .ok { color: var(--primary); font-weight: 600; }
+  .warnbox {
+    border: 1px solid var(--border); border-left: 3px solid var(--warn);
+    background: var(--warn-soft); border-radius: 8px; padding: 12px 16px; margin-top: 14px;
+    font-size: 12.5px;
+  }
+  .kbd {
+    font-family: var(--mono); font-size: 11px; border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--card);
+  }
+  footer { margin-top: 64px; color: var(--muted-fg); font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <h1>单端点 / 双端点，到底在选什么</h1>
+      <p class="lede">
+        这套配置里最容易读错的一项是「上游布局」。它不是我们这边有几个接口，
+        而是<b>上游的图生图怎么进</b>——文生图两条路完全一样，差别只发生在带参考图的那一次请求上。
+      </p>
+    </div>
+    <button class="toggle" id="theme">◐ <span>深色</span></button>
+  </div>
+
+  <!-- ============ 1 ============ -->
+  <h2><span class="num">一</span>机制：两条请求线，差在第二行</h2>
+  <p class="muted small">下面四个格子是后端 <code>planSeedream</code> / <code>planGPTImage2</code> 的真实分支，不是示意。</p>
+
+  <div class="matrix">
+    <div class="lane">
+      <header>
+        <span class="name">ARK 协议</span>
+        <span class="pill">单端点</span>
+        <span class="pill">Seedream 系</span>
+      </header>
+      <div class="req same">
+        <div class="who">文生图</div>
+        <div>
+          <div class="line">
+            <span class="arrow">──▶</span>
+            <span class="path">POST /v1/images/generations</span>
+          </div>
+          <div class="enc">application/json · 没有 image 字段</div>
+        </div>
+      </div>
+      <div class="req same">
+        <div class="who">图生图</div>
+        <div>
+          <div class="line">
+            <span class="arrow">──▶</span>
+            <span class="path">POST /v1/images/generations</span>
+          </div>
+          <div class="enc">application/json · <code>image</code> 内联（data URI 或 URL）</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lane">
+      <header>
+        <span class="name">OpenAI 协议</span>
+        <span class="pill">双端点</span>
+        <span class="pill">gpt-image 系</span>
+      </header>
+      <div class="req same">
+        <div class="who">文生图</div>
+        <div>
+          <div class="line">
+            <span class="arrow">──▶</span>
+            <span class="path">POST /v1/images/generations</span>
+          </div>
+          <div class="enc">application/json · 没有 image 字段</div>
+        </div>
+      </div>
+      <div class="req diff">
+        <div class="who">图生图</div>
+        <div>
+          <div class="line">
+            <span class="arrow">──▶</span>
+            <span class="path">POST /v1/images/edits</span>
+            <span class="marker">换路</span>
+          </div>
+          <div class="enc">multipart/form-data · image 落成文件，mask 也当文件</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>一句话：</strong>「单 / 双」说的是上游那边<b>图生图有没有独立的门</b>。
+    单端点 = 同一扇门，图片塞进 JSON；双端点 = 另开一扇门，图片当文件上传。
+    所以它天然只影响图生图——文生图在两种布局下都是一条 JSON。
+  </div>
+
+  <!-- ============ 2 ============ -->
+  <h2><span class="num">二</span>现状：选项没有形状，差别看不到</h2>
+  <p class="muted small">下面是线上「协议细节」的真实还原。</p>
+
+  <div class="dialog">
+    <div class="dlg-head">
+      <div>
+        <div class="label">高级自定义路由 · 主端点</div>
+        <div class="tiny muted">渠道 20 · openai-image（双端点态）</div>
+      </div>
+      <div class="pill">协议细节 · 已展开</div>
+    </div>
+    <div class="dlg-body">
+      <div class="section">
+        <div class="sec-row">
+          <div>
+            <div class="label">图片协议</div>
+            <div class="tiny muted">把图片入口折叠成一条规范请求再发出去。</div>
+          </div>
+          <div class="sw"></div>
+        </div>
+        <div class="sec-row" style="align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div class="tiny" style="margin-bottom:6px">上游布局</div>
+            <div class="sel">
+              <span>OpenAI 协议（双端点）</span>
+              <span class="chev">▾</span>
+            </div>
+            <div class="tiny muted" style="margin-top:6px">
+              图生图改走从端点，编码成 multipart 文件。
+            </div>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div class="tiny" style="margin-bottom:6px">编辑路径覆盖</div>
+            <div class="input">
+              <span class="ph">留空时由图片主端点推导</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="issues">
+    <div class="issue">
+      <b>① 只有名字，没有形状</b>
+      <span>「单端点」三个字要用户自己翻译成「图生图同路」。而这一层翻译，正是所有困惑的来源。</span>
+    </div>
+    <div class="issue">
+      <b>② 说明跟着选择被替换</b>
+      <span>选一个只显示一段话，两段永远看不到一起，所以「到底差在哪」只能靠记忆对比。</span>
+    </div>
+    <div class="issue">
+      <b>③ 从端点输入框凭空出现</b>
+      <span>选双端点后右侧多出「编辑路径覆盖」，没有交代它从哪来、留空会变成什么。</span>
+    </div>
+  </div>
+
+  <!-- ============ 3 ============ -->
+  <h2><span class="num">三</span>方案 A：把选项画成两条请求线（推荐）</h2>
+  <p class="muted small">两卡并排、同时可见，差别直接从图上读出来。存储值仍是 <code>ark</code> / <code>openai</code>，不变。</p>
+
+  <div class="dialog">
+    <div class="dlg-head">
+      <div>
+        <div class="label">图片协议</div>
+        <div class="tiny muted">上游的图生图怎么走？</div>
+      </div>
+      <div class="sw"></div>
+    </div>
+    <div class="dlg-body">
+      <div class="choices" role="radiogroup" aria-label="上游布局">
+        <button class="choice" role="radio" aria-checked="false" data-shape="single">
+          <div class="top">
+            <span class="dot"></span>
+            <div>
+              <div class="t">同一条路</div>
+              <div class="s">单端点 · ARK / Seedream 系</div>
+            </div>
+          </div>
+          <div class="diagram">
+            <div class="dline">
+              <span class="k">文生图</span>
+              <span class="v"><span class="arrow">─▶</span><span class="path">/v1/images/generations</span></span>
+            </div>
+            <div class="dline">
+              <span class="k">图生图</span>
+              <span class="v"><span class="arrow">─▶</span><span class="path">/v1/images/generations</span><span class="tiny muted">JSON</span></span>
+            </div>
+          </div>
+          <div class="foot-note">图片引用写在 JSON 里，mask 不转发。</div>
+        </button>
+
+        <button class="choice" role="radio" aria-checked="true" data-shape="dual">
+          <div class="top">
+            <span class="dot"></span>
+            <div>
+              <div class="t">另一条路</div>
+              <div class="s">双端点 · OpenAI / gpt-image 系</div>
+            </div>
+          </div>
+          <div class="diagram">
+            <div class="dline">
+              <span class="k">文生图</span>
+              <span class="v"><span class="arrow">─▶</span><span class="path">/v1/images/generations</span></span>
+            </div>
+            <div class="dline">
+              <span class="k">图生图</span>
+              <span class="v"><span class="arrow">─▶</span><span class="path">/v1/images/edits</span><span class="tiny muted">multipart</span></span>
+            </div>
+          </div>
+          <div class="foot-note">图片和 mask 都作为文件上传。</div>
+        </button>
+      </div>
+
+      <div class="editpath" id="editpath">
+        <label>图生图的落点</label>
+        <div class="input">
+          <span class="ph">/v1/images/edits</span>
+          <span class="tiny muted" style="margin-left:auto">自动推导</span>
+        </div>
+        <div class="tiny muted" style="margin-top:6px">
+          留空时把主端点末段的 <code>generations</code> 换成 <code>edits</code>；上游路径不按这个规则时再手填。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="small muted" style="margin-top:12px">
+    点上面两张卡可以切换，注意下面那块「图生图的落点」只在双端点时出现——
+    这正是现在那个输入框凭空冒出来的地方，方案里它跟选择绑在一起。
+  </p>
+
+  <!-- ============ 4 ============ -->
+  <h2><span class="num">四</span>方案 B：把选择挂到「上游」那一格上</h2>
+  <p class="muted small">
+    既然它描述的是上游，就长在上游节点上。数据流里直接显示「1 个图片端点 / 2 个图片端点」，
+    点开才是选择——不用先展开「协议细节」才知道现在是什么形态。
+  </p>
+
+  <div class="dialog">
+    <div class="dlg-body">
+      <div class="flow">
+        <div class="cell">
+          <div class="k">下游</div>
+          <div class="v">4 个入口</div>
+        </div>
+        <div class="ar">──▶</div>
+        <div class="cell">
+          <div class="k">收口到</div>
+          <div class="v monoish" style="border:1px solid var(--border);border-radius:8px;padding:0 10px;background:var(--card)">/v1/images/generations</div>
+        </div>
+        <div class="ar">──▶</div>
+        <div class="cell">
+          <div class="k">上游</div>
+          <div class="v">
+            <button class="upstream" id="ups" aria-expanded="false">
+              <span class="n">bfl.1task.cn</span>
+              <span class="pill solid" id="upshape">2 个端点</span>
+              <span class="muted">▾</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pop" id="uppop" hidden>
+        <div class="tiny muted" style="margin-bottom:8px">上游的图生图怎么走？</div>
+        <div class="choices">
+          <button class="choice" role="radio" aria-checked="false" data-shape="single">
+            <div class="top"><span class="dot"></span><div><div class="t">同一条路</div><div class="s">单端点</div></div></div>
+          </button>
+          <button class="choice" role="radio" aria-checked="true" data-shape="dual">
+            <div class="top"><span class="dot"></span><div><div class="t">另一条路</div><div class="s">双端点</div></div></div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:14px">
+    <strong>两案不冲突。</strong>A 解决「看不懂」，B 解决「找不到」。
+    建议：A 落在「协议细节」里替换现在的下拉；B 只在上游那一格加一行形态摘要
+    （<span class="pill solid">2 个端点</span>），点击跳到 A。
+  </div>
+
+  <!-- ============ 5 ============ -->
+  <h2><span class="num">五</span>落地清单</h2>
+  <table>
+    <thead>
+      <tr><th style="width:34%">改动</th><th>内容</th><th style="width:16%">风险</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>primary-endpoint-editor.tsx</code></td>
+        <td>协议细节里的 <code>Select</code> 换成两张 <code>role=radio</code> 卡；双端点时才渲染落点输入框（已有逻辑，只是位置绑定）</td>
+        <td class="ok">纯前端</td>
+      </tr>
+      <tr>
+        <td>上游节点摘要</td>
+        <td>数据流第三格加 <code>{{count}} 个端点</code>，点击滚动/展开到协议细节</td>
+        <td class="ok">纯前端</td>
+      </tr>
+      <tr>
+        <td>i18n</td>
+        <td>新增 6~8 条（同一条路 / 另一条路 / 图生图的落点 / 自动推导 …），七语补齐</td>
+        <td class="ok">文案</td>
+      </tr>
+      <tr>
+        <td>存储值</td>
+        <td><b>不动</b>：仍是 <code>image_protocol.upstream = ark | openai</code>，线上渠道已迁移完</td>
+        <td class="ok">无</td>
+      </tr>
+      <tr>
+        <td>后端</td>
+        <td>不改。<code>planSeedream</code> / <code>planGPTImage2</code> 的分支就是上图那两条线</td>
+        <td class="ok">无</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="warnbox">
+    <strong>需要你决定的一件事：</strong>选项的主标题要不要从「ARK 协议 / OpenAI 协议」
+    改成「同一条路 / 另一条路」？<br />
+    前者说厂商，后者说行为。行为更能自解释，但厂商名对运维更眼熟——
+    折中是标题用行为、副标题保留协议名，也就是原型里这一版。
+  </div>
+
+  <footer>
+    原型 · 非线上代码。机制部分取自 <span class="mono">relay/channel/advancedcustom/apiduo_image_script.go</span>
+    的 <span class="mono">planSeedream</span> / <span class="mono">planGPTImage2</span> / <span class="mono">deriveEditPath</span>。
+  </footer>
+</div>
+
+<script>
+  // 主题
+  const root = document.documentElement
+  const btn = document.getElementById('theme')
+  btn.addEventListener('click', () => {
+    const dark = root.getAttribute('data-theme') === 'dark'
+    root.setAttribute('data-theme', dark ? 'light' : 'dark')
+    btn.querySelector('span').textContent = dark ? '深色' : '浅色'
+  })
+
+  // 方案 A / B 的联动选择
+  const groups = new Map()
+  document.querySelectorAll('.choice').forEach((el) => {
+    const group = el.closest('.choices')
+    if (!groups.has(group)) groups.set(group, [])
+    groups.get(group).push(el)
+    el.addEventListener('click', () => {
+      groups.get(group).forEach((x) => x.setAttribute('aria-checked', 'false'))
+      el.setAttribute('aria-checked', 'true')
+      sync(el.dataset.shape)
+    })
+  })
+
+  const editpath = document.getElementById('editpath')
+  const upshape = document.getElementById('upshape')
+
+  function sync(shape) {
+    // 方案 A：只有双端点才显示「图生图的落点」
+    if (editpath) editpath.style.display = shape === 'dual' ? '' : 'none'
+    // 方案 B：上游格上的形态摘要
+    if (upshape) upshape.textContent = shape === 'dual' ? '2 个端点' : '1 个端点'
+    // 两个方案的卡互相同步
+    document.querySelectorAll('.choice').forEach((el) => {
+      el.setAttribute('aria-checked', String(el.dataset.shape === shape))
+    })
+  }
+
+  // 方案 B 的浮层
+  const ups = document.getElementById('ups')
+  const pop = document.getElementById('uppop')
+  if (ups) {
+    ups.addEventListener('click', () => {
+      const open = !pop.hidden
+      pop.hidden = open
+      ups.setAttribute('aria-expanded', String(!open))
+    })
+  }
+</script>
+</body>
+</html>

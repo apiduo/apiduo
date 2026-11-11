@@ -5374,6 +5374,7 @@ export function ChannelMutateDrawer({
           channelModels={formValues.models}
           // APIDUO:coverage:END
           // APIDUO:primary-endpoint:BEGIN
+          baseUrl={formValues.base_url}
           primaryEndpoint={readPrimaryEndpoint(formValues.settings)}
           onPrimaryEndpointChange={(primary) => {
             // 用 form 当前值而不是本轮渲染的 formValues：同一个事件里连着改两处

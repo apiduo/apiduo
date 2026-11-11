@@ -148,6 +148,22 @@
     "Folded by the image protocol": "Folded by the image protocol",
     "Override ignored": "Override ignored",
     "The image protocol picks the endpoint itself; this entry does not use its own upstream.": "The image protocol picks the endpoint itself; this entry does not use its own upstream.",
-    "{{count}} routes": "{{count}} routes"
+    "{{count}} routes": "{{count}} routes",
+    "Downstream": "Downstream",
+    "Converges to": "Converges to",
+    "{{count}} entries": "{{count}} entries",
+    "The shared landing address for every entry. A single entry can still point somewhere else.": "The shared landing address for every entry. A single entry can still point somewhere else.",
+    "Click to give this entry its own upstream.": "Click to give this entry its own upstream.",
+    "How does the upstream take image-to-image?": "How does the upstream take image-to-image?",
+    "Same route": "Same route",
+    "A different route": "A different route",
+    "Image references stay in the JSON body; mask is not forwarded.": "Image references stay in the JSON body; mask is not forwarded.",
+    "Image and mask are uploaded as files.": "Image and mask are uploaded as files.",
+    "Image-to-image path": "Image-to-image path",
+    "Derived automatically": "Derived automatically",
+    "Left empty, the last segment of the primary endpoint is swapped from generations to edits. Fill it in only when the upstream path differs.": "Left empty, the last segment of the primary endpoint is swapped from generations to edits. Fill it in only when the upstream path differs.",
+    "One endpoint": "One endpoint",
+    "Two endpoints": "Two endpoints",
+    "Open the protocol details to change how image-to-image reaches the upstream.": "Open the protocol details to change how image-to-image reaches the upstream."
   }
 }
