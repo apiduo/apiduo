@@ -368,6 +368,14 @@ func (a *Adaptor) ParseTaskResult(task *model.Task, resp *http.Response, respBod
 			result.Url = resultURL
 		}
 	}
+	// 少数上游（OpenAI 异步图像形状的典型实现：受理回 task_id，未完成回
+	// {task_id,status}，完成只回 {data,created,usage}）在终态成功时根本不带
+	// status 字段。此时结果本身就是终态证据 —— 没有哪家会给还没跑完的任务
+	// 发结果 URL。只在 status **缺失**时兜底；写了但不是已知词的状态仍归
+	// UNKNOWN，那是配置或上游改了词，猜成成功会把没做完的活儿结了账。
+	if strings.TrimSpace(rawStatus) == "" && result.Url != "" {
+		result.Status = "SUCCESS"
+	}
 	if len(config.Fields.ProgressPath) > 0 {
 		if progress, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.ProgressPath); ok {
 			result.Progress = progress

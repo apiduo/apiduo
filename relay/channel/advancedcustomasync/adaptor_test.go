@@ -179,6 +179,48 @@ func TestParseTaskResultKeepsUnknownStatusNonTerminal(t *testing.T) {
 	}
 }
 
+func TestParseTaskResultReadsResultWithoutStatusAsSuccess(t *testing.T) {
+	// OpenAI 异步图像形状：完成只回 {data:[{url}],created,usage}，不带 status。
+	config := testConfig()
+	config.Fields.StatusPath = []string{"status"}
+	config.Fields.ResultURLPath = []string{"data", "0", "url"}
+	config.Fields.ErrorPath = []string{"error", "message"}
+	adaptor := testAdaptor(t, config)
+	task := &model.Task{ChannelId: 7}
+	task.PrivateData.UpstreamTaskID = "upstream-42"
+
+	body := []byte(`{"data":[{"url":"https://cdn.example.com/a.png"}],"created":1794402426,"usage":{"images":1}}`)
+	result, err := adaptor.ParseTaskResult(task, nil, body)
+	if err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if result.Status != "SUCCESS" {
+		t.Fatalf("status = %q, want SUCCESS", result.Status)
+	}
+	if result.Url != "https://cdn.example.com/a.png" {
+		t.Fatalf("url = %q", result.Url)
+	}
+}
+
+func TestParseTaskResultDoesNotGuessSuccessFromUnknownWord(t *testing.T) {
+	// 状态写了但不认识 —— 那是配置或上游改了词，不能因为带了结果就结账。
+	config := testConfig()
+	config.Fields.StatusPath = []string{"status"}
+	config.Fields.ResultURLPath = []string{"data", "0", "url"}
+	adaptor := testAdaptor(t, config)
+	task := &model.Task{ChannelId: 7}
+	task.PrivateData.UpstreamTaskID = "upstream-42"
+
+	body := []byte(`{"status":"warping","data":[{"url":"https://cdn.example.com/a.png"}]}`)
+	result, err := adaptor.ParseTaskResult(task, nil, body)
+	if err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if result.Status != "UNKNOWN" {
+		t.Fatalf("status = %q, want UNKNOWN", result.Status)
+	}
+}
+
 func TestParseTaskResultLeavesUnsetOptionalFieldsEmpty(t *testing.T) {
 	config := testConfig()
 	config.Fields.ResultURLPath = nil
