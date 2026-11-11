@@ -48,6 +48,7 @@ const traceConfig = {
   body_mode: 'headtail',
   body_head_bytes: 32768,
   body_tail_bytes: 16384,
+  body_full_bytes: 2097152,
   error_sample_rate: 100,
   redact: true,
   environment: 'production',
@@ -70,6 +71,7 @@ function options(overrides: Record<string, string> = {}) {
     [`${OPTION_KEY}.body_mode`]: 'headtail',
     [`${OPTION_KEY}.body_head_bytes`]: '32768',
     [`${OPTION_KEY}.body_tail_bytes`]: '16384',
+    [`${OPTION_KEY}.body_full_bytes`]: '2097152',
     [`${OPTION_KEY}.error_sample_rate`]: '100',
     [`${OPTION_KEY}.redact`]: 'true',
     [`${OPTION_KEY}.environment`]: 'production',
@@ -196,6 +198,9 @@ describe('ObservabilitySection', () => {
     expect(payload[`${OPTION_KEY}.body_mode`]).toBe('headtail')
     expect(payload[`${OPTION_KEY}.body_head_bytes`]).toBe('32768')
     expect(payload[`${OPTION_KEY}.body_tail_bytes`]).toBe('16384')
+    // 上限与模式同批：只落 body_mode 而漏了上限，会得到「full 但用的是上一版
+    // 的 2 MB」这种半套状态，而排查现场时那正是要看的东西。
+    expect(payload[`${OPTION_KEY}.body_full_bytes`]).toBe('2097152')
     expect(payload[`${OPTION_KEY}.error_sample_rate`]).toBe('100')
     expect(payload[`${OPTION_KEY}.redact`]).toBe('true')
     expect(payload[`${OPTION_KEY}.environment`]).toBe('production')
@@ -236,7 +241,7 @@ describe('ObservabilitySection', () => {
     ).toBe('0')
   })
 
-  it('warns about the full-payload cost before it is saved', async () => {
+  it('warns about the full-payload cost with the number on the form', async () => {
     const user = userEvent.setup()
     renderSection()
 
@@ -245,9 +250,46 @@ describe('ObservabilitySection', () => {
     })
     await user.click(screen.getByRole('button', { name: 'Full payload' }))
 
-    expect(screen.getByText(/768 MB at 1000 concurrent streams/)).toBeTruthy()
+    // 提示里的两个数字都来自表单，不是写死的常量：早先那句「2 MB … 768 MB」
+    // 既错了约 5 倍，也会在这一栏变成可编辑之后立刻过期。
+    expect(screen.getByText(/up to 2 MB per request/)).toBeTruthy()
+    expect(
+      screen.getByText(/3\.9 GB of capture buffers at 1000 concurrent streams/)
+    ).toBeTruthy()
+
+    const cap = screen.getByLabelText('Single-request cap (MB)')
+    await user.clear(cap)
+    await user.type(cap, '8')
+    expect((cap as HTMLInputElement).value).toBe('8')
+    expect(screen.getByText(/up to 8 MB per request/)).toBeTruthy()
+    expect(
+      screen.getByText(/15\.6 GB of capture buffers at 1000 concurrent streams/)
+    ).toBeTruthy()
+
     // 只是填表，没保存。
     expect(updateSystemOptionsBatch).not.toHaveBeenCalled()
+  })
+
+  it('never saves a sub-megabyte cap the server would refuse', async () => {
+    const user = userEvent.setup()
+    renderSection()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Full payload' })).toBeTruthy()
+    })
+    await user.click(screen.getByRole('button', { name: 'Full payload' }))
+
+    const cap = screen.getByLabelText('Single-request cap (MB)')
+    await user.clear(cap)
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(updateSystemOptionsBatch).toHaveBeenCalledTimes(1)
+    })
+    const payload = vi.mocked(updateSystemOptionsBatch).mock
+      .calls[0][0] as Record<string, string>
+    // 清空是输入过程中的中间态；落库必须是下界，而不是 0（后端会整批拒绝）。
+    expect(payload[`${OPTION_KEY}.body_full_bytes`]).toBe('1048576')
   })
 
   it('warns that 0% metadata kills every trace link', async () => {

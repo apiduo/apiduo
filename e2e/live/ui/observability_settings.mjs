@@ -355,14 +355,24 @@ try {
       await clickText(page, day);
       await sleep(120);
     }
-    // 规则行里的两个 number：元数据 50、内容 20
+    // 规则行里的两个 number：元数据 50、内容 20。
+    // 不能用全局序号：页面里其它卡片（内容采集/失败采样）也有 number 输入，
+    // 卡片一变序号就漂移。从本行的时间输入向上爬，找到第一个含两个 number
+    // 的祖先容器，速率框必然在其中。
     await page.evaluate(() => {
-      const nums = Array.from(document.querySelectorAll('input[type=number]'));
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-      setter.call(nums[2], '50');
-      nums[2].dispatchEvent(new Event('input', { bubbles: true }));
-      setter.call(nums[3], '20');
-      nums[3].dispatchEvent(new Event('input', { bubbles: true }));
+      let el = document.querySelector('input[placeholder="09:00"]');
+      let nums = [];
+      for (let i = 0; i < 8 && el?.parentElement; i++) {
+        el = el.parentElement;
+        nums = Array.from(el.querySelectorAll('input[type=number]'));
+        if (nums.length >= 2) break;
+      }
+      if (nums.length < 2) throw new Error('rule rate inputs not found');
+      setter.call(nums[nums.length - 2], '50');
+      nums[nums.length - 2].dispatchEvent(new Event('input', { bubbles: true }));
+      setter.call(nums[nums.length - 1], '20');
+      nums[nums.length - 1].dispatchEvent(new Event('input', { bubbles: true }));
     });
     await sleep(400);
 
@@ -510,6 +520,123 @@ try {
     const saved4 = await api(A, 'GET', '/api/option/', undefined, rootJwtA);
     const rules4 = JSON.parse((saved4.body?.data || []).find((o) => o.key === 'observability_setting.rules')?.value || '[]');
     check('删除后规则清空', rules4.length === 0, JSON.stringify(rules4));
+    await page.dispose();
+  }
+
+  /* ── E2. 内容采集 + 失败/脱敏 ─────────────────────────────── */
+  group('E2. 内容采集与失败/脱敏：预算联动、成本警告、持久化');
+  {
+    const page = await openPage(browser);
+    await signIn(page, A);
+    await page.goto(A + '/system-settings/site/observability', { waitUntil: 'networkidle2' });
+    await sleep(1500);
+
+    const bodyCard = () => page.evaluate(() => document.body.innerText);
+
+    // 默认值回显：headtail 32/16
+    check('内容卡片存在且默认头尾截断', (await bodyCard()).includes('内容采集'));
+    const defaults = await page.evaluate(() => ({
+      head: document.querySelector('input[aria-label="头部窗口（KB）"]')?.value,
+      tail: document.querySelector('input[aria-label="尾部窗口（KB）"]')?.value,
+    }));
+    check('窗口默认 32 / 16', defaults.head === '32' && defaults.tail === '16', JSON.stringify(defaults));
+
+    // full 模式的上限与成本警告：两个数字都必须跟着表单走
+    await clickText(page, '完整内容');
+    await sleep(300);
+    const capLabel = 'input[aria-label="单请求上限（MB）"]';
+    const capDefault = await page.evaluate((sel) => document.querySelector(sel)?.value, capLabel);
+    check('完整模式上限默认 2 MB', capDefault === '2', String(capDefault));
+    // 旧文案写死「768 MB」，与 2 MB × 输入输出两份对不上；现在按当前值算。
+    check('完整模式成本警告按实际值算（3.9 GB）', (await bodyCard()).includes('3.9 GB'));
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(el, '8');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, capLabel);
+    await sleep(300);
+    const capAfter = await page.evaluate((sel) => document.querySelector(sel)?.value, capLabel);
+    check('上限可改到 8 MB', capAfter === '8', String(capAfter));
+    check('改值后成本警告跟着变（15.6 GB）', (await bodyCard()).includes('15.6 GB'));
+    // 改回来，免得后面那次保存把 8 MB 落库
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(el, '2');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, capLabel);
+    await sleep(200);
+    await clickText(page, '头尾截断');
+    await sleep(300);
+
+    // 预算联动：头 128 → 尾被压到 0
+    await page.evaluate(() => {
+      const el = document.querySelector('input[aria-label="头部窗口（KB）"]');
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(el, '128');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await sleep(300);
+    const clamped = await page.evaluate(() => ({
+      head: document.querySelector('input[aria-label="头部窗口（KB）"]')?.value,
+      tail: document.querySelector('input[aria-label="尾部窗口（KB）"]')?.value,
+    }));
+    check('头调到 128 时尾被联动压到 0', clamped.head === '128' && clamped.tail === '0', JSON.stringify(clamped));
+
+    // 还原 32 / 16。联动只会压不会弹：头 128→32 时尾停在 0，
+    // 所以尾要显式写回，否则落库断言对不上。
+    await page.evaluate(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      const head = document.querySelector('input[aria-label="头部窗口（KB）"]');
+      setter.call(head, '32');
+      head.dispatchEvent(new Event('input', { bubbles: true }));
+      const tail = document.querySelector('input[aria-label="尾部窗口（KB）"]');
+      setter.call(tail, '16');
+      tail.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await sleep(300);
+    const restored = await page.evaluate(() => ({
+      head: document.querySelector('input[aria-label="头部窗口（KB）"]')?.value,
+      tail: document.querySelector('input[aria-label="尾部窗口（KB）"]')?.value,
+    }));
+    check('还原后窗口 32 / 16', restored.head === '32' && restored.tail === '16', JSON.stringify(restored));
+
+    // 脱敏警告
+    await page.evaluate(() => {
+      const switches = Array.from(document.querySelectorAll('[role="switch"], button[data-state]'));
+      const el = switches.find((x) => x.getAttribute('aria-label') === '抹掉凭据与个人信息') || switches[switches.length - 1];
+      el?.click();
+    });
+    await sleep(300);
+    check('关闭脱敏出现原样外发警告', (await bodyCard()).includes('原样离开网关'));
+    await page.evaluate(() => {
+      const switches = Array.from(document.querySelectorAll('[role="switch"], button[data-state]'));
+      const el = switches.find((x) => x.getAttribute('aria-label') === '抹掉凭据与个人信息') || switches[switches.length - 1];
+      el?.click();
+    });
+    await sleep(300);
+
+    // 环境变量清单：只读区必须有「需重启」提示
+    check('环境变量区标注需重启', (await bodyCard()).includes('需重启'));
+
+    // 保存并核对落库
+    check('保存可点', await clickText(page, '保存'));
+    await sleep(2500);
+    const saved = await api(A, 'GET', '/api/option/', undefined, rootJwtA);
+    const opt = (key) => (saved.body?.data || []).find((o) => o.key === key)?.value;
+    check('body_mode 落库 = headtail', opt('observability_setting.body_mode') === 'headtail', opt('observability_setting.body_mode'));
+    check('头窗口落库 = 32768', opt('observability_setting.body_head_bytes') === '32768', opt('observability_setting.body_head_bytes'));
+    check('尾窗口落库 = 16384', opt('observability_setting.body_tail_bytes') === '16384', opt('observability_setting.body_tail_bytes'));
+    check('full 上限落库 = 2097152', opt('observability_setting.body_full_bytes') === '2097152', opt('observability_setting.body_full_bytes'));
+    check('脱敏落库 = true', opt('observability_setting.redact') === 'true', opt('observability_setting.redact'));
+    check('环境标签落库非空', (opt('observability_setting.environment') || '').length > 0, opt('observability_setting.environment'));
+
+    // 「当前生效」行显示失败与脱敏
+    await page.reload({ waitUntil: 'networkidle2' });
+    await sleep(1500);
+    check('当前生效显示失败采样与脱敏', /失败\s*100%\s*·\s*脱敏开启/.test(await bodyCard()),
+      (await bodyCard()).match(/失败[\s\S]{0,30}/)?.[0]?.replace(/\s+/g, ' '));
     await page.dispose();
   }
 

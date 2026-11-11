@@ -71,6 +71,10 @@ type Config struct {
 	BodyMode        BodyMode
 	HeadBytes       int
 	TailBytes       int
+	// FullMaxBytes caps ONE payload (input or output, not their sum) in full
+	// mode. Console-editable, env-seeded; BodyMaxBytes() is what the collector
+	// reads so a zero value can never mean "capture nothing".
+	FullMaxBytes    int
 	TimeoutSeconds  int
 	QueueMeta       int
 	QueueContent    int
@@ -88,7 +92,7 @@ type Config struct {
 const (
 	defaultHeadBytes      = 32 * 1024
 	defaultTailBytes      = 16 * 1024
-	fullMaxBytes          = 2 * 1024 * 1024
+	defaultFullMaxBytes   = 2 * 1024 * 1024
 	defaultQueueMeta      = 2048
 	defaultQueueContent   = 512
 	defaultTimeoutSeconds = 3
@@ -101,6 +105,20 @@ const (
 	// deliberately NOT subject to this cap — an operator editing .env is
 	// expected to have read the memory table first.
 	MaxBodyWindowBytes = 128 * 1024
+	// MinBodyFullBytes and MaxBodyFullBytes bound the console-editable cap for
+	// full capture. Full mode is meant for "diagnose this one request", and the
+	// cost runs the wrong way: one snapshot keeps input and output separately,
+	// so a request holds at most twice the value on the form, and the content
+	// queue holds QueueContent of them. 16 MB is four 1024px images — past that
+	// the operator wants a proxy capture, not a bigger buffer in the gateway's
+	// heap.
+	//
+	// The floor is 1 MB, not a token few KB: below it full mode degenerates
+	// into head/tail with none of its guarantees (a 32 KB "full" body is not
+	// valid JSON either), and a whole-MB form keeps the console honest without
+	// fractional inputs.
+	MinBodyFullBytes = 1 << 20
+	MaxBodyFullBytes = 16 << 20
 )
 
 func envInt(key string, def int) int {
@@ -175,6 +193,35 @@ func EnvDefaultBodyMode() BodyMode {
 	return envBodyMode("LANGFUSE_BODY_MODE")
 }
 
+// EnvDefaultBodyFullCap is the full-mode per-payload cap the environment asks
+// for. Same reason as EnvDefaultBodyWindow: the console must open showing the
+// value actually in force, not a literal that happens to sit nearby.
+func EnvDefaultBodyFullCap() int {
+	return ClampBodyFullBytes(envInt("LANGFUSE_BODY_FULL_MAX_BYTES", defaultFullMaxBytes))
+}
+
+// ClampBodyFullBytes bounds the console-editable cap. Write-time validation
+// refuses anything outside the range; this is the runtime backstop for a
+// hand-edited option row, and it is exported so the settings module normalizes
+// with the same arithmetic instead of growing a second copy that drifts.
+//
+// A non-positive value means "no opinion" and yields the compiled default — it
+// must not be read as "cap at zero bytes", which would silently stop capturing
+// content while the console still says full mode.
+func ClampBodyFullBytes(n int) int {
+	if n <= 0 {
+		return defaultFullMaxBytes
+	}
+	return min(max(n, MinBodyFullBytes), MaxBodyFullBytes)
+}
+
+// BodyMaxBytes is the per-payload cap the collector applies. Kept as a method
+// so every read goes through the same fallback: a Config built by hand (tests,
+// older bridge code) has FullMaxBytes == 0.
+func (c Config) BodyMaxBytes() int {
+	return ClampBodyFullBytes(c.FullMaxBytes)
+}
+
 // EnvDefaultBodyWindow is the head/tail pair the environment asks for.
 func EnvDefaultBodyWindow() (head, tail int) {
 	return envInt("LANGFUSE_BODY_HEAD_BYTES", defaultHeadBytes),
@@ -231,6 +278,7 @@ func loadFromEnv() *Config {
 		BodyMode:        EnvDefaultBodyMode(),
 		HeadBytes:       defaultHead,
 		TailBytes:       defaultTail,
+		FullMaxBytes:    EnvDefaultBodyFullCap(),
 		TimeoutSeconds:  envInt("LANGFUSE_TIMEOUT_SECONDS", defaultTimeoutSeconds),
 		QueueMeta:       envInt("LANGFUSE_QUEUE_META", defaultQueueMeta),
 		QueueContent:    envInt("LANGFUSE_QUEUE_CONTENT", defaultQueueContent),

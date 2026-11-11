@@ -296,7 +296,8 @@ finish_reason、usage。**采不到**的：agent 内部 planning / 记忆（在�
 | 元数据队列 | 2048 × ~128 B | 256 KB |
 | 内容快照队列 | 512 × ≤48 KB | **25 MB** |
 | per-request buffer（千并发） | ≤48 KB × 1000 | 48 MB |
-| 全量模式（可选） | ≤500 KB × 1000 + 队列 256 MB | 768 MB（需显式开启） |
+| 全量模式（可选，默认 2 MB/侧） | ≤2 MB × 2 侧 × 1000 | **~4 GB**（需显式开启） |
+| 　└ 内容队列同上限时 | 512 × ≤2 MB × 2 侧 | **~2 GB** |
 
 合计 headtail 默认配置最坏 **~74 MB**，可控。两条派生规则：
 
@@ -330,6 +331,7 @@ LANGFUSE_RELEASE=                                   # 显式 pin 版本号；默
 LANGFUSE_BODY_MODE=headtail                         # off / headtail / full（§3.6）
 LANGFUSE_BODY_HEAD_BYTES=32768                      # headtail 头部上限
 LANGFUSE_BODY_TAIL_BYTES=16384                      # headtail 尾部上限
+LANGFUSE_BODY_FULL_MAX_BYTES=2097152                # full 模式每个 payload 的上限（1–16 MB）
 LANGFUSE_TIMEOUT_SECONDS=3
 LANGFUSE_QUEUE_META=2048                            # 元数据队列深度
 LANGFUSE_QUEUE_CONTENT=512                          # 内容队列深度（×48KB 上限 = 25MB 上界，§3.9）
@@ -1477,6 +1479,7 @@ v4 会把**约 1 KB 以上**的 body 外置到 MinIO（`blob_storage_file_path` 
 | 失败请求采样 | `observability_setting.error_sample_rate` | `LANGFUSE_ERROR_SAMPLE_RATE`（100） | 同上 |
 | 内容模式 | `observability_setting.body_mode` | `LANGFUSE_BODY_MODE`（headtail） | 同上 |
 | 头/尾窗口 | `observability_setting.body_head_bytes` / `body_tail_bytes` | 32768 / 16384 | 同上 |
+| 全量模式上限 | `observability_setting.body_full_bytes` | `LANGFUSE_BODY_FULL_MAX_BYTES`（2 MB） | 同上 |
 | 脱敏 | `observability_setting.redact` | 开（`LANGFUSE_REDACT=false` 才关） | **导出时**读实时值 |
 | 环境标签 | `observability_setting.environment` | `LANGFUSE_ENVIRONMENT`（production） | 同上 |
 | 时区 / 规则 / 查看者 | 同 §19 | — | 同上 |
@@ -1484,6 +1487,12 @@ v4 会把**约 1 KB 以上**的 body 外置到 MinIO（`blob_storage_file_path` 
 窗口有合并上限 **128 KB**（head+tail，`trace.MaxBodyWindowBytes`）：写接口的跨键
 校验在合并视图上判（只改一条也要按现存另一条合并），运行时 `ClampBodyWindow`
 按比例压回，normalize 保留操作员选择的比例而不是清零一端。
+
+`full` 的单请求上限是另一个量级：**1–16 MB**，按 payload 计而不按请求计
+（`trace.MinBodyFullBytes` / `MaxBodyFullBytes`，运行时 `ClampBodyFullBytes`）。
+它必须留在页面上而不是只在 .env 里 —— 值得设成几 MB 的场景只有「排查这一次
+请求」，而需要重新发版的排查等于没人做。内存代价是**两倍**这个值乘以并发：
+prompt 与 answer 各占一份，内容队列再叠 `LANGFUSE_QUEUE_CONTENT` 份。
 
 ### 24.1 热更新的实现边界：两种配置、两种生命周期
 

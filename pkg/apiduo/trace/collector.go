@@ -363,10 +363,14 @@ func (col *Collector) appendFrame(frame []byte, conf *Config) {
 			col.framesEnd.add(string(frame))
 		}
 	case 2:
-		limit := fullMaxBytes
+		limit := conf.BodyMaxBytes()
 		if len(col.frameFull)+len(frame)+1 > limit {
 			col.framesTruncated = true
-			remaining := limit - len(col.frameFull)
+			// The separator counts against the cap too: leaving it out of the
+			// arithmetic let the buffer end one byte over the number the
+			// operator typed, which is the kind of off-by-one that makes a
+			// documented limit untrustworthy.
+			remaining := limit - len(col.frameFull) - 1
 			if remaining > 0 {
 				col.frameFull = append(col.frameFull, frame[:min(remaining, len(frame))]...)
 				col.frameFull = append(col.frameFull, sep)
@@ -403,11 +407,12 @@ func CaptureResponseBody(c *gin.Context, data []byte) {
 func truncateCopy(data []byte, conf *Config) []byte {
 	switch conf.BodyMode {
 	case BodyFull:
-		if len(data) <= fullMaxBytes {
+		limit := conf.BodyMaxBytes()
+		if len(data) <= limit {
 			return data
 		}
-		out := make([]byte, fullMaxBytes)
-		copy(out, data[:fullMaxBytes])
+		out := make([]byte, limit)
+		copy(out, data[:limit])
 		return out
 	default: // headtail (BodyOff callers never reach here)
 		if len(data) <= conf.HeadBytes+conf.TailBytes {

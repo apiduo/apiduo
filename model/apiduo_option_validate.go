@@ -193,6 +193,11 @@ func ValidateApiduoOptionValue(key, value string) error {
 		}
 	case "observability_setting.body_head_bytes", "observability_setting.body_tail_bytes":
 		return apiduoRange(key, v, 0, trace.MaxBodyWindowBytes)
+	case "observability_setting.body_full_bytes":
+		// 上下界都是硬边界而不是建议值：这不是「窗口」，是每个 payload 的缓冲上限，
+		// 一个请求同时持有 input 与 output，队列再叠 QueueContent 份。
+		// 写入期拒绝，运行期 ClampBodyFullBytes 兜底。
+		return apiduoRange(key, v, trace.MinBodyFullBytes, trace.MaxBodyFullBytes)
 	case "observability_setting.error_sample_rate":
 		return apiduoRange(key, v, 0, 100)
 	case "observability_setting.environment":

@@ -76,6 +76,7 @@ type Draft = {
   bodyMode: BodyModeId
   headKB: number
   tailKB: number
+  fullMB: number
   errorRate: number
   redact: boolean
   environment: string
@@ -93,6 +94,7 @@ type Payload = {
   body_mode: BodyModeId
   body_head_bytes: number
   body_tail_bytes: number
+  body_full_bytes: number
   error_sample_rate: number
   redact: boolean
   environment: string
@@ -118,6 +120,7 @@ type TraceConfig = {
   body_mode?: string
   body_head_bytes?: number
   body_tail_bytes?: number
+  body_full_bytes?: number
   error_sample_rate?: number
   redact?: boolean
   environment?: string
@@ -173,6 +176,16 @@ const BODY_MODES = [
 const MAX_WINDOW_KB = 128
 
 /**
+ * Bounds for the full-capture cap, mirroring trace.MinBodyFullBytes and
+ * trace.MaxBodyFullBytes. Duplicated because the console cannot import a Go
+ * constant; a test pins the pair so a backend change cannot leave this form
+ * offering a save the server will refuse.
+ */
+const MIN_FULL_MB = 1
+const MAX_FULL_MB = 16
+const DEFAULT_FULL_MB = 2
+
+/**
  * What this page deliberately cannot change.
  *
  * Three reasons, ordered by how much damage a wrong value does: credentials
@@ -221,6 +234,7 @@ const EMPTY_DRAFT: Draft = {
   bodyMode: 'headtail',
   headKB: 32,
   tailKB: 16,
+  fullMB: DEFAULT_FULL_MB,
   errorRate: 100,
   redact: true,
   environment: 'production',
@@ -254,6 +268,23 @@ function bytesToKB(bytes: number): number {
   return Math.max(0, Math.round(bytes / 1024))
 }
 
+/** Whole MB on the wire too: the cap is 1–16 MB, so a decimal is noise. */
+function bytesToMB(bytes: number): number {
+  return Math.max(0, Math.round(bytes / (1024 * 1024)))
+}
+
+/**
+ * Like clampKB, zero is allowed *while typing*: making the field snap to 1 the
+ * moment it is emptied turns "clear, type 8" into "18". The blur handler snaps
+ * the floor back, and toPayload clamps again so an abandoned 0 can never be
+ * stored as a sub-megabyte cap the server would refuse.
+ */
+function clampMB(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.min(MAX_FULL_MB, Math.max(0, Math.round(parsed)))
+}
+
 function toBodyMode(value: unknown): BodyModeId {
   return value === 'off' || value === 'full' ? value : 'headtail'
 }
@@ -270,6 +301,7 @@ function toDraft(raw: unknown): Draft {
     bodyMode: toBodyMode(value.body_mode),
     headKB: bytesToKB(value.body_head_bytes ?? 32768),
     tailKB: bytesToKB(value.body_tail_bytes ?? 16384),
+    fullMB: bytesToMB(value.body_full_bytes ?? DEFAULT_FULL_MB * 1024 * 1024),
     errorRate: value.error_sample_rate ?? 100,
     redact: value.redact ?? true,
     environment: value.environment ?? 'production',
@@ -301,6 +333,8 @@ function toPayload(draft: Draft): Payload {
     body_mode: draft.bodyMode,
     body_head_bytes: Math.round(draft.headKB * 1024),
     body_tail_bytes: Math.round(draft.tailKB * 1024),
+    body_full_bytes:
+      Math.round(Math.max(MIN_FULL_MB, draft.fullMB)) * 1024 * 1024,
     error_sample_rate: clampPercent(String(draft.errorRate)),
     redact: draft.redact,
     environment: draft.environment.trim(),
@@ -374,6 +408,9 @@ export function ObservabilitySection() {
         body_tail_bytes: Number(
           values.get(`${OPTION_KEY}.body_tail_bytes`) ?? 16384
         ),
+        body_full_bytes: Number(
+          values.get(`${OPTION_KEY}.body_full_bytes`) ?? 2097152
+        ),
         error_sample_rate: Number(
           values.get(`${OPTION_KEY}.error_sample_rate`) ?? 100
         ),
@@ -430,6 +467,7 @@ export function ObservabilitySection() {
         [`${OPTION_KEY}.body_mode`]: payload.body_mode,
         [`${OPTION_KEY}.body_head_bytes`]: String(payload.body_head_bytes),
         [`${OPTION_KEY}.body_tail_bytes`]: String(payload.body_tail_bytes),
+        [`${OPTION_KEY}.body_full_bytes`]: String(payload.body_full_bytes),
         [`${OPTION_KEY}.error_sample_rate`]: String(
           payload.error_sample_rate
         ),
@@ -516,6 +554,11 @@ export function ObservabilitySection() {
   // already saw both numbers on screen.
   const windowKB = current.headKB + current.tailKB
   const windowMB = Math.round((windowKB * 1000) / 1024)
+  // Prompt and answer are buffered separately, so one request occupies twice
+  // the cap; 1000 concurrent streams is the same reference point the head/tail
+  // hint uses. The old copy hardcoded "2 MB … 768 MB", which was already wrong
+  // by ~5x and would have gone stale the moment the cap became editable.
+  const fullBudgetGB = Math.round(((current.fullMB * 2 * 1000) / 1024) * 10) / 10
 
   // Early returns instead of a nested ternary: the two sentences are
   // separate translations anyway, and nesting them hides that from the
@@ -982,12 +1025,37 @@ export function ObservabilitySection() {
           ) : null}
 
           {current.bodyMode === 'full' ? (
-            <p className='flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300'>
-              <Info className='mt-0.5 size-3.5 shrink-0' />
-              {t(
-                'Full capture keeps up to 2 MB per request: about 6.8% of one core and 768 MB at 1000 concurrent streams. Turn it on while diagnosing one specific request, then switch back.'
-              )}
-            </p>
+            <div className='space-y-3'>
+              <div className='max-w-xs space-y-2'>
+                <Label>{t('Single-request cap (MB)')}</Label>
+                <Input
+                  type='number'
+                  min={0}
+                  max={MAX_FULL_MB}
+                  step={1}
+                  aria-label={t('Single-request cap (MB)')}
+                  value={current.fullMB}
+                  onChange={(e) => update({ fullMB: clampMB(e.target.value) })}
+                  onBlur={() => {
+                    if (current.fullMB < MIN_FULL_MB) {
+                      update({ fullMB: MIN_FULL_MB })
+                    }
+                  }}
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Prompt and answer are capped one by one, so one request holds at most twice this much. The cap applies before images are externalized: past it the body stops being valid JSON, and the images behind the cut are neither stored nor shown.'
+                  )}
+                </p>
+              </div>
+              <p className='flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300'>
+                <Info className='mt-0.5 size-3.5 shrink-0' />
+                {t(
+                  'Full capture keeps up to {{mb}} MB per request — roughly {{gb}} GB of capture buffers at 1000 concurrent streams. Turn it on while diagnosing one specific request, then switch back.',
+                  { mb: current.fullMB, gb: fullBudgetGB }
+                )}
+              </p>
+            </div>
           ) : null}
 
           <p className='text-muted-foreground text-xs'>

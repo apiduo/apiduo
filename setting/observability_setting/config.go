@@ -59,6 +59,11 @@ type ObservabilitySetting struct {
 	BodyMode      string `json:"body_mode"`
 	BodyHeadBytes int    `json:"body_head_bytes"`
 	BodyTailBytes int    `json:"body_tail_bytes"`
+	// BodyFullBytes is the per-payload cap in full mode. It lives here rather
+	// than in the environment because the value worth having (several MB) is
+	// exactly the one an operator only dares to set for a single investigation
+	// — and a diagnosis that needs a redeploy is a diagnosis nobody runs.
+	BodyFullBytes int `json:"body_full_bytes"`
 	// ErrorSampleRate is an independent rate for FAILED requests, so a
 	// failure that sampling dropped still lands in the backend. Default 100:
 	// failures are the rows an operator opens the console for.
@@ -100,6 +105,7 @@ func newObservabilitySetting() ObservabilitySetting {
 		BodyMode:            trace.EnvDefaultBodyMode().String(),
 		BodyHeadBytes:       head,
 		BodyTailBytes:       tail,
+		BodyFullBytes:       trace.EnvDefaultBodyFullCap(),
 		ErrorSampleRate:     errorRate,
 		Redact:              redact,
 		Environment:         environment,
@@ -198,6 +204,7 @@ func UpdateAndSync() {
 			Mode:      mode,
 			HeadBytes: normalized.BodyHeadBytes,
 			TailBytes: normalized.BodyTailBytes,
+			FullBytes: normalized.BodyFullBytes,
 		},
 		Quality: &trace.QualitySettings{
 			ErrorSampleRate: normalized.ErrorSampleRate,
@@ -222,6 +229,13 @@ func normalize(in ObservabilitySetting) (ObservabilitySetting, []trace.Rule) {
 		bodyMode = trace.EnvDefaultBodyMode()
 	}
 	bodyHead, bodyTail := trace.ClampBodyWindow(in.BodyHeadBytes, in.BodyTailBytes)
+	// A row saved before this field existed unmarshals to 0, which must keep
+	// following LANGFUSE_BODY_FULL_MAX_BYTES instead of freezing the compiled
+	// default over it.
+	bodyFull := in.BodyFullBytes
+	if bodyFull <= 0 {
+		bodyFull = trace.EnvDefaultBodyFullCap()
+	}
 	out := ObservabilitySetting{
 		MetadataSampleRate:  clampRate(in.MetadataSampleRate),
 		ContentSampleRate:   clampRate(in.ContentSampleRate),
@@ -230,6 +244,7 @@ func normalize(in ObservabilitySetting) (ObservabilitySetting, []trace.Rule) {
 		BodyMode:            bodyMode.String(),
 		BodyHeadBytes:       bodyHead,
 		BodyTailBytes:       bodyTail,
+		BodyFullBytes:       trace.ClampBodyFullBytes(bodyFull),
 		ErrorSampleRate:     clampRate(in.ErrorSampleRate),
 		Redact:              in.Redact,
 		Environment:         normalizeEnvironment(in.Environment),

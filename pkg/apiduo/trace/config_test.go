@@ -48,3 +48,38 @@ func TestConsoleBaseFallsBackToHost(t *testing.T) {
 		t.Fatalf("console url must not change the export endpoint, got %q", c.Host)
 	}
 }
+
+// The full-mode cap used to be a compile-time constant; it is console-editable
+// now, which makes "0" a value a settings row can actually deliver. Zero must
+// never reach the collector as a byte limit: a 0-byte cap keeps nothing while
+// the console still says full capture, the worst possible failure shape.
+func TestBodyMaxBytesFallsBackAndClamps(t *testing.T) {
+	cases := []struct {
+		name string
+		in   int
+		want int
+	}{
+		{"unset keeps the compiled default", 0, defaultFullMaxBytes},
+		{"negative is not a cap", -1, defaultFullMaxBytes},
+		{"below the floor is raised", 1, MinBodyFullBytes},
+		{"in range is kept", 8 << 20, 8 << 20},
+		{"above the ceiling is lowered", 1 << 30, MaxBodyFullBytes},
+	}
+	for _, tc := range cases {
+		if got := ClampBodyFullBytes(tc.in); got != tc.want {
+			t.Fatalf("%s: ClampBodyFullBytes(%d) = %d, want %d", tc.name, tc.in, got, tc.want)
+		}
+		if got := (Config{FullMaxBytes: tc.in}).BodyMaxBytes(); got != tc.want {
+			t.Fatalf("%s: BodyMaxBytes() with %d = %d, want %d", tc.name, tc.in, got, tc.want)
+		}
+	}
+
+	t.Setenv("LANGFUSE_BODY_FULL_MAX_BYTES", "8388608")
+	if got := EnvDefaultBodyFullCap(); got != 8<<20 {
+		t.Fatalf("env value must win, got %d", got)
+	}
+	t.Setenv("LANGFUSE_BODY_FULL_MAX_BYTES", "not-a-number")
+	if got := EnvDefaultBodyFullCap(); got != defaultFullMaxBytes {
+		t.Fatalf("garbage must fall back to the default, got %d", got)
+	}
+}

@@ -162,3 +162,29 @@ func TestValidateRuleWindowsIgnoresOtherKeys(t *testing.T) {
 		t.Fatalf("unrelated key must not be validated: %s", err.Error())
 	}
 }
+
+// 这个字段是后加的，老行里没有它 —— json 解出来是 0。0 不能当成「上限 0 字节」，
+// 也不能冻成编译默认值把 .env 里设的值盖掉，只能继续跟随环境。
+func TestNormalizeBodyFullBytes(t *testing.T) {
+	t.Setenv("LANGFUSE_BODY_FULL_MAX_BYTES", "8388608")
+
+	out, _ := normalize(ObservabilitySetting{BodyMode: "full"})
+	if out.BodyFullBytes != 8<<20 {
+		t.Fatalf("缺字段必须跟随环境，得到 %d", out.BodyFullBytes)
+	}
+
+	out, _ = normalize(ObservabilitySetting{BodyMode: "full", BodyFullBytes: 1})
+	if out.BodyFullBytes != trace.MinBodyFullBytes {
+		t.Fatalf("低于下界要抬到下界，得到 %d", out.BodyFullBytes)
+	}
+
+	out, _ = normalize(ObservabilitySetting{BodyMode: "full", BodyFullBytes: 1 << 30})
+	if out.BodyFullBytes != trace.MaxBodyFullBytes {
+		t.Fatalf("高于上界要压到上界，得到 %d", out.BodyFullBytes)
+	}
+
+	out, _ = normalize(ObservabilitySetting{BodyMode: "full", BodyFullBytes: 4 << 20})
+	if out.BodyFullBytes != 4<<20 {
+		t.Fatalf("区间内必须原样保留，得到 %d", out.BodyFullBytes)
+	}
+}

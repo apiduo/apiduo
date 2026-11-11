@@ -240,3 +240,46 @@ func TestBeginSkipsWithoutRequestId(t *testing.T) {
 		t.Fatalf("empty request id must yield empty trace id, got %q", id)
 	}
 }
+
+// The cap the console edits must be the one truncation applies — both to a
+// one-shot body (image responses go through CaptureResponseBody) and to the
+// streaming frame buffer. A regression here is silent: the trace just gets
+// smaller than the operator asked for.
+func TestFullCapComesFromConfig(t *testing.T) {
+	conf := testConfig("http://unused")
+	conf.BodyMode = BodyFull
+	// The floor applies to the effective cap, so this is also the smallest cap
+	// that can be configured at all.
+	conf.FullMaxBytes = MinBodyFullBytes
+
+	data := []byte(strings.Repeat("a", 2*MinBodyFullBytes))
+	if got := truncateCopy(data, conf); len(got) != MinBodyFullBytes {
+		t.Fatalf("full mode must cut at the configured cap, got %d bytes", len(got))
+	}
+
+	// Zero is "no opinion" (an old hand-built config), not "keep nothing".
+	conf.FullMaxBytes = 0
+	if got := truncateCopy(data, conf); len(got) != len(data) {
+		t.Fatalf("zero cap must fall back to the default, got %d bytes", len(got))
+	}
+
+	// The streaming path uses the same number, and the separator counts against
+	// it: the buffer may end at the cap, never one byte past it.
+	conf.FullMaxBytes = MinBodyFullBytes
+	setConfig(conf)
+	c := newTestContext(t)
+	Begin(c)
+	col := fromContext(c)
+	col.frameMode = 2
+	// 600 KB frames against a 1 MB cap: the second one crosses it.
+	big := []byte(strings.Repeat("b", 600*1024))
+	for i := 0; i < 3; i++ {
+		col.appendFrame(big, conf)
+	}
+	if got := len(col.frameFull); got > conf.BodyMaxBytes() {
+		t.Fatalf("stream buffer must respect the cap, got %d bytes", got)
+	}
+	if !col.framesTruncated {
+		t.Fatal("crossing the cap must be recorded, not silently dropped")
+	}
+}

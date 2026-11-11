@@ -38,7 +38,7 @@ func GetApiduoTraceConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data": gin.H{
-			"enabled":               conf.Enabled,
+			"enabled": conf.Enabled,
 			// host 是浏览器可访问的基址（跳转链接用），export_host 是 span
 			// 真正 POST 过去的地址 —— 生产上前者是 https://langfuse.1task.cn、
 			// 后者是容器名。设置页两个都要显示，否则「上报地址」一栏
@@ -49,6 +49,7 @@ func GetApiduoTraceConfig(c *gin.Context) {
 			"body_mode":             conf.BodyModeName(),
 			"body_head_bytes":       conf.HeadBytes,
 			"body_tail_bytes":       conf.TailBytes,
+			"body_full_bytes":       conf.BodyMaxBytes(),
 			"error_sample_rate":     conf.ErrorSampleRate,
 			"redact":                conf.Redact,
 			"environment":           conf.Environment,

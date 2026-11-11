@@ -274,3 +274,35 @@ func TestTraceparentFlagParsing(t *testing.T) {
 	}
 	_ = http.Header{}
 }
+
+// 控制台保存的上限必须真的进到运行时；而「没有这个字段的老载荷」不能把
+// 已在生效的值缩回默认 —— 界面上换个无关开关就把上限改掉，是最难查的一类回归。
+func TestApplySettingsCarriesFullCap(t *testing.T) {
+	before := CurrentConfig()
+	t.Cleanup(func() {
+		ApplySettings(Settings{
+			Defaults:      before.Policy.Defaults,
+			Location:      before.Location,
+			ParentBased:   before.ParentBased,
+			ViewerUserIDs: before.TraceViewerUserIDs,
+			Body:          &BodySettings{Mode: before.BodyMode, HeadBytes: before.HeadBytes, TailBytes: before.TailBytes, FullBytes: before.FullMaxBytes},
+		})
+	})
+
+	ApplySettings(Settings{Body: &BodySettings{Mode: BodyFull, FullBytes: 8 << 20}})
+	if got := CurrentConfig().BodyMaxBytes(); got != 8<<20 {
+		t.Fatalf("保存的上限必须生效，得到 %d", got)
+	}
+
+	// 老载荷（没有 body_full_bytes）解出来是 0：保持原值，不是回落默认。
+	ApplySettings(Settings{Body: &BodySettings{Mode: BodyFull}})
+	if got := CurrentConfig().BodyMaxBytes(); got != 8<<20 {
+		t.Fatalf("缺字段不能改写已在生效的上限，得到 %d", got)
+	}
+
+	// 手改 DB 越界时运行期兜底。
+	ApplySettings(Settings{Body: &BodySettings{Mode: BodyFull, FullBytes: 1}})
+	if got := CurrentConfig().BodyMaxBytes(); got != MinBodyFullBytes {
+		t.Fatalf("越界值必须压回下界，得到 %d", got)
+	}
+}

@@ -53,6 +53,11 @@ type BodySettings struct {
 	Mode      BodyMode
 	HeadBytes int
 	TailBytes int
+	// FullBytes is the full-mode per-payload cap. Zero means "leave the
+	// environment value alone", exactly like the pointer itself: a console
+	// payload saved before this field existed must not shrink a cap the
+	// operator set in .env.
+	FullBytes int
 }
 
 // QualitySettings is the per-export half of the console config: how much of
@@ -227,6 +232,9 @@ func ApplySettings(s Settings) {
 	if s.Body != nil {
 		base.BodyMode = s.Body.Mode
 		base.HeadBytes, base.TailBytes = ClampBodyWindow(s.Body.HeadBytes, s.Body.TailBytes)
+		if s.Body.FullBytes > 0 {
+			base.FullMaxBytes = ClampBodyFullBytes(s.Body.FullBytes)
+		}
 	}
 	if s.Quality != nil {
 		base.ErrorSampleRate = clampRate(s.Quality.ErrorSampleRate)
