@@ -64,6 +64,8 @@ export interface DrawingLogFilters extends CommonFilters {
   mjId?: string
 }
 
+// APIDUO:task-filters:BEGIN
+// 任务日志的模型/状态筛选：status 是后端接受的逗号串，不是单值枚举。
 /**
  * Task logs specific filters
  *
@@ -71,8 +73,6 @@ export interface DrawingLogFilters extends CommonFilters {
  * (`SUBMITTED,QUEUED,NOT_START` for "queued"), not a single enum value: one
  * dropdown option can stand for several database statuses.
  */
-// APIDUO:task-filters:BEGIN
-// 任务日志的模型/状态筛选：status 是后端接受的逗号串，不是单值枚举。
 export interface TaskLogFilters extends CommonFilters {
   taskId?: string
   model?: string

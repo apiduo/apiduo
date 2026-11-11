@@ -8,6 +8,21 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	123
-blocks	357
-added	3484
-deleted	157
+blocks	365
+added	3521
+deleted	158
+
+# 2026-11-11 任务日志「模型 / 状态」筛选 + 模型列（显式上调一次
+# blocks +8 / added +37 / deleted +1，files 不变）：
+# - blocks +8：六个前端上游文件各 1–2 个块（types 2、lib/filter、lib/utils、
+#   lib/task-mobile-layout、columns/task-logs-columns、task-logs-filter-bar 各 1），
+#   外加 image-async 回包补的那个（7c1e42fd 同一处修复，块名 image-async）。
+#   挂接点没有第二个落点：筛选状态是组件的 props 契约，模型列必须长在列表的
+#   列定义数组里，二者都不在 apiduo 的新文件里。
+# - added +37：标记块自身 + 上述文件的改动行。筛选栏整体重写，故整份入一个块 ——
+#   这个组件在本仓已完全自有，逐段标记只会把合并面切得更碎。
+# - deleted +1：filter-bar 把 `{ type Table }` 改成 `import type { Table }`，
+#   顺手清掉 oxlint 的 no-import-type-side-effects（上游行被替换，不是新增）。
+# - 逻辑本体（三方言的 JSON 取值、状态白名单、LIKE 字面量转义）全在
+#   model/apiduo_task_filters.go，新文件不占预算。
+# 数值取自 35c17637 的干净工作树实测（含并行会话已提交的部分），与 CI 口径一致。

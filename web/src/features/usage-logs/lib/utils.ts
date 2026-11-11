@@ -270,15 +270,15 @@ export async function fetchLogsByCategory(
     ...(logCategory === 'drawing'
       ? { mj_id: searchParams.filter as string | undefined }
       : {}),
+    // APIDUO:task-filters:BEGIN
     ...(logCategory === 'task'
       ? {
           task_id: searchParams.filter as string | undefined,
-          // APIDUO:task-filters:BEGIN
           model: (searchParams.model as string | undefined) || undefined,
           status: (searchParams.status as string | undefined) || undefined,
-          // APIDUO:task-filters:END
         }
       : {}),
+    // APIDUO:task-filters:END
   }
 
   if (logCategory === 'drawing') {
