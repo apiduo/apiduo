@@ -218,6 +218,15 @@
     "— it is an old SSE client: it GETs /mcp, gets 405 and retries. This server only takes POST with Accept: application/json, text/event-stream; switch the transport to Streamable HTTP, or bridge it with mcp-remote.": "— 这是旧版 SSE 客户端：它 GET /mcp，服务端只收 POST，于是 405 后反复重试。把传输类型换成 Streamable HTTP，或用 mcp-remote 桥一层。",
     "— the error text comes back verbatim. Most often: no enabled model in the capability registry (models.list returns 0), no quota or a model allowlist on the token, or a parameter outside what the model declares — that one is rejected locally and never billed.": "— 错误原文会带回来。最常见三种：能力注册里没有启用的模型（models.list 返回 0）、令牌额度不足或限了模型、参数超出该模型的声明（这种本地就拒了，不计费）。",
     "Only generation calls are billed": "只有生成调用计费",
-    "Pick a client, then drop the fields below into its MCP settings. The token sits in the Authorization header itself — click it to switch. Clients that read a config file keep theirs under the JSON block.": "选客户端，把下面几项填进它的 MCP 设置。令牌就在「请求头」那一行里，点一下可以换；要改配置文件的，展开最后一段 JSON。"
+    "Pick a client, then drop the fields below into its MCP settings. The token sits in the Authorization header itself — click it to switch. Clients that read a config file keep theirs under the JSON block.": "选客户端，把下面几项填进它的 MCP 设置。令牌就在「请求头」那一行里，点一下可以换；要改配置文件的，展开最后一段 JSON。",
+    "Empty upstreams follow this address.": "上游留空的入口跟随这个地址。",
+    "Entries": "入口",
+    "Not pinned yet: the value above is derived from the route table. Typing here pins it for this channel.": "尚未固定：上面的值由路由表推导。在这里输入会写死为本渠道的主端点。",
+    "Protocol details": "协议细节",
+    "The same fields are editable in the Forwarding Routes tab.": "同样的字段也能在「路由转发」页签里改。",
+    "ARK protocol (single endpoint)": "ARK 协议（单端点）",
+    "OpenAI protocol (dual endpoint)": "OpenAI 协议（双端点）",
+    "Image-to-image switches to the edit endpoint and is encoded as multipart files.": "图生图改走从端点，编码成 multipart 文件。",
+    "Image-to-image stays on the same endpoint; image references travel in the JSON body and mask is not forwarded.": "图生图仍走同一端点，图片引用放在 JSON 里，mask 不转发。"
   }
 }

@@ -220,6 +220,15 @@
     "— it is an old SSE client: it GETs /mcp, gets 405 and retries. This server only takes POST with Accept: application/json, text/event-stream; switch the transport to Streamable HTTP, or bridge it with mcp-remote.": "— 這是舊版 SSE 用戶端：它 GET /mcp，伺服器只收 POST，於是 405 後反覆重試。把傳輸類型換成 Streamable HTTP，或用 mcp-remote 橋一層。",
     "— the error text comes back verbatim. Most often: no enabled model in the capability registry (models.list returns 0), no quota or a model allowlist on the token, or a parameter outside what the model declares — that one is rejected locally and never billed.": "— 錯誤原文會帶回來。最常見三種：能力註冊裡沒有啟用的模型（models.list 回傳 0）、權杖額度不足或限了模型、參數超出該模型的宣告（這種本地就拒了，不計費）。",
     "Only generation calls are billed": "只有生成呼叫計費",
-    "Pick a client, then drop the fields below into its MCP settings. The token sits in the Authorization header itself — click it to switch. Clients that read a config file keep theirs under the JSON block.": "選客戶端，把下面幾項填進它的 MCP 設定。權杖就在「請求頭」那一行裡，點一下可以換；要改設定檔的，展開最後一段 JSON。"
+    "Pick a client, then drop the fields below into its MCP settings. The token sits in the Authorization header itself — click it to switch. Clients that read a config file keep theirs under the JSON block.": "選客戶端，把下面幾項填進它的 MCP 設定。權杖就在「請求頭」那一行裡，點一下可以換；要改設定檔的，展開最後一段 JSON。",
+    "Empty upstreams follow this address.": "上游留空的入口跟隨這個位址。",
+    "Entries": "入口",
+    "Not pinned yet: the value above is derived from the route table. Typing here pins it for this channel.": "尚未固定：上面的值由路由表推導。在這裡輸入會寫死為本渠道的主端點。",
+    "Protocol details": "協議細節",
+    "The same fields are editable in the Forwarding Routes tab.": "同樣的欄位也能在「路由轉發」頁籤裡改。",
+    "ARK protocol (single endpoint)": "ARK 協議（單端點）",
+    "OpenAI protocol (dual endpoint)": "OpenAI 協議（雙端點）",
+    "Image-to-image switches to the edit endpoint and is encoded as multipart files.": "圖生圖改走從端點，編碼成 multipart 檔案。",
+    "Image-to-image stays on the same endpoint; image references travel in the JSON body and mask is not forwarded.": "圖生圖仍走同一端點，圖片引用放在 JSON 裡，mask 不轉發。"
   }
 }

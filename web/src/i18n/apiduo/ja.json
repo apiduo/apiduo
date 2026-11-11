@@ -129,6 +129,26 @@
     "— it is an old SSE client: it GETs /mcp, gets 405 and retries. This server only takes POST with Accept: application/json, text/event-stream; switch the transport to Streamable HTTP, or bridge it with mcp-remote.": "— 旧 SSE クライアントです。/mcp を GET しますが、このサーバーは POST のみ受け付けるため 405 になり、再試行を繰り返します。転送方式を Streamable HTTP に変えるか、mcp-remote で中継してください。",
     "— the error text comes back verbatim. Most often: no enabled model in the capability registry (models.list returns 0), no quota or a model allowlist on the token, or a parameter outside what the model declares — that one is rejected locally and never billed.": "— エラー本文がそのまま返ります。多いのは 3 つ：能力登録に有効なモデルが無い（models.list が 0 件）、トークンの残高不足かモデル制限、モデルの宣言範囲外のパラメータ（これはローカルで拒否され、課金されません）。",
     "Only generation calls are billed": "課金されるのは生成呼び出しのみ",
-    "Pick a client, then drop the fields below into its MCP settings. The token sits in the Authorization header itself — click it to switch. Clients that read a config file keep theirs under the JSON block.": "クライアントを選び、下の項目をその MCP 設定に入れてください。トークンは Authorization ヘッダーの行にあり、クリックで切り替えられます。設定ファイルを使うものは JSON ブロックにあります。"
+    "Pick a client, then drop the fields below into its MCP settings. The token sits in the Authorization header itself — click it to switch. Clients that read a config file keep theirs under the JSON block.": "クライアントを選び、下の項目をその MCP 設定に入れてください。トークンは Authorization ヘッダーの行にあり、クリックで切り替えられます。設定ファイルを使うものは JSON ブロックにあります。",
+    "Empty upstreams follow this address.": "Empty upstreams follow this address.",
+    "Entries": "Entries",
+    "Not pinned yet: the value above is derived from the route table. Typing here pins it for this channel.": "Not pinned yet: the value above is derived from the route table. Typing here pins it for this channel.",
+    "Protocol details": "Protocol details",
+    "The same fields are editable in the Forwarding Routes tab.": "The same fields are editable in the Forwarding Routes tab.",
+    "ARK protocol (single endpoint)": "ARK protocol (single endpoint)",
+    "OpenAI protocol (dual endpoint)": "OpenAI protocol (dual endpoint)",
+    "Image-to-image switches to the edit endpoint and is encoded as multipart files.": "Image-to-image switches to the edit endpoint and is encoded as multipart files.",
+    "Image-to-image stays on the same endpoint; image references travel in the JSON body and mask is not forwarded.": "Image-to-image stays on the same endpoint; image references travel in the JSON body and mask is not forwarded.",
+    "Text to image": "テキストから画像",
+    "Image to image": "画像から画像",
+    "Every entry keeps its own upstream in the route table and requests are forwarded unchanged — the same behaviour as new-api. Turn the switch on to declare one address for all of them.": "Every entry keeps its own upstream in the route table and requests are forwarded unchanged — the same behaviour as new-api. Turn the switch on to declare one address for all of them.",
+    "Fold image entries into one canonical request before sending.": "Fold image entries into one canonical request before sending.",
+    "Image protocol on": "Image protocol on",
+    "Nothing is folded while this is off.": "Nothing is folded while this is off.",
+    "Off: every entry forwards on its own route, exactly like new-api.": "Off: every entry forwards on its own route, exactly like new-api.",
+    "Primary endpoint must be a path starting with /.": "Primary endpoint must be a path starting with /.",
+    "Responses keeps its own route. With the image protocol on, chat entries are converted into image tasks, so keep that channel image-only.": "Responses keeps its own route. With the image protocol on, chat entries are converted into image tasks, so keep that channel image-only.",
+    "This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.": "This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.",
+    "This path does not end with generations, so image requests will not land where the protocol expects.": "This path does not end with generations, so image requests will not land where the protocol expects."
   }
 }

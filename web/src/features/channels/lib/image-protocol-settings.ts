@@ -13,9 +13,17 @@ export type ImageProtocolSettings = {
   edit_path?: string
 }
 
+/**
+ * 上游的图像端点约定。label 只描述**协议形状**，不绑型号：
+ * 方舟换一代模型（seedream 5 / 6）布局不变，写死型号的选项会在下一代
+ * 变成错误信息；OpenAI 这边同理，dall-e / gpt-image-1 / gpt-image-2 都是
+ * 同一套 generations + edits 布局。
+ *
+ * `value` 是存储值，改它等于迁移所有已配置渠道，所以保持历史字符串不动。
+ */
 export const IMAGE_PROTOCOL_UPSTREAMS = [
-  { value: 'seedream', label: 'Seedream single endpoint' },
-  { value: 'gpt-image-2', label: 'GPT Image 2 dual endpoint' },
+  { value: 'seedream', label: 'ARK protocol (single endpoint)' },
+  { value: 'gpt-image-2', label: 'OpenAI protocol (dual endpoint)' },
 ] as const
 
 const DEFAULT_UPSTREAM = IMAGE_PROTOCOL_UPSTREAMS[0].value

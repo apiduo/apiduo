@@ -135,7 +135,9 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   ])
 
   const handleChange = useCallback(
-    (field: keyof TaskLogsFilters, value: Date | string | undefined) => {
+    // keyof 不能用在联合类型上：`keyof (DrawingLogFilters | TaskLogFilters)`
+    // 只留下两者共有的字段，model / status 会被判成不存在。
+    (field: keyof TaskLogFilters, value: Date | string | undefined) => {
       setFilters((prev) => ({ ...prev, [field]: value }))
     },
     []
