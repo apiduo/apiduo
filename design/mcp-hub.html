@@ -9,7 +9,7 @@
     --bg:#fff; --surface-2:#f5f5f7; --code-bg:#f8f8fb;
     --line:#e8e8ec; --line-strong:#d8d8de;
     --ink:#141419; --ink-2:#45454f; --muted:#83838f;
-    --accent:#4f46e5; --accent-ink:#4338ca; --accent-soft:#eef0ff;
+    --accent:#4f46e5; --accent-ink:#4338ca; --accent-soft:#eef0ff; --ok:#0f8a4d;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
     --ease:cubic-bezier(.22,1,.36,1);
     /* Apple 流体：swift 进出场（无过冲），pop 只给"确认"类反馈 */
@@ -157,7 +157,7 @@
   .phead .where{font-size:11.5px;color:var(--muted);margin-left:2px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .phead .all{
     margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;
-    height:26px;padding:0 9px;border-radius:7px;
+    height:26px;padding:0 9px;border-radius:7px;min-width:86px;justify-content:center;
     border:1px solid var(--line-strong);background:#fff;font-size:11.5px;color:var(--ink-2);
     transition:background .16s var(--ease),border-color .16s var(--ease),transform .14s var(--ease);
   }
@@ -210,7 +210,7 @@
   .code{margin-top:9px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--code-bg)}
   .code .bar{display:flex;align-items:center;padding:6px 8px 6px 12px;border-bottom:1px solid var(--line);background:#fff}
   .code .fn{font-family:var(--mono);font-size:11px;color:var(--muted)}
-  .code .cp{margin-left:auto;padding:2px 8px;border-radius:6px;border:1px solid var(--line-strong);background:#fff;font-size:11px;color:var(--ink-2)}
+  .code .cp{margin-left:auto;padding:2px 8px;border-radius:6px;min-width:52px;text-align:center;border:1px solid var(--line-strong);background:#fff;font-size:11px;color:var(--ink-2)}
   .code .cp:hover{background:var(--surface-2)}
   .code pre{margin:0;padding:11px 13px;font-family:var(--mono);font-size:11.8px;line-height:1.7;overflow-x:auto;color:#2b2b36}
   .k{color:#7048c6}.s{color:#0b6b4f}.p{color:#666}
@@ -623,12 +623,13 @@ function staggerRows(){
   panel.classList.add('stagger');
 }
 
-function pulse(node){
+function replay(node, cls){
   if (!node) return;
-  node.classList.remove('swap');
+  node.classList.remove(cls);
   void node.offsetWidth;
-  node.classList.add('swap');
+  node.classList.add(cls);
 }
+function pulse(node){ replay(node, 'swap'); }
 
 function render(){
   const c = cur();
@@ -639,8 +640,6 @@ function render(){
   el('p-ico').innerHTML = MARK[c.id];
   el('p-name').textContent = c.name;
   el('p-where').textContent = c.where;
-  el('p-name').classList.add('swapT');
-  el('p-where').classList.add('swapT');
 
   el('p-rows').innerHTML = c.rows.map(([k, v], i) =>
     '<div class="frow"><span class="fi">' + svg(FI[fieldIcon(k)]) + '</span>' +
@@ -668,8 +667,8 @@ function render(){
   if (switched) {
     staggerRows();
     pulse(el('p-ico'));
-    pulse(el('p-name'));
-    pulse(el('p-where'));
+    replay(el('p-name'), 'swapT');
+    replay(el('p-where'), 'swapT');
     pulse(document.querySelector('#p-json .code'));
   }
 
