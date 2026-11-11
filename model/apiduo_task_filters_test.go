@@ -1,12 +1,63 @@
 package model
 
 import (
+	"os"
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
+
+// useApiduoTaskTestDB 让这套用例在 SQLite 之外跑同一份样本。
+//
+//	TEST_TASK_DB_DIALECT=postgres TEST_POSTGRES_DSN=... go test ./model -run TestApiduoTask
+//	TEST_TASK_DB_DIALECT=mysql    TEST_MYSQL_DSN=...    go test ./model -run TestApiduoTask
+//
+// 与 controller 的 openTaskDialectDatabase 同一套开关，CI 不设变量时仍是 TestMain
+// 的 SQLite。存在的理由：模型筛选的三种方言各写一套 JSON 取值表达式，
+// 「只测过一种、另外两种靠语法自信」正是线上最容易翻车的地方。
+func useApiduoTaskTestDB(t *testing.T) {
+	t.Helper()
+	dialect := os.Getenv("TEST_TASK_DB_DIALECT")
+	if dialect == "" || dialect == "sqlite" {
+		return
+	}
+
+	var driver gorm.Dialector
+	switch dialect {
+	case "postgres":
+		driver = postgres.New(postgres.Config{
+			DSN:                  os.Getenv("TEST_POSTGRES_DSN"),
+			PreferSimpleProtocol: true,
+		})
+	case "mysql":
+		driver = mysql.Open(os.Getenv("TEST_MYSQL_DSN"))
+	default:
+		t.Fatalf("unsupported test dialect %q", dialect)
+	}
+
+	db, err := gorm.Open(driver, &gorm.Config{})
+	require.NoError(t, err)
+	// tasks 表归本用例独占：跑前跑后都重建，避免残留样本让断言串味。
+	require.NoError(t, db.Migrator().DropTable(&Task{}))
+	require.NoError(t, db.AutoMigrate(&Task{}))
+
+	previousDB := DB
+	DB = db
+	t.Cleanup(func() {
+		DB = previousDB
+		_ = db.Migrator().DropTable(&Task{})
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	t.Logf("task filter test database: %s", dialect)
+}
 
 // newApiduoTaskFilterFixture 清空 tasks 表并写入固定的样本。
 // 这些样本刻意覆盖：只有 origin、origin 与 upstream 不同、properties 为空、
@@ -54,6 +105,7 @@ func listApiduoTaskIDs(t *testing.T, params SyncTaskQueryParams) []string {
 }
 
 func TestApiduoTaskModelFilter(t *testing.T) {
+	useApiduoTaskTestDB(t)
 	newApiduoTaskFilterFixture(t)
 
 	tests := []struct {
@@ -79,6 +131,7 @@ func TestApiduoTaskModelFilter(t *testing.T) {
 }
 
 func TestApiduoTaskModelFilterScopedToUser(t *testing.T) {
+	useApiduoTaskTestDB(t)
 	newApiduoTaskFilterFixture(t)
 
 	items := TaskGetAllUserTask(2, 0, 50, SyncTaskQueryParams{Model: "hailuo"})
@@ -91,6 +144,7 @@ func TestApiduoTaskModelFilterScopedToUser(t *testing.T) {
 }
 
 func TestApiduoTaskStatusFilter(t *testing.T) {
+	useApiduoTaskTestDB(t)
 	newApiduoTaskFilterFixture(t)
 
 	// 前端把「排队中」展开成三个库内状态，等值 Status 被清空后走集合。
@@ -115,6 +169,7 @@ func TestApiduoTaskStatusFilter(t *testing.T) {
 }
 
 func TestApiduoTaskStatusFilterAndModelCombine(t *testing.T) {
+	useApiduoTaskTestDB(t)
 	newApiduoTaskFilterFixture(t)
 
 	combined := SyncTaskQueryParams{
