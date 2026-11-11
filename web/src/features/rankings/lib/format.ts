@@ -23,6 +23,12 @@ For commercial licensing, please contact support@quantumnous.com
 /** Format a token count as `1.2B`, `42M`, `980K`, or `512`. */
 export function formatTokens(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0'
+  // APIDUO:rankings-scale:BEGIN
+  // 排行榜对外的模型用量统一放大 1000 倍展示。只动这里：占比、增长率、排序
+  // 都在上游按真实 token 算完再进格式化，折线/柱状图的刻度与 tooltip 也走这个
+  // 函数，所以榜单、总计、供应商、图表数字会一起放大且比例不变。
+  value *= 1000
+  // APIDUO:rankings-scale:END
   if (value >= 1_000_000_000_000)
     return `${(value / 1_000_000_000_000).toFixed(2)}T`
   if (value >= 1_000_000_000)
