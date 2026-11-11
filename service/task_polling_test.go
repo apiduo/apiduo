@@ -919,6 +919,7 @@ func TestUpdateVideoSingleTaskPollClassification(t *testing.T) {
 			wantRefund:    true,
 			wantReason:    "Failed to query the upstream task status",
 		},
+		// APIDUO:task-poll-unrecognized:BEGIN
 		{
 			// 上游在 2xx 里没写状态、或写了个我们不认识的词：它没说失败，
 			// 只是这条状态还读不懂。不累计、不改状态，等系统超时兜底。
@@ -940,6 +941,7 @@ func TestUpdateVideoSingleTaskPollClassification(t *testing.T) {
 			wantFailures:  1,
 			wantUnchanged: true,
 		},
+		// APIDUO:task-poll-unrecognized:END
 		{
 			name:          "valid 2xx resets the failure counter",
 			statusCode:    http.StatusOK,
