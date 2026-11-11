@@ -210,10 +210,12 @@ export function ApiduoMcp() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t('MCP access')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <div className='apiduo-mcp w-full max-w-[784px] pb-12 pt-1'>
-          <p className='apiduo-mcp-rise-soft text-sm text-muted-foreground'>
+        <div className='apiduo-mcp mx-auto w-full max-w-[1000px] px-1 pb-12 pt-4'>
+          <h2 className='text-[20px] font-bold tracking-tight'>
+            {t('MCP access')}
+          </h2>
+          <p className='apiduo-mcp-rise-soft mt-1.5 text-sm text-muted-foreground'>
             {t(
               'Pick a client, then drop the fields below into its MCP settings. The token sits in the Authorization header itself — click it to switch. Clients that read a config file keep theirs under the JSON block.'
             )}
