@@ -242,6 +242,39 @@ export function useTaskLogsColumns(
         },
         meta: { mobileTitle: true },
       },
+      // APIDUO:task-filters:BEGIN
+      // 模型列：名字只存在 properties JSON 上，origin 取不到就退回 upstream。
+      {
+        id: 'model',
+        header: t('Model'),
+        // 模型名不在任务表的列上，只存在 properties 里：origin 是请求写的名字，
+        // upstream 是映射后真正发给上游的名字。取不到就留空，让筛选成为唯一
+        // 的判断依据，而不是显示一个错的模型。
+        accessorFn: (row) =>
+          row.properties?.origin_model_name ||
+          row.properties?.upstream_model_name ||
+          '',
+        cell: ({ row }) => {
+          const origin = row.original.properties?.origin_model_name
+          const upstream = row.original.properties?.upstream_model_name
+          const label = origin || upstream
+          if (!label) {
+            return <span className='text-muted-foreground/60 text-xs'>-</span>
+          }
+          return (
+            <div className='flex max-w-[170px] flex-col gap-0.5'>
+              <span className='truncate text-xs font-medium'>{label}</span>
+              {origin && upstream && origin !== upstream ? (
+                <span className='text-muted-foreground truncate font-mono text-[11px]'>
+                  {upstream}
+                </span>
+              ) : null}
+            </div>
+          )
+        },
+        size: 170,
+      },
+      // APIDUO:task-filters:END
       createDurationColumn<TaskLog>({
         submitTimeKey: 'submit_time',
         finishTimeKey: 'finish_time',

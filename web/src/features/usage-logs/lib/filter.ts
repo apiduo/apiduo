@@ -72,6 +72,10 @@ export function buildSearchParams(
       return {
         ...baseParams,
         ...(taskFilters.taskId && { filter: taskFilters.taskId }),
+        // APIDUO:task-filters:BEGIN
+        ...(taskFilters.model && { model: taskFilters.model }),
+        ...(taskFilters.status && { status: taskFilters.status }),
+        // APIDUO:task-filters:END
       }
     }
     default:

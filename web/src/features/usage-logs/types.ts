@@ -66,10 +66,19 @@ export interface DrawingLogFilters extends CommonFilters {
 
 /**
  * Task logs specific filters
+ *
+ * `status` carries the raw comma-separated status list the backend accepts
+ * (`SUBMITTED,QUEUED,NOT_START` for "queued"), not a single enum value: one
+ * dropdown option can stand for several database statuses.
  */
+// APIDUO:task-filters:BEGIN
+// 任务日志的模型/状态筛选：status 是后端接受的逗号串，不是单值枚举。
 export interface TaskLogFilters extends CommonFilters {
   taskId?: string
+  model?: string
+  status?: string
 }
+// APIDUO:task-filters:END
 
 /**
  * Union type for all log filters
@@ -502,6 +511,12 @@ export interface GetTaskLogsParams {
   page_size?: number
   channel_id?: string
   task_id?: string
+  // APIDUO:task-filters:BEGIN
+  /** Case-insensitive substring matched against the origin or upstream model name. */
+  model?: string
+  /** Comma-separated task statuses; the backend narrows them to a whitelist. */
+  status?: string
+  // APIDUO:task-filters:END
   start_timestamp?: number
   end_timestamp?: number
 }

@@ -24,6 +24,9 @@ interface TaskMobileSummaryField {
 
 export const TASK_MOBILE_SUMMARY_FIELDS: readonly TaskMobileSummaryField[] = [
   { id: 'submit_time', label: 'Submit Time' },
+  // APIDUO:task-filters:BEGIN
+  { id: 'model', label: 'Model' },
+  // APIDUO:task-filters:END
   { id: 'user', label: 'User', primaryOnly: true },
   { id: 'plugin', label: 'Plugin' },
   { id: 'channel_id', label: 'Channel', primaryOnly: true },

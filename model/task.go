@@ -257,6 +257,10 @@ type SyncTaskQueryParams struct {
 	StartTimestamp int64
 	EndTimestamp   int64
 	UserIDs        []int
+	// APIDUO:task-filters:BEGIN
+	Model    string
+	Statuses []string
+	// APIDUO:task-filters:END
 }
 
 func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) *Task {
@@ -327,6 +331,9 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 	if queryParams.EndTimestamp != 0 {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
+	// APIDUO:task-filters:BEGIN
+	query = applyApiduoTaskFilters(query, queryParams)
+	// APIDUO:task-filters:END
 
 	// 获取数据
 	// Task lists never render the persisted upstream snapshot; the dashboard
@@ -374,6 +381,9 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	if queryParams.EndTimestamp != 0 {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
+	// APIDUO:task-filters:BEGIN
+	query = applyApiduoTaskFilters(query, queryParams)
+	// APIDUO:task-filters:END
 
 	// 获取数据
 	err = query.Omit("data").Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
@@ -633,6 +643,9 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	if queryParams.EndTimestamp != 0 {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
+	// APIDUO:task-filters:BEGIN
+	query = applyApiduoTaskFilters(query, queryParams)
+	// APIDUO:task-filters:END
 	_ = query.Count(&total).Error
 	return total
 }
@@ -659,6 +672,9 @@ func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	if queryParams.EndTimestamp != 0 {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
+	// APIDUO:task-filters:BEGIN
+	query = applyApiduoTaskFilters(query, queryParams)
+	// APIDUO:task-filters:END
 	_ = query.Count(&total).Error
 	return total
 }

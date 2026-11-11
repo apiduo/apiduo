@@ -418,6 +418,13 @@ func GetAllTask(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	queryParams := model.SyncTaskQueryParams{Platform: constant.TaskPlatform(c.Query("platform")), TaskID: c.Query("task_id"), Status: c.Query("status"), Action: c.Query("action"), StartTimestamp: startTimestamp, EndTimestamp: endTimestamp, ChannelID: c.Query("channel_id")}
+	// APIDUO:task-filters:BEGIN
+	// 模型名只存在 properties JSON 上；状态集合由 applyApiduoTaskFilters 展开，
+	// 所以等值 Status 必须清空，否则会和集合条件叠加成 AND。
+	queryParams.Model = c.Query("model")
+	queryParams.Statuses = model.ParseApiduoTaskStatuses(c.Query("status"))
+	queryParams.Status = ""
+	// APIDUO:task-filters:END
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	pageInfo.SetTotal(int(model.TaskCountAllTasks(queryParams)))
 	pageInfo.SetItems(tasksToDto(items, true, c.GetInt("role")))
@@ -430,6 +437,13 @@ func GetUserTask(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	queryParams := model.SyncTaskQueryParams{Platform: constant.TaskPlatform(c.Query("platform")), TaskID: c.Query("task_id"), Status: c.Query("status"), Action: c.Query("action"), StartTimestamp: startTimestamp, EndTimestamp: endTimestamp}
+	// APIDUO:task-filters:BEGIN
+	// 模型名只存在 properties JSON 上；状态集合由 applyApiduoTaskFilters 展开，
+	// 所以等值 Status 必须清空，否则会和集合条件叠加成 AND。
+	queryParams.Model = c.Query("model")
+	queryParams.Statuses = model.ParseApiduoTaskStatuses(c.Query("status"))
+	queryParams.Status = ""
+	// APIDUO:task-filters:END
 	items := model.TaskGetAllUserTask(userID, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	pageInfo.SetTotal(int(model.TaskCountAllUserTask(userID, queryParams)))
 	pageInfo.SetItems(tasksToDto(items, false, common.RoleCommonUser))

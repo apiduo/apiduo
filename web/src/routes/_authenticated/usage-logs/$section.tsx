@@ -39,6 +39,10 @@ const usageLogsSearchSchema = z.object({
   type: logTypeSearchSchema.optional(),
   filter: z.string().optional().catch(''),
   model: z.string().optional().catch(''),
+  // APIDUO:task-filters:BEGIN 任务日志的状态是多值（一个选项对应库里多个状态），
+  // 用逗号串走 URL；不给这个键，validateSearch 会把它从 search 里剥掉。
+  status: z.string().optional().catch(''),
+  // APIDUO:task-filters:END
   token: z.string().optional().catch(''),
   channel: z.string().optional().catch(''),
   group: z.string().optional().catch(''),

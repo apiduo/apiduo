@@ -16,11 +16,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/* APIDUO:task-filters:BEGIN
+   任务日志筛选栏整体重写：加模型/状态维度、重排布局、绘图日志保持原维度。
+   这个组件在本仓已完全自有，逐段标记只会把合并面切得更碎，故整份入块。 */
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
-import { type Table } from '@tanstack/react-table'
-import { useState, useEffect, useCallback } from 'react'
+import type { Table } from '@tanstack/react-table'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
@@ -37,6 +49,16 @@ const route = getRouteApi('/_authenticated/usage-logs/$section')
 
 type TaskLikeLogCategory = Extract<LogCategory, 'drawing' | 'task'>
 type TaskLogsFilters = DrawingLogFilters | TaskLogFilters
+
+// 「排队中」在库里是三个状态，一个下拉选项要能表达集合，所以 value 直接就是
+// 后端接受的逗号串。顺序跟着任务生命周期走，找失败任务的人从下往上扫。
+const TASK_STATUS_FILTERS = [
+  { value: 'SUBMITTED,QUEUED,NOT_START', label: 'Queued' },
+  { value: 'IN_PROGRESS', label: 'In Progress' },
+  { value: 'SUCCESS', label: 'Success' },
+  { value: 'FAILURE', label: 'Failed' },
+] as const
+const TASK_STATUS_ALL = 'all'
 
 interface TaskLogsFilterBarProps<TData> {
   table: Table<TData>
@@ -71,6 +93,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   const searchParams = route.useSearch()
   const { isAdminView: isAdmin } = useLogsViewScope()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
+  const isTaskLogs = props.logCategory === 'task'
 
   const [filters, setFilters] = useState<TaskLogsFilters>(() => {
     const { start, end } = getDefaultTimeRange()
@@ -88,24 +111,27 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         ? { channel: String(searchParams.channel) }
         : {}),
     }
-    const next: TaskLogsFilters =
-      props.logCategory === 'drawing'
-        ? {
-            ...baseFilters,
-            ...(searchParams.filter ? { mjId: searchParams.filter } : {}),
-          }
-        : {
-            ...baseFilters,
-            ...(searchParams.filter ? { taskId: searchParams.filter } : {}),
-          }
+    const next: TaskLogsFilters = isTaskLogs
+      ? {
+          ...baseFilters,
+          ...(searchParams.filter ? { taskId: searchParams.filter } : {}),
+          ...(searchParams.model ? { model: searchParams.model } : {}),
+          ...(searchParams.status ? { status: searchParams.status } : {}),
+        }
+      : {
+          ...baseFilters,
+          ...(searchParams.filter ? { mjId: searchParams.filter } : {}),
+        }
 
     setFilters(next)
   }, [
-    props.logCategory,
+    isTaskLogs,
     searchParams.startTime,
     searchParams.endTime,
     searchParams.channel,
     searchParams.filter,
+    searchParams.model,
+    searchParams.status,
   ])
 
   const handleChange = useCallback(
@@ -159,12 +185,31 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     [props.logCategory]
   )
 
+  const taskFilters = filters as TaskLogFilters
   const filterValue = getFilterValue(filters, props.logCategory)
-  const placeholder =
-    props.logCategory === 'drawing'
-      ? t('Filter by MjProxy task ID')
-      : t('Filter by task ID')
-  const hasAdditionalFilters = !!filterValue || !!filters.channel
+  const placeholder = isTaskLogs
+    ? t('Filter by task ID')
+    : t('Filter by MjProxy task ID')
+  const statusItems = useMemo(
+    () => [
+      { value: TASK_STATUS_ALL, label: t('All Status') },
+      ...TASK_STATUS_FILTERS.map((status) => ({
+        value: status.value,
+        label: t(status.label),
+      })),
+    ],
+    [t]
+  )
+  const statusValue = taskFilters.status || TASK_STATUS_ALL
+  const selectedStatusLabel =
+    statusItems.find((item) => item.value === statusValue)?.label ??
+    t('All Status')
+  const hasAdditionalFilters =
+    !!filterValue ||
+    !!filters.channel ||
+    !!taskFilters.model ||
+    !!taskFilters.status
+
   const dateRangeFilter = (
     <LogsFilterField wide>
       <CompactDateTimeRangePicker
@@ -188,9 +233,49 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       />
     </LogsFilterField>
   )
+  // 绘图日志没有模型维度（MjProxy 的模型不在任务表上），只在任务日志渲染。
+  const modelFilter = isTaskLogs ? (
+    <LogsFilterField>
+      <LogsFilterInput
+        aria-label={t('Model Name')}
+        placeholder={t('Model Name')}
+        value={taskFilters.model || ''}
+        onChange={(e) => handleChange('model', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  ) : null
+  const statusFilter = isTaskLogs ? (
+    <LogsFilterField>
+      <Select
+        items={statusItems}
+        value={statusValue}
+        onValueChange={(value) => {
+          const next = value ?? TASK_STATUS_ALL
+          handleChange('status', next === TASK_STATUS_ALL ? '' : next)
+        }}
+      >
+        <SelectTrigger aria-label={t('Status')}>
+          <SelectValue className='min-w-0'>
+            <span className='truncate'>{selectedStatusLabel}</span>
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          <SelectGroup>
+            {statusItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </LogsFilterField>
+  ) : null
   const channelFilter = isAdmin ? (
     <LogsFilterField>
       <LogsFilterInput
+        aria-label={t('Channel ID')}
         placeholder={t('Channel ID')}
         value={filters.channel || ''}
         onChange={(e) => handleChange('channel', e.target.value)}
@@ -205,6 +290,8 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       primaryFilters={
         <>
           {dateRangeFilter}
+          {modelFilter}
+          {statusFilter}
           {taskIdFilter}
           {channelFilter}
         </>
@@ -212,11 +299,16 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       mobilePinnedFilters={dateRangeFilter}
       mobileFilters={
         <>
+          {modelFilter}
+          {statusFilter}
           {taskIdFilter}
           {channelFilter}
         </>
       }
-      mobileFilterCount={[filterValue, filters.channel].filter(Boolean).length}
+      mobileFilterCount={
+        [filterValue, filters.channel, taskFilters.model, taskFilters.status]
+          .filter(Boolean).length
+      }
       hasActiveFilters={hasAdditionalFilters}
       onSearch={handleApply}
       searchLoading={fetchingLogs > 0}
@@ -224,3 +316,4 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     />
   )
 }
+/* APIDUO:task-filters:END */

@@ -271,7 +271,13 @@ export async function fetchLogsByCategory(
       ? { mj_id: searchParams.filter as string | undefined }
       : {}),
     ...(logCategory === 'task'
-      ? { task_id: searchParams.filter as string | undefined }
+      ? {
+          task_id: searchParams.filter as string | undefined,
+          // APIDUO:task-filters:BEGIN
+          model: (searchParams.model as string | undefined) || undefined,
+          status: (searchParams.status as string | undefined) || undefined,
+          // APIDUO:task-filters:END
+        }
       : {}),
   }
 
