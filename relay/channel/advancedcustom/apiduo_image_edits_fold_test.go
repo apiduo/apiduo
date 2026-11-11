@@ -324,7 +324,7 @@ func apiduoImageTestInfo() *relaycommon.RelayInfo {
 			ChannelOtherSettings: dto.ChannelOtherSettings{
 				ImageProtocol: &dto.ImageProtocolConfig{
 					Enabled:     true,
-					Upstream:    dto.ImageUpstreamGPTImage2,
+					Upstream:    dto.ImageUpstreamOpenAI,
 					PrimaryPath: "/v1/images/generations",
 				},
 			},
@@ -346,7 +346,7 @@ func TestGuardFileStreamEdits(t *testing.T) {
 		c.Request.Header.Set("Content-Type", contentType)
 		return c
 	}
-	enabled := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGPTImage2}
+	enabled := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamOpenAI}
 	errorStatus := func(t *testing.T, err error) int {
 		t.Helper()
 		var apiErr *types.NewAPIError

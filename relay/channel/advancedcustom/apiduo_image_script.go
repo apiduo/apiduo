@@ -133,9 +133,9 @@ func planImageRequest(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePl
 		return nil, err
 	}
 	switch cfg.Upstream {
-	case dto.ImageUpstreamSeedream:
+	case dto.ImageUpstreamARK:
 		return planSeedream(c, cfg)
-	case dto.ImageUpstreamGPTImage2:
+	case dto.ImageUpstreamOpenAI:
 		return planGPTImage2(c, cfg)
 	default:
 		return nil, fmt.Errorf("unknown image upstream %q", cfg.Upstream)

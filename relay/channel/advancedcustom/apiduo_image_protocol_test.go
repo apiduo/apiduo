@@ -49,7 +49,7 @@ func protocolDecode(t *testing.T, plan *imagePlan) map[string]any {
 }
 
 func TestSeedreamImageStaysOnPrimaryEndpoint(t *testing.T) {
-	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamSeedream}
+	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK}
 
 	textOnly := protocolCanonical(t, `{"model":"m","prompt":"一只猫"}`)
 	plan, err := planImageRequest(textOnly, cfg)
@@ -81,7 +81,7 @@ func TestSeedreamImageStaysOnPrimaryEndpoint(t *testing.T) {
 }
 
 func TestSeedreamDropsMaskAndInlinesBareBase64(t *testing.T) {
-	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamSeedream}
+	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK}
 	bare := base64.StdEncoding.EncodeToString(protocolTestPNG)
 	canonical := protocolCanonical(t,
 		`{"model":"m","prompt":"p","image":"`+bare+`","mask":"`+protocolTestDataURI()+`"}`)
@@ -100,7 +100,7 @@ func TestSeedreamDropsMaskAndInlinesBareBase64(t *testing.T) {
 }
 
 func TestGPTImage2RoutesByImagePresence(t *testing.T) {
-	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGPTImage2}
+	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamOpenAI}
 
 	textOnly := protocolCanonical(t, `{"model":"m","prompt":"p"}`)
 	plan, err := planImageRequest(textOnly, cfg)
@@ -130,7 +130,7 @@ func TestGPTImage2RoutesByImagePresence(t *testing.T) {
 }
 
 func TestGPTImage2MultiImageUsesArrayField(t *testing.T) {
-	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGPTImage2}
+	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamOpenAI}
 	ref := protocolTestDataURI()
 	canonical := protocolCanonical(t,
 		`{"model":"m","prompt":"左红右蓝","image":["`+ref+`","`+ref+`"]}`)
@@ -384,7 +384,7 @@ func TestSingleElementArrayRoutesToImageToImage(t *testing.T) {
 	canonical := protocolCanonical(t,
 		`{"model":"m","prompt":"p","image":["`+ref+`"]}`)
 
-	seedream := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamSeedream}
+	seedream := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK}
 	plan, err := planImageRequest(canonical, seedream)
 	if err != nil {
 		t.Fatal(err)
@@ -394,7 +394,7 @@ func TestSingleElementArrayRoutesToImageToImage(t *testing.T) {
 		t.Fatalf("seedream must keep a 1-element array, got %#v", image)
 	}
 
-	gpt := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGPTImage2}
+	gpt := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamOpenAI}
 	plan, err = planImageRequest(canonical, gpt)
 	if err != nil {
 		t.Fatal(err)
@@ -408,7 +408,7 @@ func TestSingleElementArrayRoutesToImageToImage(t *testing.T) {
 }
 
 func TestEmptyArrayRoutesToTextToImage(t *testing.T) {
-	for _, script := range []string{dto.ImageUpstreamSeedream, dto.ImageUpstreamGPTImage2} {
+	for _, script := range []string{dto.ImageUpstreamARK, dto.ImageUpstreamOpenAI} {
 		canonical := protocolCanonical(t, `{"model":"m","prompt":"p","image":[]}`)
 		cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: script}
 		plan, err := planImageRequest(canonical, cfg)
@@ -727,7 +727,7 @@ func TestChatOnlyRecognisesStandardImageURLPart(t *testing.T) {
 // response_format 决定上游返回 url 还是 b64_json。走 /v1/images/edits 的
 // multipart 路径也必须把它带过去，否则客户端要 url 却收到默认的大 b64_json。
 func TestGPTImage2FormKeepsResponseFormat(t *testing.T) {
-	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGPTImage2}
+	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamOpenAI}
 
 	for _, tc := range []struct {
 		name string

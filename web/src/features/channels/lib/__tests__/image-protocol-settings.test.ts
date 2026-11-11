@@ -23,7 +23,7 @@ describe('readImageProtocol', () => {
     )
     expect(config).toEqual({
       enabled: true,
-      upstream: 'seedream',
+      upstream: 'ark',
       primary_path: '/v1/images/custom',
       edit_path: '',
     })
@@ -37,7 +37,7 @@ describe('writeImageProtocol', () => {
         JSON.stringify({ primary_endpoint: '/v1/images/generations' }),
         {
           enabled: true,
-          upstream: 'gpt-image-2',
+          upstream: 'openai',
           primary_path: '  ',
           edit_path: '/v1/images/edits',
         }
@@ -46,14 +46,14 @@ describe('writeImageProtocol', () => {
     expect(next.primary_endpoint).toBe('/v1/images/generations')
     expect(next.image_protocol).toEqual({
       enabled: true,
-      upstream: 'gpt-image-2',
+      upstream: 'openai',
       edit_path: '/v1/images/edits',
     })
   })
 
   it('关闭时删键而不是写 enabled:false', () => {
     const raw = JSON.stringify({
-      image_protocol: { enabled: true, upstream: 'seedream' },
+      image_protocol: { enabled: true, upstream: 'ark' },
       primary_endpoint: '/v1/images/generations',
     })
     const next = JSON.parse(writeImageProtocol(raw, null))
@@ -63,6 +63,6 @@ describe('writeImageProtocol', () => {
 
   it('空上游回落默认值', () => {
     const next = JSON.parse(writeImageProtocol('{}', { enabled: true }))
-    expect(next.image_protocol.upstream).toBe('seedream')
+    expect(next.image_protocol.upstream).toBe('ark')
   })
 })

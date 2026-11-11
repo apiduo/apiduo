@@ -14,7 +14,7 @@ func TestChannelMatchesFilterHonoursImageProtocol(t *testing.T) {
 		Type: constant.ChannelTypeAdvancedCustom,
 		OtherSettings: `{
 			"primary_endpoint": "/v1/images/custom-gen",
-			"image_protocol": {"enabled": true, "upstream": "seedream"},
+			"image_protocol": {"enabled": true, "upstream": "ark"},
 			"advanced_custom": {"advanced_routes": [{"incoming_path": "/v1/images/edits"}]}
 		}`,
 	}

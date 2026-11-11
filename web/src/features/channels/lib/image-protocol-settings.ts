@@ -19,11 +19,12 @@ export type ImageProtocolSettings = {
  * 变成错误信息；OpenAI 这边同理，dall-e / gpt-image-1 / gpt-image-2 都是
  * 同一套 generations + edits 布局。
  *
- * `value` 是存储值，改它等于迁移所有已配置渠道，所以保持历史字符串不动。
+ * `value` 是存储值，直接写协议名（ark / openai）；不保留历史型号名，
+ * 旧配置在渠道编辑页重新选一次即可。
  */
 export const IMAGE_PROTOCOL_UPSTREAMS = [
-  { value: 'seedream', label: 'ARK protocol (single endpoint)' },
-  { value: 'gpt-image-2', label: 'OpenAI protocol (dual endpoint)' },
+  { value: 'ark', label: 'ARK protocol (single endpoint)' },
+  { value: 'openai', label: 'OpenAI protocol (dual endpoint)' },
 ] as const
 
 const DEFAULT_UPSTREAM = IMAGE_PROTOCOL_UPSTREAMS[0].value

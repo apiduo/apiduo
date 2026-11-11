@@ -119,7 +119,7 @@ func TestResolveAllowsImageProtocolPathsWithoutRoute(t *testing.T) {
 		info.ChannelOtherSettings.PrimaryEndpoint = "/v1/images/custom-gen"
 		info.ChannelOtherSettings.ImageProtocol = &dto.ImageProtocolConfig{
 			Enabled:  true,
-			Upstream: dto.ImageUpstreamSeedream,
+			Upstream: dto.ImageUpstreamARK,
 		}
 
 		adaptor := &Adaptor{}
@@ -139,7 +139,7 @@ func TestResolveAllowsImageProtocolPathsWithoutRoute(t *testing.T) {
 		Routes: []dto.AdvancedCustomRoute{{IncomingPath: "/v1/images/edits"}},
 	})
 	info.ChannelOtherSettings.PrimaryEndpoint = "/v1/images/custom-gen"
-	info.ChannelOtherSettings.ImageProtocol = &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamSeedream}
+	info.ChannelOtherSettings.ImageProtocol = &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK}
 	adaptor := &Adaptor{}
 	if err := adaptor.resolve(c, info); err == nil {
 		t.Fatal("chat must still require a declared route")

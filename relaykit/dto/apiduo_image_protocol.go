@@ -16,14 +16,17 @@ import (
  */
 
 const (
-	ImageUpstreamSeedream  = "seedream"
-	ImageUpstreamGPTImage2 = "gpt-image-2"
+	// 名字描述**协议形状**，不绑型号：方舟换一代模型布局不变，OpenAI
+	// 的 dall-e / gpt-image-* 也都是同一套 generations + edits。
+	// 存储值就是协议名，不保留历史值（旧配置需迁移，见渠道编辑页）。
+	ImageUpstreamARK    = "ark"
+	ImageUpstreamOpenAI = "openai"
 )
 
 type ImageProtocolConfig struct {
 	// Enabled 默认 false。没配置时整条图像协议层完全不介入，行为与上游一字不差。
 	Enabled bool `json:"enabled,omitempty"`
-	// Upstream: seedream（单端点，image 字段 str|list<str>）/ gpt-image-2（双端点）
+	// Upstream: ark（单端点，image 字段 str|list<str>）/ openai（双端点）
 	Upstream string `json:"upstream,omitempty"`
 	// PrimaryPath 主端点（文生图）。空值默认 /v1/images/generations。
 	PrimaryPath string `json:"primary_path,omitempty"`
@@ -40,12 +43,12 @@ func (c *ImageProtocolConfig) Validate() error {
 		return nil
 	}
 	switch strings.TrimSpace(c.Upstream) {
-	case ImageUpstreamSeedream, ImageUpstreamGPTImage2:
+	case ImageUpstreamARK, ImageUpstreamOpenAI:
 	default:
 		return fmt.Errorf(
 			"image_protocol.upstream must be %q or %q, got %q",
-			ImageUpstreamSeedream,
-			ImageUpstreamGPTImage2,
+			ImageUpstreamARK,
+			ImageUpstreamOpenAI,
 			c.Upstream,
 		)
 	}
