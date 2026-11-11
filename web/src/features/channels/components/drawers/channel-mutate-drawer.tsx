@@ -4450,52 +4450,59 @@ export function ChannelMutateDrawer({
                 name='advanced_async'
                 render={({ field }) => (
                   <FormItem className='space-y-3 border-b py-4'>
-                    <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
-                      <div className='space-y-2'>
-                        <FormLabel>{t('Advanced async routes')}</FormLabel>
-                        <p className='text-muted-foreground text-xs'>
-                          {t(
-                            'Describe an upstream task API. The gateway submits the work and polls for the result.'
-                          )}
-                        </p>
-                        <div className='flex flex-wrap gap-2'>
-                          <Badge
-                            variant={
-                              advancedAsyncStats.configured
-                                ? 'secondary'
-                                : 'outline'
-                            }
-                          >
-                            {advancedAsyncStats.configured
-                              ? t('Configured')
-                              : t('Not configured')}
-                          </Badge>
-                          {advancedAsyncStats.incomingPaths.map((path) => (
-                            <Badge
-                              key={path}
-                              variant='outline'
-                              className='max-w-[16rem]'
-                            >
-                              <span className='truncate font-mono'>{path}</span>
-                            </Badge>
-                          ))}
-                          {advancedAsyncStats.configured &&
-                          !advancedAsyncStats.valid ? (
-                            <Badge variant='destructive'>
-                              {t('Incomplete')}
-                            </Badge>
-                          ) : null}
+                    <div className='space-y-3'>
+                      <div className='flex items-start justify-between gap-3'>
+                        <div className='min-w-0 space-y-1'>
+                          <FormLabel>{t('Advanced async routes')}</FormLabel>
+                          <p className='text-muted-foreground text-xs'>
+                            {t(
+                              'Describe an upstream task API. The gateway submits the work and polls for the result.'
+                            )}
+                          </p>
                         </div>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          className='shrink-0'
+                          onClick={() => setAdvancedAsyncEditorOpen(true)}
+                        >
+                          <Route className='mr-2 h-4 w-4' />
+                          {t('Configure async routes')}
+                        </Button>
                       </div>
-                      <Button
-                        type='button'
-                        variant='outline'
-                        size='sm'
-                        onClick={() => setAdvancedAsyncEditorOpen(true)}
-                      >
-                        <Route className='mr-2 h-4 w-4' />
-                        {t('Configure async routes')}
-                      </Button>
+                      <div className='flex flex-wrap items-center gap-2'>
+                        <Badge
+                          variant={
+                            advancedAsyncStats.configured
+                              ? 'secondary'
+                              : 'outline'
+                          }
+                        >
+                          {advancedAsyncStats.configured
+                            ? t('Configured')
+                            : t('Not configured')}
+                        </Badge>
+                        {advancedAsyncStats.configured &&
+                        !advancedAsyncStats.valid ? (
+                          <Badge variant='destructive'>
+                            {t('Incomplete')}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      {advancedAsyncStats.incomingPaths.length > 0 ? (
+                        <ul className='space-y-1'>
+                          {advancedAsyncStats.incomingPaths.map((path) => (
+                            <li
+                              key={path}
+                              title={path}
+                              className='bg-muted/40 text-muted-foreground w-full truncate rounded-md border px-2 py-1 font-mono text-xs'
+                            >
+                              {path}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                     <FormControl>
                       <input type='hidden' {...field} />
