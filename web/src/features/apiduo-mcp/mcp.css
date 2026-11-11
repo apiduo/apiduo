@@ -161,6 +161,15 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
+/* summary 里的 chevron 跟随展开状态转向 */
+.apiduo-mcp-chev {
+  transition: transform 0.2s var(--apiduo-swift);
+}
+
+.apiduo-mcp-reveal[open] > summary .apiduo-mcp-chev {
+  transform: rotate(180deg);
+}
+
 .apiduo-mcp-reveal[open] > *:not(summary) {
   animation: apiduo-mcp-reveal 0.4s var(--apiduo-swift);
 }

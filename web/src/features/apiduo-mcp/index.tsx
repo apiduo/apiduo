@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Check, Copy } from 'lucide-react'
+import { Check, ChevronDown, Copy } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -304,31 +304,37 @@ export function ApiduoMcp() {
           </section>
 
           {client.json && (
-            <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-3 border-b border-border pb-3'>
-              <summary className='flex cursor-pointer list-none items-center gap-2 py-1 text-[12.5px] text-muted-foreground hover:text-foreground'>
-                <span className='size-1.5 rotate-45 border-r-[1.5px] border-b-[1.5px] border-current' />
+            <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-4 rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
+              <summary className='flex cursor-pointer list-none items-center gap-2.5 rounded-t-xl px-3.5 py-2.5 text-[13px] font-semibold text-foreground marker:content-none hover:bg-muted/30'>
+                <ChevronDown className='apiduo-mcp-chev size-3.5 shrink-0 text-muted-foreground' />
                 {t('Use a config file (JSON)')}
+                <span
+                  className='ml-auto font-mono text-[11px] font-normal text-muted-foreground'
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                >
+                  {client.file}
+                </span>
+                <span
+                  className='shrink-0'
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                >
+                  {copyButton('json', json, t('Copy'))}
+                </span>
               </summary>
-              <div className='mt-2 overflow-hidden rounded-[10px] border border-border bg-muted/20'>
-                <div className='flex items-center border-b border-border bg-background px-3 py-1.5'>
-                  <span className='font-mono text-[11px] text-muted-foreground'>
-                    {client.file}
-                  </span>
-                  <span className='ml-auto'>{copyButton('json', json, t('Copy'))}</span>
-                </div>
-                <pre className='overflow-x-auto px-3 py-2.5 font-mono text-[11.8px] leading-relaxed'>
+              <div className='border-t border-border bg-muted/20 px-3 py-2.5'>
+                <pre className='overflow-x-auto font-mono text-[11.8px] leading-relaxed'>
                   {highlightJson(json)}
                 </pre>
               </div>
             </details>
           )}
 
-          <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-3 border-t border-border pt-3'>
-            <summary className='flex cursor-pointer list-none items-center gap-2 py-1 text-[12.5px] text-muted-foreground hover:text-foreground'>
-              <span className='size-1.5 rotate-45 border-r-[1.5px] border-b-[1.5px] border-current' />
+          <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-4 rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
+            <summary className='flex cursor-pointer list-none items-center gap-2.5 rounded-t-xl px-3.5 py-2.5 text-[13px] font-semibold text-foreground marker:content-none hover:bg-muted/30'>
+              <ChevronDown className='apiduo-mcp-chev size-3.5 shrink-0 text-muted-foreground' />
               {t('Verify and troubleshoot')}
             </summary>
-            <div className='space-y-1.5 pl-4 pt-2 text-[12.8px] leading-relaxed text-muted-foreground'>
+            <div className='space-y-1.5 border-t border-border px-3.5 py-3 text-[12.8px] leading-relaxed text-muted-foreground'>
               <p>{t('Confirm the token and network first; four tool names should come back:')}</p>
               <pre className='overflow-x-auto rounded-lg border border-border bg-muted/20 px-3 py-2 font-mono text-[11.4px]'>
 {`curl -s ${mcpUrl} \\
@@ -363,12 +369,12 @@ export function ApiduoMcp() {
             </div>
           </details>
 
-          <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-3 border-t border-border pt-3'>
-            <summary className='flex cursor-pointer list-none items-center gap-2 py-1 text-[12.5px] text-muted-foreground hover:text-foreground'>
-              <span className='size-1.5 rotate-45 border-r-[1.5px] border-b-[1.5px] border-current' />
+          <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-4 rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
+            <summary className='flex cursor-pointer list-none items-center gap-2.5 rounded-t-xl px-3.5 py-2.5 text-[13px] font-semibold text-foreground marker:content-none hover:bg-muted/30'>
+              <ChevronDown className='apiduo-mcp-chev size-3.5 shrink-0 text-muted-foreground' />
               {t('Four tools')}
             </summary>
-            <div className='space-y-1 pl-4 pt-2 text-[12.8px] text-muted-foreground'>
+            <div className='space-y-1 border-t border-border px-3.5 py-3 text-[12.8px] text-muted-foreground'>
               <p>
                 <code className='rounded bg-muted px-1 py-0.5 font-mono text-[11.5px]'>models.list</code>{' '}
                 {t('— available models and their parameter constraints')}
@@ -388,10 +394,13 @@ export function ApiduoMcp() {
             </div>
           </details>
 
-          <p className='apiduo-mcp-rise mt-6 border-t border-border pt-3.5 text-[11.5px] text-muted-foreground'>
-            <span className='apiduo-mcp-breathe mr-1.5 inline-block size-1.5 rounded-full bg-emerald-500 align-[1px]' />
-            Streamable HTTP · <code className='font-mono'>{mcpUrl}</code> ·{' '}
-            {t('Only generation calls are billed')}
+          <p className='apiduo-mcp-rise mt-8 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11.5px] text-muted-foreground'>
+            <span className='apiduo-mcp-breathe inline-block size-1.5 rounded-full bg-emerald-500' />
+            <span>Streamable HTTP</span>
+            <span className='text-border'>·</span>
+            <code className='font-mono'>{mcpUrl}</code>
+            <span className='text-border'>·</span>
+            <span>{t('Only generation calls are billed')}</span>
           </p>
         </div>
       </SectionPageLayout.Content>
