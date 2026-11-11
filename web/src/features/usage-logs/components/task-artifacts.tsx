@@ -517,9 +517,15 @@ function LegacyVideoMedia(props: LegacyVideoMediaProps) {
       src={props.contentUrl}
       controls
       preload='auto'
-      autoPlay
       muted
       playsInline
+      // autoPlay 属性在部分环境里不生效（React 的 muted 不总是落到 DOM，
+      // 浏览器就按「有声音」拦截）。元数据到了再手动静音 play 一次。
+      onLoadedMetadata={(event) => {
+        const element = event.currentTarget
+        element.muted = true
+        void element.play().catch(() => {})
+      }}
       // APIDUO:video-preview-first-frame:END
       className='max-h-[60vh] w-full rounded-md bg-black'
       onError={() => setMediaFailed(true)}
