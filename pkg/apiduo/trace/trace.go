@@ -110,6 +110,7 @@ func FinalizeRelay(c *gin.Context, m RelayMeta) {
 		}
 		if out := col.outputBytes(); len(out) > 0 {
 			sn.Output = out
+			sn.InlineMedia = col.inlineMedia
 			dropped, truncated := col.frameStats(conf)
 			sn.OutputDropped = dropped
 			sn.OutputTruncated = truncated

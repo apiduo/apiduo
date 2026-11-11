@@ -159,7 +159,14 @@ func appendBatch(batch []*Snapshot, sn *Snapshot, bytesSoFar int) ([]*Snapshot, 
 }
 
 func snapshotByteSize(sn *Snapshot) int {
-	return len(sn.Input) + len(sn.Output) + 512
+	size := len(sn.Input) + len(sn.Output) + 512
+	// Lifted pictures ride along until the flush worker uploads them. Sizing
+	// the batch without them under-counts exactly the payloads that are most
+	// likely to blow past maxBatchBytes.
+	for _, blob := range sn.InlineMedia {
+		size += len(blob.Raw)
+	}
+	return size
 }
 
 func (e *exporter) flush(route *Config, batch []*Snapshot) {

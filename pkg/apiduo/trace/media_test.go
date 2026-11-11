@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func resetMediaState() {
@@ -263,6 +264,12 @@ func TestParseMediaParam(t *testing.T) {
 		{"abc123xyz.png", "abc123xyz", true},
 		{"abc123xyz", "abc123xyz", true},
 		{"abc123xyz.jpeg", "abc123xyz", true},
+		// The write path emits "jpg", not "jpeg": a JPEG-only case list let
+		// every JPEG response 404 for as long as the feature existed.
+		{"abc123xyz.jpg", "abc123xyz", true},
+		{"abc123xyz.webp", "abc123xyz", true},
+		{"abc123xyz.gif", "abc123xyz", true},
+		{"abc123xyz.JPG", "abc123xyz", true},
 		{"abc123xyz.txt", "abc123xyz.txt", false},
 		{"ab.png", "ab.png", false},
 		{"../../etc/passwd", "../../etc/passwd", false},
@@ -301,5 +308,66 @@ func TestThumbnailDownscales(t *testing.T) {
 	}
 	if len(thumb) >= len(raw) {
 		t.Fatalf("thumb (%d) not smaller than source (%d)", len(thumb), len(raw))
+	}
+}
+
+// The full chain for an image response that blows past the cap: lifted at
+// capture time, restored on the export path, uploaded, and replaced by a URL.
+// Before the lift existed this exact input produced 2 MB of unterminated
+// base64 and no picture, because the externalizer needs a closed literal.
+func TestOverCapImageSurvivesCaptureAndExport(t *testing.T) {
+	resetMediaState()
+	ms := newMediaServer(t)
+	png := noisePNG(t, 1024, 1024)
+	raw := []byte(`{"created":1,"data":[{"b64_json":"` +
+		base64.StdEncoding.EncodeToString(png) + `"}]}`)
+
+	conf := &Config{
+		BodyMode:     BodyFull,
+		FullMaxBytes: MinBodyFullBytes,
+		Host:         ms.URL,
+		PublicKey:    "pk",
+		SecretKey:    "sk",
+		MediaBaseURL: "https://apiduo.cn",
+	}
+	if len(raw) <= conf.BodyMaxBytes() {
+		t.Fatalf("fixture must exceed the cap: %d bytes", len(raw))
+	}
+
+	col := &Collector{frameMode: 2}
+	captured := col.cacheFullBody(raw, conf)
+	if len(col.inlineMedia) != 1 {
+		t.Fatalf("lifted %d pictures, want 1", len(col.inlineMedia))
+	}
+	if len(captured) > conf.BodyMaxBytes() {
+		t.Fatalf("captured %d bytes, over the cap", len(captured))
+	}
+
+	now := time.Now()
+	sn := &Snapshot{
+		TraceID:        strings.Repeat("a", 32),
+		Name:           "chat flux-3-image",
+		Model:          "flux-3-image",
+		Format:         "openai_image",
+		Success:        true,
+		StartUnixNano:  now.Add(-time.Second).UnixNano(),
+		EndUnixNano:    now.UnixNano(),
+		LatencyMs:      1000,
+		Output:         captured,
+		InlineMedia:    col.inlineMedia,
+		HasContent:     true,
+		ContentSampled: true,
+	}
+
+	body := BuildExportBodyWithMedia(conf, []*Snapshot{sn})
+
+	if !bytes.Contains(body, []byte("https://apiduo.cn/api/apiduo/trace/media/"+ms.mediaID)) {
+		t.Errorf("exported span carries no media URL: %s", string(body[:min(len(body), 240)]))
+	}
+	if bytes.Contains(body, []byte(fmt.Sprintf(inlineMediaPlaceholder, 0))) {
+		t.Error("placeholder leaked into the export")
+	}
+	if ms.puts.Load() == 0 || ms.patches.Load() == 0 {
+		t.Errorf("upload incomplete: puts=%d patches=%d", ms.puts.Load(), ms.patches.Load())
 	}
 }

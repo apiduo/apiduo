@@ -1,6 +1,10 @@
 package trace
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -281,5 +285,96 @@ func TestFullCapComesFromConfig(t *testing.T) {
 	}
 	if !col.framesTruncated {
 		t.Fatal("crossing the cap must be recorded, not silently dropped")
+	}
+}
+
+// An image response that blows past the full-mode cap used to be cut in half,
+// which broke the JSON and left the externalizer nothing to match — the trace
+// held megabytes of dead base64 and the drawer showed no picture at all.
+func TestCaptureFullBodyLiftsPictureBeforeTheCap(t *testing.T) {
+	png := noisePNG(t, 1024, 1024)
+	body := []byte(`{"created":1,"data":[{"b64_json":"` +
+		base64.StdEncoding.EncodeToString(png) + `"}]}`)
+	conf := &Config{BodyMode: BodyFull, FullMaxBytes: MinBodyFullBytes}
+	if len(body) <= conf.BodyMaxBytes() {
+		t.Fatalf("fixture must exceed the cap: %d bytes", len(body))
+	}
+
+	col := &Collector{frameMode: 2}
+	got := col.cacheFullBody(body, conf)
+
+	if len(got) > conf.BodyMaxBytes() {
+		t.Fatalf("kept %d bytes, over the %d-byte cap", len(got), conf.BodyMaxBytes())
+	}
+	if len(col.inlineMedia) != 1 {
+		t.Fatalf("lifted %d pictures, want 1", len(col.inlineMedia))
+	}
+	if !bytes.Equal(col.inlineMedia[0].Raw, png) {
+		t.Error("lifted bytes are not the original picture")
+	}
+	// The whole point: what stays behind is still parseable.
+	if !json.Valid(got) {
+		t.Errorf("payload is not valid JSON after lifting: %s", clipForLog(got))
+	}
+	if !bytes.Contains(got, []byte(fmt.Sprintf(inlineMediaPlaceholder, 0))) {
+		t.Error("placeholder missing from the payload")
+	}
+}
+
+func TestCaptureFullBodyCutsTextWithoutPictures(t *testing.T) {
+	conf := &Config{BodyMode: BodyFull, FullMaxBytes: MinBodyFullBytes}
+	body := bytes.Repeat([]byte("x"), conf.BodyMaxBytes()+4096)
+
+	col := &Collector{frameMode: 2}
+	got := col.cacheFullBody(body, conf)
+
+	if len(got) != conf.BodyMaxBytes() {
+		t.Fatalf("len = %d, want the cap %d", len(got), conf.BodyMaxBytes())
+	}
+	if len(col.inlineMedia) != 0 {
+		t.Error("nothing should have been lifted out of plain text")
+	}
+}
+
+func TestLiftInlineImagesIgnoresSmallOrForeignValues(t *testing.T) {
+	small := base64.StdEncoding.EncodeToString(noisePNG(t, 8, 8))
+	// Large enough to qualify by size, but it decodes to text, not a picture.
+	notAPicture := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte("hello "), 64<<10))
+	body := []byte(`{"a":"` + small + `","b":"` + notAPicture + `"}`)
+
+	slim, blobs := liftInlineImages(body)
+	if len(blobs) != 0 {
+		t.Fatalf("lifted %d values, want 0", len(blobs))
+	}
+	if !bytes.Equal(slim, body) {
+		t.Error("payload rewritten although nothing qualified")
+	}
+}
+
+func clipForLog(b []byte) string {
+	if len(b) > 120 {
+		return string(b[:120]) + "..."
+	}
+	return string(b)
+}
+
+func TestLiftInlineImagesCapsAtTheUploadLimit(t *testing.T) {
+	b64 := base64.StdEncoding.EncodeToString(noisePNG(t, 320, 320))
+	items := make([]string, mediaMaxPerSpan+2)
+	for i := range items {
+		items[i] = `{"b64_json":"` + b64 + `"}`
+	}
+	body := []byte(`{"data":[` + strings.Join(items, ",") + `]}`)
+
+	slim, blobs := liftInlineImages(body)
+
+	if len(blobs) != mediaMaxPerSpan {
+		t.Fatalf("lifted %d pictures, want the upload cap of %d", len(blobs), mediaMaxPerSpan)
+	}
+	if !json.Valid(slim) {
+		t.Error("payload must stay valid JSON, overflow entries included")
+	}
+	if !bytes.Contains(slim, []byte("over the per-span upload cap")) {
+		t.Error("overflow marker missing — the extra pictures vanished silently")
 	}
 }

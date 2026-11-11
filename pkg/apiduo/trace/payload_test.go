@@ -1,9 +1,13 @@
 package trace
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // The OTLP body must be valid JSON with the fields Langfuse maps. Parse it
@@ -316,5 +320,44 @@ func TestEnvironmentDefaultsFromEnv(t *testing.T) {
 	t.Setenv("LANGFUSE_RELEASE", "pinned")
 	if got := loadFromEnv().Release; got != "pinned" {
 		t.Fatalf("release = %q, want pinned", got)
+	}
+}
+
+func TestRestoreInlineMediaPutsTheBase64Back(t *testing.T) {
+	png := noisePNG(t, 8, 8)
+	sn := &Snapshot{
+		Output:      []byte(`{"b64_json":"` + fmt.Sprintf(inlineMediaPlaceholder, 0) + `"}`),
+		InlineMedia: []InlineMediaBlob{{Slot: 0, Raw: png}},
+	}
+
+	restoreInlineMedia(sn)
+
+	if !bytes.Contains(sn.Output, []byte(base64.StdEncoding.EncodeToString(png))) {
+		t.Errorf("base64 not restored: %s", sn.Output)
+	}
+	if sn.InlineMedia != nil {
+		t.Error("blobs must be released once restored; the snapshot is not read again")
+	}
+}
+
+func TestClipPayloadNeverSplitsARune(t *testing.T) {
+	text := strings.Repeat("中", 10) // 30 bytes, 3 bytes per rune
+
+	got, clipped := clipPayload(text, 10)
+	if !clipped {
+		t.Fatal("expected a clip")
+	}
+	if !utf8.ValidString(got) {
+		t.Fatalf("clip produced invalid UTF-8 (%q) — strconv.Quote would emit \\xNN, which is not a JSON escape", got)
+	}
+	if len(got) != 9 {
+		t.Fatalf("len = %d, want 9 (three whole runes)", len(got))
+	}
+}
+
+func TestClipPayloadLeavesFittingTextAlone(t *testing.T) {
+	got, clipped := clipPayload("hello", 10)
+	if clipped || got != "hello" {
+		t.Fatalf("got %q clipped=%v", got, clipped)
 	}
 }

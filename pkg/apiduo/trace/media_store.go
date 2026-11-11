@@ -48,11 +48,26 @@ const (
 
 var mediaIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{6,64}$`)
 
+// Suffixes the write path puts on a media URL. The extension carries no
+// meaning — Langfuse names the object itself — it only makes the URL readable
+// and gives the drawer a hint before the bytes arrive.
+//
+// This is a closed list on purpose. Parsing used to reverse the write-path
+// mapping by asking mediaExtForMime("image/"+ext), which fails for the one
+// extension that mapping itself produces: mediaExtForMime("image/jpeg") is
+// "jpg", but feeding "jpg" back as "image/jpg" matches no case, so the suffix
+// survived into the id, mediaIDPattern rejected the dot, and every JPEG
+// response 404'd. Only PNG had ever been exercised end to end.
+var mediaURLSuffixes = map[string]struct{}{
+	"png": {}, "jpg": {}, "jpeg": {}, "gif": {}, "webp": {},
+}
+
 // ParseMediaParam splits "<id>.<ext>" as it appears in the URL path.
 func ParseMediaParam(param string) (string, bool) {
 	id := param
 	if dot := strings.LastIndexByte(id, '.'); dot > 0 {
-		if mediaExtForMime("image/"+strings.ToLower(id[dot+1:])) != "" {
+		ext := strings.ToLower(id[dot+1:])
+		if _, ok := mediaURLSuffixes[ext]; ok {
 			id = id[:dot]
 		}
 	}

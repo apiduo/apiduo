@@ -1,6 +1,8 @@
 package trace
 
 import (
+	"bytes"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -91,6 +93,10 @@ type Collector struct {
 	frameMode  int8 // 0 off, 1 headtail, 2 full
 
 	respBody []byte // non-stream response captured via IOCopyBytesGracefully
+
+	// inlineMedia holds pictures lifted out of respBody to keep the payload
+	// under the full-mode cap without losing the image. See liftInlineImages.
+	inlineMedia []InlineMediaBlob
 
 	totalFrameBytes int
 	framesTruncated bool
@@ -398,8 +404,118 @@ func CaptureResponseBody(c *gin.Context, data []byte) {
 	if col.decided && !col.contentSampled {
 		return
 	}
-	col.respBody = truncateCopy(data, conf)
+	col.respBody = col.cacheFullBody(data, conf)
 	col.hasContent = true
+}
+
+// cacheFullBody stores a full-mode response, lifting large pictures out of the
+// payload first when the cap would otherwise cut them in half.
+//
+// The cap and the externalizer run at opposite ends of the pipeline: the cap
+// fires here, when the response arrives, while the upload only happens in the
+// flush worker. Cutting first left the JSON unterminated, the externalizer's
+// regex needs a closed string literal, so it skipped the truncation — and a
+// 3 MB image became 2 MB of unusable base64 with no picture in the drawer.
+// Extracting the bytes keeps Output intact and still lets the picture through.
+//
+// Only the over-limit path does any of this work; a response that already fits
+// is returned untouched, exactly as before.
+func (col *Collector) cacheFullBody(data []byte, conf *Config) []byte {
+	if conf.BodyMode != BodyFull {
+		return truncateCopy(data, conf)
+	}
+	limit := conf.BodyMaxBytes()
+	if len(data) <= limit {
+		return data
+	}
+	slim, blobs := liftInlineImages(data)
+	if len(blobs) > 0 && len(slim) <= limit {
+		col.inlineMedia = blobs
+		return slim
+	}
+	// Nothing worth lifting, or still over after lifting (a long text body):
+	// fall back to the plain cut, which is what this path always did.
+	return truncateCopy(data, conf)
+}
+
+// inlineMediaKey is the JSON member whose value is a raw base64 picture. It
+// covers every image model this gateway relays — OpenAI images, and the
+// vendors that speak its shape (flux, doubao seedream) — because all of them
+// answer with `data[].b64_json`.
+const inlineMediaKey = `"b64_json":"`
+
+// Placeholder left in the payload. Slot numbers keep it unique per picture;
+// the text is not base64, so the externalizer's regex ignores it and the
+// drawer shows it as a plain string until the flush worker swaps it back.
+const inlineMediaPlaceholder = "__apiduo_inline_media_%d__"
+
+// Placeholder for a picture beyond the per-span upload cap. Dropping it here
+// is deliberate: the uploader stops at mediaMaxPerSpan, so lifting more would
+// only mean restoring them all on the export path and blowing past the cap a
+// second time — with the JSON broken again, the very failure this fixes.
+const inlineMediaOverflow = "[image %d bytes omitted: over the per-span upload cap]"
+
+// Below this a picture is not worth the bookkeeping: the payload is over the
+// cap, so whatever is here is big, and anything smaller than this is already
+// handled by the externalizer on the normal path.
+const inlineMediaMinChars = 256 << 10
+
+// liftInlineImages replaces every large b64_json value in the payload with a
+// placeholder and returns the decoded bytes alongside it.
+//
+// Runs on the request path, but only for a response that already blew past the
+// cap — image endpoints, not chat. The scan is a pair of bytes.Index calls over
+// a buffer we are already holding.
+func liftInlineImages(data []byte) ([]byte, []InlineMediaBlob) {
+	var (
+		blobs []InlineMediaBlob
+		// The slimmed payload is never larger than its source, so one
+		// allocation sized to the input covers every append below.
+		out  = make([]byte, 0, len(data))
+		done int
+	)
+	for cursor := 0; ; {
+		rel := bytes.Index(data[cursor:], []byte(inlineMediaKey))
+		if rel < 0 {
+			break
+		}
+		start := cursor + rel + len(inlineMediaKey)
+		// Base64 contains no quote, so the next one closes the value. A
+		// truncated payload has no closing quote — leave it to the plain cut.
+		end := bytes.IndexByte(data[start:], '"')
+		if end < 0 {
+			break
+		}
+		end += start
+		cursor = end
+		if end-start < inlineMediaMinChars {
+			continue
+		}
+		if len(blobs) >= mediaMaxPerSpan {
+			out = append(out, data[done:start]...)
+			out = append(out, fmt.Sprintf(inlineMediaOverflow, end-start)...)
+			done = end
+			continue
+		}
+		raw, ok := decodeB64(string(data[start:end]))
+		if !ok {
+			continue
+		}
+		// Magic bytes, not the field name: a `b64_json` that decodes to
+		// something other than a picture is somebody else's payload.
+		if _, _, ok := sniffImage(raw); !ok {
+			continue
+		}
+		slot := len(blobs)
+		blobs = append(blobs, InlineMediaBlob{Slot: slot, Raw: raw})
+		out = append(out, data[done:start]...)
+		out = append(out, fmt.Sprintf(inlineMediaPlaceholder, slot)...)
+		done = end
+	}
+	if len(blobs) == 0 {
+		return data, nil
+	}
+	return append(out, data[done:]...), blobs
 }
 
 // truncateCopy applies the head/tail window (or full cap) to a one-shot

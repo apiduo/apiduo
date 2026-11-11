@@ -1,10 +1,14 @@
 package trace
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // OTLP/HTTP JSON encoding for a batch of snapshots. Hand-rolled on purpose:
@@ -141,7 +145,61 @@ func BuildExportBody(conf *Config, snaps []*Snapshot) []byte {
 // not need a fake media service. A nil uploader anywhere downstream simply
 // leaves every payload byte-identical to the plain path.
 func BuildExportBodyWithMedia(conf *Config, snaps []*Snapshot) []byte {
-	return buildExportBody(conf, snaps, newMediaUploader(conf))
+	up := newMediaUploader(conf)
+	if up != nil {
+		// Put back what the collector lifted out so the uploader sees real
+		// base64. With the feature off the placeholders stay in the payload:
+		// a short marker beats restoring megabytes nobody will upload.
+		for _, sn := range snaps {
+			restoreInlineMedia(sn)
+		}
+	}
+	return buildExportBody(conf, snaps, up)
+}
+
+// restoreInlineMedia swaps the collector's placeholders for the base64 they
+// stand for, so the uploader can lift the picture out as a URL.
+//
+// The blob is dropped once restored: this runs on the flush path and the
+// snapshot is not read again, so holding both copies would only pin memory.
+func restoreInlineMedia(sn *Snapshot) {
+	if len(sn.InlineMedia) == 0 || len(sn.Output) == 0 {
+		return
+	}
+	restored := false
+	for _, blob := range sn.InlineMedia {
+		token := []byte(fmt.Sprintf(inlineMediaPlaceholder, blob.Slot))
+		if !bytes.Contains(sn.Output, token) {
+			continue
+		}
+		encoded := base64.StdEncoding.EncodeToString(blob.Raw)
+		sn.Output = bytes.Replace(sn.Output, token, []byte(encoded), 1)
+		restored = true
+	}
+	if restored {
+		sn.InlineMedia = nil
+	}
+}
+
+// clipPayload enforces the full-mode cap one last time, on the way out.
+//
+// The cap is normally applied when the response arrives. This second pass
+// exists for the restore path: a picture lifted out of an over-cap payload is
+// put back before the upload, and when that upload fails the original base64
+// stays in the span — megabytes of it, more than the operator asked the trace
+// store to hold. Cutting here keeps the promise the settings page makes no
+// matter what the media service did.
+func clipPayload(text string, limit int) (string, bool) {
+	if limit <= 0 || len(text) <= limit {
+		return text, false
+	}
+	end := limit
+	// Never split a rune: strconv.Quote emits \xNN for a broken tail, which is
+	// not a JSON escape and would invalidate the whole export request.
+	for end > 0 && !utf8.RuneStart(text[end]) {
+		end--
+	}
+	return text[:end], true
 }
 
 func buildExportBody(conf *Config, snaps []*Snapshot, up *mediaUploader) []byte {
@@ -159,6 +217,19 @@ func buildExportBody(conf *Config, snaps []*Snapshot, up *mediaUploader) []byte 
 
 func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot, up *mediaUploader) {
 	var j jsonBuf
+
+	// Exported before the attribute block: the final clip can mark the span
+	// truncated, and that flag belongs next to the other truncation attributes
+	// rather than appended after them.
+	var (
+		outText    string
+		outClipped bool
+	)
+	if len(sn.Output) > 0 {
+		outText = up.rewrite(formatOutput(sn), sn.TraceID, "output")
+		outText = redactForExport(conf, outText)
+		outText, outClipped = clipPayload(outText, conf.BodyMaxBytes())
+	}
 
 	j.attrStr("langfuse.observation.type", "generation")
 	j.attrStr("langfuse.trace.name", sn.Name)
@@ -210,7 +281,7 @@ func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot, up *mediaUploader
 	j.attrBoolAlways("apiduo.content_sampled", sn.ContentSampled)
 	j.attrBool("apiduo.interrupted", sn.Interrupted)
 	j.attrBool("apiduo.input_truncated", sn.InputTruncated)
-	j.attrBool("apiduo.output_truncated", sn.OutputTruncated)
+	j.attrBool("apiduo.output_truncated", sn.OutputTruncated || outClipped)
 	j.attrInt("apiduo.input_dropped_bytes", int64(sn.InputDropped))
 	j.attrInt("apiduo.output_dropped_bytes", int64(sn.OutputDropped))
 	if sn.TtftMs > 0 {
@@ -227,11 +298,9 @@ func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot, up *mediaUploader
 		j.attrStr("langfuse.observation.input", text)
 		j.attrStr("gen_ai.prompt", text)
 	}
-	if len(sn.Output) > 0 {
-		text := up.rewrite(formatOutput(sn), sn.TraceID, "output")
-		text = redactForExport(conf, text)
-		j.attrStr("langfuse.observation.output", text)
-		j.attrStr("gen_ai.completion", text)
+	if outText != "" {
+		j.attrStr("langfuse.observation.output", outText)
+		j.attrStr("gen_ai.completion", outText)
 	}
 	// Langfuse surfaces level in the trace list and status_message in the
 	// detail pane; without them an error span looks like a healthy one.
