@@ -38,10 +38,35 @@
     --r-lg: 14px;
     --r-md: 10px;
     --r-sm: 7px;
-    --settle: cubic-bezier(.22,1,.36,1);
-    --pop: cubic-bezier(.34,1.26,.64,1);
+    /* ── motion ──
+       Springs, not durations. A tween has an end time, so a second press has to
+       fight the first one; a spring has only a target and re-aims from wherever
+       the object is right now. These curves are sampled from a damped harmonic
+       oscillator and handed to CSS as linear(). Damping / response follow
+       Apple's own table: 1.0 for movement, ~0.8 for a sheet, and bounce only
+       where the gesture itself carried momentum (a press release, a tile
+       arriving). Each --d-* is the settle time of the curve it names. */
+    --sp-quick: linear(0, .0197, .0685, .1347, .2097, .2877, .3649, .4386, .5074, .5705, .6275, .6784, .7235, .7631, .7977, .8277, .8536, .876, .8951, .9115, .9254, .9373, .9473, .9558, .963, .9691, .9741, .9784, .982, .985, .9875, .9896, .9914, .9928, .9941, .9951, .9959, .9966, .9972, .9977, 1);
+    --sp-tap: linear(0, .0155, .0567, .1164, .1884, .2677, .3504, .4331, .5134, .5894, .66, .7242, .7816, .8322, .8759, .9132, .9443, .9699, .9904, 1.0064, 1.0185, 1.0272, 1.0331, 1.0366, 1.0382, 1.0383, 1.0372, 1.0353, 1.0328, 1.0299, 1.0268, 1.0236, 1.0204, 1.0174, 1.0146, 1.012, 1.0096, 1.0075, 1.0057, 1.0041, 1);
+    --sp-move: linear(0, .0202, .0702, .1377, .2141, .2932, .3713, .4457, .5149, .5781, .635, .6858, .7305, .7698, .804, .8335, .859, .8809, .8995, .9155, .929, .9404, .9501, .9583, .9652, .971, .9758, .9799, .9833, .9861, .9885, .9904, .9921, .9934, .9946, .9955, .9963, .9969, .9975, .9979, 1);
+    --sp-sheet: linear(0, .0176, .0635, .1286, .2057, .2889, .3739, .4573, .5368, .6107, .6781, .7384, .7914, .8374, .8766, .9095, .9368, .9589, .9765, .9903, 1.0007, 1.0083, 1.0136, 1.0171, 1.0191, 1.0199, 1.0198, 1.0191, 1.0179, 1.0164, 1.0148, 1.0131, 1.0115, 1.0098, 1.0083, 1.0069, 1.0057, 1.0045, 1.0036, 1.0027, 1);
+    --sp-bounce: linear(0, .0276, .0991, .199, .3146, .4357, .5544, .6652, .7642, .8495, .9201, .9762, 1.0188, 1.0491, 1.0688, 1.0797, 1.0835, 1.0819, 1.0764, 1.0684, 1.0589, 1.0488, 1.0388, 1.0294, 1.021, 1.0136, 1.0075, 1.0027, .9989, .9962, .9945, .9934, .993, .9931, .9935, .9942, .995, .9958, .9966, .9974, 1);
+    --d-quick: .2s;
+    --d-tap: .3s;
+    --d-move: .42s;
+    --d-sheet: .38s;
+    --d-bounce: .62s;
+    /* The two old names survive as aliases: every rule written before the
+       spring pass keeps working, it just moves like a spring now. */
+    --settle: var(--sp-move);
+    --pop: var(--sp-bounce);
     --stage-h: min(50vh, 460px);
-    --res-h: min(46vh, 400px);
+    /* The height a result may take. It used to be 400px so that one round plus
+       the composer always fit without scrolling — but a job list *is* the
+       scroll, and at 400 a square image sat 400px wide in a 700px column with
+       150px of nothing on either side. The cap now only bites on tall ratios,
+       where a full-width portrait would be taller than the screen. */
+    --res-h: min(68vh, 640px);
   }
 
   [data-theme="dark"]{
@@ -62,6 +87,35 @@
     --shadow-lg: 0 22px 58px -30px oklch(0 0 0 / .75), 0 1px 2px oklch(0 0 0 / .35);
     --shadow-focus: 0 26px 68px -32px oklch(0 0 0 / .8), 0 1px 2px oklch(0 0 0 / .35);
   }
+
+  /* Older engines (Safari < 17.2, Chrome < 113) cannot parse linear(), and an
+     invalid timing function does not degrade to `ease` — it poisons the whole
+     `transition` shorthand, which then resolves to its initial `all 0s`. The
+     result is not "less springy", it is "nothing moves at all". Re-declaring the
+     five curves as the closest cubic-beziers keeps the motion, minus the exact
+     settle shape. Detection is on the real property, not on the token name. */
+  @supports not (transition-timing-function: linear(0, 1)) {
+    :root{
+      --sp-quick: cubic-bezier(.4, 0, .2, 1);
+      --sp-tap: cubic-bezier(.34, 1.42, .64, 1);
+      --sp-move: cubic-bezier(.32, .72, 0, 1);
+      --sp-sheet: cubic-bezier(.3, 1.12, .6, 1);
+      --sp-bounce: cubic-bezier(.22, 1.35, .36, 1);
+    }
+  }
+
+  /* ───────── provenance tints ───────── */
+
+  /* One declaration per lab, exposed only as `--tint`: a solid glyph wants the
+     colour, a badge wants a wash of it, a hairline wants it at 40%. Consumers
+     mix it toward `--ink` at the point of use, which is what makes the same
+     single value legible on a white surface and on a near-black one. */
+  .by-openai    {--tint: oklch(0.58 0.020 260)}
+  .by-anthropic {--tint: oklch(0.64 0.125 48)}
+  .by-deepseek  {--tint: oklch(0.58 0.155 262)}
+  .by-bfl       {--tint: oklch(0.46 0.030 300)}
+  .by-bytedance {--tint: oklch(0.60 0.115 205)}
+  .by-google    {--tint: oklch(0.66 0.135 85)}
 
   /* ───────── shell ───────── */
 
@@ -86,6 +140,39 @@
       radial-gradient(40% 30% at 92% 8%, color-mix(in oklch, var(--primary) 4%, transparent), transparent 70%);
   }
 
+  /* Ambient light: the wash at the top of the page takes its hue from the last
+     picture that landed. Not decoration — a result allowed to tint the room it
+     sits in reads as an object, not as an embed. Three hues plus the idle blue,
+     cross-faded, because a gradient cannot interpolate itself. */
+  .ambient{
+    position:absolute; inset:0 0 auto 0;
+    height:min(82vh, 760px);
+    z-index:-1;
+    overflow:hidden;
+    pointer-events:none;
+  }
+  .ambient i{
+    position:absolute; inset:0;
+    opacity:0;
+    /* Centre on the top edge, not above it: a bleed of -30% put the brightest
+       half of the gradient outside the clip, which is why the first version
+       measured as no colour at all. */
+    /* Wider than the reading column on purpose: the artwork covers the middle
+       of the page, so a narrow wash would hide behind the very thing it is
+       supposed to be spilling from. 64% reaches the margins. */
+    background:radial-gradient(64% 46% at 50% 0%,
+      color-mix(in oklch, var(--amb) 36%, transparent), transparent 76%);
+    transition:opacity 1.15s var(--sp-move);
+  }
+  .ambient i.on{opacity:1}
+  .ambient .g0{--amb:oklch(0.64 0.130 196)}
+  .ambient .g1{--amb:oklch(0.74 0.145 66)}
+  .ambient .g2{--amb:oklch(0.62 0.080 52)}
+  .ambient .g3{--amb:oklch(0.64 0.135 258)}
+  /* Same light, less of it: on a near-black page 34% of a light hue reads twice
+     as loud as it does on white. */
+  [data-theme="dark"] .ambient i.on{opacity:.6}
+
   .topbar{
     display:flex;
     align-items:center;
@@ -99,53 +186,52 @@
     -webkit-backdrop-filter:saturate(180%) blur(18px);
   }
 
-  .modes{
-    position:relative;
-    display:inline-flex;
+  /* The top bar now carries only session-level facts. Mode used to sit here,
+     which put the first choice of the composer a full screen away from every
+     other choice in it — the user had to travel from the ceiling to the floor
+     to change what they were making. */
+  .brand{
+    display:flex;
     align-items:center;
-    gap:2px;
-    padding:3px;
-    border-radius:var(--r-md);
-    background:color-mix(in oklch, var(--ink) 6%, transparent);
+    gap:8px;
+    min-width:0;
   }
-
-  .mode-pill{
-    position:absolute;
-    top:3px;
-    bottom:3px;
-    left:0;
-    width:0;
-    border-radius:var(--r-sm);
-    background:var(--surface);
-    box-shadow:var(--shadow-sm);
-    transition:transform .40s var(--settle), width .40s var(--settle), opacity .16s ease;
-    pointer-events:none;
+  .brand-mark{
+    width:22px;
+    height:22px;
+    flex:0 0 auto;
+    display:grid;
+    place-items:center;
+    border-radius:7px;
+    background:linear-gradient(150deg,
+      color-mix(in oklch, var(--primary) 84%, white),
+      color-mix(in oklch, var(--primary) 96%, black));
+    color:oklch(1 0 0);
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:-.02em;
+    box-shadow:0 1px 2px oklch(0 0 0 / .16);
   }
-
-  .mode{
-    position:relative;
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    height:28px;
-    padding:0 10px;
-    border:0;
-    border-radius:var(--r-sm);
-    background:transparent;
-    color:var(--ink-3);
-    font:inherit;
+  .brand-name{
     font-size:12.5px;
-    font-weight:500;
-    letter-spacing:.01em;
-    cursor:pointer;
-    transition:color .18s ease, transform .09s ease-out;
+    font-weight:600;
+    letter-spacing:-.01em;
+    color:var(--ink);
+  }
+  .brand-sub{
+    padding-left:9px;
+    margin-left:1px;
+    border-left:1px solid var(--line);
+    font-size:11.5px;
+    color:var(--ink-3);
     white-space:nowrap;
   }
-  .mode:hover{color:var(--ink-2)}
-  .mode[aria-selected="true"]{color:var(--ink)}
-  .mode:active{transform:scale(.97)}
-  .mode svg{width:13px;height:13px;flex:0 0 auto}
-  .mode[aria-selected="true"] svg{color:var(--primary-ink)}
+
+  /* Type and model are one decision, so they are one chip: the leading glyph
+     is the type (chat / image / video), the name is the model. The type is
+     changed on the tab bar inside the popover — the same popover. */
+  .chip.count-chip{padding:0 7px}
+  .chip.count-chip .name{min-width:15px; text-align:center}
 
   .topbar-right{
     display:flex;
@@ -168,11 +254,20 @@
   }
   .spend:hover{background:color-mix(in oklch, var(--ink) 5%, transparent)}
   .spend b{
+    display:inline-block;
+    transform-origin:left center;
     font-variant-numeric:tabular-nums;
     font-size:12.5px;
     font-weight:600;
     color:var(--ink);
     letter-spacing:-.01em;
+  }
+
+  .spend b.bump{animation:bump .52s var(--sp-bounce)}
+  @keyframes bump{
+    0%{transform:scale(1)}
+    32%{transform:scale(1.16); color:var(--primary-ink)}
+    100%{transform:scale(1)}
   }
 
   .icon-btn{
@@ -254,6 +349,11 @@
      viewport; setting a height instead would let max-width break the ratio. */
   .frame{
     --arn:1;
+    /* flex-shrink must be off: as a column flex item, a 16:9 canvas taller than
+       the leftover space would be squashed and lose its ratio, which silently
+       breaks the one promise this prototype makes — the canvas matches the
+       chosen shape. */
+    flex:0 0 auto;
     width:min(100%, calc(var(--stage-h) * var(--arn)));
     aspect-ratio:var(--arn);
     margin-inline:auto;
@@ -264,6 +364,10 @@
   }
 
   .canvas-empty{
+    /* The first screen is about what this thing can do, not about reserving a
+       460px hole. Half that is enough to show the chosen shape, and it leaves
+       the examples room to be seen without scrolling. */
+    --stage-h:min(26vh, 230px);
     display:grid;
     place-content:center;
     justify-items:center;
@@ -347,9 +451,177 @@
     cursor:pointer;
     transition:background-color .16s ease, border-color .16s ease, color .16s ease, transform .09s ease-out;
     backdrop-filter:blur(8px);
+    animation:sugIn var(--d-move) var(--sp-quick) backwards;
+    animation-delay:calc(var(--i, 0) * 26ms);
+  }
+  @keyframes sugIn{
+    from{opacity:0; transform:translateY(6px) scale(.96)}
+    to{opacity:1; transform:none}
   }
   .sug:hover{background:var(--surface); border-color:color-mix(in oklch, var(--ink) 20%, transparent); color:var(--ink)}
   .sug:active{transform:scale(.97)}
+
+  /* ── examples ── */
+
+  /* An empty screen has to answer "what can this thing do" before it asks for
+     a prompt. Three finished pictures do that better than three sentence
+     fragments, and a picture is also the only honest way to show a ratio. */
+  .ex-wrap{width:100%}
+  .ex-head{display:flex; align-items:center; gap:10px; margin:0 2px}
+  .ex-title{font-size:14px; font-weight:560; color:var(--ink); letter-spacing:.005em}
+  /* The shelf is not a fixed list, so the escape hatch belongs on the shelf's
+     own line — next to the claim, not buried under the third card. */
+  .ex-more{
+    margin-left:auto;
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 8px 3px 7px;
+    border:1px solid transparent; border-radius:8px;
+    background:transparent;
+    color:var(--ink-3);
+    font:inherit; font-size:11px;
+    cursor:pointer;
+    transition:color .16s ease, background-color .16s ease, border-color .16s ease, transform .09s ease-out;
+  }
+  .ex-more:hover{color:var(--ink); background:var(--surface-2); border-color:var(--line)}
+  .ex-more:active{transform:scale(.96)}
+  .ex-more svg{width:12px; height:12px; opacity:.85}
+  .ex-more.turn svg{animation:exTurn .52s var(--settle)}
+  @keyframes exTurn{from{transform:rotate(0)} to{transform:rotate(360deg)}}
+  .ex-sub{margin:3px 2px 12px; font-size:11.5px; color:var(--ink-3)}
+  .ex-row{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+  }
+  .ex{
+    position:relative;
+    display:flex; flex-direction:column;
+    padding:0; text-align:left;
+    border:1px solid var(--line);
+    border-radius:14px;
+    background:var(--surface);
+    overflow:hidden;
+    cursor:pointer;
+    /* Staggered entrance: three cards arriving at once reads as a jump-cut,
+       one after another reads as a shelf being laid out. */
+    /* backwards, not both: a filled-in final keyframe keeps applying its
+       `transform:none` forever and silently kills the hover lift below. */
+    animation:exIn var(--d-move) var(--sp-move) backwards;
+    animation-delay:calc(var(--i) * 65ms + 40ms);
+    transition:transform var(--d-move) var(--sp-move),
+      box-shadow var(--d-move) var(--sp-quick),
+      border-color .2s var(--sp-quick);
+  }
+  @keyframes exIn{from{opacity:0; transform:translateY(9px) scale(.985)} to{opacity:1; transform:none}}
+  .ex:hover{
+    transform:translateY(-3px) scale(1.006);
+    border-color:color-mix(in oklch, var(--primary) 42%, var(--line));
+    box-shadow:0 12px 28px -18px oklch(0 0 0 / .55),
+               0 0 0 1px color-mix(in oklch, var(--primary) 18%, transparent);
+  }
+  .ex:active{transform:translateY(0) scale(.994); transition-duration:0s}
+  .ex:focus-visible{outline:2px solid color-mix(in oklch, var(--primary) 60%, transparent); outline-offset:2px}
+  .ex-art{
+    position:relative; display:block;
+    aspect-ratio:16/10;
+    overflow:hidden;
+    background:var(--surface-2);
+  }
+  .ex-art > svg{display:block; width:100%; height:100%; transition:transform .55s var(--settle)}
+  .ex:hover .ex-art > svg{transform:scale(1.055)}
+  /* One pass of light across the picture on hover — the cheapest way to make a
+     still image feel alive without a video or a canvas. */
+  .ex-sheen{
+    position:absolute; inset:0;
+    background:linear-gradient(104deg,
+      transparent 38%,
+      color-mix(in oklch, #fff 22%, transparent) 50%,
+      transparent 62%);
+    transform:translateX(-130%);
+    transition:transform .72s ease;
+    pointer-events:none;
+  }
+  .ex:hover .ex-sheen{transform:translateX(130%)}
+  .ex-ratio{
+    position:absolute; right:7px; bottom:7px;
+    padding:1px 6px;
+    border-radius:6px;
+    background:oklch(0 0 0 / .58);
+    color:#fff;
+    font-size:10px; letter-spacing:.02em;
+    text-shadow:0 1px 1px oklch(0 0 0 / .35);
+    font-variant-numeric:tabular-nums;
+    -webkit-backdrop-filter:blur(6px);
+    backdrop-filter:blur(6px);
+  }
+  /* The model is on the card because the card is a claim about the model, not
+     just a prompt you could have typed yourself. It rides the picture instead
+     of taking a line of its own: a caption row of grey 10px text spends a whole
+     line saying what a badge says in the corner. */
+  .ex-model{
+    position:absolute; left:7px; bottom:7px;
+    display:inline-flex; align-items:center; gap:4px;
+    max-width:58%;
+    padding:1px 6px;
+    border-radius:6px;
+    background:oklch(0 0 0 / .58);
+    color:#fff;
+    font-size:10px; letter-spacing:.01em;
+    text-shadow:0 1px 1px oklch(0 0 0 / .35);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    -webkit-backdrop-filter:blur(6px);
+    backdrop-filter:blur(6px);
+  }
+  /* White inside the badge whatever the lab's tint is: the badge already sits on
+     a dark scrim over an unpredictable picture, and a second colour there is one
+     more thing competing with the artwork. */
+  .ex-model svg{width:11px; height:11px; flex:0 0 auto; opacity:.92}
+  /* Title and the call to action share one line: the eye reads "this one" and
+     "take it" as a single decision instead of scanning past a prompt first. */
+  .ex-name-row{
+    display:flex; align-items:baseline; gap:8px;
+    padding:9px 11px 0;
+  }
+  .ex-name{
+    flex:1 1 auto; min-width:0;
+    font-size:12.5px; font-weight:560; color:var(--ink); letter-spacing:.005em;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .ex-go{
+    flex:0 0 auto;
+    font-style:normal; font-size:10.5px; font-weight:520;
+    color:var(--primary-ink);
+    opacity:.68;
+    transition:opacity .16s ease;
+  }
+  .ex:hover .ex-go, .ex:focus-visible .ex-go{opacity:1}
+  .ex-p{
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
+    overflow:hidden;
+    padding:3px 11px 11px;
+    font-size:11.5px; line-height:1.55;
+    color:var(--ink-2);
+    text-wrap:pretty;
+  }
+  /* A phone cannot show three cards side by side without shrinking the picture
+     to a postage stamp, so the shelf becomes a swipeable strip. */
+  @media (max-width:760px){
+    .ex-row{
+      display:flex; gap:9px;
+      overflow-x:auto;
+      scroll-snap-type:x mandatory;
+      scroll-padding-inline:12px;
+      margin-inline:-12px; padding:0 12px 2px;
+      scrollbar-width:none;
+    }
+    .ex-row::-webkit-scrollbar{display:none}
+    .ex{flex:0 0 68%; scroll-snap-align:start}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .ex{animation:none}
+    .ex-art > svg, .ex-sheen{transition:none}
+    .ex-more.turn svg{animation:none}
+  }
 
   /* generating */
 
@@ -402,20 +674,47 @@
 
   /* result */
 
-  /* The meta row hugs the artwork instead of the 700px column: at 400px wide
-     the round details and the "查看请求" affordance would otherwise sit an
-     inch apart from the image they describe. */
+  /* A job card is as wide as the column; the artwork inside it is what keeps
+     a height budget. Sizing the *card* by ratio was right for one hero image,
+     but a list of jobs turned into a ragged stack 700 / 448 / 255 px wide,
+     each centred on its own axis — four left edges to scan in one scroll.
+     Cards line up; the media centres inside them. */
   .round{
     --arn:1;
+    position:relative;
+    isolation:isolate;
     display:flex;
     flex-direction:column;
     gap:7px;
-    width:min(100%, calc(var(--res-h) * var(--arn)));
-    margin-inline:auto;
+    width:100%;
+    /* A result arrives from below, where the composer is, because that is where
+       it was asked for. Fill-mode is backwards so the finished state does not
+       stay pinned over later hover / transform rules. */
+    animation:rise var(--d-bounce) var(--sp-bounce) backwards;
   }
-  /* A 2-up grid has to fit two rows in the same budget one image gets, so its
-     column is derived from the ratio instead of being pinned to 100%. */
-  .round.wide{width:min(100%, calc(var(--res-h) * 1.1 * var(--arn) + 8px))}
+  @keyframes rise{
+    from{opacity:0; transform:translateY(10px)}
+    to{opacity:1; transform:none}
+  }
+  /* The picture lights the surface it sits on, the way a print under a lamp
+     does. A blurred ellipse of the artwork's own hue, sized to the frame and
+     painted under it — no extra element, no image processing, and it moves with
+     the card because it *is* the card's box. */
+  .round::before{
+    content:'';
+    position:absolute;
+    z-index:-1;
+    left:50%; top:6%;
+    width:min(100%, calc(var(--res-h) * var(--arn)));
+    aspect-ratio:var(--arn);
+    transform:translateX(-50%);
+    border-radius:50%;
+    background:var(--glow, transparent);
+    filter:blur(46px) saturate(1.1);
+    opacity:.42;
+    pointer-events:none;
+  }
+  [data-theme="dark"] .round::before{opacity:.34}
 
   .round-meta{
     display:flex;
@@ -424,8 +723,21 @@
     font-size:11px;
     color:var(--ink-3);
     padding:0 2px;
-    min-height:16px;
+    /* A fixed height, not a min-height: the row's text changes with the job's
+       status, and a line that wraps on one status but not the other makes the
+       card grow 7px the moment the result lands. */
+    height:18px;
+    white-space:nowrap;
   }
+  .round-meta .mid{
+    display:flex; align-items:center; gap:7px;
+    min-width:0; overflow:hidden;
+    /* Soft-fade the cut instead of an ellipsis: the last thing to lose is the
+       unit price, and a hard clip on a tabular number reads as a bug. */
+    -webkit-mask-image:linear-gradient(to right, #000 calc(100% - 16px), transparent);
+    mask-image:linear-gradient(to right, #000 calc(100% - 16px), transparent);
+  }
+  .round-meta .mid > span{flex:0 0 auto}
   .round-meta .dot{opacity:.42}
   .round-meta .mono{font-variant-numeric:tabular-nums}
   .round-meta .cost{
@@ -433,7 +745,9 @@
     font-weight:560;
     font-variant-numeric:tabular-nums;
   }
-  .round-meta .right{margin-left:auto; display:flex; align-items:center; gap:8px}
+  /* The price and the one action never truncate: the middle gives way first,
+     because a half-faded 取消 or ¥0.46 is a broken receipt. */
+  .round-meta .right{margin-left:auto; display:flex; align-items:center; gap:8px; flex:0 0 auto}
   .meta-link{
     border:0;background:transparent;font:inherit;font-size:11px;
     color:var(--ink-3);cursor:pointer;padding:2px 0;border-radius:4px;
@@ -444,10 +758,10 @@
 
   .art{
     --arn:1;
-    /* A result carries its own height budget, tighter than the empty canvas:
-       one round plus the composer has to fit without scrolling, otherwise
-       every generation ends with the user hunting for their own image. */
-    width:100%;
+    /* The same budget the reserved box used, so the picture that lands is the
+       size of the box that was held for it. */
+    width:min(100%, calc(var(--res-h) * var(--arn)));
+    margin-inline:auto;
     aspect-ratio:var(--arn);
     border-radius:var(--r-lg);
     overflow:hidden;
@@ -455,6 +769,10 @@
     background:var(--surface-2);
     box-shadow:0 0 0 1px var(--line-soft);
     isolation:isolate;
+    /* The shelf sizes itself against the card, not the viewport: a four-up on a
+       phone and a four-up on a desktop are the same markup at two very
+       different widths. */
+    container-type:inline-size;
   }
   .art svg{display:block;width:100%;height:100%}
   .art .veil{
@@ -465,34 +783,297 @@
   @keyframes veil{to{opacity:0}}
   .art .develop{
     position:absolute;inset:0;
-    animation:develop .72s var(--settle) both;
+    animation:develop var(--d-move) var(--sp-move) both;
+  }
+  /* The last step of a generation is not the pixels appearing, it is the light
+     leaving the frame: one specular pass, once, over a picture that is already
+     sharp. */
+  .art .land{
+    position:absolute; inset:0; z-index:2;
+    pointer-events:none;
+    background:linear-gradient(104deg,
+      transparent 34%, oklch(1 0 0 / .34) 48%, transparent 62%);
+    transform:translateX(-120%);
+    animation:landSweep 1.15s .1s var(--sp-quick) both;
+  }
+  @keyframes landSweep{to{transform:translateX(120%)}}
+  /* A highlight that follows the pointer across the picture. It never touches
+     the pixels — only the light on top of them — which is the cheapest honest
+     way to say "surface, not printout". */
+  @media (hover:hover){
+    .art::after{
+      content:'';
+      position:absolute; inset:0; z-index:2;
+      pointer-events:none;
+      background:radial-gradient(42% 42% at var(--mx, 50%) var(--my, 50%),
+        oklch(1 0 0 / .26), transparent 72%);
+      opacity:0;
+      mix-blend-mode:soft-light;
+      transition:opacity .35s var(--sp-quick);
+    }
+    .art:hover::after{opacity:1}
   }
   @keyframes develop{
     from{opacity:0; filter:blur(11px) saturate(.82); transform:scale(1.03)}
     to{opacity:1; filter:none; transform:none}
   }
-  .art .save{
-    position:absolute;right:8px;bottom:8px;
-    width:26px;height:26px;display:grid;place-items:center;
-    border:0;border-radius:7px;
-    background:color-mix(in oklch, var(--surface) 88%, transparent);
-    color:var(--ink-2);
-    box-shadow:var(--shadow-sm);
-    cursor:pointer;
-    opacity:0;
-    transform:translateY(3px);
-    transition:opacity .18s ease, transform .18s ease;
-    backdrop-filter:blur(10px);
+  /* The picture is not the last step; it is the first input of the next one.
+     So the two corner buttons become a shelf. The list lives in TOOLS (data),
+     and the shelf is laid out from it — adding 去水印 / 抠图 later is a row in
+     that table, not another absolutely-positioned square competing for a spot
+     that is already taken.
+
+     Centred, never scrolled horizontally: a strip that hides half its tools
+     behind a drag gesture on a 180px picture is not a toolbar, it is a rumour.
+     Density follows the card rather than the viewport — narrow cards shrink the
+     buttons so the seven still fit one row (see the container query below),
+     because folding five-and-two orphans the 下载 divider and eats a third of
+     the picture. Wrapping stays as the last resort for widths in between. */
+  .tools{
+    position:absolute; left:50%; bottom:8px;
+    transform:translate(-50%, 6px);
+    display:flex; flex-wrap:wrap; justify-content:center; gap:2px;
+    width:max-content; max-width:calc(100% - 12px);
+    padding:3px;
+    border-radius:10px;
+    background:color-mix(in oklch, var(--surface) 82%, transparent);
+    -webkit-backdrop-filter:blur(14px) saturate(1.6);
+    backdrop-filter:blur(14px) saturate(1.6);
+    box-shadow:var(--shadow-sm), 0 0 0 1px color-mix(in oklch, var(--line) 55%, transparent);
+    opacity:0; pointer-events:none;
+    z-index:3;
+    transition:opacity .16s var(--sp-quick), transform var(--d-sheet) var(--sp-sheet);
   }
-  .art:hover .save{opacity:1; transform:none}
-  .art .save svg{width:13px;height:13px}
+  /* A hairline of light along the top edge. Glass catches the room; without it
+     the shelf is a flat grey strip pasted on the picture. */
+  .tools::before{
+    content:'';
+    position:absolute; inset:0;
+    border-radius:inherit;
+    pointer-events:none;
+    background:linear-gradient(180deg, oklch(1 0 0 / .55), oklch(1 0 0 / 0) 46%);
+    opacity:.3;
+    mix-blend-mode:overlay;
+  }
+  .art:hover .tools, .art:focus-within .tools{
+    opacity:1; transform:translate(-50%, 0); pointer-events:auto;
+  }
+  /* A picture that is already in the reference strip has to keep saying so
+     after the pointer leaves the card — otherwise the only way to learn it is
+     to press again and watch the tile vanish. */
+  .tools:has([aria-pressed="true"]){
+    opacity:1; transform:translate(-50%, 0); pointer-events:auto;
+  }
+
+  .tool{
+    position:relative;
+    width:26px; height:26px; display:grid; place-items:center;
+    border:0; border-radius:7px;
+    background:transparent; color:var(--ink-2);
+    cursor:pointer;
+    /* Seven buttons arriving in one frame is a snap; fourteen milliseconds
+       apart is a row being laid down, left to right — the order they are read
+       in. The delay lives on the way in only: leaving together is snappier. */
+    opacity:0;
+    transform:translateY(4px);
+    transition:background .13s var(--sp-quick), color .13s var(--sp-quick),
+      opacity .18s var(--sp-quick), transform var(--d-tap) var(--sp-tap);
+  }
+  .art:hover .tool, .art:focus-within .tool,
+  .tools:has([aria-pressed="true"]) .tool{
+    opacity:1; transform:none;
+    transition-delay:calc(var(--ti, 0) * 14ms);
+  }
+  .tool svg{width:15px; height:15px}
+  .tool:hover{background:color-mix(in oklch, var(--ink) 9%, transparent); color:var(--ink)}
+  .tool:focus-visible{outline:2px solid var(--primary); outline-offset:-2px}
+  .tool[aria-pressed="true"]{background:var(--primary); color:#fff; animation:toolOn .42s var(--sp-bounce)}
+  @keyframes toolOn{from{transform:scale(.8)} to{transform:scale(1)}}
+  .tool[aria-pressed="true"]:hover{background:var(--primary)}
+  /* One hairline before 下载: everything to its left makes another picture,
+     everything to its right takes this one out of the door. */
+  .tool.end{
+    margin-left:5px;
+    box-shadow:inset 1px 0 0 color-mix(in oklch, var(--line) 95%, transparent);
+  }
+
+  /* Icons this literal still need names — 抠图 and 去水印 are one glyph apart at
+     15px, and 「局部重绘」 cannot be guessed from any mark. The label sits above
+     the button and is free to overlap the row above when the shelf wraps: that
+     is what a tooltip does. */
+  .tool::after{
+    content:attr(data-label);
+    position:absolute; bottom:calc(100% + 7px); left:50%;
+    transform:translate(-50%, 3px);
+    padding:3px 7px; border-radius:6px;
+    background:var(--ink); color:var(--surface);
+    font-size:10.5px; line-height:1.35; letter-spacing:.01em; white-space:nowrap;
+    box-shadow:0 2px 8px oklch(0 0 0 / .18);
+    opacity:0; pointer-events:none; z-index:2;
+    transition:opacity .12s ease, transform .15s var(--settle);
+  }
+  .tool:hover::after, .tool:focus-visible::after{opacity:1; transform:translate(-50%, 0)}
+  /* While a note is up it says the same thing better, and two labels in the
+     same twenty pixels read as a rendering fault. */
+  .tools:has(.tool-note) .tool::after{opacity:0; transition:none}
+
+  .tool-note{
+    position:absolute; left:50%; bottom:calc(100% + 7px);
+    transform:translate(-50%, 4px);
+    padding:4px 9px; border-radius:7px;
+    background:var(--ink); color:var(--surface);
+    font-size:11px; line-height:1.35; white-space:nowrap;
+    box-shadow:0 3px 12px oklch(0 0 0 / .2);
+    opacity:0; pointer-events:none; z-index:3;
+    animation:noteIn .18s var(--settle) forwards;
+  }
+  .tool-note.out{animation:noteOut .2s ease forwards}
+  @keyframes noteIn{to{opacity:1; transform:translate(-50%, 0)}}
+  @keyframes noteOut{from{opacity:1; transform:translate(-50%, 0)} to{opacity:0; transform:translate(-50%, -4px)}}
+
+  /* There is no hover on a phone, so a shelf that waits for one does not exist
+     there — and 引用 is the action most worth having on a phone. */
+  @media (hover:none){
+    .tools{opacity:1; transform:translate(-50%, 0); pointer-events:auto}
+    .tool{opacity:1; transform:none}
+  }
+
+  /* A quarter of a four-up on a phone is ~180px wide. The shelf at 26px a
+     button wraps five-and-two — two rows over a third of the picture, with the
+     下载 divider orphaned at the start of the second one. Shrink the shelf
+     instead of folding it: at 20px the seven still fit across, and the picture
+     keeps its bottom third. */
+  @container (max-width:260px){
+    .tools{gap:1px; padding:2px; max-width:calc(100% - 8px)}
+    .tool{width:20px; height:20px; border-radius:5px}
+    .tool svg{width:12px; height:12px}
+    .tool.end{margin-left:3px}
+  }
 
   .grid-2{
     display:grid;
     grid-template-columns:repeat(2,1fr);
     gap:8px;
+    /* Two rows share one image's budget, so a four-up stays the height of the
+       single-image box it replaced. */
+    width:min(100%, calc(var(--res-h) * var(--arn) + 8px));
+    margin-inline:auto;
   }
   .grid-2 .art{width:100%; border-radius:var(--r-md)}
+
+  /* ───────── job: queued / running ───────── */
+
+  /* A job reserves the exact box its result will occupy: same aspect ratio,
+     same grid, same gutters. Finishing swaps the pixels inside a rectangle
+     that never changed size — the cheapest way to make progress feel calm is
+     to leave nothing to reflow. */
+  .ph{
+    position:relative;
+    /* The budget sits on the wrapper, not on the cells: the floating status
+       pill is absolute to .ph, and centring it on the column instead of the
+       artwork would park it in the gutter. */
+    width:min(100%, calc(var(--res-h) * var(--arn)));
+    margin-inline:auto;
+  }
+  /* No 1.1 fudge for a grid any more: it made a four-up 8% taller than the
+     stage it has to fit in. Two rows of the same budget, plus the gap. */
+  .ph.wide{width:min(100%, calc(var(--res-h) * var(--arn) + 8px))}
+  .ph-cells{display:grid; gap:8px}
+  .ph-cells.one{grid-template-columns:1fr}
+  .ph-cells.two{grid-template-columns:repeat(2,1fr)}
+  .ph-cell{
+    position:relative;
+    aspect-ratio:var(--arn);
+    border-radius:var(--r-lg);
+    overflow:hidden;
+    background:var(--surface-2);
+    box-shadow:inset 0 0 0 1px var(--line-soft);
+    isolation:isolate;
+  }
+  .ph-cells.two .ph-cell{border-radius:var(--r-md)}
+  .ph-cell .shimmer{opacity:.62}
+  /* Queued is not "loading slower" — it has not started, so it must not
+     shimmer. A hatch says nothing is happening here yet. */
+  .ph-cell.queued{
+    background:
+      repeating-linear-gradient(135deg,
+        transparent 0 7px,
+        color-mix(in oklch, var(--ink) 4.5%, transparent) 7px 14px),
+      var(--surface-2);
+  }
+  .ph-cell.queued .shimmer{display:none}
+  .ph-float{
+    position:absolute; inset:0;
+    display:grid; place-content:center; justify-items:center; gap:9px;
+    padding:16px;
+    text-align:center;
+    pointer-events:none;
+    /* A scrim under the label only: a four-up has to keep reading as four
+       images in flight, not as one big spinner. */
+    background:radial-gradient(58% 46% at 50% 50%, color-mix(in oklch, var(--surface) 84%, transparent), transparent 74%);
+  }
+  .ph-state{
+    display:inline-flex; align-items:center; gap:7px;
+    padding:6px 11px 6px 9px;
+    border-radius:99px;
+    background:color-mix(in oklch, var(--surface) 94%, transparent);
+    box-shadow:var(--shadow-sm), 0 0 0 1px var(--line-soft);
+    -webkit-backdrop-filter:blur(8px);
+    backdrop-filter:blur(8px);
+    font-size:11.5px; color:var(--ink-2);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .ph-state b{color:var(--ink); font-weight:560}
+  /* A percentage ticking 0→100 must not resize the pill it lives in. The
+     queued count does not tick, so it keeps its natural width. */
+  .ph-state b[data-pct]{display:inline-block; min-width:2.7em; text-align:right}
+  .ph-state .ring{width:13px;height:13px;border-width:1.7px}
+  .ph-state .dot-q{
+    width:6px;height:6px;border-radius:99px;
+    background:color-mix(in oklch, var(--ink) 30%, transparent);
+  }
+  .pbar{
+    width:132px;height:3px;border-radius:99px;
+    background:color-mix(in oklch, var(--ink) 10%, transparent);
+    overflow:hidden;
+  }
+  .pbar i{
+    display:block;height:100%;width:100%;
+    border-radius:99px; background:var(--primary);
+    transform:scaleX(0); transform-origin:left center;
+    transition:transform .16s linear;
+  }
+
+  .round-meta .st{font-weight:540}
+  .round-meta .st::before{
+    content:""; display:inline-block;
+    width:5px;height:5px;border-radius:99px;
+    background:currentColor; margin-right:4px; vertical-align:middle;
+  }
+  .round-meta .st.running{color:var(--primary-ink)}
+  .round-meta .st.queued{color:var(--ink-3)}
+  .round-meta .st.failed{color:var(--danger)}
+  .round-meta .st.running::before{animation:pulse 1.5s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.32}}
+
+  /* A video result is a still frame until you play it: without the glyph and
+     the length, a clip and an image look identical in the receipt. */
+  .art .play{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:38px;height:38px;border-radius:99px;
+    display:grid;place-items:center;
+    background:oklch(0 0 0 / .44); color:#fff;
+    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+    pointer-events:none;
+  }
+  .art .play svg{width:13px;height:13px;margin-left:2px}
+  .art .len{
+    position:absolute; left:8px; bottom:8px;
+    padding:1px 5px;border-radius:4px;
+    background:oklch(0 0 0 / .52); color:#fff;
+    font-size:9.5px; font-variant-numeric:tabular-nums;
+  }
 
   .failed{
     display:grid;
@@ -504,6 +1085,8 @@
     border-radius:var(--r-lg);
     background:var(--danger-wash);
     box-shadow:inset 0 0 0 1px color-mix(in oklch, var(--danger) 22%, transparent);
+    width:min(100%, calc(var(--res-h) * var(--arn)));
+    margin-inline:auto;
     aspect-ratio:var(--arn);
   }
   .failed-title{font-size:12.5px;font-weight:560;color:var(--danger)}
@@ -526,6 +1109,11 @@
   .retry:active{transform:scale(.97)}
   .retry svg{width:12px;height:12px}
 
+  /* What went in, at the size of a receipt line: after a few turns nobody
+     remembers which reference produced which image. */
+  .round-in{display:flex; gap:5px; margin:-3px 0 8px}
+  .ref.mini{width:30px; height:30px; border-radius:6px}
+
   /* ───────── composer ───────── */
 
   .composer{
@@ -536,16 +1124,168 @@
 
   .composer-inner{
     width:100%;
-    max-width:700px;
+    /* Wider than the canvas on purpose: the canvas is a reading column, the
+       composer is a control panel with six controls on one line. At 700px the
+       price was pushed to a second row by 9px. */
+    position:relative;
+    max-width:768px;
     margin-inline:auto;
     border-radius:var(--r-xl);
     background:var(--surface);
     box-shadow:var(--shadow-lg), 0 0 0 1px var(--line);
-    transition:box-shadow .22s ease;
+    transition:box-shadow var(--d-move) var(--sp-move), transform var(--d-move) var(--sp-move);
   }
+  /* Not a glow — a rise. The thing you are typing into should feel like it came
+     a millimetre toward you, which is also the only feedback that survives a
+     keyboard opening under it. */
   .composer-inner:focus-within{
     box-shadow:var(--shadow-focus), 0 0 0 1px color-mix(in oklch, var(--primary) 42%, var(--line));
+    transform:translateY(-1px);
   }
+
+  /* Files arrive three ways now — picker, clipboard, drag. The picker has a
+     tile to aim at; a dragged screenshot does not, so the whole composer
+     turns into the target while a file is over it. */
+  .drop-hint{
+    position:absolute; inset:4px;
+    display:grid; place-items:center;
+    opacity:0;
+    /* Hidden from the text tree as well as the eye: an invisible overlay that
+       still says 参考图 is read out by screen readers and by search. */
+    visibility:hidden;
+    transform:scale(.988);
+    transition:opacity .18s var(--sp-quick), transform var(--d-sheet) var(--sp-sheet),
+      visibility 0s .18s;
+    border-radius:calc(var(--r-xl) - 4px);
+    border:1.5px dashed color-mix(in oklch, var(--primary) 58%, transparent);
+    background:color-mix(in oklch, var(--surface) 82%, transparent);
+    backdrop-filter:blur(2px);
+    -webkit-backdrop-filter:blur(2px);
+    color:var(--primary-ink);
+    font-size:11.5px; font-weight:520; letter-spacing:.01em;
+    pointer-events:none;
+    z-index:3;
+  }
+  .composer-inner.dropping{transform:translateY(-2px)}
+  .composer-inner.dropping .drop-hint{opacity:1; visibility:visible; transform:none; transition-delay:0s}
+
+  /* The reference row is part of the request, not part of how it is rendered:
+     a file changes what the request *is* (文生图 → 图生图, 文本问答 → 图片问答).
+     Every chip below only changes how it is drawn, so the files sit above the
+     text they belong to, not in the parameter row. */
+  .refs{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px 0;
+  }
+  .refs[hidden]{display:none}
+  .ref-row{display:flex; flex-wrap:wrap; gap:6px; min-width:0; flex:0 1 auto}
+  .ref{
+    position:relative;
+    width:46px; height:46px; flex:0 0 auto;
+    border-radius:9px;
+    overflow:hidden;
+    border:1px solid var(--line);
+    background:var(--surface-2);
+  }
+  .ref svg, .ref img{display:block; width:100%; height:100%}
+  .ref img{object-fit:cover}
+  /* The strip sits at the bottom of the screen while the picture just clicked
+     is somewhere in the middle: without a local cue the new tile is easy to
+     miss, and "nothing happened" is the wrong lesson. */
+  .ref.fresh{animation:refIn .34s var(--pop)}
+  @keyframes refIn{from{opacity:0; transform:scale(.72)} to{opacity:1; transform:none}}
+  .ref .x{
+    position:absolute; top:2px; right:2px;
+    width:15px; height:15px; padding:0;
+    display:grid; place-items:center;
+    border:0; border-radius:99px;
+    background:oklch(0 0 0 / .42);
+    color:#fff;
+    cursor:pointer;
+    opacity:.8;
+    transition:opacity .14s ease, background-color .14s ease;
+  }
+  .ref:hover .x, .ref:focus-within .x{opacity:1; background:oklch(0 0 0 / .62)}
+  .ref .x svg{width:9px; height:9px}
+  /* A filled slot is also its own replace button: with both 首帧 and 尾帧 in
+     place there is no "+" left, so 换图 must start from the picture itself. */
+  .ref.swap{cursor:pointer}
+  .ref.swap:hover{box-shadow:0 0 0 1px color-mix(in oklch, var(--primary) 55%, transparent)}
+  .ref .kind{
+    position:absolute; left:3px; bottom:3px;
+    padding:0 3px; border-radius:4px;
+    background:oklch(0 0 0 / .55); color:#fff;
+    font-size:8.5px; line-height:13px; letter-spacing:.02em;
+  }
+  .ref .slot{
+    position:absolute; inset:auto 0 0 0;
+    padding:1px 0 2px; text-align:center;
+    background:linear-gradient(to top, oklch(0 0 0 / .62), transparent);
+    color:#fff; font-size:9px; line-height:1.2;
+  }
+  .ref-add{
+    width:46px; height:46px; flex:0 0 auto;
+    display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+    border:1px dashed color-mix(in oklch, var(--ink) 26%, transparent);
+    border-radius:9px;
+    padding:0;
+    background:transparent;
+    color:var(--ink-3);
+    font:inherit; font-size:9px; line-height:1.2;
+    white-space:nowrap;
+    cursor:pointer;
+    transition:color .15s ease, border-color .15s ease, background-color .15s ease;
+  }
+  .ref-add:hover{
+    color:var(--primary-ink);
+    border-color:color-mix(in oklch, var(--primary) 45%, transparent);
+    background:var(--primary-wash);
+  }
+  .ref-add:active{transform:scale(.97)}
+  .ref-add svg{width:13px; height:13px}
+  .ref-cap{
+    flex:0 0 auto;
+    font-size:10.5px;
+    color:var(--ink-3);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .ref-cap.full{color:var(--danger)}
+
+  /* Chat has no reference *slot*. In 图片 the empty dashed box is the lesson
+     ("drop a picture here and it becomes 图生图"); in a chat the same box is
+     56px of scaffolding that promises an image model above a text field. The
+     picture attached to a message is part of the question, so chat gets one
+     square button in the composer row — the place every chat app puts attach —
+     and the thumbnails only appear once there is something to show. */
+  .attach{
+    width:28px; height:28px; flex:0 0 auto;
+    display:inline-grid; place-items:center;
+    padding:0;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:transparent;
+    color:var(--ink-2);
+    cursor:pointer;
+    transition:color .15s ease, border-color .15s ease, background-color .15s ease;
+  }
+  .attach:hover{
+    color:var(--primary-ink);
+    border-color:color-mix(in oklch, var(--primary) 45%, transparent);
+    background:var(--primary-wash);
+  }
+  .attach:active{transform:scale(.97)}
+  .attach svg{width:14px; height:14px}
+  /* Attached already: the button keeps its place, it only changes state. */
+  .attach.on{
+    color:var(--primary-ink);
+    border-color:color-mix(in oklch, var(--primary) 34%, var(--line));
+    background:var(--primary-wash);
+  }
+  .attach[data-full="true"]{border-style:dashed; color:var(--ink-3)}
+  .attach[data-full="true"]:hover{color:var(--danger); border-color:color-mix(in oklch, var(--danger) 40%, transparent); background:transparent}
 
   #prompt{
     display:block;
@@ -572,8 +1312,9 @@
     padding:5px 9px 9px;
   }
 
-  /* one chip carries the whole routing decision: which model, billed under
-     which group. They are not two questions for the user, they are one. */
+  /* One chip, one question: which model. The billing group used to ride along
+     here as a suffix, which made a click target carry two meanings — pressing
+     the model name could change your price. It now lives on the price. */
   .chip{
     display:inline-flex;
     align-items:center;
@@ -593,7 +1334,7 @@
   }
   .chip:hover{background:color-mix(in oklch, var(--ink) 4%, transparent); border-color:color-mix(in oklch, var(--ink) 22%, transparent)}
   .chip:active{transform:scale(.985)}
-  .chip svg.lead{width:13px;height:13px;color:var(--primary-ink);flex:0 0 auto}
+  .chip svg.lead{width:13px;height:13px;color:color-mix(in oklch, var(--tint, var(--primary-ink)) 86%, var(--ink));flex:0 0 auto}
   .chip .name{
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-variant-numeric:tabular-nums;
@@ -608,21 +1349,186 @@
   .chip .sep{color:var(--ink-3); opacity:.5; flex:0 0 auto}
   .chip svg.chev{width:11px;height:11px;color:var(--ink-3);flex:0 0 auto;margin-left:1px}
 
-  .vsep{
-    width:1px;
-    height:16px;
-    background:var(--line);
-    flex:0 0 auto;
-    margin:0 2px;
+  /* The group is not a sibling of the model: it never changes what gets
+     generated, only what it costs. So it lives on the price, where its one
+     visible consequence already is. Clicking the number is the natural way to
+     ask "why this number?". */
+  .price-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    height:26px;
+    padding:0 6px 0 5px;
+    border:1px solid transparent;
+    border-radius:7px;
+    background:transparent;
+    color:var(--ink-3);
+    font:inherit;
+    font-size:11px;
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+    cursor:pointer;
+    transition:background-color .16s ease, border-color .16s ease;
+  }
+  .price-chip:hover{background:color-mix(in oklch, var(--ink) 4%, transparent); border-color:var(--line)}
+  .price-chip:active{transform:scale(.985)}
+  .price-chip b{font-size:12px; font-weight:600; color:var(--ink-2); letter-spacing:-.01em}
+  .price-chip .grp{color:var(--ink-3); font-weight:450; max-width:66px; overflow:hidden; text-overflow:ellipsis}
+  .price-chip svg.chev{width:10px;height:10px;color:var(--ink-3);flex:0 0 auto}
+
+  /* ───────── parameter chips ───────── */
+
+  /* An enum that can grow does not belong inline. A model declaring fifteen
+     ratios would push every other control off the row, and the row is the only
+     place the next choice can be made. The chip carries the current value; the
+     popover carries the whole set, however long it gets. */
+  .param-chip{max-width:160px; padding-right:6px}
+  .param-chip .lead-shape{
+    width:16px; height:16px; flex:0 0 auto;
+    display:inline-flex; align-items:center; justify-content:center;
+    color:var(--primary-ink);
+  }
+  .param-chip .lead-shape i{
+    display:block; border:1.5px solid currentColor; border-radius:2px;
+  }
+  .param-chip .dim{color:var(--ink-3); font-weight:450}
+
+  /* ───────── enum popover ───────── */
+
+  /* The first-level group and the models under it are one decision made twice,
+     so they share one surface: the tab bar sits directly above the list it
+     filters, and switching never closes the popover or moves the eye. */
+  .pop-head{
+    margin:-6px -6px 3px;
+    padding:6px 6px 4px;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .pop-tabs{
+    position:relative;
+    --thumb-inset:3px;
+    display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:2px;
+    padding:3px; border-radius:9px;
+    background:color-mix(in oklch, var(--ink) 5%, transparent);
+  }
+  .pop-tab{
+    display:flex; align-items:center; justify-content:center; gap:5px;
+    height:26px; padding:0 5px;
+    border:0; border-radius:7px; background:transparent;
+    color:var(--ink-3); font:inherit; font-size:11.5px; font-weight:520;
+    white-space:nowrap; cursor:pointer;
+    transition:background-color .18s ease, color .18s ease, box-shadow .18s ease;
+  }
+  .pop-tab svg{width:12px;height:12px;opacity:.7;flex:0 0 auto}
+  .pop-tab .n{font-size:9.5px; font-variant-numeric:tabular-nums; opacity:.55}
+  .pop-tab:hover{color:var(--ink)}
+  .pop-tab[aria-selected="true"]{
+    background:var(--surface); color:var(--ink); font-weight:600;
+    box-shadow:var(--shadow-sm);
+  }
+  .pop-tab[aria-selected="true"] svg{opacity:1; color:var(--primary-ink)}
+  .pop-tab[aria-selected="true"] .n{opacity:1; color:var(--primary-ink)}
+
+  .enum-sec + .enum-sec{margin-top:3px}
+  .enum-title{
+    display:flex; align-items:center; gap:7px;
+    padding:5px 7px 4px;
+    font-size:9.5px; font-weight:600; letter-spacing:.09em;
+    color:var(--ink-3); text-transform:uppercase;
+  }
+  .enum-title::after{content:''; flex:1; height:1px; background:var(--line-soft)}
+  .enum-grid{display:grid; grid-template-columns:repeat(4, 1fr); gap:3px; padding:0 2px}
+  .enum-grid.cols-2{grid-template-columns:repeat(2, 1fr)}
+
+  .tile{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    height:46px; padding:4px 2px;
+    border:1px solid transparent; border-radius:8px;
+    background:transparent; color:var(--ink-2);
+    font:inherit; font-size:10.5px; font-variant-numeric:tabular-nums;
+    cursor:pointer;
+    transition:background-color .14s ease, border-color .14s ease, color .14s ease, transform .09s ease-out;
+  }
+  .tile:hover{background:color-mix(in oklch, var(--ink) 6%, transparent)}
+  .tile:active{transform:scale(.97)}
+  .tile .bx{height:22px; display:flex; align-items:center; justify-content:center}
+  .tile .bx i{display:block; border:1.5px solid currentColor; border-radius:2px; opacity:.7}
+  .tile .bx i.dash, .param-chip .lead-shape i.dash{border-style:dashed; border-radius:3px}
+  .tile .sub{font-size:9px; color:var(--ink-3); font-weight:450}
+  .tile[aria-checked="true"]{
+    background:color-mix(in oklch, var(--primary) 9%, transparent);
+    border-color:color-mix(in oklch, var(--primary) 32%, transparent);
+    color:var(--ink); font-weight:560;
+  }
+  .tile[aria-checked="true"] .bx i{opacity:1; color:var(--primary-ink)}
+  .tile[aria-checked="true"] .sub{color:var(--primary-ink); opacity:.85}
+  /* Unsupported is dimmed, never hidden and never silently swapped: the shape
+     space stays stable when you change models, so you can see what you lost. */
+  .tile[aria-disabled="true"]{opacity:.26; cursor:not-allowed}
+  .tile[aria-disabled="true"]:hover{background:transparent}
+  .tile.auto{
+    grid-column:1 / -1; height:auto; flex-direction:row;
+    justify-content:flex-start; gap:8px; padding:8px 9px;
+  }
+  .tile.auto .sub{margin-left:auto}
+
+  .pick-grid{display:grid; grid-template-columns:repeat(4, 1fr); gap:3px; padding:0 2px}
+  .pick{
+    height:34px; border:1px solid transparent; border-radius:8px;
+    background:transparent; color:var(--ink-2);
+    font:inherit; font-size:12px; font-weight:520;
+    font-variant-numeric:tabular-nums; cursor:pointer;
+    transition:background-color .14s ease, border-color .14s ease, color .14s ease;
+  }
+  .pick:hover{background:color-mix(in oklch, var(--ink) 6%, transparent)}
+  .pick[aria-checked="true"]{
+    background:color-mix(in oklch, var(--primary) 9%, transparent);
+    border-color:color-mix(in oklch, var(--primary) 32%, transparent);
+    color:var(--ink);
   }
 
+  /* The footer repeats the two things the grid cannot show at a glance: the
+     pixels this combination actually produces, and why some tiles are dim. */
+  .pop-foot{
+    display:flex; align-items:center; gap:8px;
+    margin:6px -6px -6px; padding:8px 10px;
+    border-top:1px solid var(--line-soft);
+    font-size:9.5px; color:var(--ink-3);
+    font-variant-numeric:tabular-nums;
+  }
+  .pop-foot .r{margin-left:auto; text-align:right}
+
   .segment{
+    position:relative;
+    --thumb-inset:2px;
     display:inline-flex;
     align-items:center;
     gap:1px;
     padding:2px;
     border-radius:8px;
     background:color-mix(in oklch, var(--ink) 5%, transparent);
+  }
+  /* One white pill that slides between segments, instead of two states that
+     blink. This is the whole reason a segmented control feels like one object:
+     the selection has a position, and position is something you can follow. */
+  .seg-thumb{
+    position:absolute;
+    left:var(--thumb-inset, 2px);
+    top:var(--thumb-inset, 2px);
+    z-index:0;
+    border-radius:6px;
+    background:var(--surface);
+    box-shadow:var(--shadow-sm);
+    pointer-events:none;
+    transition:transform var(--d-sheet) var(--sp-sheet), width var(--d-sheet) var(--sp-sheet);
+  }
+  .pop-tabs .seg-thumb{border-radius:7px}
+  .seg, .pop-tab{position:relative; z-index:1}
+  /* Only when the thumb exists does the item drop its own fill — without JS the
+     old look comes back rather than a permanently unselected control. */
+  .segment:has(.seg-thumb) .seg[aria-pressed="true"],
+  .pop-tabs:has(.seg-thumb) .pop-tab[aria-selected="true"]{
+    background:transparent;
+    box-shadow:none;
   }
 
   .seg{
@@ -652,37 +1558,6 @@
     box-shadow:var(--shadow-sm);
   }
   .seg:active{transform:scale(.95)}
-  .seg .shape{
-    width:11px;height:11px;
-    border:1.4px solid currentColor;
-    border-radius:2px;
-    flex:0 0 auto;
-    opacity:.62;
-  }
-  .seg[aria-pressed="true"] .shape{opacity:1; color:var(--primary-ink)}
-  .seg .shape.s-16-9{width:13px;height:8px}
-  .seg .shape.s-9-16{width:8px;height:13px}
-
-  .price{
-    display:inline-flex;
-    align-items:baseline;
-    gap:3px;
-    font-size:11px;
-    color:var(--ink-3);
-    font-variant-numeric:tabular-nums;
-    white-space:nowrap;
-  }
-  .price b{
-    font-size:12px;
-    font-weight:600;
-    color:var(--ink-2);
-    letter-spacing:-.01em;
-  }
-  .price .was{
-    text-decoration:line-through;
-    opacity:.55;
-    font-size:10.5px;
-  }
 
   .toolbar .right{
     margin-left:auto;
@@ -701,6 +1576,36 @@
   }
   .clear:hover{background:color-mix(in oklch, var(--ink) 6%, transparent); color:var(--ink)}
   .clear svg{width:13px;height:13px}
+
+  /* Concurrency belongs to the engine, so it sits next to 生成 rather than in
+     the parameter row. It is always rendered: a chip that appears on submit
+     and leaves on finish would reflow the toolbar twice per job. */
+  .conc{
+    display:inline-flex; align-items:center; gap:5px;
+    height:24px; padding:0 7px;
+    border-radius:99px;
+    font-size:10.5px; color:var(--ink-3);
+    font-variant-numeric:tabular-nums;
+    box-shadow:inset 0 0 0 1px var(--line-soft);
+    white-space:nowrap;
+    transition:color .2s ease, background-color .2s ease, box-shadow .2s ease;
+  }
+  .conc b{font-weight:560; color:var(--ink-2); min-width:26px; text-align:right}
+  .conc .d{
+    width:5px;height:5px;border-radius:99px;
+    background:color-mix(in oklch, var(--ink) 28%, transparent);
+  }
+  .conc.live{
+    color:var(--primary-ink);
+    background:var(--primary-wash);
+    box-shadow:inset 0 0 0 1px color-mix(in oklch, var(--primary) 24%, transparent);
+  }
+  .conc.live b{color:var(--primary-ink)}
+  .conc.live .d{background:var(--primary); animation:pulse 1.5s ease-in-out infinite}
+
+  /* A mode tab carries a dot while that mode has work running, so switching
+     away from a job never hides it silently. */
+  .pop-tab .live-dot{width:4px;height:4px;border-radius:99px;background:var(--primary);margin-left:-2px;flex:0 0 auto}
 
   .submit{
     display:inline-flex;
@@ -735,6 +1640,8 @@
     animation:spin .72s linear infinite;
   }
 
+  .hint.warn{color:var(--danger)}
+
   .hint{
     max-width:700px;
     margin:7px auto 0;
@@ -747,20 +1654,47 @@
   /* ───────── model popover ───────── */
 
   .pop{
-    position:absolute;
+    /* Fixed, not absolute: the anchor's rect is already in viewport space, and
+       a popup that gets clipped by the viewport is worse than one that covers
+       its trigger. Absolute positioning made the maths depend on scroll and
+       on which ancestor happened to be positioned. */
+    position:fixed;
     z-index:40;
     width:268px;
     padding:6px;
+    /* Fourteen ratios do not fit in a popover; a popover that runs off the
+       viewport is worse than one that scrolls inside it. */
+    max-height:min(66vh, 460px);
+    overflow-y:auto;
+    overscroll-behavior:contain;
     border-radius:12px;
     background:color-mix(in oklch, var(--surface) 96%, transparent);
-    box-shadow:0 24px 60px -24px oklch(0 0 0 / .35), 0 0 0 1px var(--line);
+    /* Two shadows, because a popover that opens upward lands on the white
+       composer: one wide soft cast for depth, one tight contact shadow so the
+       bottom edge still reads as an edge over a white surface. */
+    box-shadow:0 24px 60px -22px oklch(0 0 0 / .30),
+               0 6px 18px -12px oklch(0 0 0 / .22),
+               0 0 0 1px color-mix(in oklch, var(--ink) 11%, var(--line));
     backdrop-filter:blur(24px) saturate(180%);
     -webkit-backdrop-filter:blur(24px) saturate(180%);
-    transform-origin:bottom left;
-    animation:popIn .26s var(--pop) both;
+    /* The corner it grows from is written by placePop(): a popover must come
+       out of the thing that opened it, not out of the middle of itself. */
+    transform-origin:var(--pop-ox, left) var(--pop-oy, bottom);
+    animation:popIn var(--d-sheet) var(--sp-sheet) both;
   }
-  @keyframes popIn{from{opacity:0; transform:translateY(6px) scale(.97)}to{opacity:1; transform:none}}
+  /* 0.955 → 1 with a 2% overshoot. A popover that fades in at full size reads
+     as a picture of a popover; one that grows from its trigger reads as a lid. */
+  @keyframes popIn{
+    from{opacity:0; transform:translateY(5px) scale(.955)}
+    to{opacity:1; transform:none}
+  }
   .pop[hidden]{display:none}
+  /* The model popover keeps its tab bar outside the scroll area: the first
+     level must stay in reach even when the list below it is long. */
+  .pop.pop-model{display:flex; flex-direction:column; overflow:hidden}
+  .pop-model .pop-body{overflow-y:auto; overscroll-behavior:contain; min-height:0; margin:0 -6px; padding:0 6px;
+    animation:listIn .3s var(--sp-quick)}
+  @keyframes listIn{from{opacity:.35; transform:translateY(3px)} to{opacity:1; transform:none}}
 
   .pop-label{
     font-size:10px;
@@ -792,6 +1726,66 @@
   .pop-item .tail{margin-left:auto; font-size:10.5px; color:var(--ink-3); flex:0 0 auto}
   .pop-item .mark{width:13px; flex:0 0 auto; color:var(--primary-ink); opacity:0}
   .pop-item[aria-checked="true"] .mark{opacity:1}
+
+  /* Model names alone do not tell anyone what to pick. Each row carries one
+     line of "when should I choose this", the same way the model tells a
+     stranger what it is good at. */
+  .pop-item.model{
+    align-items:flex-start;
+    padding:7px 8px;
+    gap:8px;
+  }
+  /* The tick moved behind the price: the avatar owns the leading slot now, and
+     a tick that follows the thing it marks needs no reserved space of its own. */
+  .pop-item.model .mark{order:3; align-self:center; margin:0 0 0 2px}
+  /* Provenance as a well, not a picture: a 20px tinted square reads as an
+     author badge at a glance, where a 20px logo would read as noise. */
+  .pop-item.model .mby{
+    flex:0 0 auto;
+    display:grid; place-items:center;
+    width:20px; height:20px;
+    margin-top:1px;
+    border-radius:7px;
+    background:color-mix(in oklch, var(--tint, var(--ink-3)) 13%, transparent);
+    color:color-mix(in oklch, var(--tint, var(--ink-3)) 84%, var(--ink));
+  }
+  .pop-item.model .mby svg{width:12px; height:12px}
+  .pop-item.model .lines{display:flex; flex-direction:column; gap:2px; min-width:0; flex:1}
+  .pop-item.model .which{display:flex; align-items:center; gap:6px; min-width:0}
+  /* Absence is meaningful: a row without this tag cannot take a file, which is
+     the one thing the list has to answer before the model is chosen. */
+  .pop-item.model .cap{
+    flex:0 0 auto;
+    font-size:10px; font-weight:450;
+    color:var(--ink-3);
+    letter-spacing:.005em;
+  }
+  .pop-item.model .desc{
+    font-size:10.5px;
+    line-height:1.45;
+    color:var(--ink-3);
+    overflow:hidden;
+    display:-webkit-box;
+    -webkit-line-clamp:2;
+    -webkit-box-orient:vertical;
+  }
+  .pop-item.model .newtag{
+    font-size:9px;
+    font-weight:650;
+    letter-spacing:.03em;
+    padding:1px 4px;
+    border-radius:4px;
+    color:var(--primary-ink);
+    background:color-mix(in oklch, var(--primary) 12%, transparent);
+    flex:0 0 auto;
+  }
+  .pop-item.model[aria-checked="true"]{
+    background:color-mix(in oklch, var(--primary) 7%, transparent);
+  }
+  .pop-item.model[aria-checked="true"]:hover{
+    background:color-mix(in oklch, var(--primary) 11%, transparent);
+  }
+  .pop-item.model[aria-checked="true"] .which{font-weight:560}
   .pop-rule{height:1px; background:var(--line-soft); margin:5px 4px}
 
   /* ───────── annotations ───────── */
@@ -845,7 +1839,8 @@
     background:color-mix(in oklch, var(--surface) 96%, transparent);
     box-shadow:0 20px 50px -22px oklch(0 0 0 / .35), 0 0 0 1px var(--line);
     backdrop-filter:blur(24px) saturate(180%);
-    animation:popIn .24s var(--pop) both;
+    transform-origin:top right;
+    animation:popIn var(--d-sheet) var(--sp-sheet) both;
   }
   .menu[hidden]{display:none}
   .menu-item{
@@ -866,53 +1861,108 @@
   @media (max-width:760px){
     :root{--stage-h:min(42vh, 330px)}
     .topbar{height:50px; padding:0 10px; gap:6px}
-    .mode{padding:0 8px; font-size:12px}
-    .mode span{display:none}
-    .mode[aria-selected="true"] span{display:inline}
+    /* The group tag is a second selector inside a chip that already answers
+       "how much", and at 390 it lands on top of the submit button. */
+    .price-chip .grp{display:none}
     .spend{padding:0 6px; font-size:0}
     .spend b{font-size:12px}
     .stage{padding:14px 12px 4px}
     .composer{padding:8px 12px 10px}
+    .refs{padding:8px 10px 0; gap:8px}
+    .ref, .ref-add{width:40px; height:40px}
     #prompt{min-height:64px; font-size:13px; padding:12px 14px 2px}
     .toolbar{gap:6px; padding:4px 8px 8px}
     .chip{max-width:186px}
     .toolbar .right{gap:6px}
     .hint{font-size:10px}
+    .conc{padding:0 6px}
+    .conc b{min-width:24px}
     .note{display:none}
     .ring-mark{display:none}
   }
 
   @media (max-width:430px){
     .chip .grp, .chip .sep{display:none}
-    .vsep{display:none}
-    .price .was{display:none}
+    .price-chip .grp{display:none}
     .segment .seg{padding:0 5px; min-width:26px}
+    /* Type and model now share the first chip, so the name gets the 40px the
+       type chip used to take — enough for seedance-1.0-pro in full, with the
+       two video segments still on the same line at 390. */
+    .chip{max-width:176px}
+    .param-chip{padding-right:4px}
+  }
+
+  /* Three separate switches, because they answer three different needs: keep
+     the motion and still want opaque panes; want the motion gone and keep the
+     glass; want both and need the edges darker. */
+  @media (prefers-reduced-transparency: reduce){
+    .topbar, .pop, .menu, .tools, .tool-note, .note, .ph-state, .ex-ratio,
+    .ex-model, .sug, .art .play, .drop-hint, .ph-float{
+      -webkit-backdrop-filter:none !important;
+      backdrop-filter:none !important;
+    }
+    .topbar{background:var(--bg)}
+    .pop, .menu, .tools, .tool-note, .note{background:var(--surface)}
+  }
+  @media (prefers-contrast: more){
+    :root{--ink-3:oklch(0.40 0.012 258); --line:oklch(0.80 0.010 258); --line-soft:oklch(0.86 0.008 258)}
+    [data-theme="dark"]{--ink-3:oklch(0.80 0.010 260); --line:oklch(0.44 0.014 260)}
+    /* 2px, not 1.5: Chrome snaps a 1.5px border down to 1 on a 1x screen, so
+       the request for more contrast would arrive as no change at all. */
+    .chip, .tile, .seg, .attach, .ref-add, .ex, .sug{border-width:2px}
+    :focus-visible{outline-width:2.5px}
+  }
+  /* The browser snapshots the whole page for a theme swap, so the change can be
+     a dissolve instead of a frame of white. Same 420ms as everything else. */
+  @media (prefers-reduced-motion:no-preference){
+    ::view-transition-old(root), ::view-transition-new(root){
+      animation-duration:.42s;
+      animation-timing-function:var(--sp-quick);
+    }
   }
 
   @media (prefers-reduced-motion:reduce){
-    *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
+    *,*::before,*::after{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
     .ring{animation:spin .78s linear infinite !important}
+    .art .land, .art::after{display:none}
+    .ambient i{transition:none}
   }
+
+  /* ───────── press discipline (last, so it wins) ───────── */
+
+  /* The press collapses in the frame it is received — no easing on the way in —
+     and the release springs back. Anything that eases into a press reads as the
+     interface deciding whether it is listening. */
+  :is(.chip,.price-chip,.seg,.tile,.pick,.tool,.sug,.attach,.ref-add,.icon-btn,
+      .ex,.ex-more,.clear,.retry,.submit,.menu-item,.pop-item,.pop-tab,.meta-link){
+    -webkit-tap-highlight-color:transparent;
+    transition-timing-function:var(--sp-quick);
+  }
+  :is(.chip,.price-chip,.seg,.tile,.pick,.tool,.sug,.attach,.ref-add,.icon-btn,
+      .ex,.ex-more,.clear,.retry,.submit,.menu-item,.pop-item,.pop-tab):active{
+    transition-duration:0s;
+  }
+  .tool:active{transform:scale(.9)}
+  .pick:active, .pop-tab:active{transform:scale(.96)}
+  .clear:active, .icon-btn:active{transform:scale(.92)}
+  .pop-item:active, .menu-item:active{background:color-mix(in oklch, var(--ink) 11%, transparent)}
+  .submit:hover:not(:disabled){transform:scale(1.015)}
+  .submit:active:not(:disabled){transform:scale(.955)}
 </style>
 </head>
 <body>
 <div class="app" id="app">
 
+  <!-- One wash per artwork family; JS lights the one the last result belongs to. -->
+  <div class="ambient" id="ambient" aria-hidden="true">
+    <i class="g g3 on"></i><i class="g g0"></i><i class="g g1"></i><i class="g g2"></i>
+  </div>
+
   <header class="topbar">
-    <div class="modes" role="tablist" aria-label="模式" id="modes">
-      <span class="mode-pill" id="modePill" aria-hidden="true"></span>
-      <button class="mode" role="tab" data-mode="chat" aria-selected="false" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.7 9.7 0 0 1-2.9-.5L3 21l1.6-5.1A8.4 8.4 0 0 1 3.6 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.4 8.4z"/></svg>
-        <span>聊天</span>
-      </button>
-      <button class="mode" role="tab" data-mode="image" aria-selected="true" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.6" cy="8.6" r="1.6"/><path d="m21 15.5-4.6-4.6a2 2 0 0 0-2.8 0L5 19.5"/></svg>
-        <span>图片</span>
-      </button>
-      <button class="mode" role="tab" data-mode="video" aria-selected="false" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="14" height="14" rx="2.5"/><path d="m16.5 10.5 5-3v9l-5-3z"/></svg>
-        <span>视频</span>
-      </button>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name">apiduo</span>
+      <span class="brand-sub">Playground</span>
     </div>
 
     <div class="topbar-right">
@@ -941,9 +1991,15 @@
 
   <footer class="composer">
     <div class="composer-inner">
+      <div class="drop-hint" id="dropHint" aria-hidden="true">松手加入参考图</div>
+      <div class="refs" id="refs" role="group" aria-label="附件" hidden>
+        <div class="ref-row" id="refRow"></div>
+        <span class="ref-cap" id="refCap"></span>
+      </div>
       <textarea id="prompt" rows="2" placeholder="描述你想要的画面…" autocomplete="off" spellcheck="false"></textarea>
       <div class="toolbar" id="toolbar"></div>
     </div>
+    <input type="file" id="fileInput" hidden />
     <p class="hint" id="hint">参数只对这一次生成生效 · ⏎ 发送 · ⇧⏎ 换行</p>
   </footer>
 </div>
@@ -956,26 +2012,170 @@
     model:'<svg class="lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 21 7.3v9.4L12 21.4 3 16.7V7.3z"/><path d="M3 7.3l9 4.7 9-4.7M12 12v9.4"/></svg>',
     chev:'<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
     trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6h17M9 6V4.4A1.4 1.4 0 0 1 10.4 3h3.2A1.4 1.4 0 0 1 15 4.4V6M18.5 6l-.8 13.1a1.9 1.9 0 0 1-1.9 1.9H8.2a1.9 1.9 0 0 1-1.9-1.9L5.5 6"/></svg>',
+    plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    /* A bare "+" in a row of parameter chips reads as "add a parameter". The
+       attach button carries no label, so the mark has to be unambiguous on its
+       own — a paperclip says file, not option. */
+    clip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.4 12.3 19a4.8 4.8 0 0 1-6.8-6.8l7.6-7.6a3.2 3.2 0 0 1 4.6 4.6l-7.6 7.6a1.6 1.6 0 0 1-2.3-2.3l7-7"/></svg>',
+    close:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
     send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>',
+    play:'<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.2v13.6a1 1 0 0 0 1.5.86l11-6.8a1 1 0 0 0 0-1.72l-11-6.8A1 1 0 0 0 8 5.2z"/></svg>',
     retry:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 1 2.6 6.1"/><path d="M3.5 19.5V13h6.5"/></svg>',
     save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M7.5 10 12 14.5 16.5 10M4 19.5h16"/></svg>',
+    reuse:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h9.5A5.5 5.5 0 0 1 19 14.5V19"/></svg>',
+    shuffle:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 4.5V11H14"/></svg>',
     check:'<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-10"/></svg>',
     image:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.6" cy="8.6" r="1.6"/><path d="m21 15.5-4.6-4.6a2 2 0 0 0-2.8 0L5 19.5"/></svg>',
     chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.7 9.7 0 0 1-2.9-.5L3 21l1.6-5.1A8.4 8.4 0 0 1 3.6 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.4 8.4z"/></svg>',
-    video:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="14" height="14" rx="2.5"/><path d="m16.5 10.5 5-3v9l-5-3z"/></svg>'
+    video:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="14" height="14" rx="2.5"/><path d="m16.5 10.5 5-3v9l-5-3z"/></svg>',
+    /* The tool marks. Each is the one shape that survives a 15px box: sparkles
+       for 变高清 (the mark every "enhance" button already owns), a struck-through
+       drop for 去水印, scissors for 抠图, a solid picture inside a dashed canvas
+       for 扩图, a pencil for 局部重绘. */
+    hd:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.7 3.6C10.5 8.3 11.9 9.7 16.6 10.5c-4.7.8-6.1 2.2-6.9 6.9-.8-4.7-2.2-6.1-6.9-6.9C7.5 9.7 8.9 8.3 9.7 3.6Z"/><path d="M18.9 15.2l.7 3 3 .7-3 .7-.7 3-.7-3-3-.7 3-.7z"/></svg>',
+    water:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11.3 3.4s5.3 5.3 5.3 8.8a5.3 5.3 0 0 1-10.6 0c0-3.5 5.3-8.8 5.3-8.8z"/><path d="M4.6 19.4 19.4 4.6"/></svg>',
+    cut:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.7" cy="17.3" r="2.5"/><circle cx="17.3" cy="17.3" r="2.5"/><path d="M8.6 15.4 17.5 3.7M15.4 15.4 6.5 3.7"/></svg>',
+    outpaint:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.9" y="3.9" width="16.2" height="16.2" rx="2.6" stroke-dasharray="2.4 2.4"/><rect x="8.7" y="8.7" width="6.6" height="6.6" rx="1.3"/></svg>',
+    inpaint:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.3 4.3 19.7 7.7 8 19.4 3.4 20.6 4.6 16z"/><path d="M13.1 7.5 16.5 10.9"/></svg>'
   };
 
+  /* The enum is the model's contract, not our shortlist: a real image model
+     declares a dozen-plus ratios and no two models declare the same set. The
+     picker therefore has to read as well at fourteen as it did at three.
+     Order is by orientation, because that is the question people actually ask
+     ("横的还是竖的"), not "which number is larger". */
   const RATIOS = {
-    '1:1' : { ar:1,        px:'1024×1024', label:'1:1',  shape:'s-1-1' },
-    '16:9': { ar:16/9,     px:'1792×1024', label:'16:9', shape:'s-16-9' },
-    '9:16': { ar:9/16,     px:'1024×1792', label:'9:16', shape:'s-9-16' }
+    'auto' : { ar:1,    label:'自动', sec:'auto', auto:true },
+    '21:9' : { ar:21/9, label:'21:9', sec:'land' },
+    '2:1'  : { ar:2,    label:'2:1',  sec:'land' },
+    '16:9' : { ar:16/9, label:'16:9', sec:'land' },
+    '3:2'  : { ar:1.5,  label:'3:2',  sec:'land' },
+    '4:3'  : { ar:4/3,  label:'4:3',  sec:'land' },
+    '5:4'  : { ar:1.25, label:'5:4',  sec:'land' },
+    '1:1'  : { ar:1,    label:'1:1',  sec:'sq'   },
+    '4:5'  : { ar:0.8,  label:'4:5',  sec:'port' },
+    '3:4'  : { ar:0.75, label:'3:4',  sec:'port' },
+    '2:3'  : { ar:2/3,  label:'2:3',  sec:'port' },
+    '9:16' : { ar:9/16, label:'9:16', sec:'port' },
+    '1:2'  : { ar:0.5,  label:'1:2',  sec:'port' },
+    '9:21' : { ar:9/21, label:'9:21', sec:'port' }
+  };
+  const RATIO_SECS = [['land','横屏'],['sq','方形'],['port','竖屏']];
+
+  /* Resolution is an area class, not a width: the pixel dimensions shown for a
+     combination are derived from the area and the ratio, which is why 1K is
+     1360×768 at 16:9 and 1024×1024 at 1:1. */
+  const RES = [
+    { id:'768',  area:768*768,   label:'768',  note:'草稿', scale:0.6 },
+    { id:'1024', area:1024*1024, label:'1K',   note:'标准', scale:1   },
+    { id:'1536', area:1536*1536, label:'1.5K', note:'高清', scale:1.7 },
+    { id:'2048', area:2048*2048, label:'2K',   note:'超分', scale:2.4 }
+  ];
+
+  /* Two roots, not one. The mode decides which models exist; the model decides
+     which parameters exist. Switching either replaces everything to its right,
+     which is why they must sit side by side instead of a screen apart. */
+  const MODES = [
+    { id:'chat',  label:'聊天', desc:'多轮对话，按输入 / 输出 token 计费' },
+    { id:'image', label:'图片', desc:'文生图与图生图，按张计费' },
+    { id:'video', label:'视频', desc:'异步出片，按条计费，完成后进入历史' }
+  ];
+
+  const MODELS = {
+    chat: [
+      { id:'gpt-4.1',           by:'openai', in:2.00, out:8.00,
+        desc:'通用对话，工具调用稳定',
+        refs:{ max:4, kinds:['image'] } },
+      { id:'claude-sonnet-4.5', by:'anthropic', in:3.00, out:15.00,
+        desc:'长文与代码理解更强，适合复杂重构',
+        refs:{ max:8, kinds:['image'] } },
+      // No refs at all: the composer then shows no attach control, which is
+      // the honest way to say "this model cannot see".
+      { id:'deepseek-v3',       by:'deepseek', in:0.30, out:1.20,
+        desc:'中文表达自然，单价最低，适合批量' }
+    ],
+    image: [
+      { id:'flux-3-lage',  by:'bfl', unit:0.020, res:'1024',
+        resOptions:['768','1024','1536','2048'],
+        ratios:['auto','21:9','2:1','16:9','3:2','4:3','5:4','1:1','4:5','3:4','2:3','9:16','1:2','9:21'],
+        desc:'通用出图，光影稳定，比例最全',
+        refs:{ max:10, kinds:['image'] } },
+      { id:'gpt-image-1',  by:'openai', unit:0.042, res:'1536',
+        resOptions:['1024','1536'],
+        ratios:['1:1','16:9','9:16','4:3','3:4'],
+        desc:'画面内文字与复杂构图最稳',
+        refs:{ max:10, kinds:['image'] } },
+      { id:'seedream-3.0', by:'bytedance', unit:0.015, res:'1024',
+        resOptions:['1024','1536','2048'],
+        ratios:['auto','1:1','9:16','3:4','2:3','4:5'],
+        desc:'人像与东方美学见长，单价最低',
+        refs:{ max:6, kinds:['image'] } }
+    ],
+    video: [
+      // Video references are positional, not a bag: the first image is the
+      // opening frame and the second is the closing one, so they get two named
+      // slots instead of a "add another" tile.
+      { id:'seedance-1.0-pro', by:'bytedance', unit:0.86,
+        desc:'首尾帧最稳，适合短镜头',
+        refs:{ max:2, kinds:['image'], slots:['首帧','尾帧'] } },
+      { id:'veo-3',            by:'google', unit:1.40,
+        desc:'物理与运镜最强，出片慢，适合成片级镜头',
+        refs:{ max:1, kinds:['image'], slots:['首帧'] } },
+      // Omni-reference: images, clips and audio in one bag.
+      { id:'seedance-2.0',     by:'bytedance', unit:1.20,
+        desc:'可同时参考图 / 视频 / 音频',
+        refs:{ max:12, kinds:['image','video','audio'], all:true } }
+    ]
   };
 
-  const MODELS = [
-    { id:'flux-3-lage',  unit:0.020 },
-    { id:'gpt-image-1',  unit:0.042 },
-    { id:'seedream-3.0', unit:0.015 }
-  ];
+  /* Provenance is the one thing a name like "flux-3-lage" hides completely: it
+     says nothing about who made it, and two models can look alike in a list
+     without a second axis to tell them apart. The marks are the real ones
+     (LobeHub's MIT icon set), inlined as single-colour paths so they can take
+     each lab's tint instead of being pasted in brand colour — a multicolour
+     logo at 12px is four colours of noise, and in dark mode it fights the
+     surface it sits on. */
+  const PROVIDERS = {
+    openai:    { label:'OpenAI', fill:1,
+                 d:'<path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"></path>' },
+    anthropic: { label:'Anthropic', fill:1,
+                 d:'<path d="M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017l-1.344 3.46H0L6.57 3.522zm4.132 9.959L8.453 7.687 6.205 13.48H10.7z"></path>' },
+    deepseek:  { label:'DeepSeek', fill:1,
+                 d:'<path d="M23.748 4.482c-.254-.124-.364.113-.512.234-.051.039-.094.09-.137.136-.372.397-.806.657-1.373.626-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.352-.156-.708-.311-.955-.65-.172-.241-.219-.51-.305-.774-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.093.172.187.129.323-.082.28-.18.552-.266.833-.055.179-.137.217-.329.14a5.526 5.526 0 01-1.736-1.18c-.857-.828-1.631-1.742-2.597-2.458a11.365 11.365 0 00-.689-.471c-.985-.957.13-1.743.388-1.836.27-.098.093-.432-.779-.428-.872.004-1.67.295-2.687.684a3.055 3.055 0 01-.465.137 9.597 9.597 0 00-2.883-.102c-1.885.21-3.39 1.102-4.497 2.623C.082 8.606-.231 10.684.152 12.85c.403 2.284 1.569 4.175 3.36 5.653 1.858 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.133-.284 4.994-1.86.47.234.962.327 1.78.397.63.059 1.236-.03 1.705-.128.735-.156.684-.837.419-.961-2.155-1.004-1.682-.595-2.113-.926 1.096-1.296 2.746-2.642 3.392-7.003.05-.347.007-.565 0-.845-.004-.17.035-.237.23-.256a4.173 4.173 0 001.545-.475c1.396-.763 1.96-2.015 2.093-3.517.02-.23-.004-.467-.247-.588zM11.581 18c-2.089-1.642-3.102-2.183-3.52-2.16-.392.024-.321.471-.235.763.09.288.207.486.371.739.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.167-1.361-.802-2.5-1.86-3.301-3.307-.774-1.393-1.224-2.887-1.298-4.482-.02-.386.093-.522.477-.592a4.696 4.696 0 011.529-.039c2.132.312 3.946 1.265 5.468 2.774.868.86 1.525 1.887 2.202 2.891.72 1.066 1.494 2.082 2.48 2.914.348.292.625.514.891.677-.802.09-2.14.11-3.054-.614zm1-6.44a.306.306 0 01.415-.287.302.302 0 01.2.288.306.306 0 01-.31.307.303.303 0 01-.304-.308zm3.11 1.596c-.2.081-.399.151-.59.16a1.245 1.245 0 01-.798-.254c-.274-.23-.47-.358-.552-.758a1.73 1.73 0 01.016-.588c.07-.327-.008-.537-.239-.727-.187-.156-.426-.199-.688-.199a.559.559 0 01-.254-.078c-.11-.054-.2-.19-.114-.358.028-.054.16-.186.192-.21.356-.202.767-.136 1.146.016.352.144.618.408 1.001.782.391.451.462.576.685.914.176.265.336.537.445.848.067.195-.019.354-.25.452z"></path>' },
+    bfl:       { label:'Black Forest Labs', fill:1,
+                 d:'<path d="M17.113 10.248H14.56l-2.553-3.616-7.963 11.27h2.558l5.405-7.654h2.552l-5.404 7.653h2.565l5.392-7.653L24 20 19.97 20v-2.091l-2.857-4.044-2.842 4.037V20H0L12.008 3l5.105 7.249z"></path>' },
+    bytedance: { label:'ByteDance', fill:1,
+                 d:'<path d="M14.944 18.587l-1.704-.445V10.01l1.824-.462c1-.254 1.84-.461 1.88-.453.032 0 .056 2.235.056 4.972v4.973l-.176-.008c-.104 0-.952-.207-1.88-.446z"></path><path d="M7 16.542c0-2.736.024-4.98.064-4.98.032-.008.872.2 1.88.454l1.816.461-.016 4.05-.024 4.049-1.632.422c-.896.23-1.736.445-1.856.469L7 21.523v-4.98z"></path><path d="M19.24 12.477c0-9.03.008-9.515.144-9.475.072.024.784.207 1.576.406.792.207 1.576.405 1.744.445l.296.08-.016 8.56-.024 8.568-1.624.414c-.888.23-1.728.437-1.856.47l-.24.055v-9.523z"></path><path d="M1 12.509c0-4.678.024-8.505.064-8.505.032 0 .872.207 1.872.454l1.824.461v7.582c0 4.16-.016 7.574-.032 7.574-.024 0-.872.215-1.88.47L1 21.013v-8.505z"></path>' },
+    google:    { label:'Google', fill:1,
+                 d:'<path d="M23 12.245c0-.905-.075-1.565-.236-2.25h-10.54v4.083h6.186c-.124 1.014-.797 2.542-2.294 3.569l-.021.136 3.332 2.53.23.022C21.779 18.417 23 15.593 23 12.245z"></path><path d="M12.225 23c3.03 0 5.574-.978 7.433-2.665l-3.542-2.688c-.948.648-2.22 1.1-3.891 1.1a6.745 6.745 0 01-6.386-4.572l-.132.011-3.465 2.628-.045.124C4.043 20.531 7.835 23 12.225 23z"></path><path d="M5.84 14.175A6.65 6.65 0 015.463 12c0-.758.138-1.491.361-2.175l-.006-.147-3.508-2.67-.115.054A10.831 10.831 0 001 12c0 1.772.436 3.447 1.197 4.938l3.642-2.763z"></path><path d="M12.225 5.253c2.108 0 3.529.892 4.34 1.638l3.167-3.031C17.787 2.088 15.255 1 12.225 1 7.834 1 4.043 3.469 2.197 7.062l3.63 2.763a6.77 6.77 0 016.398-4.572z"></path>' },
+  };
+
+  /* Filled brand paths and stroked UI icons cannot share one paint setup, so
+     each provider says which it is. Everything else about the svg is fixed. */
+  const markOf = (p, cls) => `<svg class="${cls || ''}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"`
+    + (p.fill
+        ? ' fill="currentColor" fill-rule="evenodd"'
+        : ' fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"')
+    + `>${p.d}</svg>`;
+
+  /* One lookup for every caller: chips, list rows and example cards all refer to
+     a model by id, and none of them should have to know which mode it belongs
+     to in order to draw its badge. */
+  function providerOf(id){
+    const all = [...MODELS.chat, ...MODELS.image, ...MODELS.video];
+    const m = all.find(x => x.id === id);
+    return m && PROVIDERS[m.by] ? { key:m.by, ...PROVIDERS[m.by] } : null;
+  }
+  const byMark = (id, cls) => {
+    const p = providerOf(id);
+    return p ? markOf(p, [cls, 'by-' + p.key].filter(Boolean).join(' ')) : '';
+  };
+  // The badge is a tinted well, so the mark has to be a child element that can
+  // carry the tint; a bare <svg> cannot host its own background.
+  const byAva = (id) => {
+    const p = providerOf(id);
+    return p ? `<span class="mby by-${p.key}" title="${p.label}">${markOf(p)}</span>` : '';
+  };
 
   const GROUPS = [
     { id:'default', ratio:0.80 },
@@ -984,24 +2184,91 @@
   ];
 
   const SUGGESTIONS = {
-    image: ['晨光里的玻璃茶壶','等距机房，青绿与琥珀色灯光','手绘风格的海岸小镇地图'],
-    chat:  ['解释一下 SSE 和 WebSocket 的取舍','把这段 Go 代码改成并发安全','写一个批量重命名的脚本'],
-    video: ['延时摄影：城市天台日落','咖啡倒入杯中的慢镜头','雪落在松枝上的微距']
+    chat:  ['解释一下 SSE 和 WebSocket 的取舍','把这段 Go 代码改成并发安全','写一个批量重命名的脚本']
+  };
+
+  /* Examples carry a ratio as well as a prompt: picking one should show the
+     canvas change shape, which is the clearest way to teach that the ratio
+     control exists at all. `seed` only decides which synthetic artwork is
+     drawn; the memo on the object keeps it the same picture across renders. */
+  const EXAMPLES = {
+    image: [
+      // seed % 3 picks the artwork family (iso / orb / map), so the title and
+      // the picture in each card have to be paired on purpose, not by luck:
+      // ART is [iso, orb, map], so 0 = isometric room, 1 = sphere and
+      // caustics, 2 = contour map.
+      // Nine per mode, three pages: 「换一批」 only earns its place if the
+      // deck is deeper than one turn of the page.
+      { model:'flux-3-lage',  ratio:'16:9', seed:603, name:'机房场景图',
+        p:'等距视角的机房，青绿与琥珀灯光，体积雾中漂浮数据光带' },
+      { model:'gpt-image-1',  ratio:'9:16', seed:602, name:'手绘小镇地图',
+        p:'手绘风格的海岸小镇地图，羊皮纸质感，铅笔描边与等深线' },
+      { model:'seedream-3.0', ratio:'1:1',  seed:601, name:'玻璃器物',
+        p:'晨光里的玻璃茶壶，桌面投下焦散光斑，背景是浅灰墙面' },
+      { model:'seedream-3.0', ratio:'4:5',  seed:604, name:'人像布光',
+        p:'侧逆光人像，柔和轮廓光勾出发丝，浅灰背景，皮肤质感真实' },
+      { model:'gpt-image-1',  ratio:'1:1',  seed:606, name:'产品爆炸图',
+        p:'悬浮的产品爆炸图，编号引线指向零件，深色背景，工程制图感' },
+      { model:'flux-3-lage',  ratio:'21:9', seed:605, name:'复古航线图',
+        p:'复古航空航线图，经纬网格与红色弧线，做旧纸面，四角磨损' },
+      { model:'seedream-3.0', ratio:'16:9', seed:608, name:'地形等高线',
+        p:'等高线地形渲染，暖色分层，细密标注线与山脊阴影' },
+      { model:'gpt-image-1',  ratio:'1:1',  seed:607, name:'玻璃球体',
+        p:'半透明玻璃球体，柔光透过边缘，深灰背景，细微划痕' },
+      { model:'flux-3-lage',  ratio:'3:4',  seed:609, name:'小型展厅',
+        p:'等距视角的小型展厅，白墙与天窗，地面反光，午后斜光' }
+    ],
+    video: [
+      { model:'seedance-1.0-pro', ratio:'16:9', seed:611, name:'天台日落',
+        p:'延时摄影：城市天台日落，云影掠过楼群，天空由金转紫' },
+      { model:'veo-3',            ratio:'9:16', seed:612, name:'咖啡倒入',
+        p:'咖啡倒入杯中，慢镜头，气泡与漩涡缓缓上浮，油脂泛光' },
+      { model:'seedance-2.0',     ratio:'16:9', seed:613, name:'松枝落雪',
+        p:'雪落在松枝上的微距，浅景深，细颗粒，背景是灰白天空' },
+      { model:'seedance-1.0-pro', ratio:'16:9', seed:614, name:'走廊推镜',
+        p:'推镜穿过长走廊，顶灯依次亮起，冷白灯带，轻微手持晃动' },
+      { model:'veo-3',            ratio:'16:9', seed:615, name:'水面倒影',
+        p:'雨滴落入水面，倒影随涟漪碎开，高速摄影，暗绿水面' },
+      { model:'seedance-2.0',     ratio:'9:16', seed:616, name:'布料飘动',
+        p:'丝绸在风里缓慢飘动，逆光透出纤维纹理，背景全黑' },
+      { model:'seedance-2.0',     ratio:'1:1',  seed:619, name:'墨滴扩散',
+        p:'墨水滴入水中缓慢扩散，微距，慢速，深蓝背景与细絮状纹理' },
+      { model:'veo-3',            ratio:'16:9', seed:618, name:'城市模型',
+        p:'推镜穿过等距城市模型，楼宇灯光依次点亮，夜景微缩' },
+      { model:'seedance-1.0-pro', ratio:'16:9', seed:617, name:'航线浮现',
+        p:'航线在旧地图上逐条浮现，镜头缓慢上移，纸张纤维可见' }
+    ]
   };
 
   const state = {
     mode:'image',
     ratio:'1:1',
+    temp:'0.7',
+    ctx:'8k',
+    dur:'5s',
+    vres:'1080p',
     count:1,
     model:'flux-3-lage',
     group:'default',
-    busy:false,
-    results:[],
+    res:'1024',
+    busy:false,        // chat only: a conversation turn is single-flight
     spend:0,
     spendCount:0,
-    preview:'empty',   // empty | loading | single | quad | failed | history
-    notes:false
+    seed:null,         // preset shown by the state menu / deep link
+    notes:false,
+    exPage:0,          // which page of examples is on the shelf
+    refs:[],           // attachments of the message being composed
+    refNote:'',        // why something was dropped — never drop silently
+    tasks:[],          // every job, in submit order (append-only)
+    seq:0,
+    lockUntil:0,       // 260ms double-click / key-repeat guard
+    lastSig:'',        // the previous request, for same-wish coalescing
+    lastAt:0
   };
+
+  // Per-mode memory, so the first level is safe to explore: switching away and
+  // back costs nothing.
+  const lastPick = { chat:null, image:null, video:null };
 
   const $ = (sel) => document.querySelector(sel);
   const stream = $('#stream');
@@ -1010,10 +2277,38 @@
   const promptEl = $('#prompt');
   const hint = $('#hint');
 
-  const model = () => MODELS.find(m => m.id === state.model);
+  const model = () => MODELS[state.mode].find(m => m.id === state.model) || MODELS[state.mode][0];
   const group = () => GROUPS.find(g => g.id === state.group);
   const money = (v) => '¥' + (v === 0 ? '0.00' : v.toFixed(v < 0.1 ? 3 : 2));
-  const unitPrice = () => model().unit * group().ratio * 7.2;
+  const resMeta = () => RES.find(r => r.id === state.res) || RES[1];
+  // Price follows the same three inputs the request does. A 2K image costs more
+  // than a 768 one because it is four times the pixels, not because the button
+  // says so.
+  const unitPrice = () => state.mode === 'image'
+    ? model().unit * resMeta().scale * group().ratio * 7.2
+    : (model().unit || 0) * group().ratio * 7.2;
+
+  /* Pixel size follows from area + ratio, the way the provider computes it.
+     Letting the user pick "1024" and then printing 1360×768 would make the
+     preview and the receipt disagree. */
+  function pxFor(ratioKey, resKey){
+    const r = RATIOS[ratioKey] || RATIOS['1:1'];
+    if (r.auto) return '自动';
+    const area = (RES.find(x => x.id === (resKey || state.res)) || RES[1]).area;
+    const w = Math.round(Math.sqrt(area * r.ar) / 16) * 16;
+    const h = Math.round(Math.sqrt(area / r.ar) / 16) * 16;
+    return w + '×' + h;
+  }
+
+  /* One glyph generator instead of one CSS class per ratio: at fourteen ratios
+     a hand-written class each is a table that silently rots. */
+  function shapeBox(ar, max, dash){
+    const size = max || 20;
+    if (!ar) return '';
+    const w = ar >= 1 ? size : Math.max(4, Math.round(size * ar));
+    const h = ar >= 1 ? Math.max(4, Math.round(size / ar)) : size;
+    return `<i class="${dash ? 'dash' : ''}" style="width:${w}px;height:${h}px"></i>`;
+  }
 
   /* ───────── fake artwork (offline, deterministic) ───────── */
 
@@ -1134,16 +2429,25 @@
     div.innerHTML = `
       <div class="canvas-icon">${ICON.chat}</div>
       <div class="canvas-title">开始一段对话</div>
-      <div class="canvas-sub">模型和分组就在下方，跟着这条消息一起走</div>`;
+      <div class="canvas-sub">模型和参数就在下方，跟着这条消息一起走</div>`;
     return div;
   }
 
   function emptyCanvas(){
     const r = RATIOS[state.ratio];
+    // The canvas is the second place the derived request kind shows up: with a
+    // file attached, "描述你想要的画面" is the wrong instruction entirely.
+    const has = state.refs.length > 0;
     const copy = {
-      image: { title:'描述你想要的画面', sub:'选好比例，写下画面，按 <kbd>⏎</kbd> 生成', icon:ICON.image },
-      chat:  { title:'开始一段对话',     sub:'模型和分组就在下方，跟着这条消息一起走', icon:ICON.chat },
-      video: { title:'描述你想要的镜头', sub:'选好时长，写下镜头，按 <kbd>⏎</kbd> 生成', icon:ICON.video }
+      image: has
+        ? { title:'说说要怎么改', sub:`${state.refs.length} 张参考已就位，写下你想要的改动`, icon:ICON.image }
+        : { title:'描述你想要的画面', sub:'选好比例，写下画面，按 <kbd>⏎</kbd> 生成', icon:ICON.image },
+      chat: has
+        ? { title:'就这张图提问', sub:'图已附上；换模型时能收下的会跟着走', icon:ICON.chat }
+        : { title:'开始一段对话', sub:'模型和分组就在下方，跟着这条消息一起走', icon:ICON.chat },
+      video: has
+        ? { title:'描述镜头怎么动', sub:'参考已就位，写下运镜与动作', icon:ICON.video }
+        : { title:'描述你想要的镜头', sub:'选好时长，写下镜头，按 <kbd>⏎</kbd> 生成', icon:ICON.video }
     }[state.mode];
 
     const div = document.createElement('div');
@@ -1157,86 +2461,406 @@
     return div;
   }
 
-  function loadingCanvas(){
-    const r = RATIOS[state.ratio];
-    const div = document.createElement('div');
-    div.className = 'frame canvas-loading';
-    frameStyle(div, r.ar);
-    div.innerHTML = `
-      <div class="fill"></div>
-      <div class="shimmer"></div>
-      <div class="loader">
-        <div class="ring"></div>
-        <div class="loader-text"><b>${r.px}</b> · ${state.count} 张</div>
-      </div>`;
-    return div;
+  /* ───────── jobs: concurrency ───────── */
+
+  /* Concurrency is a property of the engine, not of the canvas. A submit
+     becomes a job with its own lifecycle, and the stage is an append-only list
+     keyed by job id. Two rules follow, and together they are the whole of
+     "no jitter":
+       1. a job reserves its final box at submit time — finishing swaps pixels
+          inside a rectangle that never changed size;
+       2. a job never moves in the list — a fast one finishing early does not
+          shove the slow one it was queued behind. */
+  const CONCURRENCY = { chat:1, image:3, video:2 };
+  const QUEUE_MAX = 3;
+
+  const jobsOf    = (m) => state.tasks.filter(t => t.mode === m);
+  const runningOf = (m) => state.tasks.filter(t => t.mode === m && t.status === 'running');
+  const queuedOf  = (m) => state.tasks.filter(t => t.mode === m && t.status === 'queued');
+  const arOf = (key) => (RATIOS[key] || RATIOS['1:1']).ar;
+
+  function jobMs(t){
+    // Deterministic on purpose: the same request must produce the same
+    // timeline, otherwise no screenshot of "3 running" is reproducible.
+    let h = 7;
+    const s = t.id + t.model + t.prompt;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 99991;
+    const base = t.mode === 'video' ? 5200 : 1900;
+    const span = t.mode === 'video' ? 2600 : 1600;
+    return Math.round((base + h % span) * (t.count > 1 ? 1.3 : 1));
   }
 
-  function roundMeta({ time, count, cost, px, failed }){
-    const div = document.createElement('div');
-    div.className = 'round-meta';
-    div.innerHTML = `
-      <span class="mono">${time}</span>
-      <span class="dot">·</span>
-      <span class="mono">${px}</span>
-      <span class="dot">·</span>
-      <span>${count} 张</span>
-      <span class="dot">·</span>
-      <span class="cost">${failed ? '未计费' : money(cost)}</span>
+  function startJob(t){
+    t.status = 'running';
+    t.startedAt = performance.now();
+    ensureTick();
+  }
+
+  /* One pump, one clock. Per-job timers drift apart and each one wants its own
+     render; that is how a page ends up rebuilding itself four times a second.
+     A single 120ms tick is only allowed to touch numbers. */
+  function pump(){
+    ['image','video'].forEach(m => {
+      let free = CONCURRENCY[m] - runningOf(m).length;
+      queuedOf(m).forEach(t => { if (free-- > 0) startJob(t); });
+    });
+  }
+
+  let tickTimer = 0;
+  function ensureTick(){
+    if (!tickTimer) tickTimer = setInterval(tick, 120);
+  }
+  function stopTick(){
+    clearInterval(tickTimer);
+    tickTimer = 0;
+  }
+
+  function tick(){
+    let alive = false;
+    state.tasks.forEach(t => {
+      if (t.status !== 'running' || t.frozen) return;
+      alive = true;
+      t.prog = Math.min(1, (performance.now() - t.startedAt) / t.ms);
+      if (t.el && t.el.isConnected) paintProgress(t);
+      if (t.prog >= 1) finishJob(t);
+    });
+    if (!alive) stopTick();
+  }
+
+  /* The bar is a transform and the percentage sits in a tabular, fixed-width
+     slot: a number that changes every 120ms must not change the width of the
+     thing it lives in. */
+  function paintProgress(t){
+    const bar = t.el.querySelector('[data-bar]');
+    if (bar) bar.style.transform = `scaleX(${t.prog.toFixed(3)})`;
+    const pct = t.el.querySelector('[data-pct]');
+    if (pct) pct.textContent = Math.round(t.prog * 100) + '%';
+  }
+
+  function finishJob(t){
+    t.status = 'done';
+    t.prog = 1;
+    // Charged on arrival, not on submit: a queued or cancelled job that never
+    // ran must not show up on the receipt.
+    state.spend += t.cost;
+    state.spendCount += 1;
+    pump();          // the freed slot belongs to the queue immediately
+    syncJobs();      // repaint the one card that changed, and nothing else
+    setAmbient();    // the room takes the colour of the picture that just landed
+    renderSpend();
+  }
+
+  function syncJobs(){
+    state.tasks.forEach(t => {
+      if (!t.el || !t.el.isConnected) return;
+      paintJob(t.el, t);
+      const ahead = t.el.querySelector('[data-ahead]');
+      if (ahead) ahead.textContent = String(aheadCount(t));
+    });
+    updateConc();
+  }
+
+  function aheadCount(t){
+    return runningOf(t.mode).length + Math.max(0, queuedOf(t.mode).indexOf(t));
+  }
+
+  /* Same three families the artwork generator uses, in the order it picks them. */
+  const GLOW = ['oklch(0.70 0.120 192)', 'oklch(0.80 0.105 76)', 'oklch(0.70 0.065 58)'];
+
+  function jobCard(t){
+    const el = document.createElement('div');
+    el.className = 'round';
+    el.style.setProperty('--arn', arOf(t.ratio));
+    el.style.setProperty('--glow', GLOW[jobSeed(t) % GLOW.length]);
+    el.dataset.job = t.id;
+    return el;
+  }
+
+  /* Repainting is keyed on status, not on time: while a job runs, the card is
+     touched only by paintProgress. Re-rendering it would restart the shimmer
+     and reload the artwork that had already landed. */
+  function paintJob(el, t){
+    if (el.dataset.paint === t.status) return;
+    el.dataset.paint = t.status;
+    el.innerHTML = jobMeta(t) + jobBody(t);
+    t.el = el;
+    el.querySelectorAll('[data-cancel]').forEach(b => { b.onclick = () => cancelJob(t); });
+    el.querySelectorAll('[data-tool]').forEach(b => {
+      b.onclick = () => runTool(t, +b.dataset.cell, b.dataset.tool);
+    });
+    el.querySelectorAll('[data-retry]').forEach(b => { b.onclick = () => retryJob(t); });
+  }
+
+  function jobMeta(t){
+    const word = { queued:'排队中', running:'生成中', failed:'生成失败' }[t.status] || '';
+    const px = t.mode === 'video' ? (t.vres || '1080p') : pxFor(t.ratio, t.res);
+    const unit = t.mode === 'video' ? '条' : '张';
+    const tail = (t.status === 'queued' || t.status === 'running')
+      ? '<button class="meta-link" type="button" data-cancel>取消</button>'
+      : t.status === 'failed'
+        ? '<button class="meta-link danger" type="button" data-retry>重试</button>'
+        : '<button class="meta-link" type="button">查看请求</button>';
+    return `<div class="round-meta">
+      <span class="mid">
+        <span class="mono">${t.at}</span><span class="dot">·</span>
+        ${word ? `<span class="st ${t.status}">${word}</span><span class="dot">·</span>` : ''}
+        <span class="op">${t.op}</span><span class="dot">·</span>
+        <span class="mono">${px}</span><span class="dot">·</span>
+        <span>${t.count} ${unit}</span>
+      </span>
       <span class="right">
-        <button class="meta-link${failed ? ' danger' : ''}" type="button">查看请求</button>
-      </span>`;
-    return div;
+        <span class="cost">${t.status === 'failed' ? '未计费' : money(t.cost)}</span>
+        ${tail}
+      </span>
+    </div>`;
   }
 
-  function artBlock(i, ar, animate){
-    const d = document.createElement('div');
-    d.className = 'art';
-    d.style.setProperty('--arn', ar);
-    d.innerHTML = `${animate ? '<div class="veil"></div>' : ''}
-      <div class="${animate ? 'develop' : ''}">${makeArt(i)}</div>
-      <button class="save" type="button" title="下载">${ICON.save}</button>`;
-    return d;
+  /* The inputs belong on the receipt: after a handful of turns nobody
+     remembers which reference produced which frame. */
+  function inputsHTML(t){
+    if (!t.refs || !t.refs.length) return '';
+    return `<div class="round-in">${t.refs.map(r =>
+      `<div class="ref mini" title="${r.kind && r.kind !== 'image' ? '参考' + KIND_WORD[r.kind] : '参考图'}">${
+        r.url ? `<img src="${r.url}" alt="">` : (r.art || makeArt(0))}</div>`).join('')}</div>`;
   }
 
-  function singleRound(opts){
-    const ar = opts.ratio ? RATIOS[opts.ratio].ar : (opts.ar || 1);
-    const wrap = document.createElement('div');
-    wrap.className = 'round';
-    wrap.style.setProperty('--arn', ar);
-    wrap.appendChild(roundMeta(opts));
-    wrap.appendChild(artBlock(opts.seed || 0, ar, opts.animate));
-    return wrap;
+  function jobBody(t){
+    if (t.status === 'failed'){
+      return `${inputsHTML(t)}<div class="failed" style="--arn:${arOf(t.ratio)}">
+        <div class="failed-title">生成失败</div>
+        <div class="failed-msg">上游返回 429，当前分组并发已满。这次不计费，重试会重新排队。</div>
+        <button class="retry" type="button" data-retry>${ICON.retry}重试这一张</button>
+      </div>`;
+    }
+    if (t.status === 'queued' || t.status === 'running') return inputsHTML(t) + placeholderHTML(t);
+    return inputsHTML(t) + resultHTML(t);
   }
 
-  function quadRound(opts){
-    const ar = RATIOS[opts.ratio || state.ratio].ar;
-    const wrap = document.createElement('div');
-    wrap.className = 'round wide';
-    wrap.style.setProperty('--arn', ar);
-    wrap.appendChild(roundMeta(opts));
-    const grid = document.createElement('div');
-    grid.className = 'grid-2';
-    for (let i = 0; i < 4; i++) grid.appendChild(artBlock(i, ar, opts.animate));
-    wrap.appendChild(grid);
-    return wrap;
+  function placeholderHTML(t){
+    const queued = t.status === 'queued';
+    // A frozen preset has no clock behind it, so its first paint has to carry
+    // the progress it was seeded with instead of starting at zero.
+    const prog = t.prog || 0;
+    const cells = Array.from({ length: t.count }, () =>
+      `<div class="ph-cell${queued ? ' queued' : ''}"><div class="shimmer"></div></div>`).join('');
+    return `<div class="ph${t.count > 1 ? ' wide' : ''}">
+      <div class="ph-cells ${t.count > 1 ? 'two' : 'one'}">${cells}</div>
+      <div class="ph-float">
+        <span class="ph-state">${queued
+          ? `<span class="dot-q"></span>排队中 · 前面 <b data-ahead>${aheadCount(t)}</b> 个`
+          : `<span class="ring"></span>生成中<b data-pct>${Math.round(prog * 100)}%</b>`}</span>
+        ${queued ? '' : `<span class="pbar"><i data-bar style="transform:scaleX(${prog.toFixed(3)})"></i></span>`}
+      </div>
+    </div>`;
   }
 
-  function failedRound(){
-    const r = RATIOS[state.ratio];
-    const wrap = document.createElement('div');
-    wrap.className = 'round';
-    wrap.style.setProperty('--arn', r.ar);
-    wrap.appendChild(roundMeta({ time:now(), px:r.px, count:state.count, cost:0, failed:true }));
-    const box = document.createElement('div');
-    box.className = 'failed';
-    box.style.setProperty('--arn', r.ar);
-    box.innerHTML = `
-      <div class="failed-title">生成失败</div>
-      <div class="failed-msg">上游返回 429，当前分组并发已满。稍后重试，或换个分组。</div>
-      <button class="retry" type="button">${ICON.retry}重试这一张</button>`;
-    wrap.appendChild(box);
-    return wrap;
+  /* makeArt() is not a pure function — every call advances a global seed, so
+     asking for "cell 2 of job t" twice returns two different pictures. That is
+     fine while a card is painted once, and wrong the moment the same picture
+     has to reappear somewhere else (a reference thumbnail, or the card being
+     rebuilt after a mode switch). Memoise per job. */
+  function jobSeed(t){ return parseInt(t.id.replace(/\D/g, ''), 10) || 0; }
+  function jobArt(t, i){
+    if (!t.art) t.art = [];
+    return t.art[i] || (t.art[i] = makeArt(jobSeed(t) + i));
+  }
+
+  /* A finished picture is the input to the next one, so the card carries a
+     shelf of tools rather than two corner buttons fighting for the same 32px.
+     This table is the whole surface area of the shelf: `id` doubles as the icon
+     key, `only` says which modes get it, `run` says what it does today. Adding
+     去水印 / 变高清 / 抠图 / 扩图 later means flipping `run` on a row that is
+     already placed, labelled and reachable — not redesigning the corner. */
+  const TOOLS = [
+    { id:'reuse',    label:'引用',     only:['image'], run:'reuse' },
+    { id:'hd',       label:'变高清',   run:'soon' },
+    { id:'water',    label:'去水印',   only:['image'], run:'soon' },
+    { id:'cut',      label:'抠图',     only:['image'], run:'soon' },
+    { id:'outpaint', label:'扩图',     only:['image'], run:'soon' },
+    { id:'inpaint',  label:'局部重绘', only:['image'], run:'soon' },
+    { id:'save',     label:'下载',     run:'save', end:1 }
+  ];
+
+  function toolsHTML(t, i){
+    const list = TOOLS.filter(x => !x.only || x.only.includes(t.mode));
+    const label = t.mode === 'video' ? '视频工具' : '图片工具';
+    return `<div class="tools" role="toolbar" aria-label="${label}">${list.map((x, ti) => {
+      // 引用 keeps its own class: its pressed state is read from outside the card
+      // by syncReuse, and that lookup should not depend on the tool's position.
+      const cls = 'tool' + (x.run === 'reuse' ? ' reuse' : '') + (x.end ? ' end' : '');
+      const press = x.run === 'reuse'
+        ? ` data-reuse="${i}" data-from="${t.id}:${i}" aria-pressed="false"` : '';
+      return `<button class="${cls}" type="button" data-tool="${x.id}" data-cell="${i}"`
+        + ` style="--ti:${ti}"`
+        + ` data-label="${x.label}${x.run === 'soon' ? ' · 即将支持' : ''}"`
+        + ` aria-label="${x.label}"${press}>${ICON[x.id]}</button>`;
+    }).join('')}</div>`;
+  }
+
+  function resultHTML(t){
+    const ar = arOf(t.ratio);
+    const video = t.mode === 'video';
+    const one = (i) => `<div class="art" style="--arn:${ar}">
+      <div class="veil"></div>
+      <div class="develop">${jobArt(t, i)}</div>
+      <i class="land"></i>
+      ${video ? `<div class="play">${ICON.play}</div><span class="len">${t.dur || '5s'}</span>` : ''}
+      ${toolsHTML(t, i)}
+    </div>`;
+    if (t.count === 1) return one(0);
+    return `<div class="grid-2">${Array.from({ length: t.count }, (_, i) => one(i)).join('')}</div>`;
+  }
+
+  /* A finished picture is not the end of the round. The next move is usually
+     "same picture, one thing different", and it has to be one click on the
+     picture itself — saving the file and picking it back from the file dialog
+     is where people give up. Same entry as paste and drop (state.refs), so the
+     capacity rules cannot fork. */
+  function reuseArt(t, i){
+    const c = cap();
+    if (!c || !c.kinds.includes('image')){ refuseRefs(); renderAll(); return; }
+    const from = `${t.id}:${i}`;
+    const at = state.refs.findIndex(r => r.from === from);
+    // The button is a toggle: pressing it twice takes the picture back out.
+    if (at >= 0){
+      state.refs.splice(at, 1);
+      state.refNote = '';
+      renderAll();
+      return;
+    }
+    if (state.refs.length >= c.max){
+      state.refNote = `${refWord()}已满 ${c.max} ${refUnit()}，先移除一张`;
+      renderAll();
+      return;
+    }
+    // Same memo as the card, so the thumbnail *is* the picture that was clicked.
+    state.refs.push({ kind:'image', art:jobArt(t, i), from, fresh:true });
+    state.refNote = '';
+    renderAll();
+  }
+
+  /* Pressed state is derived from the strip rather than stored on the button:
+     removing the tile with its own × has to flip the picture back to unpressed. */
+  function syncReuse(){
+    document.querySelectorAll('[data-from]').forEach(b => {
+      const on = state.refs.some(r => r.from === b.dataset.from);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      // The label is the tooltip now, so it has to say what the *next* press does.
+      b.setAttribute('aria-label', on ? '取消引用' : '引用');
+      b.dataset.label = on ? '取消引用' : '引用';
+    });
+  }
+
+  /* One entry point for the whole shelf. `run` is the only thing that decides
+     whether a row is wired or merely declared, which is what makes the table
+     double as the roadmap. */
+  function runTool(t, i, id){
+    const tool = TOOLS.find(x => x.id === id);
+    if (!tool) return;
+    if (tool.run === 'reuse') return reuseArt(t, i);
+    if (tool.run === 'save') return saveArt(t, i);
+    // Declared, placed, reachable — but not built yet. Saying so where the click
+    // happened beats a disabled button that never explains itself.
+    toolNote(t, i, `${tool.label} · 即将支持`);
+  }
+
+  /* 下载 used to be a decorative square: the prototype had no file behind it.
+     It does now — every card is an SVG string, so hand over that string. */
+  function saveArt(t, i){
+    const svg = jobArt(t, i).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    const url = URL.createObjectURL(new Blob([svg], { type:'image/svg+xml' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `apiduo-${t.mode}-${t.id}-${i + 1}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toolNote(t, i, '已开始下载');
+  }
+
+  /* The note lives inside the pill, not on the card: a wrapped shelf is two
+     rows tall on a small card, and a note pinned 44px from the floor would
+     land in the middle of the icons. */
+  function toolNote(t, i, text){
+    const bar = t.el && t.el.querySelectorAll('.tools')[i];
+    if (!bar) return;
+    bar.querySelectorAll('.tool-note').forEach(n => n.remove());
+    const n = document.createElement('div');
+    n.className = 'tool-note';
+    n.textContent = text;
+    bar.appendChild(n);
+    setTimeout(() => {
+      n.classList.add('out');
+      setTimeout(() => n.remove(), 240);
+    }, 1400);
+  }
+
+  function cancelJob(t){
+    state.tasks = state.tasks.filter(x => x !== t);
+    // A freed slot is usable at once; the queue behind it does not wait for
+    // the next submit to move.
+    pump();
+    withView(() => renderAll());
+  }
+
+  function retryJob(t){
+    t.art = null;          // a retry asks the model again; it is not the same picture
+    t.status = 'queued';
+    t.prog = 0;
+    t.at = now();
+    t.ms = jobMs(t);
+    pump();
+    syncJobs();
+  }
+
+  function concPill(){
+    const cap = CONCURRENCY[state.mode];
+    const run = runningOf(state.mode).length;
+    const pill = document.createElement('span');
+    pill.className = 'conc' + (run ? ' live' : '');
+    pill.id = 'concPill';
+    pill.setAttribute('role', 'status');
+    pill.title = `${run} 个生成中 · 这个模式最多同时跑 ${cap} 个`;
+    pill.innerHTML = `<i class="d"></i><b data-run>${run}/${cap}</b>`;
+    return pill;
+  }
+
+  function updateConc(){
+    const pill = document.getElementById('concPill');
+    if (!pill) return;
+    const cap = CONCURRENCY[state.mode];
+    const run = runningOf(state.mode).length;
+    pill.classList.toggle('live', run > 0);
+    const b = pill.querySelector('[data-run]');
+    if (b) b.textContent = `${run}/${cap}`;
+    pill.title = `${run} 个生成中 · 这个模式最多同时跑 ${cap} 个`;
+  }
+
+  /* Appending at the bottom follows the bottom only if the reader is already
+     there. Snapping unconditionally steals the page from someone reading an
+     older result while a job lands. */
+  function withView(fn){
+    const st = $('#stage');
+    const atBottom = st.scrollHeight - st.scrollTop - st.clientHeight < 28;
+    const y = st.scrollTop;
+    fn();
+    st.scrollTop = atBottom ? st.scrollHeight : y;
+  }
+
+  /* Which family of artwork a job belongs to. makeArt picks ART[seed % 3], so
+     the ambient can read the same index without looking at the pixels. */
+  function ambientOf(){
+    const done = jobsOf(state.mode).filter(t => t.status === 'done');
+    const last = done[done.length - 1];
+    return last ? 'g' + (jobSeed(last) % 3) : 'g3';
+  }
+
+  function setAmbient(){
+    const host = $('#ambient');
+    if (!host) return;
+    const cls = ambientOf();
+    host.querySelectorAll('i').forEach(i => i.classList.toggle('on', i.classList.contains(cls)));
   }
 
   function now(){
@@ -1245,83 +2869,339 @@
   }
 
   function renderStream(){
-    stream.innerHTML = '';
     suggestions.innerHTML = '';
+    const list = state.mode === 'chat' ? [] : jobsOf(state.mode);
 
-    const p = state.preview;
+    const want = [];
+    if (state.mode === 'chat') want.push(['chat', chatEmpty]);
+    else if (list.length) list.forEach(t => want.push([t.id, () => jobCard(t)]));
+    // On a first run the examples *are* the content; a dashed "nothing here
+    // yet" box above them only restated the obvious. With a picture already
+    // attached the stage does have something to say, so the box comes back.
+    else if (state.refs.length) want.push(['empty', emptyCanvas]);
 
+    // Keyed reconcile. Rebuilding the column on every render is the most
+    // common source of "why did my images flash": a node that survives keeps
+    // its decoded artwork, its shimmer phase, and the scroll it sits in.
+    [...stream.children].forEach(el => {
+      if (!want.some(([k]) => el.dataset.key === k)) el.remove();
+    });
+    want.forEach(([k, make], i) => {
+      let el = [...stream.children].find(x => x.dataset.key === k);
+      if (!el){ el = make(); el.dataset.key = k; }
+      if (stream.children[i] !== el) stream.insertBefore(el, stream.children[i] || null);
+      const job = list.find(t => t.id === k);
+      if (job) paintJob(el, job);
+    });
+
+    if (state.mode === 'chat' || !list.length) renderSuggestions();
+  }
+
+  function renderSuggestions(){
+    suggestions.innerHTML = '';
     if (state.mode === 'chat'){
-      stream.appendChild(chatEmpty());
-    } else if (state.mode === 'video'){
-      stream.appendChild(emptyCanvas());
-    } else if (p === 'empty'){
-      stream.appendChild(emptyCanvas());
-    } else if (p === 'loading'){
-      stream.appendChild(loadingCanvas());
-    } else if (p === 'single'){
-      stream.appendChild(singleRound({ time:now(), px:RATIOS[state.ratio].px, count:1, cost:unitPrice(), ratio:state.ratio, seed:1 }));
-    } else if (p === 'quad'){
-      stream.appendChild(quadRound({ time:now(), px:RATIOS[state.ratio].px, count:4, cost:unitPrice()*4, ratio:state.ratio }));
-    } else if (p === 'failed'){
-      stream.appendChild(failedRound());
-    } else if (p === 'history'){
-      stream.appendChild(singleRound({ time:'20:07', px:'1024×1024', count:1, cost:0.115, ratio:'1:1', seed:0 }));
-      stream.appendChild(quadRound({ time:'20:04', px:'1792×1024', count:4, cost:0.461, ratio:'16:9' }));
-      stream.appendChild(singleRound({ time:'19:58', px:'1024×1792', count:1, cost:0.115, ratio:'9:16', seed:2 }));
+      SUGGESTIONS.chat.forEach((s, i) => {
+        const b = document.createElement('button');
+        b.className = 'sug';
+        b.type = 'button';
+        b.style.setProperty('--i', i);
+        b.textContent = s;
+        b.onclick = () => { promptEl.value = s; promptEl.focus(); };
+        suggestions.appendChild(b);
+      });
+      return;
     }
+    // With a picture already on the bench the next sentence is about *it*;
+    // offering three fresh starting points would compete with that.
+    if (state.refs.length) return;
 
-    if (state.mode === 'image' && (p === 'empty')){
-      SUGGESTIONS.image.forEach(s => {
+    // Three cards is all a row can carry before the picture stops being the
+    // argument, so a shelf of six needs a way to turn the page.
+    const PER = 3;
+    const pool = EXAMPLES[state.mode];
+    const pages = Math.ceil(pool.length / PER);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'ex-wrap';
+    wrap.innerHTML = `
+      <div class="ex-head">
+        <div class="ex-title">灵感推荐</div>
+        ${pages > 1 ? `<button class="ex-more" type="button">${ICON.shuffle}换一批</button>` : ''}
+      </div>
+      <div class="ex-sub">最新模型的一张样子 · 点开照着它改</div>`;
+    const row = document.createElement('div');
+    row.className = 'ex-row';
+    wrap.appendChild(row);
+
+    // One picture per card, chosen by the model's own contract: the badge, the
+    // frame and the prompt all describe the same model, so a card can never
+    // teach a combination the model would refuse.
+    function paintPage(){
+      const page = (state.exPage || 0) % pages;
+      row.innerHTML = '';
+      pool.slice(page * PER, page * PER + PER).forEach((e, i) => {
         const b = document.createElement('button');
-        b.className = 'sug';
         b.type = 'button';
-        b.textContent = s;
-        b.onclick = () => { promptEl.value = s; promptEl.focus(); };
-        suggestions.appendChild(b);
+        b.className = 'ex';
+        b.style.setProperty('--i', i);
+        b.innerHTML = `
+        <span class="ex-art">${e.art || (e.art = makeArt(e.seed))}<i class="ex-sheen"></i><span class="ex-model">${byMark(e.model)}${e.model}</span><span class="ex-ratio">${e.ratio}</span></span>
+        <span class="ex-name-row"><b class="ex-name">${e.name}</b><em class="ex-go">试一试</em></span>
+        <span class="ex-p">${e.p}</span>`;
+        b.onclick = () => {
+          promptEl.value = e.p;
+          // The card is a claim about one model, so it switches to that model —
+          // and adoptModel settles res/refs before the ratio is applied on top.
+          const m = MODELS[state.mode].find(x => x.id === e.model);
+          if (m) adoptModel(m);
+          state.ratio = e.ratio;
+          renderAll();
+          promptEl.focus();
+        };
+        row.appendChild(b);
       });
     }
-    if (state.mode !== 'image'){
-      SUGGESTIONS[state.mode].forEach(s => {
-        const b = document.createElement('button');
-        b.className = 'sug';
-        b.type = 'button';
-        b.textContent = s;
-        b.onclick = () => { promptEl.value = s; promptEl.focus(); };
-        suggestions.appendChild(b);
-      });
-    }
+    paintPage();
+
+    const more = wrap.querySelector('.ex-more');
+    if (more) more.onclick = () => {
+      state.exPage = ((state.exPage || 0) + 1) % pages;
+      // Replaying the turn is the only feedback that the deck moved rather than
+      // the pictures being swapped in place; the icon spins with it.
+      more.classList.remove('turn');
+      void more.offsetWidth;
+      more.classList.add('turn');
+      paintPage();
+    };
+
+    wrap.appendChild(row);
+    suggestions.appendChild(wrap);
   }
 
   /* ───────── toolbar ───────── */
 
-  function ratioGroup(){
-    const wrap = document.createElement('div');
-    wrap.className = 'segment';
-    Object.entries(RATIOS).forEach(([key, r]) => {
-      const b = document.createElement('button');
-      b.className = 'seg';
-      b.type = 'button';
-      b.setAttribute('aria-pressed', String(state.ratio === key));
-      b.innerHTML = `<span class="shape ${r.shape}"></span>${r.label}`;
-      b.onclick = () => { state.ratio = key; state.preview = 'empty'; renderAll(); };
-      wrap.appendChild(b);
-    });
-    return wrap;
+  /* A segmented control is one object with a moving selection, not N buttons
+     that light up. The thumb is measured from the selected item, so it keeps
+     working when a label changes width or a language gets longer — nothing here
+     hard-codes a position. */
+  function slideThumb(host, itemSel, onAttr){
+    if (!host) return;
+    const on = host.querySelector(`${itemSel}[${onAttr}="true"]`);
+    let th = null;
+    for (const c of host.children) if (c.classList && c.classList.contains('seg-thumb')) th = c;
+    if (!on){ if (th) th.remove(); return; }
+    if (!th){
+      th = document.createElement('i');
+      th.className = 'seg-thumb';
+      th.setAttribute('aria-hidden', 'true');
+      host.insertBefore(th, host.firstChild);
+    }
+    const inset = parseFloat(getComputedStyle(host).paddingLeft) || 0;
+    th.style.top = inset + 'px';
+    th.style.height = (host.clientHeight - inset * 2) + 'px';
+    th.style.width = on.offsetWidth + 'px';
+    th.style.transform = `translateX(${on.offsetLeft - inset}px)`;
   }
 
-  function countGroup(){
-    const wrap = document.createElement('div');
-    wrap.className = 'segment';
-    [1,2,3,4].forEach(n => {
-      const b = document.createElement('button');
-      b.className = 'seg';
-      b.type = 'button';
-      b.setAttribute('aria-pressed', String(state.count === n));
-      b.textContent = '×' + n;
-      b.onclick = () => { state.count = n; renderToolbar(); };
-      wrap.appendChild(b);
+  function popFoot(left, right){
+    const d = document.createElement('div');
+    d.className = 'pop-foot';
+    d.innerHTML = `<span>${left}</span>${right ? `<span class="r">${right}</span>` : ''}`;
+    return d;
+  }
+
+  /* The ratio was a four-segment strip because four was all any model offered.
+     A model may now declare fourteen, and a strip that long would eat the row
+     the next choice has to be made in. The chip shows the current shape; the
+     popover shows every shape, grouped by orientation. */
+  function ratioChip(){
+    const r = RATIOS[state.ratio] || RATIOS['1:1'];
+    const b = document.createElement('button');
+    b.className = 'chip param-chip';
+    b.type = 'button';
+    b.id = 'ratioChip';
+    b.title = '画面比例';
+    b.innerHTML = `<span class="lead-shape">${shapeBox(r.ar, 15, r.auto)}</span>
+      <span class="name">${r.label}</span>${ICON.chev}`;
+    b.onclick = (e) => { e.stopPropagation(); openRatioPop(b); };
+    return b;
+  }
+
+  function ratioTile(key, supported){
+    const r = RATIOS[key];
+    const b = document.createElement('button');
+    b.className = 'tile' + (r.auto ? ' auto' : '');
+    b.type = 'button';
+    b.setAttribute('role','menuitemradio');
+    b.setAttribute('aria-checked', String(state.ratio === key));
+    b.setAttribute('aria-disabled', String(!supported));
+    // "auto" is still a choice, so it still needs a thing to click: a dashed
+    // frame reads as "shape decided later" instead of as a section heading.
+    b.innerHTML = `<span class="bx">${shapeBox(r.ar, r.auto ? 18 : 20, r.auto)}</span>
+      <span>${r.label}</span>${r.auto ? '<span class="sub">跟随提示词</span>' : ''}`;
+    if (!supported) b.title = `${state.model} 不支持 ${r.label}`;
+    b.onclick = () => {
+      if (!supported) return;
+      // Changing the shape affects the *next* request; wiping the results
+      // above is the kind of surprise that makes people stop touching it.
+      state.ratio = key;
+      closePop();
+      renderAll();
+    };
+    return b;
+  }
+
+  function openRatioPop(anchor){
+    closePop();
+    const sup = model().ratios || [];
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.appendChild(popLabel(`画面比例 · ${sup.length} 个`));
+
+    // "auto" answers a different question than the rest, so it gets a row of
+    // its own instead of a cell in the shape grid.
+    if (sup.includes('auto')) pop.appendChild(ratioTile('auto', true));
+
+    RATIO_SECS.forEach(([sec, label]) => {
+      const keys = Object.keys(RATIOS).filter(k => RATIOS[k].sec === sec);
+      const sec_ = document.createElement('div');
+      sec_.className = 'enum-sec';
+      const title = document.createElement('div');
+      title.className = 'enum-title';
+      title.textContent = label;
+      sec_.appendChild(title);
+      const grid = document.createElement('div');
+      grid.className = 'enum-grid';
+      keys.forEach(k => grid.appendChild(ratioTile(k, sup.includes(k))));
+      sec_.appendChild(grid);
+      pop.appendChild(sec_);
     });
-    return wrap;
+
+    const off = Object.keys(RATIOS).filter(k => !sup.includes(k)).length;
+    pop.appendChild(popFoot(`输出 ${pxFor(state.ratio)}`, off ? `灰显 ${off} 档不支持` : ''));
+    popEl = pop;
+    placePop(anchor, 306);
+  }
+
+  function resChip(){
+    const b = document.createElement('button');
+    b.className = 'chip param-chip';
+    b.type = 'button';
+    b.id = 'resChip';
+    b.title = '输出分辨率';
+    b.innerHTML = `<span class="name">${resMeta().label}</span>${ICON.chev}`;
+    b.onclick = (e) => { e.stopPropagation(); openResPop(b); };
+    return b;
+  }
+
+  function openResPop(anchor){
+    closePop();
+    const sup = model().resOptions || RES.map(r => r.id);
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.appendChild(popLabel('输出分辨率'));
+
+    const grid = document.createElement('div');
+    grid.className = 'enum-grid cols-2';
+    RES.forEach(r => {
+      const ok = sup.includes(r.id);
+      const b = document.createElement('button');
+      b.className = 'tile';
+      b.type = 'button';
+      b.style.height = '52px';
+      b.setAttribute('role','menuitemradio');
+      b.setAttribute('aria-checked', String(state.res === r.id));
+      b.setAttribute('aria-disabled', String(!ok));
+      b.innerHTML = `<span>${r.label}</span>
+        <span class="sub">${r.note} · ${Math.round(Math.sqrt(r.area))}px</span>`;
+      if (!ok) b.title = `${state.model} 不支持 ${r.label}`;
+      b.onclick = () => {
+        if (!ok) return;
+        state.res = r.id;
+        closePop();
+        renderAll();
+      };
+      grid.appendChild(b);
+    });
+    pop.appendChild(grid);
+    pop.appendChild(popFoot(`输出 ${pxFor(state.ratio)}`, `${money(unitPrice())} / 张`));
+    popEl = pop;
+    placePop(anchor, 232);
+  }
+
+  /* Four always-visible segments cost 127px to express one number that is 1
+     almost every time. The ratio is worth its width; the count is not. */
+  /* Values that do not explain themselves ("0.2 0.7 1.0") get a name in the
+     chip. The label costs 30px and removes the question. */
+  function enumChip(id, label, value, items, onPick){
+    const b = document.createElement('button');
+    b.className = 'chip param-chip';
+    b.type = 'button';
+    b.id = id;
+    b.title = label;
+    b.innerHTML = `<span class="dim">${label}</span><span class="name">${value}</span>${ICON.chev}`;
+    b.onclick = (e) => { e.stopPropagation(); openEnumPop(b, label, items, value, onPick); };
+    return b;
+  }
+
+  function openEnumPop(anchor, label, items, value, onPick){
+    closePop();
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.appendChild(popLabel(label));
+    const grid = document.createElement('div');
+    grid.className = 'pick-grid';
+    items.forEach(v => {
+      const b = document.createElement('button');
+      b.className = 'pick';
+      b.type = 'button';
+      b.setAttribute('role','menuitemradio');
+      b.setAttribute('aria-checked', String(value === v));
+      b.textContent = v;
+      b.onclick = () => { onPick(v); closePop(); renderToolbar(); };
+      grid.appendChild(b);
+    });
+    pop.appendChild(grid);
+    popEl = pop;
+    placePop(anchor, 214);
+  }
+
+  function countChip(){
+    const b = document.createElement('button');
+    b.className = 'chip count-chip';
+    b.type = 'button';
+    b.id = 'countChip';
+    b.title = '生成数量';
+    b.innerHTML = `<span class="name">×${state.count}</span>${ICON.chev}`;
+    b.onclick = (e) => { e.stopPropagation(); openCountPop(b); };
+    return b;
+  }
+
+  function openCountPop(anchor){
+    closePop();
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.appendChild(popLabel('生成数量'));
+    const max = model().maxN || 4;
+    const grid = document.createElement('div');
+    grid.className = 'pick-grid';
+    for (let n = 1; n <= max; n++){
+      const b = document.createElement('button');
+      b.className = 'pick';
+      b.type = 'button';
+      b.setAttribute('role','menuitemradio');
+      b.setAttribute('aria-checked', String(state.count === n));
+      b.textContent = '×' + n;
+      b.onclick = () => { state.count = n; closePop(); renderToolbar(); };
+      grid.appendChild(b);
+    }
+    pop.appendChild(grid);
+    // The chip now quotes the unit price, so the popover is where the total is
+    // spelled out — this is the one place a multiplier is allowed to disappear.
+    pop.appendChild(popFoot(`${state.count} ${state.mode === 'video' ? '条' : '张'}`,
+      `合计 ${money(unitPrice() * state.count)}`));
+    popEl = pop;
+    placePop(anchor, 214);
   }
 
   function durationGroup(values, current, onPick){
@@ -1339,89 +3219,489 @@
     return wrap;
   }
 
+  /* Type and model used to be two chips that opened the same decision twice:
+     the popover has always had the type tabs sitting directly on the model
+     list. They are one chip now — the leading glyph is the type, the name is
+     the model — and clicking it lands on the tabs if the type is what you came
+     to change. */
   function modelChip(){
     const b = document.createElement('button');
+    const meta = MODES.find(m => m.id === state.mode);
     b.className = 'chip';
     b.type = 'button';
     b.id = 'modelChip';
-    b.innerHTML = `${ICON.model}<span class="name">${state.model}</span><span class="sep">·</span><span class="grp">${state.group}</span>${ICON.chev}`;
+    b.title = `${meta.label}模型 · 点击切换类型或模型`;
+    // The leading slot used to hold the mode icon, which repeated what the name
+    // already implied. Whose model it is, on the other hand, is nowhere in
+    // "flux-3-lage" — so the provenance takes the slot. The mode still shows on
+    // the popover's tab and in the composer's placeholder.
+    b.innerHTML = (byMark(state.model, 'lead')
+        || ICON[state.mode].replace('<svg ', '<svg class="lead" '))
+      + `<span class="name">${state.model}</span>${ICON.chev}`;
     b.onclick = (e) => { e.stopPropagation(); openModelPop(b); };
     return b;
+  }
+
+  /* The price is the only place the billing group becomes visible, so the
+     group selector opens from here instead of occupying its own chip. */
+  function priceChip(unitWord){
+    const b = document.createElement('button');
+    b.className = 'price-chip';
+    b.type = 'button';
+    b.id = 'priceChip';
+    // Unit price, always. The chip used to quote the total but keep the
+    // "/张" suffix, so choosing 3 images printed "≈¥0.36 /3 张" — a number that
+    // is neither the price of one nor the price of three. The count chip sits
+    // immediately to the left now, so the multiplication is on screen.
+    const word = unitWord || '张';
+    b.innerHTML = `≈ <b>${money(unitPrice())}</b><span>/${word}</span>`
+      + `<span class="grp">· ${state.group}</span>${ICON.chev}`;
+    b.title = `每${word}的单价 · 更换计费分组`;
+    b.onclick = (e) => { e.stopPropagation(); openGroupPop(b); };
+    return b;
+  }
+
+  /* ───────── reference inputs ───────── */
+
+  /* Whether the composer can take files is a property of the model, not a mode
+     switch. A text-only model shows no attach control at all: a disabled or
+     dead button would still promise something the model cannot do. */
+  const KIND_WORD = { image:'图', video:'视频', audio:'音频' };
+  const KIND_FULL = { image:'图片', video:'视频', audio:'音频' };
+  const fileEl = $('#fileInput');
+
+  const cap = () => model().refs || null;
+
+  /* One word for the thing being attached, derived from the mode, because the
+     same bytes are a different object in each one. In 图片 / 视频 the file is a
+     参考 — it steers what gets drawn. In a chat it is 图片 — it is the thing
+     being asked about. Calling it 参考图 in chat is generation vocabulary
+     leaking into a text box: it reads like the LLM will paint something. */
+  const refWord = () => state.mode === 'chat' ? '图片'
+    : (cap() && cap().all) ? '参考' : '参考图';
+  /* Chinese counts pictures in 张 and everything else in 个. A mixed bag
+     (全能参考) has no single correct unit, so it takes the neutral one. */
+  const refUnit = () => (cap() && cap().kinds.length === 1 && cap().kinds[0] === 'image') ? '张' : '个';
+
+  /* The four things the composer can be doing are not four modes. They are the
+     same two axes — mode × has-references — read out loud, so the user never
+     has to find a "图生图" entry: dropping a file into 图片 mode *is* it. */
+  function opLabel(){
+    const c = cap();
+    const n = state.refs.length;
+    if (state.mode === 'chat')  return n ? '图片问答' : '文本问答';
+    if (state.mode === 'image') return n ? '图生图' : '文生图';
+    if (c && c.all)   return n ? '全能参考' : '文生视频';
+    if (c && c.slots) return n >= 2 ? '首尾帧' : n === 1 ? '图生视频' : '文生视频';
+    return n ? '参考生视频' : '文生视频';
+  }
+
+  function renderRefs(){
+    const box = $('#refs'), row = $('#refRow'), c = cap();
+    // An empty row is scaffolding: it teaches the slot in 图片 / 视频 and is
+    // dead weight in a chat, where the attach button below is the only door.
+    box.hidden = !c || (state.mode === 'chat' && !state.refs.length);
+    if (c) box.setAttribute('aria-label', refWord());
+    row.innerHTML = '';
+    if (!c) return;
+    if (c.slots){
+      c.slots.forEach((label, i) => {
+        const r = state.refs.find(x => x.slot === i);
+        row.appendChild(r ? refTile(r, label) : slotTile(label, i));
+      });
+    } else {
+      state.refs.forEach(r => row.appendChild(refTile(r)));
+      // Chat adds through the composer button, so an inline "+" tile here would
+      // be a second door to the same room, at a different height.
+      if (state.mode !== 'chat' && state.refs.length < c.max) row.appendChild(bagTile(c));
+    }
+    const n = state.refs.length;
+    const capEl = $('#refCap');
+    const limit = c.slots ? c.slots.length : c.max;
+    // "0/10" is a number nobody needs; in that slot a first-time user needs to
+    // know there are two ways in that leave no trace on screen.
+    capEl.textContent = !c.slots && n >= c.max ? `已满 ${c.max} ${refUnit()}`
+      : n ? `${n}/${limit}` : '粘贴或拖入';
+    capEl.classList.toggle('full', !c.slots && n >= c.max);
+    capEl.title = c.slots
+      ? `可以只填${c.slots[0]}，也可以都填`
+      : `可添加 ${c.kinds.map(k => KIND_WORD[k]).join(' / ')}，最多 ${c.max} ${refUnit()}`;
+  }
+
+  function refTile(r, label){
+    const d = document.createElement('div');
+    d.className = 'ref' + (r.fresh ? ' fresh' : '');
+    delete r.fresh;   // one entrance, not one per repaint
+    d.innerHTML = (r.url ? `<img src="${r.url}" alt="">` : (r.art || makeArt(0)))
+      + (r.kind && (r.kind !== 'image' || (cap() && cap().all)) ? `<span class="kind">${KIND_WORD[r.kind]}</span>` : '')
+      + (label ? `<span class="slot">${label}</span>` : '');
+    const x = document.createElement('button');
+    x.className = 'x';
+    x.type = 'button';
+    x.title = '移除';
+    x.innerHTML = ICON.close;
+    x.onclick = (e) => {
+      e.stopPropagation();
+      state.refs = state.refs.filter(o => o !== r);
+      state.refNote = '';
+      renderAll();
+    };
+    d.appendChild(x);
+    if (r.slot !== undefined){
+      d.classList.add('swap');
+      d.title = `点击替换${label || ''}`;
+      d.onclick = () => pickFiles(r.slot);
+    }
+    return d;
+  }
+
+  function slotTile(label, i){
+    const b = document.createElement('button');
+    b.className = 'ref-add';
+    b.type = 'button';
+    b.innerHTML = `${ICON.plus}<span>${label}</span>`;
+    b.title = `选择${label}图片，也可以直接粘贴`;
+    b.onclick = () => pickFiles(i);
+    return b;
+  }
+
+  function bagTile(c){
+    const b = document.createElement('button');
+    b.className = 'ref-add';
+    b.type = 'button';
+    b.innerHTML = `${ICON.plus}<span>${refWord()}</span>`;
+    b.title = `添加${c.kinds.map(k => KIND_FULL[k]).join(' / ')}，最多 ${c.max} ${refUnit()}；也可以直接粘贴或拖入`;
+    b.setAttribute('aria-label', `添加${refWord()}`);
+    b.onclick = () => pickFiles();
+    return b;
+  }
+
+  /* Chat's only attach entry, and it stays exactly where it is whether or not
+     a picture is attached — a control that moves when you use it is the kind of
+     thing people stop trusting. */
+  function attachBtn(c){
+    const n = state.refs.length, full = n >= c.max;
+    const b = document.createElement('button');
+    b.className = 'attach' + (n ? ' on' : '');
+    b.type = 'button';
+    b.dataset.full = String(full);
+    const why = `最多 ${c.max} ${refUnit()}，先移除一张`;
+    const what = `添加${c.kinds.map(k => KIND_FULL[k]).join(' / ')}，也可以直接粘贴或拖入`;
+    b.title = full ? why : what;
+    b.setAttribute('aria-label', full ? why : `添加${refWord()}`);
+    b.innerHTML = ICON.clip;
+    b.onclick = () => {
+      // A full bag gets an explanation, not a greyed-out button: dead reads as
+      // "this model cannot" when the truth is "this model already has four".
+      if (state.refs.length >= c.max){ state.refNote = `已满 ${c.max} ${refUnit()}，先移除一张`; renderAll(); return; }
+      pickFiles();
+    };
+    return b;
+  }
+
+  function pickFiles(slot){
+    const c = cap();
+    if (!c) return;
+    fileEl.accept = c.kinds.map(k => k + '/*').join(',');
+    fileEl.dataset.slot = slot === undefined ? '' : String(slot);
+    fileEl.multiple = !c.slots;
+    fileEl.value = '';
+    fileEl.click();
+  }
+
+  function kindOf(f){
+    const k = (f.type || '').split('/')[0];
+    return k === 'video' || k === 'audio' ? k : 'image';
+  }
+
+  /* Every route a file can take — picker, clipboard, drag — lands here. The
+     capacity rules must not fork per gesture: a paste that ignored 尾帧, or a
+     drop that overflowed the bag silently, would be a second feature wearing
+     the same name. */
+  function attachFiles(files, slot){
+    const c = cap();
+    if (!c || !files.length){
+      if (!c && files.length) refuseRefs();
+      return;
+    }
+    const all = [...files];
+    const fits = all.filter(f => c.kinds.includes(kindOf(f)));
+    const why = [];
+    if (fits.length < all.length) why.push(`只收${c.kinds.map(k => KIND_FULL[k]).join(' / ')}`);
+
+    if (c.slots){
+      if (slot !== undefined){
+        const f = fits[0];
+        if (!f){ state.refNote = why.join(' · '); renderAll(); return; }
+        state.refs = state.refs.filter(r => r.slot !== slot);
+        state.refs.push({ slot, kind: kindOf(f), url: URL.createObjectURL(f) });
+        state.refNote = '';
+        renderAll();
+        return;
+      }
+      // A paste names no slot, so it fills the empty ones left to right —
+      // which is also the order the tiles are read in.
+      const empty = c.slots.map((_, i) => i).filter(i => !state.refs.some(r => r.slot === i));
+      const take = fits.slice(0, empty.length);
+      take.forEach((f, k) => state.refs.push({ slot:empty[k], kind:kindOf(f), url:URL.createObjectURL(f) }));
+      if (fits.length > take.length){
+        why.push(`已忽略 ${fits.length - take.length} 个（${c.slots.join(' / ')}各一个）`);
+      }
+    } else {
+      const room = Math.max(0, c.max - state.refs.length);
+      const take = fits.slice(0, room);
+      take.forEach(f => state.refs.push({ kind:kindOf(f), url:URL.createObjectURL(f) }));
+      if (fits.length > take.length) why.push(`已忽略 ${fits.length - take.length} 个（最多 ${c.max} 个）`);
+    }
+    state.refNote = why.join(' · ');
+    renderAll();
+  }
+
+  /* Refusing in silence is how someone pastes a screenshot five times and
+     decides the composer is broken. Name the model that would have taken it. */
+  function refuseRefs(){
+    const alt = MODELS[state.mode].find(m => m.refs);
+    const cant = state.mode === 'chat' ? '读不了图片' : '不支持参考';
+    state.refNote = alt
+      ? `${model().id} ${cant}，换成 ${alt.id} 再试`
+      : `当前模型${cant}`;
+    renderAll();
+  }
+
+  fileEl.addEventListener('change', () => {
+    const files = [...fileEl.files];
+    const slot = fileEl.dataset.slot === '' ? undefined : Number(fileEl.dataset.slot);
+    fileEl.value = '';
+    if (files.length) attachFiles(files, slot);
+  });
+
+  /* ───────── clipboard & drop ───────── */
+
+  const composerEl = document.querySelector('.composer-inner');
+  const dropHintEl = $('#dropHint');
+
+  const IMG_URL = /^https?:\/\/[^\s]+\.(png|jpe?g|webp|gif|avif|bmp)(\?[^\s]*)?$/i;
+
+  function filesFrom(dt){
+    if (!dt) return [];
+    const out = [];
+    [...(dt.items || [])].forEach(it => {
+      if (it.kind !== 'file') return;
+      const f = it.getAsFile();
+      if (f) out.push(f);
+    });
+    if (!out.length && dt.files) out.push(...dt.files);
+    return out;
+  }
+
+  // A copied image and a copied image *address* are the same intent; the
+  // clipboard just delivers the second one as text. Probe the link first — a
+  // tile that renders broken is worse than a paste that was refused.
+  function attachUrl(url){
+    const probe = new Image();
+    probe.onload = () => {
+      const c = cap();
+      if (!c || !c.kinds.includes('image')){ refuseRefs(); return; }
+      if (c.slots){
+        const i = c.slots.findIndex((_, k) => !state.refs.some(r => r.slot === k));
+        if (i < 0){ state.refNote = `${c.slots.join(' / ')}都有图了，先移除一张`; renderAll(); return; }
+        state.refs.push({ slot:i, kind:'image', url });
+      } else {
+        if (state.refs.length >= c.max){ state.refNote = `已满 ${c.max} 个`; renderAll(); return; }
+        state.refs.push({ kind:'image', url });
+      }
+      state.refNote = '';
+      renderAll();
+    };
+    probe.onerror = () => { state.refNote = '这个链接不是能直接读取的图片'; renderAll(); };
+    probe.src = url;
+  }
+
+  function insertIntoPrompt(text){
+    const had = document.activeElement === promptEl;
+    const start = had ? (promptEl.selectionStart ?? promptEl.value.length) : promptEl.value.length;
+    const end = had ? (promptEl.selectionEnd ?? start) : promptEl.value.length;
+    // Landing after a half-written sentence without a space glues two words
+    // together, which then reads as a typo the user did not make.
+    const pad = !had && promptEl.value && !/\s$/.test(promptEl.value) ? ' ' : '';
+    promptEl.focus();
+    promptEl.setRangeText(pad + text, start, end, 'end');
+    promptEl.dispatchEvent(new Event('input'));
+  }
+
+  document.addEventListener('paste', (e) => {
+    const dt = e.clipboardData;
+    if (!dt) return;
+    const files = filesFrom(dt);
+    if (files.length){
+      e.preventDefault();
+      attachFiles(files);
+      return;
+    }
+    const text = dt.getData('text/plain');
+    if (!text) return;
+    if (IMG_URL.test(text.trim())){ e.preventDefault(); attachUrl(text.trim()); return; }
+    // Ctrl+V belongs to the field it is aimed at. Anywhere else — a chip, a
+    // popover, the canvas — the browser would drop the text on the floor.
+    const el = e.target;
+    if (el instanceof Element && el.closest('input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
+    e.preventDefault();
+    insertIntoPrompt(text);
+  });
+
+  const isFileDrag = (dt) => !!dt && [...(dt.types || [])].includes('Files');
+  let dragDepth = 0;
+
+  document.addEventListener('dragenter', (e) => {
+    if (!isFileDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepth += 1;
+    if (dragDepth > 1) return;
+    dropHintEl.textContent = cap() ? `松手加入${refWord()}`
+      : state.mode === 'chat' ? '当前模型读不了图片' : '当前模型不支持参考图';
+    composerEl.classList.add('dropping');
+  });
+
+  document.addEventListener('dragover', (e) => {
+    if (!isFileDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+
+  document.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) composerEl.classList.remove('dropping');
+  });
+
+  document.addEventListener('drop', (e) => {
+    if (!isFileDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    composerEl.classList.remove('dropping');
+    attachFiles([...e.dataTransfer.files]);
+  });
+
+  /* A model can hold fewer references than the one it replaces, so the
+     selection has to shrink with it — and say so. Dropping a file the user
+     picked, silently, is the kind of bug they only notice after paying. */
+  function adoptModel(m){
+    state.model = m.id;
+    if (m.res) state.res = m.res;
+    if (m.resOptions && !m.resOptions.includes(state.res)) state.res = m.res;
+    // The old ratio may not exist on the new model. Silently rounding to a
+    // different shape would return an image nobody asked for.
+    if (m.ratios && !m.ratios.includes(state.ratio)) state.ratio = m.ratios[0];
+
+    const c = m.refs;
+    const limit = c ? (c.slots ? c.slots.length : c.max) : 0;
+    const dropped = state.refs.length - limit;
+    if (dropped > 0){
+      state.refs = state.refs.slice(0, limit);
+      state.refNote = limit
+        ? `${m.id} 最多 ${limit} ${refUnit()}，已移除 ${dropped} 个`
+        : `${m.id} ${state.mode === 'chat' ? '读不了图片' : '不支持参考'}，已移除 ${dropped} 个`;
+    } else {
+      state.refNote = '';
+    }
+    if (c && c.slots){
+      // A bag carried over from another mode has no slot index yet; assign by
+      // position so the first image lands in 首帧 and the second in 尾帧.
+      state.refs.forEach((r, i) => { if (r.slot === undefined) r.slot = i; });
+    } else {
+      // Coming back to a bag, a leftover index would make a plain thumbnail
+      // behave like a slot and overwrite a neighbour instead of appending.
+      state.refs.forEach(r => { delete r.slot; });
+    }
   }
 
   function renderToolbar(){
     toolbar.innerHTML = '';
 
     toolbar.appendChild(modelChip());
-    const sep = document.createElement('span');
-    sep.className = 'vsep';
-    toolbar.appendChild(sep);
 
     const right = document.createElement('div');
     right.className = 'right';
 
     if (state.mode === 'image'){
-      toolbar.appendChild(ratioGroup());
-      toolbar.appendChild(countGroup());
+      toolbar.appendChild(ratioChip());
+      toolbar.appendChild(resChip());
 
-      const price = document.createElement('span');
-      price.className = 'price';
-      const discounted = unitPrice() * state.count;
-      price.innerHTML = `≈ <b>${money(discounted)}</b><span>/ ${state.count > 1 ? state.count + ' 张' : '张'}</span>`;
-      right.appendChild(price);
+      // "how many" is a multiplier on "how much", so it belongs on the receipt
+      // side of the row — and it stops the price from being the only thing
+      // pushed onto a second line at 390px.
+      right.appendChild(countChip());
+      right.appendChild(priceChip());
 
       const clear = document.createElement('button');
       clear.className = 'clear';
       clear.type = 'button';
       clear.title = '清空结果';
       clear.innerHTML = ICON.trash;
-      clear.onclick = () => { state.preview = 'empty'; state.results = []; renderAll(); };
+      clear.onclick = () => {
+        state.tasks = state.tasks.filter(t => t.mode !== state.mode);
+        withView(() => renderAll());
+      };
       right.appendChild(clear);
 
+      right.appendChild(concPill());
       right.appendChild(submitBtn('生成'));
     }
 
     if (state.mode === 'chat'){
-      const temp = durationGroup(['0.2','0.7','1.0'], '0.7', () => {});
-      temp.title = '采样温度';
-      const ctx = durationGroup(['2k','8k','32k'], '8k', () => {});
-      ctx.title = '最大上下文';
-      toolbar.appendChild(temp);
-      toolbar.appendChild(ctx);
+      // Files come before parameters — left of the model chip — because what
+      // you attach is part of the request, and the chips to its right only
+      // shape the answer.
+      if (cap()) toolbar.insertBefore(attachBtn(cap()), toolbar.firstChild);
+      toolbar.appendChild(enumChip('tempChip', '温度', state.temp, ['0.2','0.7','1.0'],
+        v => { state.temp = v; }));
+      toolbar.appendChild(enumChip('ctxChip', '上下文', state.ctx, ['2k','8k','32k'],
+        v => { state.ctx = v; }));
 
-      const price = document.createElement('span');
-      price.className = 'price';
-      price.innerHTML = `输入 <b>$2.00</b><span>/M</span> · 输出 <b>$8.00</b><span>/M</span>`;
+      const price = document.createElement('button');
+      price.className = 'price-chip';
+      price.type = 'button';
+      // One currency on one screen: the image chip is in ¥, so tokens are too.
+      price.innerHTML = `入 <b>${'¥' + (model().in * group().ratio * 7.2).toFixed(1)}</b>`
+        + ` · 出 <b>${'¥' + (model().out * group().ratio * 7.2).toFixed(1)}</b><span>/M</span>`
+        + `<span class="grp">· ${state.group}</span>${ICON.chev}`;
+      price.title = '更换计费分组';
+      price.onclick = (e) => { e.stopPropagation(); openGroupPop(e.currentTarget); };
       right.appendChild(price);
 
       right.appendChild(submitBtn('发送'));
     }
 
     if (state.mode === 'video'){
-      const dur = durationGroup(['5s','10s'], '5s', () => {});
+      const dur = durationGroup(['5s','10s'], state.dur, v => { state.dur = v; });
       dur.title = '时长';
-      const res = durationGroup(['720p','1080p'], '1080p', () => {});
+      const res = durationGroup(['720p','1080p'], state.vres, v => { state.vres = v; });
       res.title = '分辨率';
       toolbar.appendChild(dur);
       toolbar.appendChild(res);
 
-      const price = document.createElement('span');
-      price.className = 'price';
-      price.innerHTML = `≈ <b>${money(0.86 * state.count)}</b><span>/ ${state.count > 1 ? state.count + ' 条' : '条'}</span>`;
-      right.appendChild(price);
+      right.appendChild(priceChip('条'));
 
+      right.appendChild(concPill());
       right.appendChild(submitBtn('生成'));
     }
 
     toolbar.appendChild(right);
+
+    // The toolbar is in the document by now, so offsetWidth/offsetLeft are real.
+    // Doing this after append is what keeps the thumb from flashing at 0px.
+    toolbar.querySelectorAll('.segment').forEach(seg => slideThumb(seg, '.seg', 'aria-pressed'));
   }
 
   function submitBtn(label){
+    // Only a chat turn locks the button. A background image or video job must
+    // not: a button that flips to "生成中" and back twice per job changes
+    // under the cursor, which is its own kind of jitter.
+    const busy = state.mode === 'chat' && state.busy;
     const b = document.createElement('button');
-    b.className = 'submit' + (state.busy ? ' busy' : '');
+    b.className = 'submit' + (busy ? ' busy' : '');
     b.type = 'button';
-    b.disabled = state.busy;
-    b.innerHTML = state.busy
+    b.disabled = busy;
+    b.innerHTML = busy
       ? `${label === '发送' ? '发送中' : '生成中'}<span class="mini-ring"></span>`
       : `${label}${ICON.send}`;
     b.onclick = run;
@@ -1431,53 +3711,194 @@
   /* ───────── model popover ───────── */
 
   let popEl = null;
-  function closePop(){ if (popEl){ popEl.remove(); popEl = null; } }
+  let popRO = null;
+  function closePop(){
+    if (popRO){ popRO.disconnect(); popRO = null; }
+    if (popEl){ popEl.remove(); popEl = null; }
+  }
 
-  function openModelPop(anchor){
-    closePop();
-    const pop = document.createElement('div');
-    pop.className = 'pop';
+  function popLabel(label){
+    const d = document.createElement('div');
+    d.className = 'pop-label';
+    d.textContent = label;
+    return d;
+  }
 
-    const mk = (label) => {
-      const d = document.createElement('div');
-      d.className = 'pop-label';
-      d.textContent = label;
-      return d;
-    };
+  function renderModelList(body){
+    body.innerHTML = '';
+    const meta = MODES.find(m => m.id === state.mode);
+    // The tab above already carries how many there are; the rows below differ
+    // only by the number, so the unit is stated once, here, instead of being
+    // repeated on every line and crowding the right edge.
+    const unitNote = state.mode === 'chat' ? '每百万 token'
+      : state.mode === 'image' ? '按张计费' : '按条计费';
+    body.appendChild(popLabel(`${meta.label}模型 · ${unitNote}`));
 
-    pop.appendChild(mk('模型'));
-    MODELS.forEach(m => {
+    MODELS[state.mode].forEach(m => {
+      // The tail speaks the same language as the price chip: yuan, in the unit
+      // this mode bills by. A list quoting dollars next to a chip quoting yuan
+      // makes the reader do an exchange rate in their head.
+      const ratio = group().ratio;
+      const tail = state.mode === 'image'
+        ? `${money(m.unit * (RES.find(r => r.id === m.res) || RES[1]).scale * ratio * 7.2)}`
+        : state.mode === 'chat'
+          ? `入 ¥${(m.in * ratio * 7.2).toFixed(1)} · 出 ¥${(m.out * ratio * 7.2).toFixed(1)}`
+          : `${money(m.unit * ratio * 7.2)}`;
+
+      const capTag = m.refs
+        ? (m.refs.slots ? (m.refs.slots.length > 1 ? '首尾帧' : '首帧')
+          : m.refs.all ? '全能参考'
+          : `${refWord()} ${m.refs.max}`)
+        : '仅文本';
+
       const b = document.createElement('button');
-      b.className = 'pop-item';
+      b.className = 'pop-item model';
       b.type = 'button';
       b.setAttribute('role','menuitemradio');
       b.setAttribute('aria-checked', String(m.id === state.model));
-      b.innerHTML = `${ICON.check}<span class="mono">${m.id}</span><span class="tail">$${m.unit.toFixed(3)}/张</span>`;
-      b.onclick = () => { state.model = m.id; closePop(); renderToolbar(); };
-      pop.appendChild(b);
+      b.innerHTML = `${byAva(m.id)}
+        <span class="lines">
+          <span class="which"><span class="mono">${m.id}</span>${m.id === 'flux-3-lage' ? '<span class="newtag">NEW</span>' : ''}<span class="cap">${capTag}</span></span>
+          <span class="desc">${m.desc}</span>
+        </span>
+        <span class="tail">${tail}</span>${ICON.check}`;
+      b.onclick = () => {
+        lastPick[state.mode] = m.id;
+        adoptModel(m);
+        closePop(); renderAll();
+      };
+      body.appendChild(b);
     });
+  }
 
-    pop.appendChild(Object.assign(document.createElement('div'), { className:'pop-rule' }));
-    pop.appendChild(mk('分组（计费口径）'));
+  /* Level 1 (what am I making) and level 2 (which model makes it) are one
+     decision made twice. Making them separate popovers meant leaving the list
+     to change the group above it — so the tab bar lives inside the popover,
+     directly over the list it filters, and switching keeps the popover open. */
+  function openModelPop(anchor){
+    closePop();
+    const pop = document.createElement('div');
+    pop.className = 'pop pop-model';
+
+    const head = document.createElement('div');
+    head.className = 'pop-head';
+    const tabs = document.createElement('div');
+    tabs.className = 'pop-tabs';
+    tabs.setAttribute('role','tablist');
+    MODES.forEach(m => {
+      const b = document.createElement('button');
+      b.className = 'pop-tab';
+      b.type = 'button';
+      b.setAttribute('role','tab');
+      b.dataset.mode = m.id;
+      // The type popover was retired into this tab bar; its one-line
+      // explanations still earn their keep as tooltips here.
+      b.title = m.desc;
+      b.setAttribute('aria-selected', String(m.id === state.mode));
+      b.innerHTML = `${ICON[m.id]}<span>${m.label}</span><span class="n">${MODELS[m.id].length}</span>`
+        + (runningOf(m.id).length ? '<i class="live-dot"></i>' : '');
+      b.onclick = (e) => {
+        e.stopPropagation();
+        if (state.mode === m.id) return;
+        setMode(m.id);
+        tabs.querySelectorAll('.pop-tab').forEach(t => {
+          t.setAttribute('aria-selected', String(t.dataset.mode === state.mode));
+        });
+        // setMode() re-rendered the toolbar, so the chip this popover points at
+        // is a new element. Re-anchor without re-inserting, otherwise popIn
+        // replays and an in-place switch looks like a brand new popover.
+        renderModelList(pop.querySelector('.pop-body'));
+        placePop($('#modelChip'), 332);
+      };
+      tabs.appendChild(b);
+    });
+    head.appendChild(tabs);
+    pop.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'pop-body';
+    pop.appendChild(body);
+
+    popEl = pop;
+    renderModelList(body);
+    placePop(anchor, 332);
+  }
+
+  function openGroupPop(anchor){
+    closePop();
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.appendChild(popLabel('计费分组'));
     GROUPS.forEach(g => {
       const b = document.createElement('button');
       b.className = 'pop-item';
       b.type = 'button';
       b.setAttribute('role','menuitemradio');
       b.setAttribute('aria-checked', String(g.id === state.group));
-      b.innerHTML = `${ICON.check}<span class="mono">${g.id}</span><span class="tail">×${g.ratio.toFixed(2)}</span>`;
+      b.innerHTML = `${ICON.check}<span class="mono">${g.id}</span>
+        <span class="tail">${g.ratio === 1 ? '标准价' : '×' + g.ratio.toFixed(2)}</span>`;
       b.onclick = () => { state.group = g.id; closePop(); renderToolbar(); };
       pop.appendChild(b);
     });
-
-    document.body.appendChild(pop);
-    const r = anchor.getBoundingClientRect();
-    const w = 268;
-    pop.style.left = Math.max(10, Math.min(r.left, window.innerWidth - w - 10)) + 'px';
-    pop.style.top = (window.innerHeight - r.top > 300)
-      ? (r.top - pop.offsetHeight - 8) + 'px'
-      : (r.bottom + 8) + 'px';
     popEl = pop;
+    placePop(anchor, 236);
+  }
+
+  function placePop(anchor, w){
+    if (!popEl) return;
+    if (!popEl.isConnected) document.body.appendChild(popEl);
+    popEl.style.width = w + 'px';
+
+    const place = () => {
+      // offsetHeight, not getBoundingClientRect().height: the pop-in animation
+      // is still scaling the element, and a scaled rect reports a wrong number.
+      const h = popEl.offsetHeight;
+      const r = anchor.getBoundingClientRect();
+      const M = 10, GAP = 8;
+
+      // Prefer opening upward (the trigger sits at the bottom of the screen),
+      // but always clamp inside the viewport on all four sides.
+      let top = r.top - h - GAP;
+      if (top < M) top = r.bottom + GAP;
+      if (top + h > window.innerHeight - M) top = Math.max(M, window.innerHeight - h - M);
+
+      // Anchors on the right half open right-aligned, so the popup grows inward
+      // instead of hanging off the edge it is closest to.
+      let left = (r.left + r.width / 2 > window.innerWidth / 2) ? (r.right - w) : r.left;
+      if (left + w > window.innerWidth - M) left = window.innerWidth - w - M;
+      if (left < M) left = M;
+
+      popEl.style.left = left + 'px';
+      popEl.style.top = top + 'px';
+
+      // Which corner does it come out of? A popover pinned under the chip grows
+      // downwards from that chip; one that had to flip upwards grows from its
+      // own bottom edge. Only written when it changes, so the entrance
+      // animation is not re-origined mid-flight.
+      const oy = (top + h <= r.top + 1) ? 'bottom' : (top >= r.bottom - 1 ? 'top' : 'center');
+      const ox = (left >= r.left - 1) ? 'left' : (left + w <= r.right + 1 ? 'right' : 'center');
+      const origin = ox + ' ' + oy;
+      if (popEl.style.transformOrigin !== origin) popEl.style.transformOrigin = origin;
+
+      popEl.querySelectorAll('.pop-tabs').forEach(t => slideThumb(t, '.pop-tab', 'aria-selected'));
+    };
+
+    place();
+    // Second pass: a description only wraps once the width has landed, so the
+    // first measurement can be a line short and leave the popup sitting on top
+    // of the chip that opened it.
+    requestAnimationFrame(place);
+    // And a third, for every later change: fonts landing, the list growing when
+    // a tab is switched, a description taking one more line. Reposition on
+    // resize instead of guessing when the layout has settled.
+    if (typeof ResizeObserver !== 'undefined'){
+      // Rebuilt every time: the callback closes over this call's place() and
+      // anchor. Reusing the previous observer after a re-anchor would keep
+      // measuring against the chip that was just replaced.
+      if (popRO) popRO.disconnect();
+      popRO = new ResizeObserver(() => { if (popEl && popEl.isConnected) place(); });
+      popRO.observe(popEl);
+    }
   }
 
   document.addEventListener('click', (e) => {
@@ -1487,55 +3908,140 @@
   /* ───────── run ───────── */
 
   function run(){
-    if (state.busy) return;
-    if (!promptEl.value.trim()){
+    const text = promptEl.value.trim();
+    if (!text){
       promptEl.focus();
       promptEl.placeholder = '先写下想要的画面…';
       return;
     }
-    state.busy = true;
-    state.preview = 'loading';
-    renderAll();
 
-    setTimeout(() => {
-      state.busy = false;
-      state.preview = state.count > 1 ? 'quad' : 'single';
-      state.spend += unitPrice() * state.count;
-      state.spendCount += 1;
-      promptEl.value = '';
+    /* The submit button is never disabled for a running job (see submitBtn),
+       so the two guards live here: Enter held down, and a double click on
+       生成. Both are one press that arrived twice — 260ms is longer than a key
+       repeat interval and shorter than a second thought. */
+    const t0 = performance.now();
+    if (t0 < state.lockUntil) return;
+
+    // Same words, same params, inside a second: the same wish, not a second one.
+    const sig = [state.mode, state.model, state.ratio, state.count, text].join('|');
+    if (sig === state.lastSig && t0 - state.lastAt < 900) return;
+
+    state.refNote = '';
+
+    if (state.mode === 'chat'){
+      // A conversation turn is single-flight: two Enter presses must not buy
+      // two answers to one question.
+      if (state.busy) return;
+      state.busy = true;
       renderAll();
-      renderSpend();
-    }, 2200);
+      setTimeout(() => {
+        state.busy = false;
+        state.spend += unitPrice() * state.count;
+        state.spendCount += 1;
+        promptEl.value = '';
+        promptEl.style.height = '';
+        renderAll();
+        renderSpend();
+      }, 1200);
+      return;
+    }
+
+    if (queuedOf(state.mode).length >= QUEUE_MAX){
+      state.refNote = `队列已满（${QUEUE_MAX} 个），等前面的跑完再发`;
+      renderAll();
+      return;
+    }
+
+    // Presets are frozen so a screenshot stays reproducible; the first real
+    // submit wakes them instead of leaving their slots occupied forever.
+    state.tasks.forEach(t => {
+      if (t.frozen && t.status === 'running'){
+        t.frozen = false;
+        t.startedAt = performance.now() - t.prog * t.ms;
+      }
+    });
+    ensureTick();
+
+    const t = {
+      id:'t' + (++state.seq),
+      mode: state.mode,
+      model: state.model,
+      prompt: text,
+      ratio: state.ratio,
+      res: state.res,
+      vres: state.vres,
+      dur: state.dur,
+      count: state.mode === 'image' ? state.count : 1,
+      refs: state.refs.slice(),
+      op: opLabel(),
+      at: now(),
+      cost: state.mode === 'image' ? unitPrice() * state.count : unitPrice(),
+      status:'queued',
+      prog:0,
+      frozen:false,
+      remote:''
+    };
+    t.ms = jobMs(t);
+    // A short id of the kind an async API hands back, derived from ours so the
+    // same link always shows the same string.
+    t.remote = ('00000' + (parseInt(t.id.slice(1), 10) * 40503 % 0xfffff).toString(16)).slice(-5);
+
+    // Only an accepted request arms the guard. Arming it on a rejected one
+    // would swallow the next, genuinely different, prompt typed a beat later.
+    state.lockUntil = t0 + 260;
+    state.lastSig = sig;
+    state.lastAt = t0;
+
+    state.tasks.push(t);
+    state.seed = null;
+
+    // The request left the composer the moment it was accepted: leaving the
+    // words behind is how the same generation gets paid for twice.
+    promptEl.value = '';
+    promptEl.style.height = '';
+    state.refs = [];
+
+    pump();
+    withView(() => renderAll());
+    promptEl.focus();
   }
 
   function renderSpend(){
-    $('#spendVal').textContent = money(state.spend);
+    const el = $('#spendVal');
+    const txt = money(state.spend);
+    if (el.textContent !== txt){
+      el.textContent = txt;
+      // The number is the only receipt on screen; a change that happens
+      // silently is a change the user will later dispute.
+      if (state.spend > 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+        el.classList.remove('bump');
+        void el.offsetWidth;
+        el.classList.add('bump');
+      }
+    }
     $('#spendCnt').textContent = `· ${state.spendCount} 次`;
   }
 
   /* ───────── modes ───────── */
 
-  function placePill(){
-    const pill = $('#modePill');
-    const active = document.querySelector('.mode[aria-selected="true"]');
-    if (!active) return;
-    const host = $('#modes').getBoundingClientRect();
-    const r = active.getBoundingClientRect();
-    pill.style.width = r.width + 'px';
-    pill.style.transform = `translateX(${r.left - host.left - 3}px)`;
+  function setMode(id){
+    if (state.mode === id) return;
+    // A model belongs to exactly one mode: keeping the old one would leave a
+    // text model sitting in the image composer. But coming back to a mode
+    // should land on the model you were using, not on whatever is first.
+    if (MODELS[state.mode].some(m => m.id === state.model)) lastPick[state.mode] = state.model;
+    state.mode = id;
+    state.busy = false;
+    const pick = MODELS[id].find(m => m.id === lastPick[id]) || MODELS[id][0];
+    // Video has no ratio control, but its canvas still needs a shape; carrying
+    // over the image mode's 1:1 would show a square viewport for a 16:9 clip.
+    if (id === 'video') state.ratio = '16:9';
+    // References ride along across modes on purpose: the picture you attached
+    // to ask about is the same picture you ask to edit. Only the capacity of
+    // the new model decides what survives.
+    adoptModel(pick);
+    renderAll();
   }
-
-  document.querySelectorAll('.mode').forEach(btn => {
-    btn.onclick = () => {
-      document.querySelectorAll('.mode').forEach(b => b.setAttribute('aria-selected', 'false'));
-      btn.setAttribute('aria-selected', 'true');
-      state.mode = btn.dataset.mode;
-      state.preview = state.mode === 'image' ? 'empty' : 'empty';
-      state.busy = false;
-      placePill();
-      renderAll();
-    };
-  });
 
   /* ───────── menu: states ───────── */
 
@@ -1543,10 +4049,58 @@
     ['empty','空态'],
     ['loading','生成中'],
     ['single','单图完成'],
-    ['quad','四图完成'],
+    ['quad','多图完成'],
+    ['burst','并发 3 路'],
     ['failed','失败态'],
     ['history','多轮历史']
   ];
+
+  /* Presets are jobs too — that is the point of the refactor. A state used to
+     be "what the canvas shows"; now it is "what is in the queue", and the
+     canvas is just its last pixel. Frozen jobs keep a review screenshot from
+     finishing mid-capture. */
+  function seedState(key){
+    stopTick();
+    // These presets are described in image params (ratio × count), so the
+    // state menu is an image-mode view by definition.
+    state.mode = 'image';
+    state.model = MODELS.image[0].id;
+    state.tasks = [];
+    // seq must not restart: a preset re-using id p1 would be handed the previous
+    // preset's DOM node by the keyed reconcile, and paintJob — seeing the same
+    // status on it — would keep showing the old picture.
+    state.seed = key;
+    const mode = 'image';
+    const add = (o) => {
+      const t = Object.assign({
+        id:'p' + (++state.seq),
+        mode, model: MODELS[mode][0].id, ratio: mode === 'video' ? '16:9' : '1:1',
+        res: state.res, vres:'1080p', dur:'5s',
+        count:1, refs:[], op: mode === 'video' ? '文生视频' : '文生图',
+        at: now(), cost: mode === 'video' ? 0.86 : 0.115,
+        status:'done', prog:1, ms:2000, prompt:'', frozen:false
+      }, o);
+      state.tasks.push(t);
+      return t;
+    };
+    if (key === 'single') add({});
+    if (key === 'quad') add({ count:4, cost:0.461 });
+    if (key === 'history'){
+      add({ at:'20:07', ratio:'1:1', cost:0.115 });
+      add({ at:'20:04', ratio:'16:9', count:4, cost:0.461 });
+      add({ at:'19:58', ratio:'9:16', cost:0.122 });
+    }
+    // The price stays on the job; it is the receipt line, not the job, that
+    // says 未计费 while the status is failed.
+    if (key === 'failed') add({ status:'failed', op:'图生图', cost:0.115, refs:[{ kind:'image', art: makeArt(3) }] });
+    if (key === 'loading') add({ status:'running', frozen:true, prog:0.42, ms:6000, op:'图生图', count:4, cost:0.461 });
+    if (key === 'burst'){
+      add({ status:'running', frozen:true, prog:0.31, ms:8000, op:'图生图', count:4, cost:0.461 });
+      add({ status:'running', frozen:true, prog:0.57, ms:8000, ratio:'16:9', cost:0.13 });
+      add({ status:'running', frozen:true, prog:0.78, ms:8000, ratio:'9:16', count:2, cost:0.26 });
+      add({ status:'queued', prog:0, ratio:'4:3', count:2, cost:0.26 });
+    }
+  }
 
   let menuEl = null;
   $('#stateBtn').onclick = (e) => {
@@ -1558,13 +4112,10 @@
       const b = document.createElement('button');
       b.className = 'menu-item';
       b.type = 'button';
-      b.setAttribute('aria-checked', String(state.preview === key));
+      b.setAttribute('aria-checked', String(state.seed === key));
       b.innerHTML = `${label}${ICON.check}`;
       b.onclick = () => {
-        state.preview = key;
-        state.mode = 'image';
-        document.querySelectorAll('.mode').forEach(x => x.setAttribute('aria-selected', String(x.dataset.mode === 'image')));
-        placePill();
+        seedState(key);
         renderAll();
         m.remove(); menuEl = null;
       };
@@ -1585,16 +4136,24 @@
 
   $('#themeBtn').onclick = () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
+    const apply = () => { document.documentElement.dataset.theme = next; };
+    // White to black in one frame is a flash, not a theme change. Where the
+    // browser can snapshot the page it cross-dissolves; where it cannot, the cut
+    // stays instant — a wrong transition is worse than none.
+    if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      document.startViewTransition(apply);
+    } else apply();
   };
 
   /* ───────── annotations ───────── */
 
   const NOTES = [
-    { sel:'.modes', text:'<b>顶栏只剩导航</b>模式切换是页面级状态，留在这里；模型和分组已经下沉到输入框。', side:'right' },
-    { sel:'.frame', text:'<b>画布就是参数的反馈</b>占位严格按所选比例铺开，选 1:1 就是方的，出图不会再跳一次尺寸。', side:'right' },
-    { sel:'.chip', text:'<b>模型 · 分组合成一个决策</b>选模型和选价目是同一件事的两面，不再分两处、不再重复出现。', side:'above' },
-    { sel:'.price', text:'<b>价格贴着生成按钮</b>从「顶部一条孤立灰字」变成「这一次要花多少」，紧挨动作。', side:'above' }
+    { sel:'#modelChip', text:'<b>类型与模型是一颗芯片</b>字首图标即类型；点开先在顶部切类型，列表与参数跟着换。', side:'above' },
+    { sel:'.ref-add', text:'<b>参考是输入，不是参数</b>放张图就成了图生图；装不下会明说丢了几张。', side:'above' },
+    { sel:'.attach', text:'<b>聊天里的图是问题，不是参考</b>LLM 只有一颗附件按钮，不再占一整行虚线槽；贴图后才在正文上方出现缩略图。', side:'above' },
+    { sel:'.frame', text:'<b>画布就是参数的反馈</b>占位按比例铺开，出图不再跳尺寸。', side:'right' },
+    { sel:'#ratioChip', text:'<b>枚举按形状铺开</b>横 / 方 / 竖分组，灰显即不支持。', side:'above' },
+    { sel:'.price-chip', text:'<b>分组挂在价格上</b>点价格换分组，不塞进模型里。', side:'above' }
   ];
 
   function clearNotes(){
@@ -1603,6 +4162,11 @@
 
   function drawNotes(){
     clearNotes();
+    // "above" callouts are pinned by their bottom edge, never their top. The
+    // measured height of a wrapped bubble is not reliable before its final
+    // width is applied, and a top-anchored bubble that comes out shorter than
+    // measured lands on the composer it is describing.
+    let above = null;   // { topEdge } in bottom-offset space
     NOTES.forEach((n, i) => {
       const target = document.querySelector(n.sel);
       if (!target) return;
@@ -1631,8 +4195,18 @@
         // Clear the composer entirely: a bubble sitting on top of the textarea
         // it is explaining hides the thing being reviewed.
         const host = document.querySelector('.composer-inner').getBoundingClientRect();
-        top = host.top - nh - 10;
         left = r.left;
+        top = host.top - nh - 10;
+        // Two callouts anchored to chips side by side must not share a band.
+        let bottom = window.innerHeight - host.top + 10;
+        if (above && left < above.right + 8 && left + nw > above.left - 8){
+          bottom = above.topEdge + 8;
+        }
+        above = { left, right: left + nw, topEdge: bottom + nh };
+        note.style.left = Math.max(10, Math.min(left, window.innerWidth - nw - 10)) + 'px';
+        note.style.bottom = bottom + 'px';
+        note.style.top = 'auto';
+        return;
       } else {
         left = r.left + r.width / 2 - nw / 2;
         top = r.top - nh - 12;
@@ -1641,6 +4215,7 @@
       if (top < 60) top = r.bottom + 12;
       note.style.left = Math.max(10, left) + 'px';
       note.style.top = Math.max(58, top) + 'px';
+      note.style.bottom = 'auto';
     });
   }
 
@@ -1655,37 +4230,89 @@
   /* Deep-linkable states: #loading #single #quad #failed #history #notes
      #dark and #chat #video, comma-separated. Reviewers open a link instead of
      replaying clicks, and the screenshots in the PR point at the same URL. */
+  const HASH_PARTS = location.hash.replace(/^#/, '').toLowerCase().split(',').filter(Boolean);
+  // One preset per request kind, so a review link can show 图片问答 / 图生图 /
+  // 首尾帧 / 全能参考 without a file picker in a headless browser.
+  const REF_PRESETS = {
+    refs:      { mode:'image', model:'flux-3-lage',      n:2 },
+    refsslots: { mode:'video', model:'seedance-1.0-pro', slots:[0] },
+    refsomni:  { mode:'video', model:'seedance-2.0',     kinds:['image','video','audio'] }
+  };
   (function applyHash(){
-    const h = location.hash.replace(/^#/, '').toLowerCase();
-    if (!h) return;
-    for (const part of h.split(',')){
-      if (STATES.some(([k]) => k === part)) state.preview = part;
+    for (const part of HASH_PARTS){
+      if (STATES.some(([k]) => k === part)) seedState(part);
       if (part === 'notes'){ state.notes = true; $('#noteBtn').setAttribute('aria-pressed', 'true'); }
       if (part === 'dark') document.documentElement.dataset.theme = 'dark';
       if (part === 'chat' || part === 'image' || part === 'video'){
         state.mode = part;
-        document.querySelectorAll('.mode').forEach(x => x.setAttribute('aria-selected', String(x.dataset.mode === part)));
+        state.model = MODELS[part][0].id;
+        if (MODELS[part][0].res) state.res = MODELS[part][0].res;
+        if (part === 'video') state.ratio = '16:9';
       }
+    }
+    const preset = HASH_PARTS.find(p => REF_PRESETS[p]);
+    if (preset){
+      const p = REF_PRESETS[preset];
+      // An explicit mode in the same hash wins: #refs,chat has to be 图片问答,
+      // not whatever mode the preset happens to carry.
+      const explicit = HASH_PARTS.find(x => x === 'chat' || x === 'image' || x === 'video');
+      if (!explicit){
+        state.mode = p.mode;
+        state.model = p.model;
+        if (p.mode === 'video') state.ratio = '16:9';
+      }
+      state.refs = [];
+      if (p.n) for (let i = 0; i < p.n; i++) state.refs.push({ kind:'image', art: makeArt(40 + i) });
+      if (p.slots) p.slots.forEach(i => state.refs.push({ slot:i, kind:'image', art: makeArt(60 + i) }));
+      if (p.kinds) p.kinds.forEach((k, i) => state.refs.push({ kind:k, art: makeArt(70 + i) }));
     }
   })();
 
   function renderAll(){
     renderStream();
+    setAmbient();
+    // The overlay is the one piece of composer copy that is not re-rendered:
+    // a chat asks a question about the picture, it does not take a 参考图.
+    dropHintEl.textContent = state.mode === 'chat' ? '松手把图加进问题' : `松手加入${refWord()}`;
+    renderRefs();
+    syncReuse();
     renderToolbar();
     renderSpend();
-    promptEl.placeholder = {
-      chat:'问点什么…',
-      image:'描述你想要的画面…',
-      video:'描述你想要的镜头…'
-    }[state.mode];
-    hint.textContent = state.mode === 'image'
-      ? '参数只对这一次生成生效 · Enter 生成 · Shift + Enter 换行'
-      : '模型与分组跟随这条消息 · Enter 发送 · Shift + Enter 换行';
+    const hasRefs = state.refs.length > 0;
+    promptEl.placeholder = hasRefs
+      ? (state.mode === 'image' ? '描述要怎么改…'
+        : state.mode === 'video' ? '描述镜头怎么动…' : '就这张图提问…')
+      : { chat:'问点什么…', image:'描述你想要的画面…', video:'描述你想要的镜头…' }[state.mode];
+    // Keyboard hints on a touch screen are noise: the phone screenshot showed
+    // "Shift + Enter 换行" under a toolbar with no keys on it.
+    const keys = window.matchMedia('(max-width:760px)').matches ? ''
+      : state.mode === 'chat' ? ' · Enter 发送 · Shift + Enter 换行'
+      : ' · Enter 生成 · Shift + Enter 换行';
+    // The four names people use — 文本问答 / 图片问答 / 图生图 / 全能参考 — are
+    // states of one composer, not four entries. The hint is where they are
+    // read back, so nobody has to hunt for a mode that does not exist.
+    const what = state.mode === 'image' ? `${opLabel()} · 参数只对这一次生成生效`
+      : state.mode === 'video' ? `${opLabel()} · 异步出片，完成后进入历史`
+      : `${opLabel()} · 模型与分组跟随这条消息`;
+    hint.classList.toggle('warn', !!state.refNote);
+    hint.textContent = state.refNote || what + keys;
     if (state.notes) requestAnimationFrame(drawNotes);
   }
 
+  // One listener for every card: the highlight only needs the pointer's
+  // position inside the card it is currently over.
+  stream.addEventListener('pointermove', (e) => {
+    const art = e.target && e.target.closest ? e.target.closest('.art') : null;
+    if (!art) return;
+    const r = art.getBoundingClientRect();
+    if (!r.width) return;
+    art.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100).toFixed(1) + '%');
+    art.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100).toFixed(1) + '%');
+  }, { passive: true });
+
   promptEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){
+    // Holding the key down is not a second request.
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !e.repeat){
       e.preventDefault();
       run();
     }
@@ -1696,10 +4323,32 @@
     promptEl.style.height = Math.min(190, Math.max(78, promptEl.scrollHeight)) + 'px';
   });
 
-  window.addEventListener('resize', () => { placePill(); if (state.notes) drawNotes(); });
+  window.addEventListener('resize', () => { if (state.notes) drawNotes(); });
   document.addEventListener('scroll', () => { if (state.notes) requestAnimationFrame(drawNotes); }, true);
 
-  requestAnimationFrame(() => { placePill(); renderAll(); });
+  requestAnimationFrame(() => {
+    renderAll();
+    // #openmode / #openmodel / #openratio / #openres / #opencount exist for
+    // review: they open a dropdown without a click, so a screenshot can capture
+    // the state that matters without racing the first render. Match whole hash
+    // parts — "openmodel" starts with "openmode".
+    const OPENERS = {
+      openmode:'#modelChip', openmodel:'#modelChip',
+      openratio:'#ratioChip', openres:'#resChip', opencount:'#countChip'
+    };
+    HASH_PARTS.forEach(part => {
+      const el = OPENERS[part] && document.querySelector(OPENERS[part]);
+      if (el) el.click();
+    });
+    // A drag cannot be held while the page is captured, so #drop freezes the
+    // overlay the way #openratio freezes the popover.
+    if (HASH_PARTS.includes('drop')) composerEl.classList.add('dropping');
+    // Long stacks are reviewed from the tail far more often than the head.
+    if (HASH_PARTS.includes('bottom')){
+      const st = $('#stage');
+      st.scrollTop = st.scrollHeight;
+    }
+  });
 })();
 </script>
 </body>

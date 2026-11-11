@@ -37,10 +37,11 @@ import { ModeTabs } from './components/mode-tabs'
 import { PriceStrip, SpendBadge } from './components/price-strip'
 import { RequestDrawer } from './components/request-drawer'
 import { ChatWorkspace } from './chat/chat-workspace'
-import { ImageWorkspace } from './image/image-workspace'
+import { ImageStage } from './v2/image-stage'
 import { useBillingLedger } from './hooks/use-billing-ledger'
 import { useApiduoSpring } from './hooks/use-motion'
 import { buildOfficialCurl } from './lib/official-curl'
+import './styles/fluid.css'
 import './styles/motion.css'
 import { VideoWorkspace } from './video/video-workspace'
 import type { PlaygroundMode } from './types'
@@ -169,23 +170,31 @@ export function ApiduoPlayground() {
       <header className='border-border/60 flex flex-wrap items-center gap-2 border-b px-4 py-2'>
         <ModeTabs onChange={handleModeChange} value={mode} />
 
-        <Select
-          onValueChange={(value) => {
-            if (value !== null) updateConfig('model', value)
-          }}
-          value={config.model}
-        >
-          <SelectTrigger className='h-7 w-[190px] font-mono text-[11.5px]'>
-            <SelectValue placeholder={t('Select a model')} />
-          </SelectTrigger>
-          <SelectContent>
-            {visibleModels.map((model) => (
-              <SelectItem key={model.value} value={model.value}>
-                {model.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/*
+          In image mode the composer owns the model: the picker sits where the
+          parameters are, and a second dropdown in the header would let the two
+          disagree for a frame. Chat and video keep the header pair until they
+          get the same treatment.
+        */}
+        {mode === 'image' ? null : (
+          <Select
+            onValueChange={(value) => {
+              if (value !== null) updateConfig('model', value)
+            }}
+            value={config.model}
+          >
+            <SelectTrigger className='h-7 w-[190px] font-mono text-[11.5px]'>
+              <SelectValue placeholder={t('Select a model')} />
+            </SelectTrigger>
+            <SelectContent>
+              {visibleModels.map((model) => (
+                <SelectItem key={model.value} value={model.value}>
+                  {model.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Select
           onValueChange={(value) => {
@@ -213,14 +222,16 @@ export function ApiduoPlayground() {
         />
       </header>
 
-      <div className={cn('px-4 pt-1.5 pb-1')}>
-        <PriceStrip
-          group={config.group}
-          mode={mode}
-          model={config.model}
-          pricing={ledger.pricing}
-        />
-      </div>
+      {mode === 'image' ? null : (
+        <div className={cn('px-4 pt-1.5 pb-1')}>
+          <PriceStrip
+            group={config.group}
+            mode={mode}
+            model={config.model}
+            pricing={ledger.pricing}
+          />
+        </div>
+      )}
 
       {/*
         One motion.div keyed by mode, not three siblings that get swapped. The
@@ -257,12 +268,14 @@ export function ApiduoPlayground() {
         ) : null}
 
         {mode === 'image' ? (
-          <ImageWorkspace
+          <ImageStage
             expandedBillingKey={expandedBillingKey}
             group={config.group}
             ledger={ledger}
             model={config.model}
+            models={visibleModels}
             onCopyCurl={handleCopyCurl}
+            onModelChange={(value) => updateConfig('model', value)}
             onOpenRequest={handleOpenRequest}
             onToggleBilling={handleToggleBilling}
           />

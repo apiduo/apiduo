@@ -1,0 +1,1222 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/*
+ * Fluid playground.
+ *
+ * Ported from docs/prototypes/playground-layout.html, which is the design of
+ * record; this file is the same motion with the prototype's private palette
+ * swapped for the console's theme variables. Everything is scoped under `.apg`
+ * so a page that opts in cannot leak a token into the rest of the console.
+ *
+ * Three rules govern the whole file:
+ *
+ *   1. Motion is described by a spring, not a duration. A tween has an end
+ *      time, so a second press has to fight the first; a spring only has a
+ *      target and re-aims from wherever the object is now.
+ *   2. A press collapses on the frame it is received. `:active` with a
+ *      duration animates the collapse and reads as lag.
+ *   3. Light belongs to the object. The ambient wash, the glow behind a
+ *      picture and the sweep across it all derive from the same seed, so a
+ *      card is lit as one thing instead of three unrelated effects.
+ */
+
+.apg,
+.apg-pop {
+  /* Springs sampled from a damped oscillator (closure form), 41 stops each.
+     Damping / response follow the table in the prototype:
+     1.0 / .22 colour, .72 / .26 press, 1.0 / .38 movement, .78 / .34 sheet,
+     .62 / .44 landing. `--d-*` is the settle time of the curve it names —
+     linear() carries no duration of its own, so the pair travels together. */
+  --apg-quick: linear(
+    0, 0.0197, 0.0685, 0.1347, 0.2097, 0.2877, 0.3649, 0.4386, 0.5074, 0.5705,
+    0.6275, 0.6784, 0.7235, 0.7631, 0.7977, 0.8277, 0.8536, 0.876, 0.8951,
+    0.9115, 0.9254, 0.9373, 0.9473, 0.9558, 0.963, 0.9691, 0.9741, 0.9784,
+    0.982, 0.985, 0.9875, 0.9896, 0.9914, 0.9928, 0.9941, 0.9951, 0.9959,
+    0.9966, 0.9972, 0.9977, 1
+  );
+  --apg-tap: linear(
+    0, 0.0155, 0.0567, 0.1164, 0.1884, 0.2677, 0.3504, 0.4331, 0.5134, 0.5894,
+    0.66, 0.7242, 0.7816, 0.8322, 0.8759, 0.9132, 0.9443, 0.9699, 0.9904,
+    1.0064, 1.0185, 1.0272, 1.0331, 1.0366, 1.0382, 1.0383, 1.0372, 1.0353,
+    1.0328, 1.0299, 1.0268, 1.0236, 1.0204, 1.0174, 1.0146, 1.012, 1.0096,
+    1.0075, 1.0057, 1.0041, 1
+  );
+  --apg-move: linear(
+    0, 0.0202, 0.0702, 0.1377, 0.2141, 0.2932, 0.3713, 0.4457, 0.5149, 0.5781,
+    0.635, 0.6858, 0.7305, 0.7698, 0.804, 0.8335, 0.859, 0.8809, 0.8995,
+    0.9155, 0.929, 0.9404, 0.9501, 0.9583, 0.9652, 0.971, 0.9758, 0.9799,
+    0.9833, 0.9861, 0.9885, 0.9904, 0.9921, 0.9934, 0.9946, 0.9955, 0.9963,
+    0.9969, 0.9975, 0.9979, 1
+  );
+  --apg-sheet: linear(
+    0, 0.0176, 0.0635, 0.1286, 0.2057, 0.2889, 0.3739, 0.4573, 0.5368, 0.6107,
+    0.6781, 0.7384, 0.7914, 0.8374, 0.8766, 0.9095, 0.9368, 0.9589, 0.9765,
+    0.9903, 1.0007, 1.0083, 1.0136, 1.0171, 1.0191, 1.0199, 1.0198, 1.0191,
+    1.0179, 1.0164, 1.0148, 1.0131, 1.0115, 1.0098, 1.0083, 1.0069, 1.0057,
+    1.0045, 1.0036, 1.0027, 1
+  );
+  --apg-bounce: linear(
+    0, 0.0276, 0.0991, 0.199, 0.3146, 0.4357, 0.5544, 0.6652, 0.7642, 0.8495,
+    0.9201, 0.9762, 1.0188, 1.0491, 1.0688, 1.0797, 1.0835, 1.0819, 1.0764,
+    1.0684, 1.0589, 1.0488, 1.0388, 1.0294, 1.021, 1.0136, 1.0075, 1.0027,
+    0.9989, 0.9962, 0.9945, 0.9934, 0.993, 0.9931, 0.9935, 0.9942, 0.995,
+    0.9958, 0.9966, 0.9974, 1
+  );
+  --d-quick: 0.2s;
+  --d-tap: 0.3s;
+  --d-move: 0.42s;
+  --d-sheet: 0.38s;
+  --d-bounce: 0.62s;
+
+  /* The shot column. One number decides the composer, the shelf and the
+     widest a picture may get, so the three cannot drift apart at a breakpoint. */
+  --col: 574px;
+  --stage-pad: 28px;
+  --res-h: min(62vh, 560px);
+}
+
+/* The shell layout is only for the page root. The popover shares the tokens
+   above (it is portalled into <body>, outside this element) but must not
+   inherit `display: flex` or `isolation` — it is a fixed-position panel. */
+.apg {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Old engines cannot parse linear(), and an invalid timing function does not
+   fall back to `ease` — it poisons the whole `transition` shorthand, which
+   then resolves to `all 0s`, i.e. nothing moves at all. */
+@supports not (transition-timing-function: linear(0, 1)) {
+  .apg,
+  .apg-pop {
+    --apg-quick: cubic-bezier(0.4, 0, 0.2, 1);
+    --apg-tap: cubic-bezier(0.34, 1.42, 0.64, 1);
+    --apg-move: cubic-bezier(0.32, 0.72, 0, 1);
+    --apg-sheet: cubic-bezier(0.3, 1.12, 0.6, 1);
+    --apg-bounce: cubic-bezier(0.22, 1.35, 0.36, 1);
+  }
+}
+
+/* ───────── ambient ───────── */
+
+/* One family lit at a time, four layers cross-fading. `background` cannot be
+   interpolated between two gradients — it snaps — so the colour change has to
+   be an opacity change on stacked layers. */
+.apg-ambient {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: min(70vh, 620px);
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.apg-ambient i {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(
+    64% 46% at 50% 0%,
+    color-mix(in oklch, var(--amb) 36%, transparent),
+    transparent 76%
+  );
+  transition: opacity 1.15s var(--apg-move);
+}
+
+.apg-ambient i.on {
+  opacity: 0.85;
+}
+
+.apg-ambient .g0 {
+  --amb: oklch(0.64 0.13 196);
+}
+.apg-ambient .g1 {
+  --amb: oklch(0.74 0.145 66);
+}
+.apg-ambient .g2 {
+  --amb: oklch(0.62 0.08 52);
+}
+.apg-ambient .g3 {
+  --amb: var(--primary);
+}
+
+.dark .apg-ambient i.on {
+  opacity: 0.55;
+}
+
+/* ───────── stage ───────── */
+
+.apg-stage {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.apg-stage-inner {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  padding: var(--stage-pad) 16px;
+  width: 100%;
+  max-width: var(--col);
+  margin: 0 auto;
+}
+
+/* Anything shorter than a result should sit slightly above centre: a block
+   optically centred in a tall column reads as "a bit low". */
+.apg-stage-inner[data-empty='true'] {
+  padding-bottom: 8vh;
+}
+
+/* ───────── examples shelf ───────── */
+
+.apg-suggest {
+  width: 100%;
+}
+
+.apg-suggest-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 10px;
+}
+
+.apg-suggest-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.apg-suggest-sub {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.apg-suggest-sub[data-empty='true'] {
+  padding-bottom: 8px;
+}
+
+.apg-shuffle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color var(--d-quick) var(--apg-quick),
+    background-color var(--d-quick) var(--apg-quick);
+}
+.apg-shuffle:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.apg-ex-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.apg-ex {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  animation: apg-ex-in var(--d-move) var(--apg-move) backwards;
+  /* `backwards`, never `both`: the fill would pin `transform` at its end frame
+     and silently kill the hover lift below. */
+  transition: transform var(--d-move) var(--apg-move);
+}
+
+.apg-ex:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+.apg-ex-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.apg-ex-thumb {
+  display: block;
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 11px;
+  background: var(--muted);
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 0.06),
+    inset 0 0 0 1px color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.apg-ex-thumb > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.apg-ex-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+}
+
+.apg-ex-model {
+  font-family: var(--font-mono, ui-monospace);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apg-ex-ratio {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace);
+  opacity: 0.8;
+}
+
+.apg-ex-title {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--foreground);
+  line-height: 1.35;
+}
+
+.apg-ex-p {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ───────── result card ───────── */
+
+.apg-round {
+  position: relative;
+  isolation: isolate;
+  animation: apg-rise var(--d-bounce) var(--apg-bounce) backwards;
+}
+
+/* The halo is the picture's own average colour, not a grey drop shadow: a warm
+   picture on a cool page otherwise reads as pasted on. */
+.apg-round::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 4%;
+  /* Two constraints, not one: the halo may never be wider than the picture
+     (which is `1 / cols` of the column) and never taller than the height cap.
+     Without the first, a two-up grid is lit by one blob the width of both. */
+  width: min(
+    calc((100% - (var(--cols, 1) - 1) * 8px) / var(--cols, 1)),
+    calc(var(--res-h) * var(--arn, 1))
+  );
+  aspect-ratio: var(--arn, 1);
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--glow, transparent);
+  filter: blur(46px) saturate(1.1);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.dark .apg-round::before {
+  opacity: 0.34;
+}
+
+.apg-round-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 7px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.apg-round-meta .mono {
+  font-family: var(--font-mono, ui-monospace);
+  letter-spacing: -0.01em;
+}
+
+.apg-round-meta .sep {
+  opacity: 0.4;
+}
+
+.apg-round-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.apg-art {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--muted);
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 0.06),
+    inset 0 0 0 1px color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.apg-art {
+  aspect-ratio: var(--arn, 1);
+  max-height: var(--res-h);
+}
+
+.apg-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: apg-media-in 550ms var(--apg-move) backwards;
+}
+
+.apg-art[data-auto='true'] {
+  aspect-ratio: auto;
+}
+
+.apg-art[data-auto='true'] img {
+  height: auto;
+  max-height: var(--res-h);
+  object-fit: contain;
+}
+
+/* One pass of light as the picture lands. On hover it would read as a fault:
+   the same sweep every time the pointer crosses a card. */
+.apg-art .land {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    104deg,
+    transparent 34%,
+    oklch(1 0 0 / 0.34) 48%,
+    transparent 62%
+  );
+  transform: translateX(-120%);
+  animation: apg-land 1.15s 0.1s var(--apg-quick) both;
+}
+
+/* Pointer-tracked highlight. Hover-capable pointers only: on touch,
+   `pointermove` fires once per tap and leaves a stuck hot spot. */
+@media (hover: hover) {
+  .apg-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(
+      42% 42% at var(--mx, 50%) var(--my, 50%),
+      oklch(1 0 0 / 0.26),
+      transparent 72%
+    );
+    mix-blend-mode: soft-light;
+    transition: opacity var(--d-move) var(--apg-move);
+  }
+
+  .apg-art:hover::after {
+    opacity: 1;
+  }
+}
+
+.apg-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.apg-grid[data-count='1'] {
+  grid-template-columns: 1fr;
+}
+
+.apg-grid[data-count='2'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.apg-grid[data-count='3'],
+.apg-grid[data-count='4'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* A single picture is capped by height, not width: at 574 px wide a 1:1 image
+   would push the composer off screen. `--arn` carries the aspect ratio so the
+   box and its halo agree. */
+.apg-frame {
+  position: relative;
+  width: 100%;
+  max-height: var(--res-h);
+  margin: 0 auto;
+}
+
+/* ───────── tool shelf ───────── */
+
+.apg-tools {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: max-content;
+  max-width: calc(100% - 12px);
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--background) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  backdrop-filter: blur(14px) saturate(1.6);
+  box-shadow:
+    0 8px 24px -14px oklch(0 0 0 / 0.4),
+    0 0 0 1px color-mix(in oklch, var(--foreground) 9%, transparent);
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  pointer-events: none;
+  transition:
+    opacity 0.16s var(--apg-quick),
+    transform var(--d-sheet) var(--apg-sheet);
+}
+
+/* A hairline of light along the top edge: glass catches the room. */
+.apg-tools::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    oklch(1 0 0 / 0.55),
+    oklch(1 0 0 / 0) 46%
+  );
+  opacity: 0.3;
+  mix-blend-mode: overlay;
+}
+
+.apg-art:hover .apg-tools,
+.apg-art:focus-within .apg-tools {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.apg-tool {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    background-color 0.13s var(--apg-quick),
+    color 0.13s var(--apg-quick),
+    opacity 0.18s var(--apg-quick),
+    transform var(--d-tap) var(--apg-tap);
+}
+
+.apg-art:hover .apg-tool,
+.apg-art:focus-within .apg-tool {
+  opacity: 1;
+  transform: none;
+  transition-delay: calc(var(--ti, 0) * 14ms);
+}
+
+.apg-tool:hover {
+  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+  color: var(--foreground);
+}
+
+.apg-tool:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.apg-tool svg {
+  width: 15px;
+  height: 15px;
+}
+
+.apg-tool-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  opacity: 0;
+  transition: opacity 0.18s var(--apg-quick);
+}
+
+.apg-art:hover .apg-tool-sep,
+.apg-art:focus-within .apg-tool-sep {
+  opacity: 1;
+}
+
+/* ───────── pending ───────── */
+
+.apg-pending {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--foreground) 4%, var(--background));
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+
+.apg-pending::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 24%,
+    color-mix(in oklch, var(--foreground) 8%, transparent) 46%,
+    transparent 68%
+  );
+  background-size: 220% 100%;
+  animation: apg-shimmer 1.7s ease-in-out infinite;
+}
+
+.apg-pending-label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+
+/* ───────── composer ───────── */
+
+.apg-composer {
+  flex: 0 0 auto;
+  padding: 0 16px 10px;
+}
+
+.apg-composer-inner {
+  position: relative;
+  width: 100%;
+  max-width: var(--col);
+  margin: 0 auto;
+  padding: 10px 10px 8px;
+  border-radius: 18px;
+  background: var(--background);
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 0.06),
+    0 18px 44px -30px oklch(0 0 0 / 0.45),
+    0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent);
+  transition:
+    box-shadow var(--d-move) var(--apg-move),
+    transform var(--d-move) var(--apg-move);
+}
+
+.apg-composer-inner:focus-within {
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 0.06),
+    0 22px 52px -30px oklch(0 0 0 / 0.5),
+    0 0 0 1px color-mix(in oklch, var(--primary) 42%, transparent);
+}
+
+.apg-prompt {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  max-height: 168px;
+  resize: none;
+  border: 0;
+  background: transparent;
+  padding: 2px 4px 6px;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--foreground);
+  outline: none;
+}
+
+.apg-prompt::placeholder {
+  color: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
+}
+
+/* ───────── toolbar ───────── */
+
+.apg-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.apg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--foreground);
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.13s var(--apg-quick),
+    color 0.13s var(--apg-quick),
+    transform var(--d-tap) var(--apg-tap);
+}
+
+.apg-chip:hover {
+  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+}
+
+.apg-chip[data-tone='quiet'] {
+  color: var(--muted-foreground);
+}
+
+.apg-chip .mono {
+  font-family: var(--font-mono, ui-monospace);
+  letter-spacing: -0.01em;
+}
+
+.apg-chip svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.7;
+}
+
+.apg-chip .chev {
+  width: 11px;
+  height: 11px;
+  opacity: 0.45;
+}
+
+/* `margin-left:auto` rather than a spacer element: when the chips wrap on a
+   narrow screen the whole group still lands flush right, whereas a spacer would
+   absorb the free space on the first line and leave the price at the far left. */
+.apg-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.apg-price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.apg-price b {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.apg-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    filter 0.13s var(--apg-quick),
+    transform var(--d-tap) var(--apg-tap);
+}
+
+.apg-send:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.apg-send:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.apg-send svg {
+  width: 13px;
+  height: 13px;
+}
+
+.apg-hint {
+  max-width: var(--col);
+  margin: 7px auto 0;
+  font-size: 10.5px;
+  text-align: center;
+  color: color-mix(in oklch, var(--muted-foreground) 82%, transparent);
+}
+
+/* ───────── popover ───────── */
+
+.apg-pop {
+  position: fixed;
+  z-index: 60;
+  min-width: 200px;
+  max-width: min(340px, calc(100vw - 24px));
+  overflow: hidden;
+  border-radius: 13px;
+  background: var(--background);
+  box-shadow:
+    0 24px 60px -22px oklch(0 0 0 / 0.3),
+    0 6px 18px -12px oklch(0 0 0 / 0.22),
+    0 0 0 1px color-mix(in oklch, var(--foreground) 11%, transparent);
+  /* Written by the placement pass: the panel has to grow out of the control
+     that opened it, and `50% 50%` (the default) means it grows out of itself. */
+  transform-origin: var(--pop-ox, left) var(--pop-oy, bottom);
+  animation: apg-pop-in var(--d-sheet) var(--apg-sheet) both;
+}
+
+.apg-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 6px;
+  font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.apg-pop-body {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+
+.apg-pop-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid
+    color-mix(in oklch, var(--foreground) 8%, transparent);
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+}
+
+/* model rows */
+.apg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s var(--apg-quick);
+}
+
+.apg-row:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.apg-row[aria-selected='true'] {
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+}
+
+.apg-row-main {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.apg-row-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 11.5px;
+  color: var(--foreground);
+  letter-spacing: -0.01em;
+}
+
+.apg-row-desc {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+}
+
+.apg-row-price {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.apg-newtag {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+  color: var(--apiduo-ink, var(--primary));
+  font-family: inherit;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.apg-check {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+  color: var(--primary);
+}
+
+/* ratio tiles: a shape says "portrait" faster than the label does */
+.apg-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 2px;
+}
+
+.apg-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color 0.12s var(--apg-quick),
+    color 0.12s var(--apg-quick);
+}
+
+.apg-tile:hover {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+
+.apg-tile[aria-pressed='true'] {
+  background: color-mix(in oklch, var(--primary) 11%, transparent);
+  color: var(--apiduo-ink, var(--primary));
+}
+
+.apg-tile-box {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+}
+
+.apg-tile-box i {
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+.apg-tile-label {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 9.5px;
+  letter-spacing: -0.01em;
+}
+
+/* ───────── motion ───────── */
+
+@keyframes apg-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes apg-ex-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes apg-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.955);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes apg-land {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes apg-media-in {
+  from {
+    opacity: 0;
+    filter: blur(9px) saturate(0.85);
+    transform: scale(1.02);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+}
+
+@keyframes apg-shimmer {
+  from {
+    background-position: -60% 0;
+  }
+  to {
+    background-position: 160% 0;
+  }
+}
+
+/* ───────── press discipline (last, so it wins) ───────── */
+
+/* A press has to land on the frame it arrives in. Without this the 300 ms
+   spring animates the collapse too, and the button feels soft rather than
+   heavy. Amplitude is graded by area: a 1 % dip on a card is as visible as
+   8 % on an icon. */
+:is(
+    .apg-chip,
+    .apg-send,
+    .apg-tool,
+    .apg-tile,
+    .apg-ex,
+    .apg-row,
+    .apg-shuffle
+  ):active:not(:disabled) {
+  transition-duration: 0s;
+}
+
+.apg-chip:active:not(:disabled),
+.apg-send:active:not(:disabled),
+.apg-shuffle:active:not(:disabled),
+.apg-row:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.apg-tool:active:not(:disabled),
+.apg-tile:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.apg-ex:active:not(:disabled) {
+  transform: scale(0.994);
+}
+
+/* ───────── responsive ───────── */
+
+@media (max-width: 640px) {
+  .apg {
+    --col: 100%;
+    --stage-pad: 16px;
+    --res-h: min(52vh, 420px);
+  }
+
+  .apg-ex-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .apg-ex {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .apg-ex-thumb {
+    width: 96px;
+    flex: 0 0 auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  .apg-ex-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .apg-ex-p {
+    -webkit-line-clamp: 2;
+  }
+
+  .apg-composer {
+    padding: 0 10px 8px;
+  }
+
+  .apg-hint {
+    display: none;
+  }
+}
+
+@media (hover: none) {
+  /* No hover means the shelf never reaches opacity 1 on its own. */
+  .apg-tools {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    pointer-events: auto;
+  }
+
+  .apg-tool {
+    opacity: 1;
+    transform: none;
+  }
+
+  .apg-tool-sep {
+    opacity: 1;
+  }
+}
+
+/* ───────── degradation ───────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .apg {
+    --d-quick: 1ms;
+    --d-tap: 1ms;
+    --d-move: 1ms;
+    --d-sheet: 1ms;
+    --d-bounce: 1ms;
+  }
+
+  .apg-round,
+  .apg-ex {
+    animation: none;
+  }
+
+  /* The sweep and the pointer highlight exist only as motion; leaving them in
+     paints a permanent diagonal streak and a stuck hot spot. */
+  .apg-art .land,
+  .apg-art::after {
+    display: none;
+  }
+
+  .apg-pending::after {
+    animation: none;
+    background-image: none;
+  }
+
+  .apg-ambient i {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .apg-tools {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--background);
+  }
+
+  .apg-round::before {
+    display: none;
+  }
+
+  .apg-ambient i.on {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-contrast: more) {
+  /* 2px, not 1.5px: at 1x the browser snaps 1.5 down to 1 and the rule stops
+     changing anything. */
+  .apg-composer-inner {
+    box-shadow:
+      0 0 0 2px var(--foreground),
+      0 0 0 3px var(--background);
+  }
+
+  .apg-chip {
+    box-shadow: inset 0 0 0 1px
+      color-mix(in oklch, var(--foreground) 45%, transparent);
+  }
+
+  .apg-art {
+    box-shadow: inset 0 0 0 2px var(--foreground);
+  }
+}
