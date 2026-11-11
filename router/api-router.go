@@ -91,6 +91,9 @@ func SetApiRouter(router *gin.Engine) {
 		// wildcard segment share a level, so /apiduo/trace/:id cannot coexist with
 		// /apiduo/trace/config.
 		apiRouter.GET("/apiduo/trace/detail/:trace_id", middleware.AdminAuth(), controller.GetApiduoTraceDetail)
+		// 图片外置后的唯一公开入口：URL 写在 span 正文里，Langfuse 是从另一个
+		// 源、没有 apiduo 会话去加载它的。id 由 Langfuse 按内容生成、不可枚举。
+		apiRouter.GET("/apiduo/trace/media/:media_id", controller.GetApiduoTraceMedia)
 		// APIDUO:trace:END
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)

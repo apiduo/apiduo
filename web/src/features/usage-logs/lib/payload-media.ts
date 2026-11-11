@@ -44,6 +44,8 @@ export interface MediaItem {
   key: string
   /** Ready for <img src>: a data URI or an http(s) URL. */
   src: string
+  /** Full-resolution source when `src` is only a thumbnail. */
+  full?: string
   /** Caption text, already formatted: "PNG · 480 KB" or "URL". */
   label: string
   /** Remote sources are the only ones that can be opened in a new tab. */
@@ -67,6 +69,13 @@ const MAX_RENDER_BYTES = 4 * 1024 * 1024
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif|bmp)(?:[?#]|$)/i
 const HTTP_URL = /^https?:\/\//i
+/**
+ * A URL this gateway minted for an externalized image. The bytes live in the
+ * trace store, not in the payload, so the tile loads a 512 px JPEG instead of
+ * the multi-megabyte original; `full` keeps the original for the zoom layer.
+ */
+const APIDUO_MEDIA_URL = /\/api\/apiduo\/trace\/media\/[A-Za-z0-9_-]{6,64}\.(png|jpe?g|webp|gif)(?:[?#]|$)/i
+const THUMB_WIDTH = 512
 /** SVG is excluded on purpose: it is a document, not a picture. */
 const SAFE_MIME = /^image\/(png|jpe?g|webp|gif|avif|bmp)$/i
 
@@ -139,6 +148,20 @@ function looksLikeRemoteImage(url: string): boolean {
   return HTTP_URL.test(url) && IMAGE_EXT.test(url)
 }
 
+/** `…/media/abc123.png` → `PNG`; anything else keeps the generic caption. */
+function mediaLabel(url: string): string | null {
+  const m = /\.([A-Za-z0-9]{2,4})(?:[?#]|$)/.exec(url)
+  if (!m) return null
+  const ext = m[1].toLowerCase()
+  if (ext === 'jpg' || ext === 'jpeg') return 'JPEG'
+  return ext.toUpperCase()
+}
+
+/** Appends the width the media proxy understands; it ignores everything else. */
+function thumbnailUrl(url: string): string {
+  return `${url}${url.includes('?') ? '&' : '?'}w=${THUMB_WIDTH}`
+}
+
 /**
  * Scans `root` for images.
  *
@@ -175,6 +198,17 @@ export function scanMedia(root: unknown): MediaScan {
   }
 
   const takeUrl = (value: string, marker: string): string => {
+    if (APIDUO_MEDIA_URL.test(value)) {
+      // Our own externalized image: the tile can be a thumbnail while the
+      // zoom layer still opens the original.
+      const label = mediaLabel(value) ?? marker
+      const key = `m${items.length + 1}`
+      if (items.length >= MAX_ITEMS) {
+        return `[${label} · over the ${MAX_ITEMS}-image cap]`
+      }
+      items.push({ key, src: thumbnailUrl(value), full: value, label, remote: true })
+      return `[image ${items.length} · ${label}]`
+    }
     return add(value, marker, true)
   }
 
@@ -200,7 +234,9 @@ export function scanMedia(root: unknown): MediaScan {
       'revised_prompt' in rec
 
     const b64 = rec.b64_json
-    if (typeof b64 === 'string' && b64.length > 40) {
+    if (typeof b64 === 'string' && HTTP_URL.test(b64)) {
+      put('b64_json', takeUrl(b64, 'URL'))
+    } else if (typeof b64 === 'string' && b64.length > 40) {
       const mime = mimeFromFormat(rec.output_format) ?? 'image/png'
       const bytes = base64Bytes(b64)
       if (bytes > MAX_RENDER_BYTES) {
@@ -221,7 +257,9 @@ export function scanMedia(root: unknown): MediaScan {
 
     // 2. Anthropic image block: {type:"image", source:{type:"base64", …}}.
     const source = asRecord(rec.source)
-    if (source && typeof source.data === 'string' && source.data.length > 40) {
+    if (source && typeof source.data === 'string' && HTTP_URL.test(source.data)) {
+      put('source', { ...source, data: takeUrl(source.data, 'URL') })
+    } else if (source && typeof source.data === 'string' && source.data.length > 40) {
       const mime =
         typeof source.media_type === 'string' && SAFE_MIME.test(source.media_type)
           ? source.media_type
@@ -239,6 +277,10 @@ export function scanMedia(root: unknown): MediaScan {
     for (const key of ['inlineData', 'inline_data']) {
       const part = asRecord(rec[key])
       if (!part || typeof part.data !== 'string' || part.data.length <= 40) continue
+      if (HTTP_URL.test(part.data)) {
+        put(key, { ...part, data: takeUrl(part.data, 'URL') })
+        continue
+      }
       let declared = ''
       if (typeof part.mimeType === 'string') declared = part.mimeType
       else if (typeof part.mime_type === 'string') declared = part.mime_type

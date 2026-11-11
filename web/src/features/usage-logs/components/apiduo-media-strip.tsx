@@ -96,7 +96,7 @@ export function MediaStrip({ items }: { items: MediaItem[] }) {
           className='fixed inset-0 z-[70] flex cursor-zoom-out items-center justify-center bg-black/75 p-6'
         >
           <img
-            src={zoom.src}
+            src={zoom.full ?? zoom.src}
             alt={zoom.label}
             referrerPolicy='no-referrer'
             onClick={(event) => event.stopPropagation()}

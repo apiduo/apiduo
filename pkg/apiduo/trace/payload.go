@@ -133,19 +133,31 @@ func binaryPlaceholder(data []byte) string {
 // Parsing and redaction happen here, in the flush worker — the request path
 // never runs either (docs §3.4 / §3.6).
 func BuildExportBody(conf *Config, snaps []*Snapshot) []byte {
+	return buildExportBody(conf, snaps, nil)
+}
+
+// BuildExportBodyWithMedia is BuildExportBody plus image externalization.
+// The exporter calls this one; tests keep the plain entry point so they do
+// not need a fake media service. A nil uploader anywhere downstream simply
+// leaves every payload byte-identical to the plain path.
+func BuildExportBodyWithMedia(conf *Config, snaps []*Snapshot) []byte {
+	return buildExportBody(conf, snaps, newMediaUploader(conf))
+}
+
+func buildExportBody(conf *Config, snaps []*Snapshot, up *mediaUploader) []byte {
 	var root strings.Builder
 	root.WriteString(`{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"apiduo-gateway"}}]},"scopeSpans":[{"scope":{"name":"apiduo.trace","version":"1"},"spans":[`)
 	for i, sn := range snaps {
 		if i > 0 {
 			root.WriteByte(',')
 		}
-		writeSpan(&root, conf, sn)
+		writeSpan(&root, conf, sn, up)
 	}
 	root.WriteString("]}]}]}")
 	return []byte(root.String())
 }
 
-func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot) {
+func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot, up *mediaUploader) {
 	var j jsonBuf
 
 	j.attrStr("langfuse.observation.type", "generation")
@@ -204,13 +216,20 @@ func writeSpan(b *strings.Builder, conf *Config, sn *Snapshot) {
 	if sn.TtftMs > 0 {
 		j.attrInt("apiduo.ttft_ms", sn.TtftMs)
 	}
+	// Images are lifted out *before* redaction, for two reasons: the rules
+	// are regexes over the whole string, and running six of them across a
+	// 1.7 MB base64 blob is pure waste; worse, a digit run inside base64 can
+	// match the phone/card rules and corrupt the picture before we get to
+	// decode it.
 	if len(sn.Input) > 0 {
-		text := redactForExport(conf, binaryPlaceholder(sn.Input))
+		text := up.rewrite(binaryPlaceholder(sn.Input), sn.TraceID, "input")
+		text = redactForExport(conf, text)
 		j.attrStr("langfuse.observation.input", text)
 		j.attrStr("gen_ai.prompt", text)
 	}
 	if len(sn.Output) > 0 {
-		text := redactForExport(conf, formatOutput(sn))
+		text := up.rewrite(formatOutput(sn), sn.TraceID, "output")
+		text = redactForExport(conf, text)
 		j.attrStr("langfuse.observation.output", text)
 		j.attrStr("gen_ai.completion", text)
 	}

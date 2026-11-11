@@ -74,7 +74,29 @@
 # 3139 → 3140、3146 → 3147 同一现象：本地工作树带未提交的并行改动，
 # 逐文件的 diff 基线与 CI 的干净检出不完全等价。预算卡的是上界，
 # 记 CI 值即可，不再为这 1 行追根因。
-files	112
-blocks	340
-added	3209
+# 2026-11-11 OpenAI 图像异步 + 方舟 Seedance 预设（显式上调一次
+# files +3 / blocks +4 / added +30，deleted 不变）：
+# - files +3 全部是新增的 apiduo 专有文件，逻辑无处可拆：
+#   constant/apiduo_image_async.go（客户端入口路径的唯一来源，分发器、路由、
+#   前端预设三处共用）、controller/apiduo_image_async.go（任务查询端点）、
+#   router/apiduo_image_async_alias.go（GET 查询路由 + POST 接管分发器 +
+#   跨重入的 task_action 头桥）。测试文件不计入 files。
+# - blocks +4 是四个不可替代的挂接点：
+#   ① constant/task.go：多一个 TaskActionImageGeneration（任务日志按 action 聚合，
+#      借用 text_to_video 会把图像任务算进视频统计）；
+#   ② router/main.go：注册图像异步路由；
+#   ③ router/video-router.go：/v1/video/generations 链上插 task_action 头桥。
+#      重入走 engine.HandleContext → c.reset() 会清空 c.Keys，动作只能靠请求头
+#      过河，桥必须长在这条链上；
+#   ④ router/task-plugin-protocol-router.go：在注册处给 openai_image.generate
+#      前置接管器。写进 taskPluginProtocolHandlers 里要改函数签名，那是删改
+#      上游行，比新增一行更贵 —— 换成注册处前置，新增 9 行、零删改。
+# - added +30 即上述挂接点与标记块自身的行数（4 个块约 8 行标记 + 约 22 行代码）。
+
+files	115
+blocks	344
+# 2026-11-11 轨迹图片外置（+3 行）：api-router.go 的 APIDUO:trace 块里多一条
+# 公开媒体路由。媒体 URL 写在 span 正文里、由 Langfuse 从另一个源加载，只能挂在
+# 公开路由上；路由注册没有第二个不占预算的落点。
+added	3248
 deleted	137

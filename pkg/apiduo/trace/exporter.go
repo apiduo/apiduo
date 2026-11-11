@@ -176,7 +176,7 @@ func (e *exporter) flush(route *Config, batch []*Snapshot) {
 	// redaction ON must not have to restart the process for it to take
 	// effect — a compliance switch that needs a deploy is a compliance
 	// switch that will be wrong for a while.
-	body := BuildExportBody(liveExportConfig(route), batch)
+	body := BuildExportBodyWithMedia(liveExportConfig(route), batch)
 	if err := e.post(route, body); err != nil {
 		log.Printf("[apiduo-trace] export failed (%d spans dropped after retry): %v", len(batch), err)
 	}

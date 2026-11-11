@@ -50,6 +50,10 @@ type Config struct {
 	PublicKey  string // Basic auth user (pk-lf-...)
 	SecretKey  string // Basic auth password, never leaves this process
 	ProjectID  string // for the console jump link
+	// MediaBaseURL is the browser-facing origin used for externalized image
+	// URLs (e.g. https://apiduo.cn). Empty disables externalization entirely:
+	// a URL only we can resolve is worse than the base64 it replaced.
+	MediaBaseURL string
 	// Policy decides sampling from the request's model and the wall clock.
 	// One ordered rule list covers "per model", "exclude these" and "business
 	// hours only" so the console cannot drift into three conflicting sources.
@@ -234,6 +238,7 @@ func loadFromEnv() *Config {
 		Redact:          defaultRedact,
 		Release:         os.Getenv("LANGFUSE_RELEASE"),
 		Environment:     defaultEnvironment,
+		MediaBaseURL:    strings.TrimRight(strings.TrimSpace(os.Getenv("LANGFUSE_MEDIA_BASE_URL")), "/"),
 	}
 }
 
