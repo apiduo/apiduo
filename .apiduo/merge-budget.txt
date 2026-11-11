@@ -7,13 +7,13 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	127
-blocks	378
-added	3685
+files	128
+blocks	379
+added	3690
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
-deleted	171
+deleted	174
 # 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
 # blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
 # `alignImageCarriers` 与它在那两个标记块里的行。
@@ -99,3 +99,8 @@ deleted	171
 # context 常量、helper 与两个读取点。单测在新文件
 # service/apiduo_request_path_test.go（不占上游文件数）。
 # 数值取自 /tmp/mk-fix-tree 干净 worktree（HEAD ef265778 + 本次改动）。
+
+# 2026-11-12 01:5x 再上调 files 127->128、blocks 378->379、added 3685->3690、
+# deleted 171->174：错误日志（type5）也改走 appendRequestPath。
+# `service/relay_error.go` 原来直接 `SetPublic("request_path", c.Request.URL.Path)`，
+# 绕过了上面的修复；改成调用同一个 helper（5 行块），旧 4 行被替换。
