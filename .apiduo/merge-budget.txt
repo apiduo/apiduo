@@ -8,8 +8,8 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	124
-blocks	368
-added	3545
+blocks	370
+added	3574
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
@@ -49,3 +49,9 @@ deleted	162
 #   inline style 里的常量，CSS 覆盖不了，只能改这一行 —— 上游原语，故计 1 块。
 # - added 11 行 = 4 行标记 + 4 行说明 + 常量行 + 两处注释；deleted 2 行是原常量被替换。
 # - 图标本身（CLIENT_ICONS）在 apiduo-mcp/clients.tsx 里，不进上游预算。
+
+# 2026-11-11 23:4x 上调 blocks 368 -> 370、added 3545 -> 3574（+2 块 / +29 行）：
+# 任务日志「制品」对 8001 图片任务完全空白（视频有 legacy_content_url 兜底）。
+# 两处挂接点都在上游 controller/task.go：writeTaskArtifacts 补一个 image 条目、
+# TaskArtifactContent 放行 key=image 的代理。判定与投影规则写在新文件
+# controller/apiduo_task_artifact.go（不占上游文件数）。

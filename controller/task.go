@@ -124,6 +124,22 @@ func writeTaskArtifacts(c *gin.Context, task *model.Task, dashboard bool) {
 		}
 		response["legacy_content_url"] = legacyContentURL
 	}
+	// APIDUO:legacy-image-artifact:BEGIN
+	// 图片任务没有插件制品：补一个 image 条目，否则「制品」弹窗永远是空的。
+	if legacyImageArtifactAvailable(task) {
+		imageURL, buildErr := service.BuildTaskArtifactContentURL(task.TaskID, "image")
+		if buildErr != nil {
+			writeTaskArtifactError(c, http.StatusInternalServerError, "artifact_url_error", "Failed to build artifact content URL")
+			return
+		}
+		items = append(items, taskArtifactResponse{
+			Key:        "image",
+			Type:       "image",
+			ContentURL: imageURL,
+		})
+		response["artifacts"] = items
+	}
+	// APIDUO:legacy-image-artifact:END
 	if dashboard {
 		common.ApiSuccess(c, response)
 		return
@@ -335,6 +351,19 @@ func TaskArtifactContent(c *gin.Context) {
 		return
 	}
 	if !taskHasPluginExecution(task) {
+		// APIDUO:legacy-image-artifact:BEGIN
+		if artifactKey == "image" && legacyImageArtifactAvailable(task) {
+			descriptor := &relaychannel.TaskContentRequest{
+				URL:            task.GetResultURL(),
+				Method:         c.Request.Method,
+				Credentialless: true,
+			}
+			if err := proxyTaskMedia(c, task, descriptor); err != nil {
+				writeTaskMediaProxyError(c, err)
+			}
+			return
+		}
+		// APIDUO:legacy-image-artifact:END
 		if artifactKey != "video" || !legacyVideoAvailable(task) {
 			writeTaskArtifactError(c, http.StatusNotFound, "artifact_not_found", "Task or artifact not found")
 			return
