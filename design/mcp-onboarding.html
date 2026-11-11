@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apiduo · MCP 接入原型</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --surface:#fbfbfc;
+    --surface-2:#f5f5f7;
+    --code-bg:#f8f8fb;
+    --line:#e8e8ec;
+    --line-strong:#d8d8de;
+    --ink:#141419;
+    --ink-2:#45454f;
+    --muted:#83838f;
+    --accent:#4f46e5;
+    --accent-ink:#4338ca;
+    --accent-soft:#eef0ff;
+    --ok:#0f8a4d;
+    --ok-soft:#e9f7ef;
+    --warn:#a35a00;
+    --warn-soft:#fff6e8;
+    --err:#c62828;
+    --err-soft:#fdecec;
+    --radius:14px;
+    --radius-sm:9px;
+    --shadow:0 1px 2px rgba(16,18,28,.04), 0 8px 24px -12px rgba(16,18,28,.10);
+    --shadow-lg:0 2px 4px rgba(16,18,28,.04), 0 18px 48px -20px rgba(16,18,28,.18);
+    --ease:cubic-bezier(.22,1,.36,1);
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);
+    font-size:14px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;text-decoration:none}
+  code,kbd{font-family:var(--mono)}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+  /* ── 原型工具条 ───────────────────────────── */
+  .proto{
+    position:sticky;top:0;z-index:60;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    padding:9px 18px;background:#15151a;color:#c9c9d3;font-size:12.5px;
+  }
+  .proto b{color:#fff;font-weight:600}
+  .proto .tag{
+    padding:2px 8px;border-radius:99px;background:#2a2a34;color:#9c9cab;
+    font-size:11px;letter-spacing:.02em;
+  }
+  .seg{display:flex;gap:2px;margin-left:auto;background:#24242c;padding:3px;border-radius:9px}
+  .seg button{
+    padding:5px 14px;border-radius:7px;font-size:12.5px;color:#a5a5b3;
+    transition:background .22s var(--ease),color .22s var(--ease);
+  }
+  .seg button.on{background:#fff;color:#17171c;font-weight:600}
+
+  /* ── 站点导航 ─────────────────────────────── */
+  .nav{
+    position:sticky;top:37px;z-index:50;
+    display:flex;align-items:center;gap:26px;
+    padding:0 32px;height:60px;
+    background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(14px);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;letter-spacing:-.01em}
+  .brand i{
+    width:22px;height:22px;border-radius:7px;display:block;
+    background:linear-gradient(135deg,#6366f1,#06b6d4);
+  }
+  .nav .links{display:flex;align-items:center;gap:2px;font-size:13.5px;color:var(--ink-2)}
+  .nav .links a{padding:7px 11px;border-radius:8px;transition:background .2s var(--ease),color .2s var(--ease)}
+  .nav .links a:hover{background:var(--surface-2);color:var(--ink)}
+  .nav .links a.new{color:var(--accent-ink);font-weight:600}
+  .nav .links a.new sup{
+    margin-left:4px;padding:1px 5px;border-radius:5px;background:var(--accent-soft);
+    color:var(--accent-ink);font-size:9.5px;font-weight:700;letter-spacing:.04em;vertical-align:2px;
+  }
+  .nav .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:7px;
+    height:38px;padding:0 16px;border-radius:9px;font-size:13.5px;font-weight:500;
+    transition:transform .18s var(--ease),background .18s var(--ease),border-color .18s var(--ease),box-shadow .18s var(--ease);
+  }
+  .btn:active{transform:scale(.977)}
+  .btn-ghost{color:var(--ink-2)}
+  .btn-ghost:hover{background:var(--surface-2);color:var(--ink)}
+  .btn-outline{border:1px solid var(--line-strong);color:var(--ink);background:#fff}
+  .btn-outline:hover{border-color:#b9b9c4;box-shadow:var(--shadow)}
+  .btn-primary{background:var(--ink);color:#fff;box-shadow:0 1px 2px rgba(16,18,28,.18)}
+  .btn-primary:hover{background:#25252e}
+  .btn-accent{background:var(--accent);color:#fff;box-shadow:0 1px 2px rgba(79,70,229,.28),0 8px 20px -10px rgba(79,70,229,.5)}
+  .btn-accent:hover{background:var(--accent-ink)}
+  .btn-sm{height:31px;padding:0 11px;font-size:12.5px;border-radius:7px}
+
+  /* ── 通用 ─────────────────────────────────── */
+  .wrap{max-width:1120px;margin:0 auto;padding:0 32px}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:7px;
+    padding:4px 10px;border-radius:99px;background:var(--accent-soft);
+    color:var(--accent-ink);font-size:11.5px;font-weight:600;letter-spacing:.02em;
+  }
+  .eyebrow .dot{width:5px;height:5px;border-radius:99px;background:currentColor}
+  h1,h2,h3{margin:0;letter-spacing:-.022em;font-weight:640}
+  h1{font-size:46px;line-height:1.14}
+  h2{font-size:27px;line-height:1.25}
+  h3{font-size:15.5px;line-height:1.4}
+  p{margin:0}
+  .sub{color:var(--ink-2);font-size:15px;line-height:1.72}
+
+  /* ── 首页 Hero ────────────────────────────── */
+  .hero{position:relative;padding:64px 0 40px;overflow:hidden}
+  .hero .glow{
+    position:absolute;inset:-120px 0 auto 0;height:420px;z-index:-1;opacity:.5;pointer-events:none;
+    background:
+      radial-gradient(ellipse 46% 60% at 18% 30%,rgba(99,102,241,.20),transparent 70%),
+      radial-gradient(ellipse 42% 52% at 72% 12%,rgba(6,182,212,.16),transparent 72%),
+      radial-gradient(ellipse 34% 44% at 52% 78%,rgba(168,85,247,.12),transparent 70%);
+  }
+  .hero h1{max-width:660px;margin:16px 0 0}
+  .hero .sub{max-width:560px;margin:16px 0 0}
+  .hero .acts{display:flex;gap:10px;margin-top:26px;flex-wrap:wrap}
+  .hero .acts .btn{height:44px;padding:0 20px}
+
+  /* ── 首页 · MCP 板块 ──────────────────────── */
+  .mcp-band{
+    margin:34px 0 8px;display:grid;grid-template-columns:1.02fr .98fr;gap:0;
+    border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;
+    box-shadow:var(--shadow);
+  }
+  .mcp-band .left{padding:30px 30px 28px}
+  .mcp-band .right{
+    background:var(--code-bg);border-left:1px solid var(--line);
+    padding:24px 22px;display:flex;flex-direction:column;
+  }
+  /* 两栏都要 min-width:0，否则代码里的长行会按 min-content 把左栏挤扁 */
+  .mcp-band > div{min-width:0}
+  .mcp-band .right .code{flex:1;display:flex;flex-direction:column}
+  .mcp-band .right .code pre{flex:1;overflow:auto}
+  .steps-mini{display:flex;flex-direction:column;gap:14px;margin-top:20px}
+  .step-mini{display:flex;gap:12px;align-items:flex-start}
+  .step-mini .n{
+    flex:0 0 22px;height:22px;border-radius:7px;background:var(--surface-2);
+    color:var(--ink-2);font-size:11.5px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;margin-top:1px;
+  }
+  .step-mini .t{font-size:13.5px;font-weight:600}
+  .step-mini .d{font-size:12.5px;color:var(--muted);margin-top:1px}
+
+  /* ── 代码块 ───────────────────────────────── */
+  .code{
+    position:relative;background:var(--code-bg);border:1px solid var(--line);
+    border-radius:11px;overflow:hidden;
+  }
+  .code .bar{
+    display:flex;align-items:center;gap:8px;padding:7px 10px 7px 13px;
+    border-bottom:1px solid var(--line);background:#fdfdfe;
+  }
+  .code .bar .fn{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .code .bar .cp{
+    margin-left:auto;padding:3px 9px;border-radius:6px;border:1px solid var(--line-strong);
+    background:#fff;font-size:11.5px;color:var(--ink-2);
+    transition:background .18s var(--ease),color .18s var(--ease),border-color .18s var(--ease);
+  }
+  .code .bar .cp:hover{background:var(--surface-2)}
+  .code .bar .cp.ok{color:var(--ok);border-color:#bfe3cd;background:var(--ok-soft)}
+  .code pre{
+    margin:0;padding:13px 15px;overflow-x:auto;
+    font-family:var(--mono);font-size:12.5px;line-height:1.72;color:#2b2b36;
+  }
+  .code .k{color:#7048c6}
+  .code .s{color:#0b6b4f}
+  .code .c{color:#9a9aa6}
+  .code .f{color:#1a5fb4}
+  .code .prompt{color:#9a9aa6;user-select:none}
+
+  /* ── 首页 · 数据条 ────────────────────────── */
+  .stats{display:flex;gap:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:46px}
+  .stat{flex:1;padding:22px 0;text-align:center;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:none}
+  .stat .v{font-size:23px;font-weight:650;letter-spacing:-.02em}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:2px}
+
+  /* ── 首页 · 能力卡 ────────────────────────── */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+  .card{
+    border:1px solid var(--line);border-radius:var(--radius);padding:19px 18px;background:#fff;
+    transition:border-color .22s var(--ease),box-shadow .22s var(--ease),transform .22s var(--ease);
+  }
+  .card:hover{border-color:#dcdce4;box-shadow:var(--shadow);transform:translateY(-1px)}
+  .card .ico{
+    width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-ink);
+    display:flex;align-items:center;justify-content:center;margin-bottom:12px;
+  }
+  .card h3{margin-bottom:5px}
+  .card p{font-size:12.8px;color:var(--muted);line-height:1.66}
+
+  .cta{
+    margin:56px 0 0;padding:34px;border-radius:18px;text-align:center;
+    border:1px solid var(--line);background:linear-gradient(180deg,#fbfbfd,#fff);
+  }
+  .cta h2{margin-bottom:8px}
+  .cta .acts{display:flex;gap:10px;justify-content:center;margin-top:20px}
+
+  /* ── 教程页 ───────────────────────────────── */
+  .guide-head{padding:42px 0 26px;border-bottom:1px solid var(--line)}
+  .guide-head .crumb{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+  .guide-head .crumb b{color:var(--ink-2);font-weight:500}
+  .guide-head h1{font-size:34px}
+  .guide-head .sub{margin-top:12px;max-width:640px}
+  .endpoint{
+    margin-top:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:var(--surface);
+  }
+  .endpoint .method{
+    font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;
+    padding:3px 7px;border-radius:5px;background:var(--ok-soft);color:var(--ok);
+  }
+  .endpoint code{font-size:13px;color:var(--ink)}
+  .chip{
+    padding:3px 8px;border-radius:6px;background:#fff;border:1px solid var(--line);
+    font-size:11.5px;color:var(--muted);
+  }
+  .endpoint .cp{margin-left:auto}
+
+  .guide-body{display:grid;grid-template-columns:212px minmax(0,1fr);gap:44px;padding:34px 0 80px}
+  /* grid/flex 子项默认 min-width:auto，长代码块会把这页整体撑出横向滚动条 */
+  .guide-body > main{min-width:0}
+  .tbl-wrap{overflow-x:auto}
+  .toc{position:sticky;top:112px;align-self:start;font-size:13px}
+  .toc .t{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted);margin-bottom:10px}
+  .toc a{
+    display:block;padding:6px 10px;border-radius:7px;color:var(--ink-2);
+    border-left:2px solid transparent;transition:all .18s var(--ease);
+  }
+  .toc a:hover{background:var(--surface-2);color:var(--ink)}
+  .toc a.on{color:var(--accent-ink);background:var(--accent-soft);border-left-color:var(--accent);font-weight:600}
+
+  .sec{margin-bottom:44px;scroll-margin-top:110px}
+  .sec > h2{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .sec > h2 .num{
+    flex:0 0 26px;height:26px;border-radius:8px;background:var(--ink);color:#fff;
+    font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  }
+  .sec > p.lead{color:var(--ink-2);font-size:14px;margin:6px 0 18px;max-width:660px}
+
+  .note{
+    display:flex;gap:10px;padding:12px 14px;border-radius:10px;font-size:12.8px;line-height:1.66;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+  }
+  .note b{color:var(--ink)}
+  .note.warn{background:var(--warn-soft);border-color:#f3dfbe;color:#6b4a12}
+  .note.warn b{color:#4d3409}
+  .note.err{background:var(--err-soft);border-color:#f5cfcf;color:#7d2626}
+  .note .ni{flex:0 0 16px;margin-top:2px}
+
+  .tabs{display:flex;gap:4px;padding:4px;background:var(--surface-2);border-radius:10px;width:fit-content;max-width:100%;margin-bottom:14px;flex-wrap:wrap}
+  .tabs button{
+    padding:6px 13px;border-radius:7px;font-size:12.5px;color:var(--ink-2);
+    transition:background .2s var(--ease),color .2s var(--ease),box-shadow .2s var(--ease);
+  }
+  .tabs button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(16,18,28,.08)}
+  .pane{display:none}
+  .pane.on{display:block;animation:fade .26s var(--ease)}
+  @keyframes fade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+  .client-pick{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+  .pick-row{display:flex;gap:10px;align-items:flex-start;min-width:0}
+  .pick-label{flex:0 0 52px;text-align:right;padding-top:9px;font-size:11px;letter-spacing:.04em;color:var(--muted)}
+  .client-tabs{margin-bottom:0;min-width:0;max-width:100%}
+  .pick-hint{margin:0 0 16px;font-size:12px;color:var(--muted);line-height:1.7}
+  .pane-hint{margin-top:10px;font-size:12.8px;color:var(--muted);line-height:1.72}
+  .form-list{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:#fff}
+  .form-list .row{display:flex;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px}
+  .form-list .row:last-child{border-bottom:none}
+  .form-list .k{flex:0 0 96px;color:var(--muted)}
+  .form-list .v{min-width:0;word-break:break-word}
+  .form-list .v em{font-style:normal;color:var(--muted);font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11.5px;font-weight:700;letter-spacing:.03em;color:var(--muted);background:var(--surface)}
+  td code{font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:5px}
+  tr:last-child td{border-bottom:none}
+  .tbl-wrap{border:1px solid var(--line);border-radius:11px;overflow:hidden}
+
+  details.faq{
+    border:1px solid var(--line);border-radius:10px;padding:0;margin-bottom:8px;background:#fff;
+    transition:border-color .2s var(--ease),box-shadow .2s var(--ease);
+  }
+  details.faq[open]{border-color:#dcdce4;box-shadow:var(--shadow)}
+  details.faq summary{
+    cursor:pointer;list-style:none;padding:13px 15px;font-size:13.5px;font-weight:600;
+    display:flex;align-items:center;gap:9px;
+  }
+  details.faq summary::-webkit-details-marker{display:none}
+  details.faq summary .q{
+    flex:0 0 18px;height:18px;border-radius:5px;background:var(--surface-2);color:var(--muted);
+    font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  }
+  details.faq summary::after{
+    content:"";margin-left:auto;width:7px;height:7px;border-right:1.6px solid var(--muted);
+    border-bottom:1.6px solid var(--muted);transform:rotate(45deg);transition:transform .24s var(--ease);
+  }
+  details.faq[open] summary::after{transform:rotate(-135deg)}
+  details.faq .body{padding:0 15px 14px 42px;font-size:13px;color:var(--ink-2);line-height:1.72}
+  details.faq .body p + p{margin-top:8px}
+
+  .foot{border-top:1px solid var(--line);padding:22px 0 40px;color:var(--muted);font-size:12.5px}
+
+  @media (max-width:960px){
+    .mcp-band{grid-template-columns:1fr}
+    .mcp-band .right{border-left:none;border-top:1px solid var(--line)}
+    .guide-body{grid-template-columns:1fr;gap:0}
+    .toc{display:none}
+    .cards{grid-template-columns:1fr 1fr}
+    h1{font-size:36px}
+    .guide-head h1{font-size:28px}
+  }
+  @media (max-width:640px){
+    .wrap{padding:0 18px}
+    .pick-row{flex-direction:column;gap:5px}
+    .pick-label{text-align:left;padding-top:0}
+    .form-list .row{flex-direction:column;gap:3px}
+    .form-list .k{flex:none}
+    .code pre{font-size:11.5px;padding:11px 12px}
+    .endpoint{gap:8px}
+    .nav{padding:0 18px;gap:14px}
+    .nav .links{display:none}
+    .cards{grid-template-columns:1fr}
+    .stats{flex-wrap:wrap}
+    .stat{flex:1 1 45%;border-bottom:1px solid var(--line)}
+    h1{font-size:30px}
+    .hero{padding:40px 0 26px}
+    .mcp-band .left{padding:22px}
+    .cta{padding:24px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  }
+</style>
+</head>
+<body>
+
+<div class="proto">
+  <b>原型</b><span class="tag">设计稿 · 未接路由</span>
+  <span>MCP 接入教程 —— 首页入口 + 教程页</span>
+  <div class="seg">
+    <button id="seg-home" class="on" onclick="showView('home')">首页</button>
+    <button id="seg-guide" onclick="showView('guide')">接入教程</button>
+  </div>
+</div>
+
+<!-- ══════════════ 视图一：首页 ══════════════ -->
+<div id="view-home">
+  <nav class="nav">
+    <a class="brand" href="#"><i></i>apiduo</a>
+    <div class="links">
+      <a href="#">模型价格</a>
+      <a href="#">排行榜</a>
+      <a href="#" class="new" onclick="showView('guide');return false">MCP<sup>新</sup></a>
+      <a href="#">关于</a>
+      <a href="#">文档</a>
+    </div>
+    <div class="right">
+      <button class="btn btn-ghost">登录</button>
+      <button class="btn btn-primary">开始使用</button>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="glow" aria-hidden="true"></div>
+    <div class="wrap">
+      <span class="eyebrow"><span class="dot"></span>MCP 接入已开放</span>
+      <h1>一个网关，接住所有模型<br>也接住你的 Agent</h1>
+      <p class="sub">OpenAI 兼容的接口之外，apiduo 现在直接讲 MCP。把 WorkBuddy、豆包工作、Cursor 指过来，就能用同一个令牌生成图片与视频。</p>
+      <div class="acts">
+        <button class="btn btn-primary">开始使用</button>
+        <button class="btn btn-accent" onclick="showView('guide')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l3 3-3 3"/><path d="M13 15h3"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg>
+          MCP 接入
+        </button>
+        <button class="btn btn-outline">文档</button>
+      </div>
+
+      <!-- 新增板块 -->
+      <div class="mcp-band">
+        <div class="left">
+          <span class="eyebrow" style="background:var(--surface-2);color:var(--ink-2)">新能力</span>
+          <h2 style="margin-top:12px;font-size:22px">三步把 Agent 接到 apiduo</h2>
+          <p style="margin-top:6px;font-size:13px;color:var(--muted)">不用装 SDK，不用写胶水代码。一个令牌，一个 URL。</p>
+          <div class="steps-mini">
+            <div class="step-mini">
+              <span class="n">1</span>
+              <div><div class="t">复制你的令牌</div><div class="d">后台「令牌」页新建一个，分组选 default</div></div>
+            </div>
+            <div class="step-mini">
+              <span class="n">2</span>
+              <div><div class="t">填进客户端配置</div><div class="d">WorkBuddy / 豆包工作 / Cursor 都有现成写法</div></div>
+            </div>
+            <div class="step-mini">
+              <span class="n">3</span>
+              <div><div class="t">让它列出模型</div><div class="d">能拉到模型，就说明接通了</div></div>
+            </div>
+          </div>
+          <div style="margin-top:20px;display:flex;gap:8px;align-items:center">
+            <button class="btn btn-outline btn-sm" onclick="showView('guide')">查看接入教程</button>
+            <span style="font-size:11.5px;color:var(--muted)">Streamable HTTP · 无需 SSE</span>
+          </div>
+        </div>
+        <div class="right">
+          <div class="code">
+            <div class="bar"><span class="fn">~/.workbuddy/mcp.json</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+            <pre><span class="p">{</span>
+  <span class="k">"mcpServers"</span><span class="p">: {</span>
+    <span class="k">"apiduo"</span><span class="p">: {</span>
+      <span class="k">"type"</span><span class="p">:</span> <span class="s">"http"</span><span class="p">,</span>
+      <span class="k">"url"</span><span class="p">:</span> <span class="s">"https://apiduo.cn/mcp"</span><span class="p">,</span>
+      <span class="k">"headers"</span><span class="p">: {</span>
+        <span class="k">"Authorization"</span><span class="p">:</span> <span class="s">"Bearer sk-…"</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><div class="v">4</div><div class="l">MCP 工具</div></div>
+      <div class="stat"><div class="v">1</div><div class="l">个端点</div></div>
+      <div class="stat"><div class="v">0</div><div class="l">行接入代码</div></div>
+      <div class="stat"><div class="v">1</div><div class="l">个令牌通吃</div></div>
+    </div>
+
+    <section style="margin-top:44px">
+      <h2>为什么用 MCP 接</h2>
+      <p class="sub" style="margin-top:8px;max-width:620px">模型能力写在服务端，客户端只负责传话。换模型不用改客户端配置。</p>
+      <div class="cards">
+        <div class="card">
+          <div class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div>
+          <h3>能力自描述</h3>
+          <p>模型有哪些参数、取什么值，<code style="font-size:11.5px">models.list</code> 直接告诉你，不用翻文档猜。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></div>
+          <h3>图片视频同一入口</h3>
+          <p>文生图、图生图、文生视频走同一套调用约定，异步任务自带查询句柄。</p>
+        </div>
+        <div class="card">
+          <div class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/></svg></div>
+          <h3>令牌即权限</h3>
+          <p>沿用你已有的令牌体系：额度、分组、IP 白名单全部生效，不新增一套凭据。</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="cta">
+      <h2>先跑通一行 curl，再接客户端</h2>
+      <p class="sub" style="margin:8px auto 0;max-width:480px">接入失败最常见的原因只有一个：令牌不对。先把这一步排掉。</p>
+      <div class="acts">
+        <button class="btn btn-primary" onclick="showView('guide')">去接入</button>
+        <button class="btn btn-outline">模型价格</button>
+      </div>
+    </div>
+
+    <div class="foot">apiduo · 原型稿，仅用于确认信息结构</div>
+  </div>
+</div>
+
+<!-- ══════════════ 视图二：接入教程 ══════════════ -->
+<div id="view-guide" style="display:none">
+  <nav class="nav">
+    <a class="brand" href="#" onclick="showView('home');return false"><i></i>apiduo</a>
+    <div class="links">
+      <a href="#" onclick="showView('home');return false">首页</a>
+      <a href="#">模型价格</a>
+      <a href="#">排行榜</a>
+      <a href="#" class="new">MCP<sup>新</sup></a>
+      <a href="#">文档</a>
+    </div>
+    <div class="right">
+      <button class="btn btn-ghost">登录</button>
+      <button class="btn btn-primary">开始使用</button>
+    </div>
+  </nav>
+
+  <div class="wrap">
+    <header class="guide-head">
+      <div class="crumb"><b>文档</b> / MCP 接入</div>
+      <h1>把你的 Agent 接到 apiduo</h1>
+      <p class="sub">配好这一页，WorkBuddy、豆包工作、Trae、Cursor、Claude Code 里就能直接生成图片和视频。<br>全程只有一个必填项：你的令牌。</p>
+      <div class="endpoint">
+        <span class="method">POST</span>
+        <code>https://apiduo.cn/mcp</code>
+        <span class="chip">Streamable HTTP</span>
+        <span class="chip">无状态</span>
+        <span class="chip">JSON 响应</span>
+        <button class="cp btn btn-outline btn-sm" onclick="copyCode(this,'https://apiduo.cn/mcp')">复制地址</button>
+      </div>
+    </header>
+
+    <div class="guide-body">
+      <aside class="toc">
+        <div class="t">本页目录</div>
+        <a href="#s-quick" class="on">30 秒验证</a>
+        <a href="#s-token">1 · 准备令牌</a>
+        <a href="#s-client">2 · 配置客户端</a>
+        <a href="#s-verify">3 · 确认接通</a>
+        <a href="#s-tools">工具清单</a>
+        <a href="#s-billing">计费与限制</a>
+        <a href="#s-faq">常见问题</a>
+      </aside>
+
+      <main>
+        <section class="sec" id="s-quick">
+          <h2><span class="num">→</span>30 秒验证</h2>
+          <p class="lead">先别急着改客户端配置。用一行 curl 确认令牌能通，能省掉后面一半的排查时间。</p>
+          <div class="code">
+            <div class="bar"><span class="fn">终端</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+            <pre><span class="prompt">$ </span><span class="f">curl</span> -s https://apiduo.cn/mcp \
+    -H <span class="s">"Authorization: Bearer sk-你的令牌"</span> \
+    -H <span class="s">"Content-Type: application/json"</span> \
+    -d <span class="s">'{"jsonrpc":"2.0","id":1,"method":"tools/list"}'</span></pre>
+          </div>
+          <p style="margin-top:12px;font-size:13px;color:var(--muted)">能看到 <code>models.list</code> / <code>image.generate</code> / <code>video.generate</code> / <code>task.get</code> 四个工具，就说明端点和令牌都对了。返回 401 请直接看第 1 步。</p>
+          <p style="margin-top:6px;font-size:13px;color:var(--muted)">服务端是无状态的：不用先 <code>initialize</code>，也没有会话要维持。自己写客户端时，一次 POST 就是一次完整调用。</p>
+        </section>
+
+        <section class="sec" id="s-token">
+          <h2><span class="num">1</span>准备令牌</h2>
+          <p class="lead">MCP 用的是你调用 <code style="font-size:12.5px">/v1</code> 的同一套令牌，不需要单独申请任何东西。</p>
+          <div class="note">
+            <span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg></span>
+            <div><b>令牌要能覆盖要用的模型。</b>后台「令牌」页新建时，分组选 <code>default</code>；如果令牌设了模型限制，MCP 里也就只能用那几个模型。</div>
+          </div>
+          <div style="margin-top:14px;border:1px solid var(--line);border-radius:11px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--surface);border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)">
+              <b style="color:var(--ink)">后台 · 令牌</b><span>新建令牌</span>
+            </div>
+            <div style="padding:16px 14px;display:grid;gap:10px;font-size:13px">
+              <div style="display:flex;gap:10px"><span style="color:var(--muted);width:76px;flex:0 0 76px">名称</span><span>cursor-agent<span style="color:var(--muted)"> · 随便取，方便日后吊销</span></span></div>
+              <div style="display:flex;gap:10px"><span style="color:var(--muted);width:76px;flex:0 0 76px">分组</span><span><code style="background:var(--surface-2);padding:1px 6px;border-radius:5px">default</code><span style="color:var(--muted)"> · 决定能用哪些模型</span></span></div>
+              <div style="display:flex;gap:10px"><span style="color:var(--muted);width:76px;flex:0 0 76px">额度</span><span>按需设置<span style="color:var(--muted)"> · 生成类按次扣费，见下文</span></span></div>
+              <div style="display:flex;gap:10px"><span style="color:var(--muted);width:76px;flex:0 0 76px">IP 白名单</span><span>一般留空<span style="color:var(--muted)"> · 一旦填了，只有白名单 IP 能调 MCP</span></span></div>
+            </div>
+          </div>
+          <div class="note warn" style="margin-top:14px">
+            <span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+            <div><b>令牌只显示一次。</b>建完立刻复制，页面关掉就看不到了；丢了只能重建。</div>
+          </div>
+        </section>
+
+        <section class="sec" id="s-client">
+          <h2><span class="num">2</span>配置客户端</h2>
+          <p class="lead">选你正在用的那个：有界面的按路径点几下，没界面的贴一段 JSON。</p>
+
+          <div class="client-pick">
+            <div class="pick-row">
+              <span class="pick-label">国内常用</span>
+              <div class="tabs client-tabs" id="client-tabs">
+                <button class="on" onclick="pickClient(this,'workbuddy')">WorkBuddy</button>
+                <button onclick="pickClient(this,'doubao')">豆包工作</button>
+                <button onclick="pickClient(this,'trae')">Trae</button>
+                <button onclick="pickClient(this,'codebuddy')">CodeBuddy</button>
+                <button onclick="pickClient(this,'lingma')">通义灵码</button>
+                <button onclick="pickClient(this,'cherry')">Cherry Studio</button>
+              </div>
+            </div>
+            <div class="pick-row">
+              <span class="pick-label">通用</span>
+              <div class="tabs client-tabs">
+                <button onclick="pickClient(this,'cursor')">Cursor</button>
+                <button onclick="pickClient(this,'claude-code')">Claude Code</button>
+                <button onclick="pickClient(this,'vscode')">VS Code</button>
+                <button onclick="pickClient(this,'desktop')">Claude Desktop</button>
+                <button onclick="pickClient(this,'raw')">其他客户端</button>
+              </div>
+            </div>
+          </div>
+          <p class="pick-hint">办公助手走 WorkBuddy / 豆包工作，写代码走 Trae / CodeBuddy / Cursor；只支持 SSE 的客户端用 <code>mcp-remote</code> 桥一层。</p>
+
+          <div class="pane on" id="pane-workbuddy">
+            <div class="code">
+              <div class="bar"><span class="fn">~/.workbuddy/mcp.json　（项目级：&lt;项目&gt;/.workbuddy/mcp.json）</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="p">{</span>
+  <span class="k">"mcpServers"</span><span class="p">: {</span>
+    <span class="k">"apiduo"</span><span class="p">: {</span>
+      <span class="k">"type"</span><span class="p">:</span> <span class="s">"http"</span><span class="p">,</span>
+      <span class="k">"url"</span><span class="p">:</span> <span class="s">"https://apiduo.cn/mcp"</span><span class="p">,</span>
+      <span class="k">"headers"</span><span class="p">: {</span> <span class="k">"Authorization"</span><span class="p">:</span> <span class="s">"Bearer sk-你的令牌"</span> <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+            </div>
+            <p class="pane-hint">入口：左侧「专家 · 技能 · 连接器」→「连接器」→ 右上角「<b>自定义连接器</b>」→「配置 MCP」，粘贴保存，回到列表点一次 <b>信任</b>——不点信任不会启用。</p>
+            <p class="pane-hint">传输类型写 <code>http</code>；个别版本提示识别不了，就换成 <code>streamablehttp</code> 再试。</p>
+          </div>
+
+          <div class="pane" id="pane-doubao">
+            <p class="pane-hint" style="margin:0 0 10px">左侧「技能 · 连接器 · 伙伴」→「连接器」→ 右上角「新建」→「<b>新建自定义连接器</b>」，四个字段照填：</p>
+            <div class="form-list">
+              <div class="row"><span class="k">服务器名称</span><span class="v">apiduo</span></div>
+              <div class="row"><span class="k">传输类型</span><span class="v">HTTP</span></div>
+              <div class="row"><span class="k">服务器 URL</span><span class="v"><code>https://apiduo.cn/mcp</code></span></div>
+              <div class="row"><span class="k">自定义 Headers</span><span class="v"><code>Authorization</code> = <code>Bearer sk-你的令牌</code> <em>（Bearer 后有空格）</em></span></div>
+            </div>
+            <p class="pane-hint">保存后回「我的技能 · 连接器」把开关打开。自定义连接器只在<b>电脑版</b>有，手机端和网页版看不到这一项。</p>
+            <p class="pane-hint">验证：新建工作任务，说一句「用 apiduo 列出有哪些模型」。</p>
+          </div>
+
+          <div class="pane" id="pane-trae">
+            <div class="code">
+              <div class="bar"><span class="fn">.trae/mcp.json　（项目级；也可以在设置里手动添加）</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="p">{</span>
+  <span class="k">"mcpServers"</span><span class="p">: {</span>
+    <span class="k">"apiduo"</span><span class="p">: {</span>
+      <span class="k">"url"</span><span class="p">:</span> <span class="s">"https://apiduo.cn/mcp"</span><span class="p">,</span>
+      <span class="k">"headers"</span><span class="p">: {</span> <span class="k">"Authorization"</span><span class="p">:</span> <span class="s">"Bearer sk-你的令牌"</span> <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+            </div>
+            <p class="pane-hint">入口：「设置 → MCP → 添加 → 手动添加」，把同一段 JSON 粘进去。Trae 不需要写 <code>type</code>，有 <code>url</code> + <code>headers</code> 就够。</p>
+            <p class="pane-hint">云端任务读不到本地 MCP，验证请用本地 / 工作树任务。</p>
+          </div>
+
+          <div class="pane" id="pane-codebuddy">
+            <div class="code">
+              <div class="bar"><span class="fn">~/.codebuddy/.mcp.json</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="p">{</span>
+  <span class="k">"mcpServers"</span><span class="p">: {</span>
+    <span class="k">"apiduo"</span><span class="p">: {</span>
+      <span class="k">"type"</span><span class="p">:</span> <span class="s">"http"</span><span class="p">,</span>
+      <span class="k">"url"</span><span class="p">:</span> <span class="s">"https://apiduo.cn/mcp"</span><span class="p">,</span>
+      <span class="k">"headers"</span><span class="p">: {</span> <span class="k">"Authorization"</span><span class="p">:</span> <span class="s">"Bearer sk-你的令牌"</span> <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+            </div>
+            <p class="pane-hint">入口：「配置 → MCP 设置 → 配置 MCP」直接编辑这份文件；保存后回 MCP 列表刷新，状态变绿即可。</p>
+          </div>
+
+          <div class="pane" id="pane-lingma">
+            <p class="pane-hint" style="margin:0 0 10px">灵码的 MCP 只有 SSE 和 STDIO 两种，没有填请求头的地方，所以用 <code>mcp-remote</code> 在本机桥一层（需要 Node 18+）：</p>
+            <div class="code">
+              <div class="bar"><span class="fn">先在本机跑通这一行</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="prompt">$ </span><span class="f">npx</span> -y mcp-remote https://apiduo.cn/mcp \
+    --header <span class="s">"Authorization: Bearer sk-你的令牌"</span></pre>
+            </div>
+            <div class="form-list" style="margin-top:10px">
+              <div class="row"><span class="k">名称</span><span class="v">apiduo</span></div>
+              <div class="row"><span class="k">类型</span><span class="v">STDIO</span></div>
+              <div class="row"><span class="k">命令</span><span class="v"><code>npx</code></span></div>
+              <div class="row"><span class="k">参数</span><span class="v"><code>-y mcp-remote https://apiduo.cn/mcp --header "Authorization: Bearer sk-你的令牌"</code></span></div>
+            </div>
+            <p class="pane-hint">入口：「个人设置 → MCP 服务 → + → 手动添加」。新版（Qoder CN）若支持直接填远程地址，用 URL + <code>Authorization</code> 请求头即可，不必桥接。</p>
+          </div>
+
+          <div class="pane" id="pane-cherry">
+            <p class="pane-hint" style="margin:0 0 10px">设置 → MCP 服务器 → 添加 → 类型选「<b>可流式传输的 HTTP（streamableHttp）</b>」：</p>
+            <div class="form-list">
+              <div class="row"><span class="k">名称</span><span class="v">apiduo</span></div>
+              <div class="row"><span class="k">类型</span><span class="v">可流式传输的 HTTP（streamableHttp）</span></div>
+              <div class="row"><span class="k">URL</span><span class="v"><code>https://apiduo.cn/mcp</code></span></div>
+              <div class="row"><span class="k">请求头</span><span class="v"><code>Authorization=Bearer sk-你的令牌</code> <em>（一行一对，Bearer 后有空格）</em></span></div>
+            </div>
+            <p class="pane-hint">保存后在「工具」标签页应能看到 4 个工具；回到对话记得把这个服务器打开。</p>
+          </div>
+
+          <div class="pane" id="pane-cursor">
+            <div class="code">
+              <div class="bar"><span class="fn">~/.cursor/mcp.json　（全局；项目内用 .cursor/mcp.json）</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="p">{</span>
+  <span class="k">"mcpServers"</span><span class="p">: {</span>
+    <span class="k">"apiduo"</span><span class="p">: {</span>
+      <span class="k">"type"</span><span class="p">:</span> <span class="s">"http"</span><span class="p">,</span>
+      <span class="k">"url"</span><span class="p">:</span> <span class="s">"https://apiduo.cn/mcp"</span><span class="p">,</span>
+      <span class="k">"headers"</span><span class="p">: {</span> <span class="k">"Authorization"</span><span class="p">:</span> <span class="s">"Bearer sk-你的令牌"</span> <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+            </div>
+            <p class="pane-hint">存盘后到 Settings → MCP 看 <code>apiduo</code> 是否为绿点；不是就点刷新。</p>
+          </div>
+
+          <div class="pane" id="pane-claude-code">
+            <div class="code">
+              <div class="bar"><span class="fn">终端</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="prompt">$ </span><span class="f">claude</span> mcp add --transport http apiduo https://apiduo.cn/mcp \
+    --header <span class="s">"Authorization: Bearer sk-你的令牌"</span></pre>
+            </div>
+            <p class="pane-hint">等价的项目级写法是 <code>.mcp.json</code>，必须写 <code>"type": "http"</code>，否则会被当成 stdio：</p>
+            <div class="code" style="margin-top:8px">
+              <div class="bar"><span class="fn">.mcp.json</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="p">{</span>
+  <span class="k">"mcpServers"</span><span class="p">: {</span>
+    <span class="k">"apiduo"</span><span class="p">: {</span>
+      <span class="k">"type"</span><span class="p">:</span> <span class="s">"http"</span><span class="p">,</span>
+      <span class="k">"url"</span><span class="p">:</span> <span class="s">"https://apiduo.cn/mcp"</span><span class="p">,</span>
+      <span class="k">"headers"</span><span class="p">: {</span> <span class="k">"Authorization"</span><span class="p">:</span> <span class="s">"Bearer sk-你的令牌"</span> <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+            </div>
+          </div>
+
+          <div class="pane" id="pane-vscode">
+            <div class="code">
+              <div class="bar"><span class="fn">.vscode/mcp.json</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="p">{</span>
+  <span class="k">"servers"</span><span class="p">: {</span>
+    <span class="k">"apiduo"</span><span class="p">: {</span>
+      <span class="k">"type"</span><span class="p">:</span> <span class="s">"http"</span><span class="p">,</span>
+      <span class="k">"url"</span><span class="p">:</span> <span class="s">"https://apiduo.cn/mcp"</span><span class="p">,</span>
+      <span class="k">"headers"</span><span class="p">: {</span> <span class="k">"Authorization"</span><span class="p">:</span> <span class="s">"Bearer sk-你的令牌"</span> <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+            </div>
+            <p class="pane-hint">注意 VS Code 的顶层键是 <code>servers</code>，不是 <code>mcpServers</code>。</p>
+          </div>
+
+          <div class="pane" id="pane-desktop">
+            <p class="pane-hint" style="margin:0">新版在 <b>Settings → Connectors → Add custom connector</b>，填 URL 与请求头即可。旧版只支持本地 stdio，用 <code>mcp-remote</code> 桥一层：</p>
+            <div class="code" style="margin-top:10px">
+              <div class="bar"><span class="fn">claude_desktop_config.json</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+              <pre><span class="p">{</span>
+  <span class="k">"mcpServers"</span><span class="p">: {</span>
+    <span class="k">"apiduo"</span><span class="p">: {</span>
+      <span class="k">"command"</span><span class="p">:</span> <span class="s">"npx"</span><span class="p">,</span>
+      <span class="k">"args"</span><span class="p">: [</span>
+        <span class="s">"-y"</span><span class="p">,</span> <span class="s">"mcp-remote"</span><span class="p">,</span> <span class="s">"https://apiduo.cn/mcp"</span><span class="p">,</span>
+        <span class="s">"--header"</span><span class="p">,</span> <span class="s">"Authorization: Bearer sk-你的令牌"</span>
+      <span class="p">]</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">}</span></pre>
+            </div>
+          </div>
+
+          <div class="pane" id="pane-raw">
+            <p class="pane-hint" style="margin:0">任何支持 <b>Streamable HTTP</b> 的客户端都能接，需要三个值：</p>
+            <div class="tbl-wrap" style="margin-top:10px">
+              <table>
+                <tr><td style="width:120px;color:var(--muted)">URL</td><td><code>https://apiduo.cn/mcp</code></td></tr>
+                <tr><td style="color:var(--muted)">请求头</td><td><code>Authorization: Bearer sk-你的令牌</code></td></tr>
+                <tr><td style="color:var(--muted)">传输</td><td>Streamable HTTP（POST，JSON 响应）</td></tr>
+              </table>
+            </div>
+            <div class="note warn" style="margin-top:14px">
+              <span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l9 16H3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+              <div><b>只支持 SSE 的客户端接不了。</b>本服务不维持会话，一次请求一次响应；这类客户端用 <code>npx -y mcp-remote &lt;URL&gt; --header "Authorization: Bearer sk-…"</code> 在本地桥一层，通义灵码那一栏就是这套做法。</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="sec" id="s-verify">
+          <h2><span class="num">3</span>确认接通</h2>
+          <p class="lead">在客户端里说一句「列出 apiduo 有哪些模型」。它会调 <code style="font-size:12.5px">models.list</code>，正常返回长这样：</p>
+          <div class="code">
+            <div class="bar"><span class="fn">models.list · 返回摘要</span><button class="cp" onclick="copyCode(this)">复制</button></div>
+            <pre><span class="p">{</span>
+  <span class="k">"models"</span><span class="p">: [{</span>
+    <span class="k">"id"</span><span class="p">:</span> <span class="s">"flux-3-image"</span><span class="p">,</span>
+    <span class="k">"kind"</span><span class="p">:</span> <span class="s">"image"</span><span class="p">,</span>
+    <span class="k">"input"</span><span class="p">: {</span> <span class="k">"max_reference_images"</span><span class="p">:</span> <span class="s">10</span> <span class="p">},</span>
+    <span class="k">"parameters"</span><span class="p">: {</span>
+      <span class="k">"aspect_ratio"</span><span class="p">: {</span> <span class="k">"enum"</span><span class="p">:</span> <span class="s">["1:1","4:3","16:9","auto"]</span> <span class="p">},</span>
+      <span class="k">"resolution"</span><span class="p">: {</span> <span class="k">"enum"</span><span class="p">:</span> <span class="s">["768sq","1k","1.5k","2k"]</span> <span class="p">},</span>
+      <span class="k">"n"</span><span class="p">: {</span> <span class="k">"min"</span><span class="p">:</span> <span class="s">1</span><span class="p">,</span> <span class="k">"max"</span><span class="p">:</span> <span class="s">4</span> <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="k">"summary"</span><span class="p">:</span> <span class="s">"FLUX 3 文生图 / 图生图：最多 10 张参考图…"</span>
+  <span class="p">}]</span>
+<span class="p">}</span></pre>
+          </div>
+          <div class="note" style="margin-top:14px">
+            <span class="ni"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg></span>
+            <div><b>列表为空不等于没接通。</b>它表示管理员还没在「MCP 能力注册」里启用任何模型。此时工具在、模型不在。</div>
+          </div>
+        </section>
+
+        <section class="sec" id="s-tools">
+          <h2><span class="num">4</span>工具清单</h2>
+          <p class="lead">四个工具，覆盖「先查再生成、异步再查回」的完整链路。参数取值以 <code style="font-size:12.5px">models.list</code> 返回的 <code style="font-size:12.5px">parameters</code> 为准，不要臆造。</p>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th style="width:150px">工具</th><th>作用</th><th style="width:230px">关键参数</th></tr></thead>
+              <tbody>
+                <tr><td><code>models.list</code></td><td>列出已启用模型与能力：类型、执行方式、输入上限、参数枚举</td><td><code>kind</code>（image / video）</td></tr>
+                <tr><td><code>image.generate</code></td><td>文生图；传 <code>reference_images</code> 即图生图，模式自动推导</td><td><code>prompt</code> · <code>model</code> · <code>size</code> · <code>n</code> · <code>reference_images</code></td></tr>
+                <tr><td><code>video.generate</code></td><td>文生视频 / 图生视频；多数模型异步，立即返回 <code>task_id</code></td><td><code>prompt</code> · <code>model</code> · <code>duration</code> · <code>reference_images</code></td></tr>
+                <tr><td><code>task.get</code></td><td>查询异步任务；<code>working</code> 时按 <code>poll_after_ms</code> 再查</td><td><code>task_id</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="sec" id="s-billing">
+          <h2><span class="num">5</span>计费与限制</h2>
+          <div class="tbl-wrap">
+            <table>
+              <tbody>
+                <tr><td style="width:150px;color:var(--muted)">计费</td><td>与直接调 <code>/v1</code> 完全一致，按所选模型的单价扣额度</td></tr>
+                <tr><td style="color:var(--muted)">限流</td><td>令牌级限流照旧生效，MCP 不额外放宽</td></tr>
+                <tr><td style="color:var(--muted)">异步任务</td><td><code>task_id</code> 自带签名，任何副本都能查，不需要粘性会话</td></tr>
+                <tr><td style="color:var(--muted)">失败重试</td><td><code>status=failed</code> 时不要用同样参数重试，先看错误原因</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="sec" id="s-faq">
+          <h2><span class="num">?</span>常见问题</h2>
+
+          <details class="faq" open>
+            <summary><span class="q">401</span>返回 401，令牌明明是对的</summary>
+            <div class="body">
+              <p>按顺序排三个：令牌是不是被停用了；是不是复制时带了空格或换行；请求头有没有写 <code>Bearer </code> 前缀。</p>
+              <p>还有一种：令牌设了 IP 白名单，而你当前的出口 IP 不在里面。这种情况返回的是 403，不是 401，注意区分。</p>
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary><span class="q">405</span>客户端日志里 GET /mcp 报 405</summary>
+            <div class="body">
+              <p>正常现象。这个端点不支持 SSE 长连接，只接受 POST。部分客户端会先 GET 一次探测，失败后自己回落到 POST，工具照样能用。</p>
+              <p>如果客户端因此直接判定服务器不可用，说明它只支持 SSE 传输，换支持 Streamable HTTP 的客户端。</p>
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary><span class="q">0</span>工具能看到，但模型列表是空的</summary>
+            <div class="body">
+              <p>说明端点通了、令牌也通了，只是后台还没有启用任何模型声明。让管理员到「MCP 能力注册」里启用一个，或在新建模型时勾上「启用」。</p>
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary><span class="q">?</span>生成了图，但返回的是一长串 base64</summary>
+            <div class="body">
+              <p>正常。有些上游不回图片 URL，只回 <code>b64_json</code>，服务端原样透传，客户端一般能直接渲染。要落地成文件，自己解一下 base64 即可。</p>
+            </div>
+          </details>
+
+          <details class="faq">
+            <summary><span class="q">轮</span>视频一直 working，要不要重试</summary>
+            <div class="body">
+              <p>不要。按返回里的 <code>poll_after_ms</code> 间隔继续查同一个 <code>task_id</code>。重新发起会再扣一次费用，而且和原来的任务没有关系。</p>
+            </div>
+          </details>
+        </section>
+
+        <div class="foot">apiduo · 原型稿，仅用于确认信息结构</div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+function showView(v){
+  document.getElementById('view-home').style.display = v==='home' ? '' : 'none';
+  document.getElementById('view-guide').style.display = v==='guide' ? '' : 'none';
+  document.getElementById('seg-home').classList.toggle('on', v==='home');
+  document.getElementById('seg-guide').classList.toggle('on', v==='guide');
+  window.scrollTo({top:0,behavior:'instant'});
+  if(v==='guide') requestAnimationFrame(spy);
+}
+
+function pickClient(btn,key){
+  document.querySelectorAll('.client-tabs button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
+  var el = document.getElementById('pane-'+key);
+  if(el) el.classList.add('on');
+}
+
+/* 复制：优先复制原始文本（去掉高亮 span 带来的空白噪声） */
+function copyCode(btn, literal){
+  var text = literal;
+  if(!text){
+    // 复制时去掉提示符：终端里的 "$ " 粘进 shell 会变成命令的一部分。
+    // 用 clone + textContent：pre 的换行是源码里的真实换行，textContent 保留得最干净。
+    var pre = btn.closest('.code').querySelector('pre');
+    var clone = pre.cloneNode(true);
+    clone.querySelectorAll('.prompt').forEach(function(e){ e.remove(); });
+    text = clone.textContent.replace(/^\n+/, '').replace(/[ \t]+$/gm, '');
+  }
+  var done = function(){
+    var old = btn.textContent;
+    btn.textContent = '已复制';
+    btn.classList.add('ok');
+    setTimeout(function(){ btn.textContent = old; btn.classList.remove('ok'); }, 1300);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, function(){ fallback(text, done); });
+  } else {
+    fallback(text, done);
+  }
+}
+function fallback(text, done){
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch(e){}
+  document.body.removeChild(ta);
+  done();
+}
+
+/* 目录高亮 */
+var sections = [].slice.call(document.querySelectorAll('.sec'));
+var links = [].slice.call(document.querySelectorAll('.toc a'));
+function spy(){
+  var y = window.scrollY + 140, cur = sections[0];
+  for(var i=0;i<sections.length;i++){ if(sections[i].offsetTop <= y) cur = sections[i]; }
+  links.forEach(function(a){ a.classList.toggle('on', a.getAttribute('href') === '#'+cur.id); });
+}
+window.addEventListener('scroll', function(){ if(document.getElementById('view-guide').style.display !== 'none') spy(); }, {passive:true});
+</script>
+</body>
+</html>

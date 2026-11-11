@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP 接入 · apiduo</title>
+<style>
+  :root{
+    --bg:#fff; --surface-2:#f5f5f7; --code-bg:#f8f8fb;
+    --line:#e8e8ec; --line-strong:#d8d8de;
+    --ink:#141419; --ink-2:#45454f; --muted:#83838f;
+    --accent:#4f46e5; --accent-ink:#4338ca; --accent-soft:#eef0ff;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --ease:cubic-bezier(.22,1,.36,1);
+    /* Apple 流体：swift 进出场（无过冲），pop 只给"确认"类反馈 */
+    --swift:cubic-bezier(.32,.72,0,1);   /* 响应类：hover、按下 */
+    --glide:cubic-bezier(.22,.61,.36,1); /* 主体进出场：起步快、收尾长 */
+    --out:cubic-bezier(.4,0,1,1);
+    --pop:cubic-bezier(.34,1.38,.64,1);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.92em;background:var(--surface-2);padding:1px 5px;border-radius:5px}
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  body{-webkit-tap-highlight-color:transparent}
+  ::selection{background:#e6e6ff;color:var(--ink)}
+  /* 按下即反馈：不等点击结果 */
+  .chip:active,.tsel:active,.all:active,.fc:active,.cp:active,.btn:active,.mi:active,.mnew:active{transform:scale(.955)}
+  button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .i{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;color:#9b9ba7}
+  .i svg{width:13px;height:13px;display:block}
+  .i .bm,.pico .bm{width:13px;height:13px;display:block}
+  .pico .bm{width:16px;height:16px}
+  h1,h2{margin:0;letter-spacing:-.025em;font-weight:650}
+
+  .nav{display:flex;align-items:center;gap:24px;padding:0 32px;height:56px;border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;color:var(--ink)}
+  .brand i{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;background:linear-gradient(135deg,#6366f1,#06b6d4);color:#fff}
+  .brand i svg{width:13px;height:13px;display:block}
+  .nav .links{display:flex;gap:2px;font-size:13.5px;color:var(--ink-2)}
+  .nav .links a{padding:6px 10px;border-radius:7px;color:inherit;transition:background .16s var(--swift),color .16s var(--swift)}
+  .nav .links a:hover{background:var(--surface-2);color:var(--ink);text-decoration:none}
+  .nav .links a.on{color:var(--ink);font-weight:600}
+  .nav .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .btn{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:500}
+  .btn-primary{background:var(--ink);color:#fff}
+  .btn-primary:hover{background:#25252e;text-decoration:none}
+
+  main{max-width:784px;margin:0 auto;padding:44px 32px 64px}
+  h1{font-size:27px}
+  .lead{margin:8px 0 0;color:var(--ink-2);font-size:14px}
+
+  /* 令牌：登录态自动关联，公开页降级手填 */
+  .tok{display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap;position:relative;z-index:20}
+  .tok label{font-size:12.5px;color:var(--muted);flex:0 0 auto}
+  .tw{position:relative;display:flex;align-items:center;min-width:0}
+  .tsel{
+    display:inline-flex;align-items:center;gap:7px;max-width:100%;height:33px;
+    padding:0 8px 0 10px;border:1px solid var(--line-strong);border-radius:8px;background:#fff;
+    transition:border-color .16s var(--ease),background .16s var(--ease),transform .14s var(--ease);
+  }
+  .tsel:hover{background:var(--surface-2);border-color:#bdbbc7}
+  .tsel .tname{font-size:12.8px;color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+  .tsel .tkey{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .tsel .tkey.swap{animation:kvIn .42s var(--glide)}
+  @keyframes kvIn{0%{opacity:0;transform:translateY(-5px)}100%{opacity:1;transform:none}}
+  .tsel .ch{display:flex;color:#a6a6b2;margin-left:1px}
+  .tsel .ch svg{width:11px;height:11px;display:block;transition:transform .18s var(--ease)}
+  .tsel[aria-expanded="true"] .ch svg{transform:rotate(180deg)}
+  .tsel.empty{border-color:#cdcbf2;background:#fbfbff}
+  .tsel.empty:hover{background:#f4f4ff;border-color:#bcb9ef}
+  .tsel.empty .tname{color:var(--accent-ink);font-weight:600}
+  .tsel.empty .ch{display:none}
+  @keyframes tokpop{0%{background:#eef7f1;border-color:#b9dcc6}100%{background:#fff;border-color:var(--line-strong)}}
+  .tsel.flash{animation:tokpop .9s var(--ease)}
+  .edot{width:6px;height:6px;border-radius:99px;flex:0 0 auto;background:#12a150;box-shadow:0 0 0 3px rgba(18,161,80,.1)}
+  .edot.warn{background:#d18a12;box-shadow:0 0 0 3px rgba(209,138,18,.1)}
+  .edot.off{background:#c9c9d2;box-shadow:none}
+
+  .menu{
+    position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:292px;max-width:calc(100vw - 36px);
+    background:rgba(255,255,255,.965);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);
+    border:1px solid rgba(216,216,222,.9);border-radius:11px;padding:4px;
+    box-shadow:0 22px 48px -16px rgba(20,20,25,.3),0 4px 12px -4px rgba(20,20,25,.08),0 0 0 .5px rgba(20,20,25,.03);
+    transform-origin:top left;
+    opacity:0;transform:translateY(-7px) scale(.965);pointer-events:none;
+    transition:opacity .2s var(--out),transform .26s var(--out);
+  }
+  .menu.in{
+    opacity:1;transform:none;pointer-events:auto;
+    transition:opacity .28s var(--glide),transform .44s var(--glide);
+  }
+  .menu[hidden]{display:none}
+  .mi{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border-radius:7px;text-align:left}
+  .mi:hover{background:var(--surface-2)}
+  .mi .mtx{display:flex;flex-direction:column;min-width:0;gap:1px}
+  .mi .edot{align-self:flex-start;margin-top:7px}
+  .mi .nm{font-size:12.6px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mi .ms{font-family:var(--mono);font-size:10.8px;color:var(--muted)}
+  .mi .mw{font-size:10.8px;color:#b07a1c}
+  .mi .ck{width:13px;flex:0 0 13px;margin-left:auto;align-self:flex-start;margin-top:7px;color:var(--accent-ink);display:flex}
+  .mi .ck svg{width:13px;height:13px;display:block}
+  .msep{height:1px;background:var(--line);margin:4px 6px}
+  .mnew{display:flex;align-items:center;gap:7px;width:100%;padding:7px 8px;border-radius:7px;font-size:12.4px;color:var(--accent-ink)}
+  .mnew:hover{background:var(--accent-soft)}
+  .mnew svg{width:12px;height:12px;display:block}
+  .mtip{padding:1px 8px 5px;font-size:11.2px;color:var(--muted);line-height:1.55}
+
+  .tkin{position:relative;flex:1;min-width:170px;display:flex;align-items:center}
+  .tkin .i{position:absolute;left:10px;color:#a9a9b5;pointer-events:none}
+  .tkin input{
+    width:100%;height:33px;padding:0 11px 0 31px;border:1px solid var(--line-strong);
+    border-radius:8px;font-family:var(--mono);font-size:12.2px;color:var(--ink);background:#fff;
+    outline:none;transition:border-color .16s var(--ease),box-shadow .16s var(--ease);
+  }
+  .tkin input::placeholder{color:#b0b0bb}
+  .tkin input:focus{border-color:#b9b9c4;box-shadow:0 0 0 3px var(--surface-2)}
+  .tok a{font-size:12px;flex:0 0 auto;color:var(--accent-ink)}
+
+  .pick{display:grid;grid-template-columns:34px minmax(0,1fr);gap:7px 6px;margin:20px 0 0;align-items:center}
+  .pl{font-size:11px;color:var(--muted);text-align:right;letter-spacing:.02em}
+  .chips{display:flex;gap:5px;flex-wrap:wrap;min-width:0}
+  .chip{
+    display:inline-flex;align-items:center;gap:5px;
+    height:28px;padding:0 10px;border-radius:99px;border:1px solid var(--line);
+    font-size:12.5px;color:var(--ink-2);white-space:nowrap;background:#fff;
+    transition:background .16s var(--ease),border-color .16s var(--ease),color .16s var(--ease),transform .14s var(--ease);
+  }
+  .chip:hover{background:var(--surface-2);color:var(--ink)}
+  .chip.on{background:var(--accent-soft);border-color:transparent;color:var(--accent-ink);font-weight:600}
+  .chip .i{color:#a8a8b4}
+  .chip.on .i{color:var(--accent-ink)}
+
+  /* 表单卡片 */
+  .panel{
+    margin-top:14px;border:1px solid var(--line);border-radius:13px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(20,20,25,.025),0 8px 24px -20px rgba(20,20,25,.18);
+  }
+  .phead{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 15px;border-bottom:1px solid var(--line);background:#fcfcfd}
+  .pico{
+    width:22px;height:22px;border-radius:6px;flex:0 0 auto;
+    display:inline-flex;align-items:center;justify-content:center;
+    background:var(--accent-soft);color:var(--accent-ink);
+  }
+  .pico svg{width:14px;height:14px;display:block}
+  .pico.swap{animation:iconIn .44s var(--glide)}
+  @keyframes iconIn{0%{transform:scale(.86);opacity:.4}100%{transform:scale(1);opacity:1}}
+  .phead h2{font-size:13.5px;font-weight:650}
+  .phead .where{font-size:11.5px;color:var(--muted);margin-left:2px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .phead .all{
+    margin-left:auto;flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;
+    height:26px;padding:0 9px;border-radius:7px;
+    border:1px solid var(--line-strong);background:#fff;font-size:11.5px;color:var(--ink-2);
+    transition:background .16s var(--ease),border-color .16s var(--ease),transform .14s var(--ease);
+  }
+  .phead .all:hover{background:var(--surface-2);border-color:#b9b9c4}
+
+  .frow{display:grid;grid-template-columns:16px 100px minmax(0,1fr) 44px;gap:8px;align-items:center;padding:8px 10px 8px 13px;border-bottom:1px solid var(--line)}
+  .frow:last-of-type{border-bottom:none}
+  .fi{display:flex;align-items:center;justify-content:center;color:#ababb7}
+  .fi svg{width:13px;height:13px;display:block}
+  .fk{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fv{
+    font-family:var(--mono);font-size:12.2px;color:var(--ink);line-height:1.55;
+    overflow-wrap:anywhere;
+  }
+  .fv em{font-style:normal;color:var(--muted)}
+  .fc{
+    justify-self:end;width:26px;height:26px;border-radius:7px;border:1px solid transparent;
+    display:flex;align-items:center;justify-content:center;color:#a6a6b2;
+    transition:background .16s var(--ease),border-color .16s var(--ease),color .16s var(--ease),transform .14s var(--ease);
+  }
+  .fc:hover{background:var(--surface-2);border-color:var(--line);color:var(--ink)}
+  .fc.ok{color:#12a150;background:#f1faf5;border-color:#d3ecdf}
+  .fc.ok:hover{background:#ecf8f1;border-color:#c2e3d1;color:#0f8a4d}
+  .fc svg.pop{animation:popIn .46s var(--pop) both}
+  @keyframes popIn{0%{transform:scale(.3);opacity:0}62%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+  .phead .all.co{color:var(--ok);border-color:#cfe9da;background:#f2fbf6}
+  .swap{animation:panelSwap .42s var(--glide) both}
+  @keyframes panelSwap{0%{opacity:.5;transform:translateY(5px);filter:blur(2px)}100%{opacity:1;transform:none;filter:none}}
+  .panel.stagger .frow{animation:rowIn .46s var(--glide) both}
+  @keyframes rowIn{0%{opacity:0;transform:translateY(7px);filter:blur(2.5px)}100%{opacity:1;transform:none;filter:none}}
+  .panel.stagger .pnote{animation:rowIn .44s var(--glide) both;animation-delay:.21s}
+  .swapT{animation:swapT .38s var(--glide) both}
+  @keyframes swapT{0%{opacity:0;transform:translateY(3px)}100%{opacity:1;transform:none}}
+  .pnote{margin:0;padding:9px 15px 11px;font-size:12px;color:var(--muted);line-height:1.7;background:#fcfcfd;border-top:1px solid var(--line)}
+
+  /* 折叠 */
+  details{margin-top:12px;border-top:1px solid var(--line);padding-top:11px}
+  details.json{margin-top:0;border-top:none;padding-top:0;border-bottom:1px solid var(--line);padding-bottom:11px}
+  summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;font-size:12.5px;color:var(--muted);padding:2px 0}
+  summary::-webkit-details-marker{display:none}
+  summary::before{
+    content:"";flex:0 0 6px;width:6px;height:6px;margin-right:3px;
+    border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);
+    transform:rotate(-45deg) translate(-1px,-1px);transition:transform .2s var(--ease);
+  }
+  details[open] summary::before{transform:rotate(45deg)}
+  summary:hover{color:var(--ink)}
+  details[open] summary{color:var(--ink);font-weight:600}
+
+  .code{margin-top:9px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--code-bg)}
+  .code .bar{display:flex;align-items:center;padding:6px 8px 6px 12px;border-bottom:1px solid var(--line);background:#fff}
+  .code .fn{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .code .cp{margin-left:auto;padding:2px 8px;border-radius:6px;border:1px solid var(--line-strong);background:#fff;font-size:11px;color:var(--ink-2)}
+  .code .cp:hover{background:var(--surface-2)}
+  .code pre{margin:0;padding:11px 13px;font-family:var(--mono);font-size:11.8px;line-height:1.7;overflow-x:auto;color:#2b2b36}
+  .k{color:#7048c6}.s{color:#0b6b4f}.p{color:#666}
+
+  summary .i{margin-left:1px}
+  @keyframes reveal{0%{opacity:0;transform:translateY(-5px)}100%{opacity:1;transform:none}}
+  details[open] > .dbody,details[open] > .code{animation:reveal .4s var(--glide)}
+  .dbody{padding:9px 0 2px 16px;font-size:12.8px;color:var(--ink-2);line-height:1.78}
+  .dbody b{color:var(--ink);font-weight:600}
+  .dbody .row{margin-bottom:6px}
+  .dbody .row:last-child{margin-bottom:0}
+  .dbody pre{
+    margin:6px 0 9px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
+    background:var(--code-bg);font-family:var(--mono);font-size:11.4px;line-height:1.7;overflow-x:auto;color:#2b2b36;
+  }
+
+  body.embed main{padding-top:28px}
+  body.embed h1{font-size:22px}
+  body.embed .lead{margin-top:6px;font-size:13.5px}
+  body.embed .foot{margin-top:22px}
+
+  .foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+  .foot .live{
+    display:inline-block;width:6px;height:6px;border-radius:99px;background:#12a150;margin-right:7px;vertical-align:1px;
+    box-shadow:0 0 0 3px rgba(18,161,80,.12);animation:breathe 4.4s ease-in-out infinite;
+  }
+  @keyframes breathe{
+    0%,100%{box-shadow:0 0 0 3px rgba(18,161,80,.12)}
+    50%{box-shadow:0 0 0 5px rgba(18,161,80,.04)}
+  }
+
+  @media (max-width:640px){
+    .nav{padding:0 18px}
+    .nav .links{display:none}
+    main{padding:28px 18px 56px}
+    h1{font-size:23px}
+    .pick{grid-template-columns:minmax(0,1fr);gap:6px}
+    .pl{display:none}
+    .chips{
+      flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -18px;padding:0 18px;
+      -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 34px),transparent);
+      mask-image:linear-gradient(to right,#000 calc(100% - 34px),transparent);
+    }
+    .chips::-webkit-scrollbar{display:none}
+    .phead{flex-wrap:wrap;gap:3px 8px;padding:10px 10px 10px 13px}
+    .phead .where{
+      order:3;flex:1 0 100%;margin-left:30px;white-space:normal;overflow:visible;text-overflow:clip;
+      font-size:11.5px;line-height:1.55;
+    }
+    .frow{grid-template-columns:14px minmax(0,1fr) 34px;gap:1px 9px;padding:8px 8px 9px 13px}
+    .fi{grid-column:1;grid-row:1;margin-top:1px}
+    .fk{grid-column:2;font-size:11.5px;line-height:1.4}
+    .fv{grid-column:2;font-size:12.5px;line-height:1.5}
+    .fc{grid-column:3;grid-row:1/3;align-self:center}
+    .code pre{font-size:11px}
+  }
+  /* 首屏：逐块浮起，不阻塞阅读 */
+  @keyframes rise{0%{opacity:0;transform:translateY(9px)}100%{opacity:1;transform:none}}
+  main>*{animation:rise .6s var(--glide) both}
+  @keyframes riseSoft{0%{opacity:0;transform:translateY(12px);filter:blur(3px)}100%{opacity:1;transform:none;filter:none}}
+  main>*:nth-child(1),main>*:nth-child(2),main>*:nth-child(5){animation-name:riseSoft;animation-duration:.72s}
+  main>*:nth-child(1){animation-delay:0ms}
+  main>*:nth-child(2){animation-delay:54ms}
+  main>*:nth-child(3){animation-delay:104ms}
+  main>*:nth-child(4){animation-delay:150ms}
+  main>*:nth-child(5){animation-delay:206ms}
+  main>*:nth-child(6){animation-delay:262ms}
+  main>*:nth-child(7){animation-delay:300ms}
+  main>*:nth-child(8){animation-delay:334ms}
+  main>*:nth-child(9){animation-delay:364ms}
+
+  @media (prefers-reduced-transparency:reduce){
+    .menu{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}
+  }
+  @media (prefers-contrast:more){
+    .menu{border-color:#6b6b78;background:#fff;box-shadow:0 18px 40px -12px rgba(0,0,0,.3)}
+    .tsel,.tkin input,.phead .all,.code .cp{border-color:#8a8a96}
+    .frow,.phead,.pnote{border-color:#c9c9d2}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="brand" href="#"><i aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.4v4.8M15 3.4v4.8"/><path d="M6.2 8.2h11.6v2.6a5.8 5.8 0 0 1-11.6 0z"/><path d="M12 16.6v4"/></svg></i>apiduo</a>
+  <div class="links">
+    <a href="#">模型价格</a>
+    <a href="#">文档</a>
+    <a href="#" class="on">MCP</a>
+  </div>
+  <div class="right"><a class="btn btn-primary" href="/console/token">新建令牌</a></div>
+</nav>
+
+<main>
+  <h1>MCP 接入</h1>
+  <p class="lead">选客户端，把下面几项填进它的 MCP 设置。要改配置文件的，展开最后一段 JSON。</p>
+
+  <div class="tok">
+    <label for="t-sel">令牌</label>
+
+    <div class="tw" id="t-wrap">
+      <button class="tsel" id="t-sel" aria-haspopup="listbox" aria-expanded="false">
+        <span class="edot" id="t-dot" aria-hidden="true"></span>
+        <span class="tname" id="t-name"></span>
+        <span class="tkey" id="t-key"></span>
+        <span class="ch" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></span>
+      </button>
+      <div class="menu" id="t-menu" role="listbox" hidden></div>
+    </div>
+
+    <div class="tkin" id="t-guest" style="display:none">
+      <span class="i" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.2" cy="12" r="3.4"/><path d="M11.6 12H21"/><path d="M17.6 12v3.1M20.2 12v2.2"/></svg></span>
+      <input id="tk" type="text" placeholder="sk-你的令牌" autocomplete="off" spellcheck="false">
+    </div>
+
+    <a href="/console/token" id="t-link">管理令牌</a>
+  </div>
+
+  <div class="pick">
+    <span class="pl">国内</span>
+    <div class="chips" id="pick-cn"></div>
+    <span class="pl">通用</span>
+    <div class="chips" id="pick-gen"></div>
+  </div>
+
+  <section class="panel">
+    <div class="phead">
+      <span class="pico" id="p-ico" aria-hidden="true"></span>
+      <h2 id="p-name"></h2>
+      <span class="where" id="p-where"></span>
+      <button class="all" onclick="copyAll(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6a3 3 0 0 0-3 3v6.5A2.5 2.5 0 0 0 5.5 15"/></svg>复制全部</button>
+    </div>
+    <div id="p-rows"></div>
+    <p class="pnote" id="p-note"></p>
+  </section>
+
+  <details class="json" id="p-json">
+    <summary><span class="i" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.2c-2 0-2.9 1-2.9 3v2c0 1.7-.8 2.5-2.1 2.8 1.3.3 2.1 1.1 2.1 2.8v2c0 2 .9 3 2.9 3"/><path d="M15 4.2c2 0 2.9 1 2.9 3v2c0 1.7.8 2.5 2.1 2.8-1.3.3-2.1 1.1-2.1 2.8v2c0 2-.9 3-2.9 3"/></svg></span>用配置文件（JSON）</summary>
+    <div class="code">
+      <div class="bar"><span class="fn" id="j-fn"></span><button class="cp" onclick="copyJSON(this)">复制</button></div>
+      <pre id="j-code"></pre>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="i" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.3"/><path d="M8.4 12.2l2.4 2.4 4.8-5"/></svg></span>验证与排错</summary>
+    <div class="dbody">
+      <div class="row">先确认令牌和网络都通，应返回四个工具名：</div>
+      <pre id="d-curl"></pre>
+      <div class="row"><b>401</b> — 令牌没带上或已失效，看看 <code>Bearer</code> 后面有没有空格。</div>
+      <div class="row"><b>连不上、一直转圈</b> — 客户端在等 SSE。本服务不维持会话，只回 JSON；把传输类型换成 Streamable HTTP，或用 <code>mcp-remote</code> 桥一层。</div>
+      <div class="row"><b>看得到工具但调不动</b> — 令牌范围不够：图像要 <code>image:write</code>，视频要 <code>video:write</code>，任务查询要 <code>task:read</code>。</div>
+    </div>
+  </details>
+
+  <details>
+    <summary><span class="i" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.9 6.2a1 1 0 0 0 0 1.4l1.5 1.5a1 1 0 0 0 1.4 0l3.4-3.4a5.8 5.8 0 0 1-7.6 7.6l-6.6 6.6a2.1 2.1 0 0 1-3-3l6.6-6.6a5.8 5.8 0 0 1 7.6-7.6z"/></svg></span>四个工具</summary>
+    <div class="dbody">
+      <div class="row"><code>models.list</code> 列出可用模型与参数约束</div>
+      <div class="row"><code>image.generate</code> 生成图片，支持参考图、画幅与分辨率</div>
+      <div class="row"><code>video.generate</code> 提交视频任务，立即返回 <code>task_id</code></div>
+      <div class="row"><code>task.get</code> 查询任务状态与产物地址</div>
+    </div>
+  </details>
+
+  <div class="foot"><span class="live" aria-hidden="true"></span>Streamable HTTP · <code>https://apiduo.cn/mcp</code> · 按实际调用计费</div>
+</main>
+
+<script>
+// ?embed=1 供控制台外壳内嵌时去掉自己的顶栏
+if (/[?&]embed\b/.test(location.search)) {
+  document.body.classList.add('embed');
+  document.querySelector('.nav').remove();
+}
+
+const T = 'https://apiduo.cn/mcp';
+const AUTH = 'Authorization: Bearer sk-你的令牌';
+
+const JSON_T = {
+  std: '{\n  "mcpServers": {\n    "apiduo": {\n      "type": "http",\n      "url": "' + T + '",\n      "headers": {\n        "Authorization": "Bearer sk-你的令牌"\n      }\n    }\n  }\n}',
+  vscode: '{\n  "servers": {\n    "apiduo": {\n      "type": "http",\n      "url": "' + T + '",\n      "headers": {\n        "Authorization": "Bearer sk-你的令牌"\n      }\n    }\n  }\n}',
+  stdio: '{\n  "mcpServers": {\n    "apiduo": {\n      "command": "npx",\n      "args": [\n        "-y", "mcp-remote", "' + T + '",\n        "--header", "' + AUTH + '"\n      ]\n    }\n  }\n}'
+};
+
+const CLIENTS = [
+  {id:'workbuddy', g:'cn', name:'WorkBuddy', where:'连接器 → 自定义连接器 → 配置 MCP', file:'~/.workbuddy/mcp.json', json:'std',
+   rows:[['服务器名称','apiduo'],['传输类型','HTTP'],['服务器 URL',T],['请求头',AUTH]],
+   note:'保存后回列表点一次「信任」，不点不启用。个别版本认不出 http，换成 streamablehttp 再试。'},
+
+  {id:'doubao', g:'cn', name:'豆包工作', where:'技能·连接器·伙伴 → 连接器 → 新建自定义连接器', json:null,
+   rows:[['服务器名称','apiduo'],['传输类型','HTTP'],['服务器 URL',T],['自定义 Headers','Authorization = Bearer sk-你的令牌']],
+   note:'自定义连接器只在电脑版有。保存后回「我的技能 · 连接器」把开关打开，再新建一个工作任务验证。'},
+
+  {id:'trae', g:'cn', name:'Trae', where:'设置 → MCP → 添加 → 手动添加', file:'.trae/mcp.json', json:'std',
+   rows:[['名称','apiduo'],['传输类型','HTTP'],['URL',T],['请求头',AUTH]],
+   note:'不需要写 type，有 url + headers 就够。云端任务读不到本地 MCP，验证请用本地任务。'},
+
+  {id:'codebuddy', g:'cn', name:'CodeBuddy', where:'配置 → MCP 设置 → 配置 MCP', file:'~/.codebuddy/.mcp.json', json:'std',
+   rows:[['名称','apiduo'],['传输类型','HTTP'],['URL',T],['请求头',AUTH]],
+   note:'保存后回 MCP 列表刷新，状态变绿即可。'},
+
+  {id:'lingma', g:'cn', name:'通义灵码', where:'个人设置 → MCP 服务 → + → 手动添加', json:null,
+   rows:[['名称','apiduo'],['类型','STDIO'],['命令','npx'],['参数','-y mcp-remote ' + T + ' --header "Authorization: Bearer sk-你的令牌"']],
+   note:'只有 SSE 和 STDIO，没有填请求头的地方，只能用 mcp-remote 在本机桥一层（需 Node 18+）。新版 Qoder CN 支持远程地址，直接填 URL + 请求头即可。'},
+
+  {id:'cherry', g:'cn', name:'Cherry Studio', where:'设置 → MCP 服务器 → 添加', json:null,
+   rows:[['名称','apiduo'],['类型','可流式传输的 HTTP'],['URL',T],['请求头','Authorization=Bearer sk-你的令牌']],
+   note:'请求头按「键=值」逐行填。保存后在「工具」标签页应能看到 4 个工具，回对话记得把这个服务器打开。'},
+
+  {id:'cursor', g:'gen', name:'Cursor', where:'Settings → MCP', file:'~/.cursor/mcp.json', json:'std',
+   rows:[['名称','apiduo'],['传输类型','HTTP'],['URL',T],['请求头',AUTH]],
+   note:'存盘后看 apiduo 是不是绿点，不是就点刷新。项目内也可以在 .cursor/mcp.json 里写一份。'},
+
+  {id:'claude-code', g:'gen', name:'Claude Code', where:'终端 claude mcp add --transport http', file:'.mcp.json', json:'std',
+   rows:[['传输类型','http'],['名称','apiduo'],['URL',T],['请求头',AUTH]],
+   note:'必须显式写传输类型，否则会被当成 stdio。等价命令：claude mcp add --transport http apiduo ' + T + ' --header "' + AUTH + '"'},
+
+  {id:'vscode', g:'gen', name:'VS Code', where:'命令面板 → MCP: 添加服务器', file:'.vscode/mcp.json', json:'vscode',
+   rows:[['名称','apiduo'],['传输类型','HTTP'],['URL',T],['请求头',AUTH]],
+   note:'顶层键是 servers，不是 mcpServers —— 照抄别处的配置会加载不出来。'},
+
+  {id:'desktop', g:'gen', name:'Claude Desktop', where:'Settings → Connectors → Add custom connector', file:'claude_desktop_config.json', json:'stdio',
+   rows:[['名称','apiduo'],['传输类型','HTTP'],['URL',T],['请求头',AUTH]],
+   note:'新版能直接填 URL 和请求头。旧版只支持本地 stdio，用下面 JSON 里的 mcp-remote 写法。'},
+
+  {id:'raw', g:'gen', name:'其他客户端', where:'任何支持 Streamable HTTP 的客户端', json:'std',
+   rows:[['URL',T],['传输类型','Streamable HTTP（POST，JSON 响应）'],['请求头',AUTH]],
+   note:'本服务不维持会话，一次请求一次响应。只支持 SSE 的客户端接不了，先用 mcp-remote 在本地转一层。'}
+];
+
+// 客户端标记：同一 24 格、1.7 描边，保证混在一起不打架
+// 品牌标来自 LobeHub Icons（@lobehub/icons-static-svg，MIT），已内联为 path，不依赖 CDN
+const brand = inner => '<svg class="bm" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' + inner + '</svg>';
+const MARK = {
+  workbuddy: brand('<path d="M18.777 1.647c.28-.02.536.114.972.51 1.018.926 2.437 2.828 3.318 4.452l.34.631.482.24.11.06v3.638a5.206 5.206 0 00-5.32-1.23c-.491.166-1.021.471-2.08 1.082l-6.09 3.516c-1.057.61-1.586.916-1.975 1.259a5.208 5.208 0 00-1.493 5.572c.165.49.471 1.02 1.082 2.08l.315.543h-3.26c-.685 0-1.34-.135-1.939-.377-.169-.956-.009-1.789.469-2.335.158-.18.164-.189.13-.493a11.846 11.846 0 01-.057-1.711l.02-.444-.667-1.18C2.1 15.622 1.445 14.078 1.192 12.9c-.133-.647-.125-.934.04-1.146.1-.128.427-.261.822-.334.994-.175 3.162-.017 5.575.41l.25.043.551-.487c.915-.81 1.522-1.264 2.641-1.962 1.167-.73 2.484-1.331 3.967-1.807l.476-.152.261-.688c.937-2.471 1.896-4.293 2.58-4.9.235-.21.25-.22.422-.23z"></path><path d="M12.139 18.2a1.203 1.203 0 011.642.44l1.296 2.243a1.204 1.204 0 01-2.083 1.203l-1.296-2.243a1.203 1.203 0 01.44-1.644zM18.629 14.452a1.203 1.203 0 011.642.44l1.295 2.244a1.203 1.203 0 11-2.083 1.203l-1.295-2.243a1.203 1.203 0 01.44-1.644z"></path>'),
+  doubao: brand('<path d="M5.31 15.756c.172-3.75 1.883-5.999 2.549-6.739-3.26 2.058-5.425 5.658-6.358 8.308v1.12C1.501 21.513 4.226 24 7.59 24a6.59 6.59 0 002.2-.375c.353-.12.7-.248 1.039-.378.913-.899 1.65-1.91 2.243-2.992-4.877 2.431-7.974.072-7.763-4.5l.002.001z" fill-opacity=".72"></path><path d="M22.57 10.283c-1.212-.901-4.109-2.404-7.397-2.8.295 3.792.093 8.766-2.1 12.773a12.782 12.782 0 01-2.244 2.992c3.764-1.448 6.746-3.457 8.596-5.219 2.82-2.683 3.353-5.178 3.361-6.66a2.737 2.737 0 00-.216-1.084v-.002zM14.303 1.867C12.955.7 11.248 0 9.39 0 7.532 0 5.883.677 4.545 1.807 2.791 3.29 1.627 5.557 1.5 8.125v9.201c.932-2.65 3.097-6.25 6.357-8.307.5-.318 1.025-.595 1.569-.829 1.883-.801 3.878-.932 5.746-.706-.222-2.83-.718-5.002-.87-5.617h.001z"></path><path d="M17.305 4.961a199.47 199.47 0 01-1.08-1.094c-.202-.213-.398-.419-.586-.622l-1.333-1.378c.151.615.648 2.786.869 5.617 3.288.395 6.185 1.898 7.396 2.8-1.306-1.275-3.475-3.487-5.266-5.323z" fill-opacity=".72"></path>'),
+  trae: brand('<path d="M24 20.541H3.428v-3.426H0V3.4h24V20.54zM3.428 17.115h17.144V6.827H3.428v10.288zm8.573-5.196l-2.425 2.424-2.424-2.424 2.424-2.424 2.425 2.424zm6.857-.001l-2.424 2.423-2.425-2.423 2.425-2.425 2.424 2.425z"></path>'),
+  // CodeBuddy 与 WorkBuddy 在图标库里是同一形状，这里自绘实心尖括号区分
+  codebuddy: brand('<path d="M9.6 5.55 3.35 12l6.25 6.45 1.86-1.82L6.98 12l4.48-4.63zM14.4 5.55l-1.86 1.82L17.02 12l-4.48 4.63 1.86 1.82L20.65 12z"/>'),
+  lingma: brand('<path d="M19.713 2.825h-5.907c0-.251-.066-.503-.196-.728L12.819.728A1.46 1.46 0 0 0 11.559 0h-1.58c-.52 0-1 .275-1.26.728l-2.42 4.19a1.45 1.45 0 0 0 0 1.453l.791 1.37c.26.448.74.727 1.26.727h11.36c.52 0 1-.275 1.26-.728l.79-1.37a1.45 1.45 0 0 0 0-1.451l-.79-1.37a1.46 1.46 0 0 0-1.26-.728zM.195 9.905l2.951 5.115a1.46 1.46 0 0 0-.531.531l-.791 1.37a1.45 1.45 0 0 0 0 1.452l.79 1.37c.26.448.74.727 1.26.727h4.84c.52 0 1-.275 1.26-.728l.79-1.37a1.45 1.45 0 0 0 0-1.451L5.086 7.083a1.46 1.46 0 0 0-1.26-.728h-1.58c-.52 0-1 .276-1.26.728l-.79 1.37a1.45 1.45 0 0 0 0 1.452m15.888 13.367 2.951-5.115c.217.125.469.196.728.196h1.582c.52 0 1-.275 1.26-.728l.79-1.37a1.45 1.45 0 0 0 0-1.451l-2.42-4.191a1.46 1.46 0 0 0-1.259-.728h-1.582c-.52 0-1 .276-1.259.728l-5.678 9.838a1.45 1.45 0 0 0 0 1.452l.79 1.37c.26.448.74.727 1.26.727h1.582c.52 0 1-.275 1.26-.728z"></path>'),
+  cherry: brand('<path d="M6.513 18.419c-1.6 0-3.107-.64-4.247-1.802A6.146 6.146 0 01.5 12.287c0-1.63.626-3.168 1.766-4.33 1.14-1.162 2.647-1.802 4.247-1.802s3.132.655 4.25 1.795c.835.849.835 2.23 0 3.078a2.11 2.11 0 01-3.02 0 1.737 1.737 0 00-1.234-.521c-.945 0-1.744.813-1.744 1.776 0 .964.799 1.777 1.744 1.777.46 0 .907-.19 1.234-.522a2.11 2.11 0 013.02 0c.835.85.835 2.23 0 3.079a5.997 5.997 0 01-4.25 1.794v.008z"></path><path d="M12.026 24c-1.6 0-3.107-.64-4.247-1.802a6.146 6.146 0 01-1.766-4.33c0-1.63.644-3.193 1.762-4.337a2.11 2.11 0 013.021 0c.834.849.834 2.23 0 3.078-.324.331-.51.788-.51 1.255 0 .964.798 1.777 1.744 1.777.945 0 1.744-.813 1.744-1.777 0-.341-.083-.83-.475-1.233a6.255 6.255 0 01-1.77-4.348c0-1.615.627-3.168 1.767-4.33s2.646-1.802 4.247-1.802c1.6 0 3.107.64 4.247 1.802a6.146 6.146 0 011.766 4.33c0 1.63-.644 3.194-1.762 4.337a2.11 2.11 0 01-3.021 0 2.206 2.206 0 010-3.078c.323-.331.51-.788.51-1.255 0-.964-.798-1.777-1.744-1.777s-1.744.813-1.744 1.777c0 .47.19.935.521 1.27 1.115 1.136 1.727 2.667 1.727 4.311a6.122 6.122 0 01-1.766 4.33C15.137 23.36 13.63 24 12.03 24h-.004z"></path><path d="M12.026 6.867L8.53 3.587a1.336 1.336 0 111.827-1.949l1.4 1.313L13.744.495a1.336 1.336 0 012.075 1.68l-3.798 4.692h.004z"></path>'),
+  cursor: brand('<path d="M22.106 5.68L12.5.135a.998.998 0 00-.998 0L1.893 5.68a.84.84 0 00-.419.726v11.186c0 .3.16.577.42.727l9.607 5.547a.999.999 0 00.998 0l9.608-5.547a.84.84 0 00.42-.727V6.407a.84.84 0 00-.42-.726zm-.603 1.176L12.228 22.92c-.063.108-.228.064-.228-.061V12.34a.59.59 0 00-.295-.51l-9.11-5.26c-.107-.062-.063-.228.062-.228h18.55c.264 0 .428.286.296.514z"></path>'),
+  'claude-code': brand('<path clip-rule="evenodd" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z"></path>'),
+  // 图标库没有 VS Code，自绘实心折带
+  vscode: brand('<path d="M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z"/>'),
+  desktop: brand('<path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z"></path>'),
+  raw: brand('<path d="M15.688 2.343a2.588 2.588 0 00-3.61 0l-9.626 9.44a.863.863 0 01-1.203 0 .823.823 0 010-1.18l9.626-9.44a4.313 4.313 0 016.016 0 4.116 4.116 0 011.204 3.54 4.3 4.3 0 013.609 1.18l.05.05a4.115 4.115 0 010 5.9l-8.706 8.537a.274.274 0 000 .393l1.788 1.754a.823.823 0 010 1.18.863.863 0 01-1.203 0l-1.788-1.753a1.92 1.92 0 010-2.754l8.706-8.538a2.47 2.47 0 000-3.54l-.05-.049a2.588 2.588 0 00-3.607-.003l-7.172 7.034-.002.002-.098.097a.863.863 0 01-1.204 0 .823.823 0 010-1.18l7.273-7.133a2.47 2.47 0 00-.003-3.537z"></path><path d="M14.485 4.703a.823.823 0 000-1.18.863.863 0 00-1.204 0l-7.119 6.982a4.115 4.115 0 000 5.9 4.314 4.314 0 006.016 0l7.12-6.982a.823.823 0 000-1.18.863.863 0 00-1.204 0l-7.119 6.982a2.588 2.588 0 01-3.61 0 2.47 2.47 0 010-3.54l7.12-6.982z"></path>')
+};
+
+// 字段类型图标：按标签自动匹配，不为每个客户端单独写
+const FI = {
+  tag: '<path d="M11.7 3.7H19a1.3 1.3 0 0 1 1.3 1.3v7.3L12 20.6a1.8 1.8 0 0 1-2.5 0L3.4 14.5a1.8 1.8 0 0 1 0-2.5z"/><circle cx="16.2" cy="7.9" r="1.3"/>',
+  plug: '<path d="M9 3.4v4.8M15 3.4v4.8"/><path d="M6.2 8.2h11.6v2.6a5.8 5.8 0 0 1-11.6 0z"/><path d="M12 16.6v4"/>',
+  globe: '<circle cx="12" cy="12" r="8.2"/><path d="M3.8 12h16.4"/><path d="M12 3.8c2.1 2.3 3.2 5.1 3.2 8.2s-1.1 5.9-3.2 8.2c-2.1-2.3-3.2-5.1-3.2-8.2S9.9 6.1 12 3.8z"/>',
+  shield: '<path d="M12 3.4 19 6v5.5c0 4.2-2.8 7.5-7 9.1-4.2-1.6-7-4.9-7-9.1V6z"/><path d="M9.3 12.1l2 2 3.5-3.7"/>',
+  term: '<path d="M4.4 7.2 9 12l-4.6 4.8"/><path d="M12.4 16.8h7.2"/>',
+  sliders: '<path d="M4 8.3h8M16.6 8.3H20M4 15.7h3.4M11.8 15.7H20"/><circle cx="14.4" cy="8.3" r="2.1"/><circle cx="9.6" cy="15.7" r="2.1"/>'
+};
+
+const svg = paths => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
+
+const fieldIcon = k =>
+  /命令/.test(k) ? 'term' :
+  /参数/.test(k) ? 'sliders' :
+  /头|header/i.test(k) ? 'shield' :
+  /url|地址/i.test(k) ? 'globe' :
+  /类型/.test(k) ? 'plug' : 'tag';
+
+const S = {id:'workbuddy'};
+const PLACEHOLDER = 'sk-你的令牌';
+let lastJSON = '';
+
+/* ---- 令牌：控制台内自动关联当前账号，公开页（?guest=1）降级手填 ---- */
+const AUTHED = !/[?&]guest\b/.test(location.search);
+
+const TOKENS = /[?&]empty\b/.test(location.search) ? [] : [
+  {id:1, name:'production',     key:'sk-Rx7pQ2mK9vL3nB6tY1wZ8cF4hJ0dS5aG', status:1, expired:-1, unlimited:true,  remain:0,      allow_ips:''},
+  {id:2, name:'claude-desktop', key:'sk-Hn3bV6cX1zM8qW4eR7tY2uI5oP0aS9dF', status:1, expired:-1, unlimited:false, remain:128400, allow_ips:''},
+  {id:3, name:'旧脚本',          key:'sk-Qw9eR2tY5uI8oP1aS4dF7gH0jK3lZ6xC', status:1, expired:1767225600, unlimited:true, remain:0, allow_ips:''},
+  {id:4, name:'macbook',        key:'sk-Zx1cV3bN5mQ7wE9rT2yU4iO6pA8sD0fG', status:1, expired:-1, unlimited:true,  remain:0,      allow_ips:'203.0.113.0/24'}
+];
+
+const NOW = Date.now() / 1000;
+const alive  = t => t.status === 1 && (t.expired === -1 || t.expired > NOW);
+const funded = t => t.unlimited || t.remain > 0;
+// 自动关联要挑「拿过去就能用」的：启用、没过期、有额度、没绑 IP
+const why = t =>
+  t.status !== 1 ? '已禁用' :
+  !alive(t) ? '已过期' :
+  !funded(t) ? '额度为 0' :
+  t.allow_ips ? '绑了 IP 白名单，外部客户端会被挡' : '';
+
+let TID = (TOKENS.find(t => !why(t)) || TOKENS[0] || {id:null}).id;
+let TSEQ = 100;
+
+const curTok = () => TOKENS.find(t => t.id === TID) || null;
+const mask = k => k ? 'sk-…' + k.slice(-4) : '';
+
+const el = id => document.getElementById(id);
+const cur = () => CLIENTS.find(c => c.id === S.id);
+const tk = () => {
+  if (!AUTHED) return el('tk').value.trim() || PLACEHOLDER;
+  const t = curTok();
+  return t ? t.key : PLACEHOLDER;
+};
+const fill = str => str.split(PLACEHOLDER).join(tk());
+
+const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const PLUS  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></svg>';
+
+function renderTok(){
+  el('t-wrap').style.display = AUTHED ? '' : 'none';
+  el('t-guest').style.display = AUTHED ? 'none' : '';
+  if (!AUTHED) { el('t-link').textContent = '新建令牌'; return; }
+
+  const t = curTok(), w = t ? why(t) : '';
+  el('t-link').textContent = '管理令牌';
+  el('t-link').style.display = t ? '' : 'none';
+  el('t-sel').classList.toggle('empty', !t);
+  el('t-dot').style.display = t ? '' : 'none';
+  el('t-dot').className = 'edot' + (w ? ' warn' : '');
+  el('t-name').textContent = t ? t.name : '新建 MCP 令牌';
+  const kv = t ? mask(t.key) : '';
+  const tk0 = el('t-key');
+  if (tk0.textContent !== kv && tk0.textContent){
+    pulse(tk0);
+  }
+  tk0.textContent = kv;
+  tk0.style.display = t ? '' : 'none';
+  el('t-sel').title = w || (t ? '当前账号的「' + t.name + '」' : '');
+}
+
+function buildMenu(){
+  const items = TOKENS.map(t => {
+    const w = why(t);
+    return '<button class="mi" data-id="' + t.id + '" role="option" aria-selected="' + (t.id === TID) + '">' +
+      '<span class="edot' + (w ? ' warn' : '') + '"></span>' +
+      '<span class="mtx"><span class="nm">' + t.name + '</span>' +
+        (w ? '<span class="mw">' + w + '</span>' : '<span class="ms">' + mask(t.key) + '</span>') +
+      '</span>' +
+      '<span class="ck">' + (t.id === TID ? CHECK : '') + '</span></button>';
+  }).join('');
+
+  el('t-menu').innerHTML = (items || '<div class="mtip" style="padding:8px">这个账号还没有令牌。</div>') +
+    '<div class="msep"></div>' +
+    '<button class="mnew" data-new="1">' + PLUS + '新建 MCP 令牌</button>' +
+    '<div class="mtip">不过期、不限额度、不绑 IP。</div>';
+}
+
+let menuTimer = 0;
+function toggleMenu(open){
+  if (AUTHED && !curTok()) { newToken(); return; }
+  const m = el('t-menu');
+  const on = open === undefined ? !m.classList.contains('in') : open;
+  clearTimeout(menuTimer);
+  if (on){
+    buildMenu();
+    m.hidden = false;
+    // 下一帧再挂 .in，让浏览器先拿到起始状态
+    requestAnimationFrame(() => {
+      m.classList.add('in');
+      el('t-sel').setAttribute('aria-expanded', 'true');
+    });
+    return;
+  }
+  // 关：只摘 .in，过渡从当前位置反向（可随时再点开打断）
+  m.classList.remove('in');
+  el('t-sel').setAttribute('aria-expanded', 'false');
+  menuTimer = setTimeout(() => {
+    if (!m.classList.contains('in')) m.hidden = true;
+  }, 300);
+}
+
+function newToken(){
+  const rnd = () => Math.random().toString(36).slice(2);
+  const d = new Date();
+  const t = {
+    id:++TSEQ,
+    name:'MCP ' + (d.getMonth() + 1) + '/' + d.getDate(),
+    key:'sk-' + (rnd() + rnd() + rnd()).replace(/[^a-z0-9]/g, '').slice(0, 32),
+    status:1, expired:-1, unlimited:true, remain:0, allow_ips:''
+  };
+  TOKENS.unshift(t);
+  TID = t.id;
+  render();
+  const sel = el('t-sel');
+  sel.classList.remove('flash');
+  void sel.offsetWidth;
+  sel.classList.add('flash');
+}
+
+function renderPick(){
+  const mk = g => CLIENTS.filter(c => c.g === g).map(c =>
+    '<button class="chip' + (S.id === c.id ? ' on' : '') + '" data-id="' + c.id + '">' +
+    '<span class="i">' + MARK[c.id] + '</span>' + c.name + '</button>'
+  ).join('');
+  el('pick-cn').innerHTML = mk('cn');
+  el('pick-gen').innerHTML = mk('gen');
+}
+
+let lastCid = '';
+function staggerRows(){
+  const box = el('p-rows');
+  const panel = box.closest('.panel');
+  panel.classList.remove('stagger');
+  void panel.offsetWidth;
+  box.querySelectorAll('.frow').forEach((r, i) => { r.style.animationDelay = (i * 48) + 'ms'; });
+  panel.classList.add('stagger');
+}
+
+function pulse(node){
+  if (!node) return;
+  node.classList.remove('swap');
+  void node.offsetWidth;
+  node.classList.add('swap');
+}
+
+function render(){
+  const c = cur();
+  const switched = lastCid && lastCid !== c.id;
+  lastCid = c.id;
+  renderTok();
+  renderPick();
+  el('p-ico').innerHTML = MARK[c.id];
+  el('p-name').textContent = c.name;
+  el('p-where').textContent = c.where;
+  el('p-name').classList.add('swapT');
+  el('p-where').classList.add('swapT');
+
+  el('p-rows').innerHTML = c.rows.map(([k, v], i) =>
+    '<div class="frow"><span class="fi">' + svg(FI[fieldIcon(k)]) + '</span>' +
+    '<span class="fk">' + k + '</span><span class="fv">' +
+      fill(v).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>' +
+    '<button class="fc" data-i="' + i + '" title="复制">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+      '<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6a3 3 0 0 0-3 3v6.5A2.5 2.5 0 0 0 5.5 15"/></svg>' +
+    '</button></div>'
+  ).join('');
+
+  el('p-note').textContent = c.note;
+
+  const wrap = el('p-json');
+  if (c.json){
+    wrap.style.display = '';
+    el('j-fn').textContent = c.file || 'JSON';
+    lastJSON = fill(JSON_T[c.json]);
+    el('j-code').innerHTML = paint(lastJSON);
+  } else {
+    wrap.style.display = 'none';
+  }
+
+  document.querySelector('.panel').classList.remove('stagger');
+  if (switched) {
+    staggerRows();
+    pulse(el('p-ico'));
+    pulse(el('p-name'));
+    pulse(el('p-where'));
+    pulse(document.querySelector('#p-json .code'));
+  }
+
+  el('d-curl').textContent =
+    'curl -s https://apiduo.cn/mcp \\\n' +
+    '  -H "Authorization: Bearer ' + tk() + '" \\\n' +
+    '  -H "Content-Type: application/json" \\\n' +
+    "  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'";
+}
+
+// 单次扫描上色：先转义，再按「字符串 + 可选冒号」整体匹配，避免二次匹配吃掉 class 里的引号
+function paint(src){
+  return src.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/("(?:\\.|[^"\\])*")(\s*:)?/g, (m, str, colon) =>
+      colon ? '<span class="k">' + str + '</span><span class="p">' + colon + '</span>'
+            : '<span class="s">' + str + '</span>')
+    .replace(/[{}]/g, m => '<span class="p">' + m + '</span>');
+}
+
+function copyText(btn, text){
+  const done = () => {
+    const o = btn.innerHTML, cls = btn.className;
+    // 图标按钮只有 26px，塞不下「已复制」，换成对勾
+    if (btn.classList.contains('fc')){
+      btn.innerHTML = '<svg class="pop" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+      btn.classList.add('ok');
+    } else {
+      btn.textContent = '已复制';
+      btn.style.color = 'var(--ok, #0f8a4d)';
+    }
+    setTimeout(() => { btn.innerHTML = o; btn.className = cls; btn.style.color = ''; }, 1100);
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, done); else done();
+}
+
+document.querySelector('.pick').addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (!b) return;
+  S.id = b.dataset.id;
+  render();
+});
+
+el('p-rows').addEventListener('click', e => {
+  const b = e.target.closest('.fc');
+  if (!b) return;
+  const [k, v] = cur().rows[+b.dataset.i];
+  copyText(b, k + ': ' + fill(v));
+});
+
+function copyAll(btn){
+  copyText(btn, cur().rows.map(([k, v]) => k + ': ' + fill(v)).join('\n'));
+}
+
+function copyJSON(btn){ copyText(btn, lastJSON); }
+
+el('tk').addEventListener('input', render);
+
+el('t-sel').addEventListener('click', () => toggleMenu());
+el('t-menu').addEventListener('click', e => {
+  if (e.target.closest('[data-new]')) { newToken(); toggleMenu(false); return; }
+  const b = e.target.closest('.mi');
+  if (!b) return;
+  TID = +b.dataset.id;
+  toggleMenu(false);
+  render();
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#t-wrap')) toggleMenu(false);
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') toggleMenu(false);
+});
+
+render();
+</script>
+</body>
+</html>

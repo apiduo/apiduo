@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>日志表格 · 轨迹列原型</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --surface:#fbfbfc;
+    --surface-2:#f4f4f6;
+    --line:#e7e7ea;
+    --line-strong:#d6d6db;
+    --ink:#17171c;
+    --ink-2:#4a4a55;
+    --muted:#8b8b96;
+    --accent:#4f46e5;
+    --accent-soft:#eef0ff;
+    --ok:#0f9d58;
+    --ok-soft:#e8f6ee;
+    --err:#d93025;
+    --err-soft:#fdeceb;
+    --warn:#b26a00;
+    --warn-soft:#fff5e5;
+    --radius:10px;
+    --ease-spring:cubic-bezier(.22,1.2,.36,1);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);
+    color:var(--ink);
+    font-size:13px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{display:flex;min-height:100vh}
+
+  /* ── 侧栏（只为给出后台语境，非重点） ───────────────── */
+  .side{
+    width:196px;flex:0 0 196px;background:#15151a;color:#c9c9d1;
+    padding:14px 10px;font-size:12.5px;
+  }
+  .side .brand{display:flex;align-items:center;gap:8px;padding:6px 8px 16px;color:#fff;font-weight:600;font-size:13.5px}
+  .side .dot{width:7px;height:7px;border-radius:99px;background:linear-gradient(135deg,#7c7cff,#4f46e5)}
+  .side a{display:block;padding:7px 10px;border-radius:7px;color:#a7a7b4;text-decoration:none;margin-bottom:1px}
+  .side a.on{background:#26262f;color:#fff}
+  .side .grp{padding:14px 10px 5px;color:#6a6a78;font-size:11px;letter-spacing:.04em}
+
+  /* ── 主区 ─────────────────────────────────────────── */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+  .head{
+    display:flex;align-items:center;gap:12px;padding:16px 22px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .head h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .head .sub{color:var(--muted);font-size:12px}
+  .head .spacer{flex:1}
+  .btn{
+    appearance:none;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);
+    padding:6px 12px;border-radius:8px;font-size:12.5px;cursor:pointer;
+    transition:transform .12s var(--ease-spring),background .15s,border-color .15s;
+  }
+  .btn:hover{background:var(--surface);border-color:#c4c4cc}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:#4338ca}
+
+  /* 筛选条 */
+  .filters{display:flex;gap:8px;padding:11px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;
+    border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink-2);font-size:12.5px;cursor:default;
+  }
+  .chip .k{color:var(--muted);font-size:12px}
+  .chip.sel{background:var(--accent-soft);border-color:#cfd0fb;color:#3730a3}
+
+  /* 表 */
+  .tablewrap{flex:1;overflow:auto;padding:0 20px 48px 8px}
+  table{width:100%;min-width:1240px;border-collapse:separate;border-spacing:0;font-size:12.5px;table-layout:fixed}
+  thead th{
+    position:sticky;top:0;z-index:2;background:var(--bg);
+    text-align:left;font-weight:500;color:var(--muted);font-size:11.5px;
+    padding:10px 10px;border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  tbody td{padding:11px 10px;border-bottom:1px solid #f1f1f4;vertical-align:middle;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  tbody tr{transition:background .12s}
+  tbody tr:hover{background:#fafafd}
+  .num{font-variant-numeric:tabular-nums}
+  .t2{display:flex;flex-direction:column;gap:1px;line-height:1.3}
+  .t2 b{font-weight:400;font-variant-numeric:tabular-nums}
+  .t2 span{color:var(--muted);font-size:10.5px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  .muted{color:var(--muted)}
+  .tag{
+    display:inline-block;padding:1px 6px;border-radius:5px;font-size:11px;
+    background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line);
+  }
+  .tag.ok{background:var(--ok-soft);color:#0b6b3d;border-color:#c9e9d6}
+  .tag.err{background:var(--err-soft);color:#9f1b13;border-color:#f6cfcb}
+  .tag.warn{background:var(--warn-soft);color:#8a5200;border-color:#f5e0bb}
+
+  /* 模型名前的色点，还原截图观感 */
+  .mdl{display:inline-flex;align-items:center;gap:6px}
+  .mdl i{width:6px;height:6px;border-radius:99px;background:#c7c7d2;display:inline-block}
+  .mdl.hot i{background:#f59e0b}
+
+  /* ── 新增列 ───────────────────────────────────────── */
+  th.col-trace, td.col-trace{
+    width:76px;text-align:center;position:relative;
+    /* 只在原型里把改动位标出来；真实实现删掉这两条 */
+    background:rgba(79,70,229,.05);
+    box-shadow:inset 1.5px 0 0 rgba(79,70,229,.32), inset -1.5px 0 0 rgba(79,70,229,.32);
+  }
+  th.col-trace{color:#4338ca;position:sticky;top:0}
+  .trace-cell{
+    display:inline-flex;align-items:center;justify-content:center;gap:0;
+    width:30px;height:30px;border-radius:8px;border:1px solid transparent;
+    background:transparent;cursor:pointer;position:relative;
+    transition:transform .13s var(--ease-spring),background .13s,border-color .13s;
+  }
+  .trace-cell:hover{background:#fff;border-color:#d9d9f5}
+  .trace-cell:active{transform:scale(.9)}
+  .trace-cell svg{width:19px;height:19px;display:block;stroke-width:1.5}
+  .trace-cell .led{
+    position:absolute;top:1px;right:1px;width:7px;height:7px;border-radius:99px;
+    border:1.5px solid #fff;box-sizing:content-box;
+  }
+  .st-ok .led{background:var(--ok)}
+  .st-err .led{background:var(--err)}
+  .st-meta .led{background:#b8b8c4}
+  .st-ok{color:#2f2f3a}
+  .st-err{color:#9f1b13}
+  .st-meta{color:#a9a9b5}
+  .trace-none{color:#d2d2da;font-size:15px;user-select:none}
+
+  /* 行内提示：为什么没有内容 */
+  .hint{
+    display:inline-block;margin-left:6px;font-size:10.5px;color:var(--muted);
+    border-bottom:1px dotted var(--line-strong);cursor:help;
+  }
+
+  /* ── 抽屉 ─────────────────────────────────────────── */
+  .scrim{
+    position:fixed;inset:0;background:rgba(18,18,24,.28);
+    opacity:0;pointer-events:none;transition:opacity .22s ease;z-index:40;
+    backdrop-filter:blur(1px);
+  }
+  .scrim.on{opacity:1;pointer-events:auto}
+  .drawer{
+    position:fixed;top:0;right:0;height:100%;width:520px;max-width:92vw;z-index:50;
+    background:var(--bg);border-left:1px solid var(--line);
+    box-shadow:-18px 0 48px -22px rgba(16,16,24,.35);
+    transform:translateX(102%);
+    transition:transform .34s var(--ease-spring);
+    display:flex;flex-direction:column;
+  }
+  .drawer.on{transform:translateX(0)}
+
+  .dr-head{padding:16px 20px 14px;border-bottom:1px solid var(--line)}
+  .dr-title{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .dr-title h2{margin:0;font-size:14px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis}
+  .dr-id{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11.5px}
+  .dr-id code{font-family:ui-monospace,Menlo,monospace;color:var(--ink-2);font-size:11px}
+  .icon-btn{
+    appearance:none;border:1px solid var(--line);background:#fff;width:26px;height:26px;
+    border-radius:7px;display:grid;place-items:center;cursor:pointer;color:var(--ink-2);
+    transition:transform .12s var(--ease-spring),background .15s;
+  }
+  .icon-btn:hover{background:var(--surface)}
+  .icon-btn:active{transform:scale(.9)}
+  .dr-head .spacer{flex:1}
+
+  .dr-body{overflow:auto;padding:16px 20px 40px;flex:1}
+
+  /* 时间轴 */
+  .axis{margin:2px 0 16px}
+  .axis-bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;display:flex}
+  .axis-bar .pre{background:#cfd0fb}
+  .axis-bar .gen{background:linear-gradient(90deg,#6366f1,#4f46e5)}
+  .axis-bar .post{background:#e3e3ea}
+  .axis-marks{display:flex;justify-content:space-between;margin-top:5px;color:var(--muted);font-size:10.5px;font-variant-numeric:tabular-nums}
+  .axis-legend{display:flex;gap:14px;margin-top:9px;color:var(--muted);font-size:11px;flex-wrap:wrap}
+  .axis-legend span{display:inline-flex;align-items:center;gap:5px}
+  .axis-legend i{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+  /* 指标网格 */
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:18px}
+  .metric{background:#fff;padding:11px 12px}
+  .metric .k{color:var(--muted);font-size:10.5px;letter-spacing:.02em;margin-bottom:3px}
+  .metric .v{font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .metric .v small{font-size:11px;font-weight:400;color:var(--muted);margin-left:2px}
+
+  /* 段落标题 */
+  .sec{margin:0 0 18px}
+  .sec-h{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+  .sec-h h3{margin:0;font-size:12px;font-weight:600;color:var(--ink-2);letter-spacing:.01em}
+  .sec-h .spacer{flex:1}
+  .sec-h .meta{color:var(--muted);font-size:10.5px}
+
+  /* 内容块 */
+  .block{
+    border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);
+    padding:11px 12px;font-size:12px;line-height:1.55;color:var(--ink-2);
+    max-height:190px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  .block.empty{
+    font-family:inherit;color:var(--muted);display:flex;align-items:center;gap:8px;
+    background:#fcfcfd;border-style:dashed;
+  }
+  .trunc[hidden]{display:none}
+  .trunc{
+    margin-top:6px;padding:6px 9px;border-radius:7px;background:var(--warn-soft);
+    color:#7a4900;font-size:11px;font-family:inherit;display:flex;gap:6px;align-items:flex-start;
+  }
+
+  /* 元数据表 */
+  .kv{display:grid;grid-template-columns:96px 1fr;gap:7px 12px;font-size:12px}
+  .kv dt{color:var(--muted);font-size:11.5px}
+  .kv dd{margin:0;color:var(--ink-2);word-break:break-all}
+  .kv dd code{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+  /* 未采样说明 */
+  .notice{
+    display:flex;gap:10px;padding:13px 14px;border-radius:var(--radius);
+    background:#f7f7ff;border:1px solid #e4e4fb;color:#3b3b8f;font-size:11.8px;line-height:1.6;
+  }
+  .notice[hidden]{display:none}
+  .notice svg{flex:0 0 16px;margin-top:1px}
+  .notice b{font-weight:600}
+
+  /* 原型标注气泡 */
+  .pin{
+    position:fixed;z-index:60;max-width:250px;background:#15151a;color:#fff;
+    padding:11px 13px;border-radius:10px;font-size:11.5px;line-height:1.55;
+    box-shadow:0 14px 34px -12px rgba(0,0,0,.5);
+    transition:opacity .2s,transform .2s var(--ease-spring);
+  }
+  .pin::after{
+    content:'';position:absolute;right:22px;bottom:-5px;width:10px;height:10px;
+    background:#15151a;transform:rotate(45deg);border-radius:2px;
+  }
+  .pin b{color:#fff}
+  .pin .x{
+    position:absolute;top:6px;right:8px;cursor:pointer;color:#8a8a98;font-size:13px;line-height:1;
+    background:none;border:0;padding:2px;
+  }
+  .pin .x:hover{color:#fff}
+  .pin[hidden]{display:none}
+
+  /* 原型说明（左下角常驻） */
+  .legend{
+    position:fixed;left:208px;bottom:14px;z-index:30;
+    display:flex;align-items:center;gap:10px;
+    background:#15151a;color:#d6d6e0;padding:8px 12px;border-radius:9px;
+    font-size:11.5px;box-shadow:0 10px 26px -14px rgba(0,0,0,.55);
+  }
+  .legend b{color:#fff;font-weight:600}
+  .legend button{
+    appearance:none;border:1px solid #34343f;background:#20202a;color:#c8c8d4;
+    border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;
+  }
+  .legend button:hover{background:#2a2a36}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="side">
+    <div class="brand"><span class="dot"></span>apiduo</div>
+    <a>仪表盘</a>
+    <a class="on">日志</a>
+    <a>渠道</a>
+    <a>令牌</a>
+    <div class="grp">系统</div>
+    <a>系统设置</a>
+    <a>可观测性</a>
+  </nav>
+
+  <main class="main">
+    <div class="head">
+      <h1>日志</h1>
+      <span class="sub">最近 1 小时 · 30 条</span>
+      <div class="spacer"></div>
+      <button class="btn">导出</button>
+      <button class="btn primary">刷新</button>
+    </div>
+
+    <div class="filters">
+      <span class="chip"><span class="k">时间</span>2026-11-10 14:07 → 15:07</span>
+      <span class="chip sel"><span class="k">模型</span>全部</span>
+      <span class="chip"><span class="k">渠道</span>全部</span>
+      <span class="chip"><span class="k">令牌</span>全部</span>
+      <span class="chip"><span class="k">类型</span>所有类型</span>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:126px">时间</th>
+            <th style="width:66px">渠道</th>
+            <th style="width:88px">用户</th>
+            <th style="width:104px">令牌</th>
+            <th style="width:216px">模型</th>
+            <th style="width:60px">流</th>
+            <th style="width:78px">Token</th>
+            <th style="width:86px">费用</th>
+            <th style="width:74px">耗时</th>
+            <th style="width:216px">详情</th>
+            <th class="col-trace" id="newColHead">轨迹</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <!-- ① 流式 · 有内容 -->
+          <tr>
+            <td><div class="t2"><b>15:07:14</b><span>3 小时前</span></div></td>
+            <td><span class="tag">F10</span></td>
+            <td><span class="tag">apiduo</span></td>
+            <td><span class="muted">模型测试</span><br><span class="muted" style="font-size:11px">default</span></td>
+            <td><span class="mdl"><i></i>deepseek-v4-flash-261017</span></td>
+            <td><span class="tag">流式</span></td>
+            <td class="num">31 / 16</td>
+            <td class="num">$0.000026</td>
+            <td><span class="tag ok">2.0s</span></td>
+            <td class="muted">标准 · $0.274 / 81.096M</td>
+            <td class="col-trace">
+              <button class="trace-cell st-ok" data-trace="t1" title="查看轨迹">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                  <path d="M3 6h5l2 4h7"/><path d="M3 14h5l2-4"/><circle cx="16.5" cy="10" r="1.4" fill="currentColor" stroke="none"/>
+                </svg>
+                <span class="led"></span>
+              </button>
+            </td>
+          </tr>
+
+          <!-- ② 非流 · 有内容 · 慢 -->
+          <tr>
+            <td><div class="t2"><b>14:10:21</b><span>4 小时前</span></div></td>
+            <td><span class="tag">f7</span></td>
+            <td><span class="tag">apiduo</span></td>
+            <td><span class="muted">flux</span><br><span class="muted" style="font-size:11px">default</span></td>
+            <td><span class="mdl hot"><i></i>flux-3-image</span></td>
+            <td><span class="tag">非流</span></td>
+            <td class="num">1 / 0</td>
+            <td class="num">$0.2</td>
+            <td><span class="tag warn">18.0s</span></td>
+            <td class="muted">每次调用 · $0.2 / 请求</td>
+            <td class="col-trace">
+              <button class="trace-cell st-ok" data-trace="t2" title="查看轨迹">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                  <path d="M3 6h5l2 4h7"/><path d="M3 14h5l2-4"/><circle cx="16.5" cy="10" r="1.4" fill="currentColor" stroke="none"/>
+                </svg>
+                <span class="led"></span>
+              </button>
+            </td>
+          </tr>
+
+          <!-- ③ 失败 · 有内容 -->
+          <tr>
+            <td><div class="t2"><b>12:14:11</b><span>6 小时前</span></div></td>
+            <td><span class="tag">f0</span></td>
+            <td><span class="tag">apiduo</span></td>
+            <td><span class="muted">flux</span><br><span class="muted" style="font-size:11px">default</span></td>
+            <td><span class="mdl"><i></i>mcp-a2a-image</span></td>
+            <td><span class="tag">非流</span></td>
+            <td class="num muted">—</td>
+            <td class="num">$0</td>
+            <td><span class="tag err">0.4s</span></td>
+            <td class="muted">mcp call</td>
+            <td class="col-trace">
+              <button class="trace-cell st-err" data-trace="t3" title="查看轨迹 · 失败">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                  <path d="M3 6h5l2 4h7"/><path d="M3 14h5l2-4"/><circle cx="16.5" cy="10" r="1.4" fill="currentColor" stroke="none"/>
+                </svg>
+                <span class="led"></span>
+              </button>
+            </td>
+          </tr>
+
+          <!-- ④ 只有元数据 · 内容未采样 -->
+          <tr>
+            <td><div class="t2"><b>10:40:36</b><span>8 小时前</span></div></td>
+            <td><span class="tag">f7</span></td>
+            <td><span class="tag">apiduo</span></td>
+            <td><span class="muted">flux</span><br><span class="muted" style="font-size:11px">default</span></td>
+            <td><span class="mdl"><i></i>flux-3-image</span></td>
+            <td><span class="tag">非流</span></td>
+            <td class="num">1 / 0</td>
+            <td class="num">$0.2</td>
+            <td><span class="tag">18.0s</span></td>
+            <td class="muted">每次调用 · $0.2 / 请求</td>
+            <td class="col-trace">
+              <button class="trace-cell st-meta" data-trace="t4" title="仅元数据（内容未采样）">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                  <path d="M3 6h5l2 4h7"/><path d="M3 14h5l2-4"/><circle cx="16.5" cy="10" r="1.4" fill="currentColor" stroke="none"/>
+                </svg>
+                <span class="led"></span>
+              </button>
+            </td>
+          </tr>
+
+          <!-- ⑤ 没产生 trace -->
+          <tr>
+            <td><div class="t2"><b>10:06:21</b><span>9 小时前</span></div></td>
+            <td><span class="tag">f7</span></td>
+            <td><span class="tag">apiduo</span></td>
+            <td><span class="muted">mcp-flux-test</span><br><span class="muted" style="font-size:11px">default</span></td>
+            <td><span class="mdl"><i></i>flux-3-image</span></td>
+            <td><span class="tag">非流</span></td>
+            <td class="num">1 / 0</td>
+            <td class="num">$0</td>
+            <td><span class="tag">17.0s</span></td>
+            <td class="muted">每次调用 · $0.2 / 请求</td>
+            <td class="col-trace"><span class="trace-none" title="该请求未被采样">—</span></td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- ── 抽屉 ─────────────────────────────────────────── -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dr-head">
+    <div class="dr-title">
+      <span id="drBadge"></span>
+      <h2 id="drName">—</h2>
+    </div>
+    <div class="dr-id">
+      <code id="drId">—</code>
+      <button class="icon-btn" onclick="copyId()" title="复制 trace id">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="7" y="7" width="9" height="9" rx="2"/><path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-6A1.5 1.5 0 0 0 4 5.5v6A1.5 1.5 0 0 0 5.5 13H7"/>
+        </svg>
+      </button>
+      <div class="spacer"></div>
+      <button class="icon-btn" onclick="closeDrawer()" title="关闭">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <path d="M5 5l10 10M15 5L5 15"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="dr-body">
+    <!-- 时间轴 -->
+    <div class="axis">
+      <div class="axis-bar">
+        <div class="pre" id="axPre" style="width:20%"></div>
+        <div class="gen" id="axGen" style="width:80%"></div>
+      </div>
+      <div class="axis-marks">
+        <span>0</span><span id="axTtft">首字节 0.4s</span><span id="axEnd">2.0s</span>
+      </div>
+      <div class="axis-legend">
+        <span><i style="background:#cfd0fb"></i>等待上游</span>
+        <span><i style="background:#4f46e5"></i>生成</span>
+        <span id="lgPost" style="display:none"><i style="background:#e3e3ea"></i>收尾</span>
+      </div>
+    </div>
+
+    <!-- 指标 -->
+    <div class="metrics" id="metrics"></div>
+
+    <!-- 内容未采样的说明（按需显示） -->
+    <div class="notice" id="sampleNotice" hidden>
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="10" cy="10" r="7.2"/><path d="M10 6.6v.1M10 9.2v4.2" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <b>这条只采集了元数据。</b><br>
+        内容采样率当前为 <b>10%</b>，本次请求命中了「不采内容」那一侧。响应里的提示词与回复从未离开网关内存，
+        所以这里是空的 —— 不是采集失败。要改，去「系统设置 → 可观测性 → 内容采样率」。
+      </div>
+    </div>
+
+    <div class="sec" id="secInput">
+      <div class="sec-h"><h3>请求</h3><div class="spacer"></div><span class="meta" id="inMeta"></span></div>
+      <div class="block" id="inBlock"></div>
+      <div class="trunc" id="inTrunc" hidden></div>
+    </div>
+
+    <div class="sec" id="secOutput">
+      <div class="sec-h"><h3>响应</h3><div class="spacer"></div><span class="meta" id="outMeta"></span></div>
+      <div class="block" id="outBlock"></div>
+      <div class="trunc" id="outTrunc" hidden></div>
+    </div>
+
+    <div class="sec" id="secError" hidden>
+      <div class="sec-h"><h3>失败原因</h3></div>
+      <div class="block" id="errBlock" style="border-color:#f6cfcb;background:#fdf6f5;color:#8f1f18"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h"><h3>元数据</h3></div>
+      <dl class="kv" id="kv"></dl>
+    </div>
+  </div>
+</aside>
+
+<!-- 原型标注 -->
+<div class="pin" id="pin" style="right:28px;top:auto;bottom:0">
+  <button class="x" onclick="document.getElementById('pin').hidden=true">✕</button>
+  <b>新增：轨迹列</b><br>
+  放在表格最右，一请求一格。点开是右侧抽屉 —— 不跳 Langfuse。<br><br>
+  指示灯：<span style="color:#4ade80">●</span> 有内容 ·
+  <span style="color:#f87171">●</span> 失败 ·
+  <span style="color:#9a9aa8">●</span> 仅元数据。<br>
+  没有产生 trace 的请求显示 <span style="opacity:.5">—</span>。
+</div>
+
+<div class="legend">
+  <span><b>原型</b> 点任意轨迹图标</span>
+  <button onclick="toggleOutline()">隐藏改动标记</button>
+</div>
+
+<script>
+const DATA = {
+  t1: {
+    status:'ok', name:'chat deepseek-v4-flash-261017', id:'6c65e85975171df231e8bcc957efae7d',
+    latency:'2.0', ttft:'0.4', ttftPct:20, mode:'流式',
+    metrics:[
+      ['总延迟','2.0','s'],['首字节 TTFT','0.4','s'],['重试','0','次'],
+      ['输入 token','31',''],['输出 token','16',''],['费用','$0.000026','']
+    ],
+    input:'{"model":"deepseek-v4-flash-261017","stream":true,"messages":[{"role":"system","content":"你是 apiduo 的技术支持助手。"},{"role":"user","content":"Langfuse v4 的 events_full 和 events_core 有什么区别?"}],"temperature":0.3,"max_tokens":512}',
+    inMeta:'1.2 KB · 完整', inTrunc:null,
+    output:'{"text":"events_full 是全保真表,每次模型调用一行,连 trace 级属性都复制到行上; events_core 是它的投影,输入输出会被截断,专门服务列表和图表查询。","finish_reason":"stop"}',
+    outMeta:'解析后 · 生成 16 token', outTrunc:null,
+    kv:[
+      ['请求 ID','<code>req-8f2c1a4e</code>'],
+      ['渠道','F10 · DeepSeek 官方'],
+      ['分组 / 令牌','模型测试 / default'],
+      ['格式','openai.chat'],
+      ['环境 / 版本','production / <code>v0.0.30</code>'],
+      ['采样','元数据 ✓ · 内容 ✓']
+    ]
+  },
+  t2: {
+    status:'ok', name:'image flux-3-image', id:'a91f4d2c8e7b3a5061728394a5b6c7d8',
+    latency:'18.0', ttft:'0', ttftPct:0, mode:'非流式',
+    metrics:[
+      ['总延迟','18.0','s'],['首字节','—',''],['重试','1','次'],
+      ['输入 token','1',''],['输出 token','0',''],['费用','$0.2','']
+    ],
+    input:'{"model":"flux-3-image","prompt":"a matte black espresso cup on a walnut desk, soft window light, 35mm","width":1024,"height":1024,"steps":28}',
+    inMeta:'312 B · 完整', inTrunc:null,
+    output:'{"created":1762743021,"data":[{"b64_json":"[binary 1284302 bytes]"}]}',
+    outMeta:'2 张图 · 二进制已占位', inTrunc:null,
+    kv:[
+      ['请求 ID','<code>req-3b7d90cf</code>'],
+      ['渠道','f7 · BFL 直连'],
+      ['分组 / 令牌','flux / default'],
+      ['格式','openai.image'],
+      ['环境 / 版本','production / <code>v0.0.30</code>'],
+      ['采样','元数据 ✓ · 内容 ✓']
+    ]
+  },
+  t3: {
+    status:'err', name:'mcp mcp-a2a-image', id:'e41a77b0c9d2f58341029786af5cbe3d',
+    latency:'0.4', ttft:'0', ttftPct:0, mode:'非流式',
+    metrics:[
+      ['总延迟','0.4','s'],['首字节','—',''],['重试','0','次'],
+      ['输入 token','—',''],['输出 token','—',''],['费用','$0','']
+    ],
+    input:'{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"cat wearing tiny sunglasses"}}}',
+    inMeta:'198 B · 完整', inTrunc:null,
+    output:'',
+    outMeta:'上游返回 400', outTrunc:null,
+    error:'invalid_request_error: image size 1024x1024 is not supported by channel f0 (allowed: 512x512, 768x768, 1024x1536). 请求在网关侧被拒,未转发到上游。',
+    kv:[
+      ['请求 ID','<code>req-c02e8815</code>'],
+      ['渠道','f0 · 自定义'],
+      ['分组 / 令牌','flux / default'],
+      ['格式','mcp'],
+      ['环境 / 版本','production / <code>v0.0.30</code>'],
+      ['采样','元数据 ✓ · 内容 ✓']
+    ]
+  },
+  t4: {
+    status:'meta', name:'image flux-3-image', id:'77d0c4b1a2e3f405162738495a6b7c8d',
+    latency:'18.0', ttft:'0', ttftPct:0, mode:'非流式',
+    metrics:[
+      ['总延迟','18.0','s'],['首字节','—',''],['重试','0','次'],
+      ['输入 token','1',''],['输出 token','0',''],['费用','$0.2','']
+    ],
+    input:'', output:'',
+    sampled:false,
+    kv:[
+      ['请求 ID','<code>req-19ab55d3</code>'],
+      ['渠道','f7 · BFL 直连'],
+      ['分组 / 令牌','flux / default'],
+      ['格式','openai.image'],
+      ['环境 / 版本','production / <code>v0.0.30</code>'],
+      ['采样','元数据 ✓ · 内容 ✗']
+    ]
+  }
+};
+
+const BADGE = {
+  ok:'<span class="tag ok">成功</span>',
+  err:'<span class="tag err">失败</span>',
+  meta:'<span class="tag warn">仅元数据</span>'
+};
+
+function openDrawer(key){
+  const d = DATA[key];
+  document.getElementById('drBadge').innerHTML = BADGE[d.status];
+  document.getElementById('drName').textContent = d.name;
+  document.getElementById('drId').textContent = d.id;
+
+  // 时间轴
+  const pre = document.getElementById('axPre'), gen = document.getElementById('axGen');
+  const hasTtft = Number(d.ttft) > 0;
+  pre.style.width = hasTtft ? d.ttftPct + '%' : '0%';
+  gen.style.width = hasTtft ? (100 - d.ttftPct) + '%' : '100%';
+  document.getElementById('axTtft').textContent = hasTtft ? ('首字节 ' + d.ttft + 's') : (d.mode + ' · 无 TTFT');
+  document.getElementById('axEnd').textContent = d.latency + 's';
+
+  // 指标
+  document.getElementById('metrics').innerHTML = d.metrics.map(([k,v,u]) =>
+    `<div class="metric"><div class="k">${k}</div><div class="v">${v}${u?`<small>${u}</small>`:''}</div></div>`
+  ).join('');
+
+  // 采样说明
+  // 「元数据采样命中、内容采样没命中」这一态必须解释清楚，
+  // 否则空白的请求/响应会被当成采集故障。
+  const metaOnly = d.sampled === false;
+  document.getElementById('sampleNotice').hidden = !metaOnly;
+
+  // 请求 / 响应
+  const secIn = document.getElementById('secInput'), secOut = document.getElementById('secOutput');
+  const inBlock = document.getElementById('inBlock'), outBlock = document.getElementById('outBlock');
+  const inTrunc = document.getElementById('inTrunc'), outTrunc = document.getElementById('outTrunc');
+
+  if(metaOnly){
+    secIn.style.display=''; secOut.style.display='';
+    inBlock.className = 'block empty';
+    inBlock.textContent = '内容未采集 —— 该请求只写了元数据';
+    outBlock.className = 'block empty';
+    outBlock.textContent = '内容未采集 —— 该请求只写了元数据';
+    document.getElementById('inMeta').textContent = '';
+    document.getElementById('outMeta').textContent = '';
+    inTrunc.hidden = true; outTrunc.hidden = true;
+  } else {
+    secIn.style.display=''; secOut.style.display='';
+    inBlock.className = 'block';
+    inBlock.textContent = d.input;
+    document.getElementById('inMeta').textContent = d.inMeta;
+    outBlock.className = 'block';
+    outBlock.textContent = d.output || '（无响应体）';
+    document.getElementById('outMeta').textContent = d.outMeta;
+    inTrunc.hidden = true; outTrunc.hidden = true;
+  }
+
+  // 错误
+  const secErr = document.getElementById('secError');
+  if(d.error){
+    secErr.hidden = false;
+    document.getElementById('errBlock').textContent = d.error;
+  } else { secErr.hidden = true; }
+
+  // 元数据
+  document.getElementById('kv').innerHTML = d.kv.map(([k,v]) =>
+    `<dt>${k}</dt><dd>${v}</dd>`).join('');
+
+  document.getElementById('pin').hidden = true;
+  document.getElementById('drawer').classList.add('on');
+  document.getElementById('drawer').setAttribute('aria-hidden','false');
+  document.getElementById('scrim').classList.add('on');
+}
+
+function closeDrawer(){
+  document.getElementById('pin').hidden = !outlined;
+  document.getElementById('drawer').classList.remove('on');
+  document.getElementById('drawer').setAttribute('aria-hidden','true');
+  document.getElementById('scrim').classList.remove('on');
+}
+
+function copyId(){
+  const t = document.getElementById('drId').textContent;
+  navigator.clipboard?.writeText(t);
+  const el = document.getElementById('drId');
+  const old = el.textContent;
+  el.textContent = '已复制';
+  setTimeout(()=>{ el.textContent = old; }, 900);
+}
+
+let outlined = true;
+function toggleOutline(){
+  outlined = !outlined;
+  const sh = outlined
+    ? 'inset 1.5px 0 0 rgba(79,70,229,.32), inset -1.5px 0 0 rgba(79,70,229,.32)'
+    : 'none';
+  const bg = outlined ? 'rgba(79,70,229,.05)' : 'transparent';
+  document.querySelectorAll('.col-trace').forEach(el=>{
+    el.style.boxShadow = sh; el.style.background = bg;
+  });
+  document.getElementById('pin').hidden = !outlined;
+}
+
+document.querySelectorAll('.trace-cell').forEach(btn=>{
+  btn.addEventListener('click', ()=>openDrawer(btn.dataset.trace));
+});
+document.getElementById('scrim').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawer(); });
+
+// 标注气泡压在表格下方的空白处，绝不遮挡任何一行数据
+function placePin(){
+  const body = document.querySelector('tbody');
+  const r = body.getBoundingClientRect();
+  const pin = document.getElementById('pin');
+  pin.style.top = (r.bottom + 18) + 'px';
+  pin.style.right = '40px';
+  pin.style.bottom = 'auto';
+}
+window.addEventListener('load', placePin);
+window.addEventListener('resize', placePin);
+
+// #t=t1 直接打开某条，便于单独截图或把某个状态发给人看。
+// 深链状态下去掉过渡：无头截图会抓住动画中间帧，看起来像抽屉被裁了一半。
+window.addEventListener('load', ()=>{
+  const h = location.hash;
+  if (!h.startsWith('#t=')) return;
+  document.getElementById('drawer').style.transition = 'none';
+  document.getElementById('scrim').style.transition = 'none';
+  openDrawer(h.slice(3));
+});
+</script>
+</body>
+</html>

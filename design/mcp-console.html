@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>控制台 · MCP 接入放侧边栏</title>
+<style>
+  :root{
+    --bg:#fff; --sb:#fbfbfc; --surface-2:#f5f5f7;
+    --line:#e8e8ec; --line-strong:#d8d8de;
+    --ink:#141419; --ink-2:#45454f; --muted:#83838f;
+    --accent:#4f46e5; --accent-ink:#4338ca; --accent-soft:#eef0ff;
+    --swift:cubic-bezier(.32,.72,0,1); --out:cubic-bezier(.4,0,1,1);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;text-decoration:none}
+  body{-webkit-tap-highlight-color:transparent}
+  ::selection{background:#e6e6ff;color:var(--ink)}
+  .app{height:100vh;display:grid;grid-template-columns:224px minmax(0,1fr)}
+
+  /* ---- 侧边栏 ---- */
+  .sb{display:flex;flex-direction:column;background:var(--sb);border-right:1px solid var(--line);min-height:0}
+  .brand{
+    display:flex;align-items:center;gap:9px;height:52px;padding:0 14px;
+    font-weight:650;font-size:15px;letter-spacing:-.02em;flex:0 0 auto;
+  }
+  .brand i{
+    width:22px;height:22px;border-radius:7px;display:grid;place-items:center;
+    background:linear-gradient(135deg,#6366f1,#06b6d4);color:#fff;
+  }
+  .brand svg{width:13px;height:13px;display:block}
+
+  .navs{flex:1;overflow-y:auto;padding:2px 0 14px;min-height:0;scrollbar-width:thin}
+  .grp{
+    font-size:10.5px;color:#9a9aa5;letter-spacing:.04em;
+    padding:14px 16px 5px;text-transform:none;
+  }
+  .it{
+    display:flex;align-items:center;gap:9px;height:32px;margin:1px 8px;padding:0 9px;
+    border-radius:7px;font-size:13px;color:var(--ink-2);
+    transition:background .16s var(--swift),color .16s var(--swift),transform .14s var(--swift);
+  }
+  .it:hover{background:#f0f0f4;color:var(--ink)}
+  .it:active{transform:scale(.985)}
+  .it svg{width:14px;height:14px;flex:0 0 auto;color:#9d9da9;transition:color .16s var(--swift),transform .18s var(--swift)}
+  .it:hover svg{color:#6e6e7a}
+  .it.on svg{transform:scale(1.06)}
+  .it.on{background:#ececf1;color:var(--ink);font-weight:600}
+  .it.on svg{color:var(--accent-ink)}
+
+  .me{
+    display:flex;align-items:center;gap:9px;height:52px;padding:0 14px;flex:0 0 auto;
+    border-top:1px solid var(--line);font-size:12px;color:var(--ink-2);
+  }
+  .ava{
+    width:23px;height:23px;border-radius:99px;flex:0 0 auto;display:grid;place-items:center;
+    background:#e7e7ee;color:#5d5d6b;font-size:11px;font-weight:600;
+  }
+  .me .mid{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+  .me .mid b{display:block;font-size:12px;font-weight:550;color:var(--ink)}
+  .me .mid span{font-size:10.5px;color:var(--muted)}
+
+  /* ---- 右区 ---- */
+  .pane{display:grid;grid-template-rows:52px minmax(0,1fr);min-width:0}
+  .tb{
+    display:flex;align-items:center;gap:10px;padding:0 22px;
+    border-bottom:1px solid var(--line);background:#fff;
+  }
+  .bc{display:flex;align-items:center;gap:7px;font-size:12.8px;color:var(--muted)}
+  .bc .sep{color:#c3c3cc}
+  .bc b{color:var(--ink);font-weight:550}
+  .tb .r{margin-left:auto;display:flex;align-items:center;gap:6px;color:#a5a5b0}
+  .tbtn{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;border:none;background:none;cursor:pointer;
+    transition:background .16s var(--swift),color .16s var(--swift),transform .12s var(--swift)}
+  .tbtn:hover{background:var(--surface-2);color:var(--ink)}
+  .tbtn:active{transform:scale(.9)}
+  .tbtn svg{width:15px;height:15px;display:block}
+
+  iframe{display:block;width:100%;height:100%;border:0;background:#fff}
+
+  @media (max-width:760px){
+    .app{grid-template-columns:minmax(0,1fr)}
+    .sb{display:none}
+  }
+  @media (prefers-contrast:more){
+    .sb{border-right-color:#8a8a96}
+    .it.on{background:#e2e2e9;box-shadow:inset 0 0 0 1px #8a8a96}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sb">
+    <div class="brand">
+      <i aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.4v4.8M15 3.4v4.8"/><path d="M6.2 8.2h11.6v2.6a5.8 5.8 0 0 1-11.6 0z"/><path d="M12 16.6v4"/></svg></i>
+      apiduo
+    </div>
+
+    <nav class="navs">
+      <div class="grp">Chat</div>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M7.8 5.2v13.6L19 12z"/></svg>Playground</a>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 0 1-12.4 7.6L4 20.5l1.1-3.9A8.5 8.5 0 1 1 20.5 12z"/></svg>对话</a>
+
+      <div class="grp">General</div>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.4 12 4l8 6.4V20a1 1 0 0 1-1 1h-4.6v-6H9.6v6H5a1 1 0 0 1-1-1z"/></svg>概览</a>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="4" y="4" width="6.6" height="6.6" rx="1.8"/><rect x="13.4" y="4" width="6.6" height="6.6" rx="1.8"/><rect x="4" y="13.4" width="6.6" height="6.6" rx="1.8"/><rect x="13.4" y="13.4" width="6.6" height="6.6" rx="1.8"/></svg>仪表盘</a>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.2" cy="12" r="3.4"/><path d="M11.6 12H21"/><path d="M17.6 12v3.1M20.2 12v2.2"/></svg>API 密钥</a>
+      <a class="it on" href="#" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.4v4.8M15 3.4v4.8"/><path d="M6.2 8.2h11.6v2.6a5.8 5.8 0 0 1-11.6 0z"/><path d="M12 16.6v4"/></svg>MCP 接入</a>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M7.2 16V9.4M12 16V5.4M16.8 16v-4.2"/></svg>用量日志</a>
+
+      <div class="grp">Personal</div>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.6A2.6 2.6 0 0 1 6.6 5H18v3"/><path d="M4 7.6V17a2 2 0 0 0 2 2h14V8H6.6A2.6 2.6 0 0 1 4 7.6z"/><path d="M16.4 13.2h.01"/></svg>钱包</a>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.6" r="3.6"/><path d="M5.2 20c.8-3.6 3.5-5.5 6.8-5.5s6 1.9 6.8 5.5"/></svg>个人资料</a>
+      <a class="it" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="10.2" width="14.8" height="9.6" rx="2.2"/><path d="M8.2 10.2V7.5a3.8 3.8 0 0 1 7.6 0v2.7"/></svg>安全与访问</a>
+    </nav>
+
+    <div class="me">
+      <span class="ava" aria-hidden="true">Y</span>
+      <span class="mid"><b>yuanjie</b><span>dev@apiduo.cn</span></span>
+    </div>
+  </aside>
+
+  <div class="pane">
+    <header class="tb">
+      <div class="bc">General <span class="sep">/</span> <b>MCP 接入</b></div>
+      <div class="r">
+        <button class="tbtn" title="文档"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.3"/><path d="M9.8 9.4a2.3 2.3 0 1 1 3.1 2.2c-.6.3-.9.7-.9 1.4v.5"/><path d="M12 16.6h.01"/></svg></button>
+        <button class="tbtn" title="收起侧边栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="4.6" width="17.2" height="14.8" rx="2.4"/><path d="M9.4 4.6v14.8"/></svg></button>
+      </div>
+    </header>
+    <iframe src="mcp-hub.html?embed=1" title="MCP 接入"></iframe>
+  </div>
+</div>
+
+</body>
+</html>
