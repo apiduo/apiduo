@@ -29,6 +29,27 @@ export const IMAGE_PROTOCOL_UPSTREAMS = [
 
 const DEFAULT_UPSTREAM = IMAGE_PROTOCOL_UPSTREAMS[0].value
 
+/**
+ * 与后端 `dto.NormalizeImageUpstream` 同一份映射。
+ *
+ * 0.0.74 之前存储值写的是型号名（seedream / gpt-image-2），改名成协议名时
+ * 没有做数据迁移：老渠道的 settings 里仍是旧字符串。后端已在读取侧兼容
+ * （否则每次图片请求都 400），前端也得跟上——否则下拉里找不到匹配项，
+ * 界面上直接显示一个裸的 `seedream`，用户既看不懂也选不回原值。
+ */
+export function normalizeImageUpstream(raw: string): string {
+  switch (raw.trim().toLowerCase()) {
+    case 'seedream':
+      return 'ark'
+    case 'gpt-image-2':
+      return 'openai'
+    default:
+      // 未知值也收敛成小写，与后端 `strings.ToLower` 一致：
+      // 两边归一口径不同时，界面上会出现「选了但存不回去」的假象。
+      return raw.trim().toLowerCase()
+  }
+}
+
 function parseSettings(settingsJson?: string): Record<string, unknown> {
   if (!settingsJson?.trim()) return {}
   try {
@@ -55,7 +76,9 @@ export function readImageProtocol(
   const enabled = config.enabled === true
   return {
     enabled,
-    upstream: trimmed(config.upstream) || DEFAULT_UPSTREAM,
+    upstream: normalizeImageUpstream(
+      trimmed(config.upstream) || DEFAULT_UPSTREAM
+    ),
     primary_path: trimmed(config.primary_path),
     edit_path: trimmed(config.edit_path),
   }

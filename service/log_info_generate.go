@@ -49,6 +49,16 @@ func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other
 	if other == nil {
 		return
 	}
+	// APIDUO:client-path:BEGIN
+	// 方舟/图片异步的别名入口会把 URL.Path 改写成内部中继路径，
+	// 日志要显示客户端真正打的地址。
+	if ctx != nil {
+		if path := ctx.GetString(constant.ApiduoClientPathContextKey); path != "" {
+			other.SetPublic("request_path", path)
+			return
+		}
+	}
+	// APIDUO:client-path:END
 	if ctx != nil && ctx.Request != nil && ctx.Request.URL != nil {
 		if path := ctx.Request.URL.Path; path != "" {
 			other.SetPublic("request_path", path)

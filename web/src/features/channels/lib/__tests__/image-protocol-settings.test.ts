@@ -12,6 +12,19 @@ describe('readImageProtocol', () => {
     expect(readImageProtocol('not json')).toBeNull()
   })
 
+  // 0.0.74 之前存储值写的是型号名。后端在读取侧兼容了（否则请求 400），
+  // 前端不归一的话下拉找不到匹配项，界面会直接显示一个裸的 `seedream`。
+  it('旧型号名归一成协议名', () => {
+    const legacy = (upstream: string) =>
+      readImageProtocol(
+        JSON.stringify({ image_protocol: { enabled: true, upstream } })
+      )?.upstream
+    expect(legacy('seedream')).toBe('ark')
+    expect(legacy('gpt-image-2')).toBe('openai')
+    expect(legacy(' ARK ')).toBe('ark')
+    expect(legacy('openai')).toBe('openai')
+  })
+
   it('读取启用态与路径，缺 upstream 时回落到默认布局', () => {
     const config = readImageProtocol(
       JSON.stringify({

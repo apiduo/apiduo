@@ -2,6 +2,9 @@ package service
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	// APIDUO:client-path:BEGIN
+	"github.com/QuantumNous/new-api/constant"
+	// APIDUO:client-path:END
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/gin-gonic/gin"
@@ -16,9 +19,14 @@ func TaskExecutionSnapshotFromContext(ctx *gin.Context) *model.TaskExecutionSnap
 	snapshot := &model.TaskExecutionSnapshot{
 		RequestID: ctx.GetString(common.RequestIdKey),
 	}
-	if ctx.Request != nil && ctx.Request.URL != nil {
+	// APIDUO:client-path:BEGIN
+	// 别名入口改写后的 URL.Path 是内部中继路径；快照要留客户端那条。
+	if path := ctx.GetString(constant.ApiduoClientPathContextKey); path != "" {
+		snapshot.RequestPath = path
+	} else if ctx.Request != nil && ctx.Request.URL != nil {
 		snapshot.RequestPath = ctx.Request.URL.Path
 	}
+	// APIDUO:client-path:END
 
 	pinnedValue, exists := ctx.Get(pluginruntime.ContextKeyPinnedPlugin)
 	if exists {

@@ -84,6 +84,7 @@ func apiduoArkFetchPathRewrite() gin.HandlerFunc {
 			return
 		}
 		target := apiduoArkRelaySubmitPath + "/" + taskID
+		apiduoRememberClientPath(c)
 		c.Request.URL.Path = target
 		c.Request.URL.RawPath = ""
 		// 与 apiduoArkReenter 保持一致：查询串留在 RequestURI 里。
@@ -163,7 +164,21 @@ func apiduoArkTaskUsesRelay(taskID string) bool {
 	return ok && platform == strconv.Itoa(constant.ChannelTypeAdvancedAsync)
 }
 
+// apiduoRememberClientPath keeps the path the client asked for. Every alias
+// entry rewrites Request.URL.Path onto the internal relay path before
+// distribution, and logs read that field — without this copy the console
+// reports /v1/video/generations for a request that never used it.
+func apiduoRememberClientPath(c *gin.Context) {
+	if c.GetString(constant.ApiduoClientPathContextKey) != "" {
+		return
+	}
+	if path := c.Request.URL.Path; path != "" {
+		c.Set(constant.ApiduoClientPathContextKey, path)
+	}
+}
+
 func apiduoArkReenter(engine *gin.Engine, c *gin.Context, target string) {
+	apiduoRememberClientPath(c)
 	c.Set(apiduoArkAliasReentryKey, true)
 	c.Request.URL.Path = target
 	c.Request.URL.RawPath = ""

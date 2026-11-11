@@ -27,6 +27,12 @@ const (
 	// onto it before distribution.
 	ApiduoTaskRelayPath = "/v1/video/generations"
 
+	// ApiduoClientPathContextKey carries the path the client actually called
+	// across the dispatcher's rewrite onto the internal relay path. Logs read
+	// it first: without the copy the console reports /v1/video/generations for
+	// a request that arrived on /api/v3/contents/generations/tasks.
+	ApiduoClientPathContextKey = "apiduo_client_path"
+
 	// Protocol names persisted in advanced_async.protocol.
 	ApiduoAsyncProtocolImages = "images"
 	ApiduoAsyncProtocolArk    = "ark"

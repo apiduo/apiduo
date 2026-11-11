@@ -7,13 +7,13 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	125
-blocks	375
-added	3666
+files	127
+blocks	378
+added	3685
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
-deleted	170
+deleted	171
 # 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
 # blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
 # `alignImageCarriers` 与它在那两个标记块里的行。
@@ -85,3 +85,17 @@ deleted	170
 # 单 key 行为不变）。生产代码只多 1 个块 + 10 行。
 # 数值取自 /tmp/mk-fix-tree 干净 worktree 的 markercheck -cost（HEAD ef265778
 # + 本次两个文件），并行会话的未提交改动没有计入。
+
+# 2026-11-12 01:4x 上调 files 125->127、blocks 375->378、added 3666->3685、
+# deleted 170->171：日志与任务详情回显客户端请求路径。
+#
+# 别名入口（方舟三条路径、图片异步）会在分发前把 Request.URL.Path 改写成
+# 内部中继路径 /v1/video/generations，日志读的就是这个字段 —— 控制台因此显示
+# 一条客户端从未用过的路径。新增 `constant.ApiduoClientPathContextKey`，
+# 改写前把原始路径存进 context，日志/任务快照优先读它。
+#
+# files +2 是 service/log_info_generate.go 与 service/task_plugin_audit.go
+# 第一次进合并面；blocks +3 是这两处 + router 的 helper；added +19 是
+# context 常量、helper 与两个读取点。单测在新文件
+# service/apiduo_request_path_test.go（不占上游文件数）。
+# 数值取自 /tmp/mk-fix-tree 干净 worktree（HEAD ef265778 + 本次改动）。
