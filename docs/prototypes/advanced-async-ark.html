@@ -1,0 +1,1228 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>apiduo · 高级异步渠道（方舟协议）产品原型</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Segoe UI",Roboto,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+
+  :root{
+    --bg: oklch(0.986 0.003 255);
+    --surface: oklch(1 0 0);
+    --surface-2: oklch(0.972 0.004 255);
+    --surface-3: oklch(0.955 0.005 255);
+    --line: oklch(0.910 0.006 255);
+    --line-soft: oklch(0.946 0.005 255);
+    --ink: oklch(0.215 0.012 258);
+    --ink-2: oklch(0.455 0.012 258);
+    --ink-3: oklch(0.590 0.012 258);
+    --primary: oklch(0.600 0.185 258);
+    --primary-ink: oklch(0.450 0.190 258);
+    --primary-wash: oklch(0.962 0.024 258);
+    --ok: oklch(0.560 0.130 155);
+    --ok-wash: oklch(0.962 0.030 155);
+    --warn: oklch(0.640 0.140 75);
+    --warn-wash: oklch(0.968 0.034 85);
+    --danger: oklch(0.560 0.190 25);
+    --danger-wash: oklch(0.965 0.020 25);
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / .055);
+    --shadow-lg: 0 20px 54px -30px oklch(0.25 0.04 258 / .38), 0 1px 2px oklch(0 0 0 / .05);
+    --r-xl: 18px;
+    --r-lg: 14px;
+    --r-md: 10px;
+    --r-sm: 7px;
+    /* Springs, not durations: a tween has an end time, so a second press has
+       to fight the first; a spring has only a target and re-aims from wherever
+       the object is now. Damping 1.0 for movement, .8 for sheets. */
+    --sp-quick: linear(0, .0197, .0685, .1347, .2097, .2877, .3649, .4386, .5074, .5705, .6275, .6784, .7235, .7631, .7977, .8277, .8536, .876, .8951, .9115, .9254, .9373, .9473, .9558, .963, .9691, .9741, .9784, .982, .985, .9875, .9896, .9914, .9928, .9941, .9951, .9959, .9966, .9972, .9977, 1);
+    --sp-tap: linear(0, .0155, .0567, .1164, .1884, .2677, .3504, .4331, .5134, .5894, .66, .7242, .7816, .8322, .8759, .9132, .9443, .9699, .9904, 1.0064, 1.0185, 1.0272, 1.0331, 1.0366, 1.0382, 1.0383, 1.0372, 1.0353, 1.0328, 1.0299, 1.0268, 1.0236, 1.0204, 1.0174, 1.0146, 1.012, 1.0096, 1.0075, 1.0057, 1.0041, 1);
+    --sp-move: linear(0, .0202, .0702, .1377, .2141, .2932, .3713, .4457, .5149, .5781, .635, .6858, .7305, .7698, .804, .8335, .859, .8809, .8995, .9155, .929, .9404, .9501, .9583, .9652, .971, .9758, .9799, .9833, .9861, .9885, .9904, .9921, .9934, .9946, .9955, .9963, .9969, .9975, .9979, 1);
+    --d-quick: .2s;
+    --d-tap: .3s;
+    --d-move: .42s;
+    --d-sheet: .38s;
+  }
+
+  [data-theme="dark"]{
+    --bg: oklch(0.163 0.008 260);
+    --surface: oklch(0.198 0.009 260);
+    --surface-2: oklch(0.232 0.010 260);
+    --surface-3: oklch(0.262 0.011 260);
+    --line: oklch(0.292 0.012 260);
+    --line-soft: oklch(0.256 0.010 260);
+    --ink: oklch(0.952 0.005 260);
+    --ink-2: oklch(0.730 0.010 260);
+    --ink-3: oklch(0.612 0.010 260);
+    --primary: oklch(0.690 0.155 258);
+    --primary-ink: oklch(0.790 0.120 258);
+    --primary-wash: oklch(0.295 0.055 258);
+    --ok: oklch(0.720 0.130 155);
+    --ok-wash: oklch(0.275 0.048 155);
+    --warn: oklch(0.790 0.130 82);
+    --warn-wash: oklch(0.292 0.046 82);
+    --danger: oklch(0.680 0.165 25);
+    --danger-wash: oklch(0.290 0.055 25);
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / .35);
+    --shadow-lg: 0 22px 58px -30px oklch(0 0 0 / .75), 0 1px 2px oklch(0 0 0 / .35);
+  }
+
+  @supports not (transition-timing-function: linear(0, 1)) {
+    :root{
+      --sp-quick: cubic-bezier(.4, 0, .2, 1);
+      --sp-tap: cubic-bezier(.34, 1.42, .64, 1);
+      --sp-move: cubic-bezier(.32, .72, 0, 1);
+    }
+  }
+
+  /* ── shell ── */
+  .app{
+    display:grid;
+    grid-template-columns:236px 1fr;
+    height:100%;
+    position:relative;
+    isolation:isolate;
+  }
+  .app::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:-1;
+    pointer-events:none;
+    background:
+      radial-gradient(52% 40% at 42% -8%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 72%),
+      radial-gradient(36% 28% at 96% 4%, color-mix(in oklch, var(--primary) 4%, transparent), transparent 70%);
+  }
+
+  .rail{
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+    padding:22px 16px 18px;
+    border-right:1px solid var(--line-soft);
+    background:color-mix(in oklch, var(--surface) 62%, transparent);
+    backdrop-filter:blur(18px) saturate(1.4);
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:2px 8px}
+  .brand-mark{
+    width:30px;height:30px;border-radius:9px;
+    display:grid;place-items:center;
+    background:linear-gradient(160deg, var(--primary), color-mix(in oklch, var(--primary) 55%, oklch(0.72 0.16 300)));
+    color:white;font-weight:700;font-size:16px;
+    box-shadow:0 6px 16px -8px color-mix(in oklch, var(--primary) 70%, transparent);
+  }
+  .brand b{display:block;font-size:14px;letter-spacing:-.01em}
+  .brand small{display:block;font-size:11px;color:var(--ink-3);margin-top:1px}
+
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav-item{
+    appearance:none;border:0;background:transparent;
+    display:flex;align-items:center;gap:10px;
+    padding:9px 10px;border-radius:9px;
+    font:inherit;font-size:13.5px;color:var(--ink-2);
+    cursor:pointer;text-align:left;
+    transition:background var(--d-quick) var(--sp-quick), color var(--d-quick) var(--sp-quick), transform var(--d-tap) var(--sp-tap);
+  }
+  .nav-item svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;opacity:.85}
+  .nav-item em{
+    margin-left:auto;font-style:normal;font-size:10.5px;letter-spacing:.02em;
+    color:var(--ink-3);background:var(--surface-2);border:1px solid var(--line-soft);
+    padding:1px 6px;border-radius:999px;
+  }
+  .nav-item:hover{background:var(--surface-2);color:var(--ink)}
+  .nav-item:active{transform:scale(.985)}
+  .nav-item.is-on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm);border:1px solid var(--line-soft);padding:8px 9px}
+  .nav-item.is-on svg{color:var(--primary);opacity:1}
+
+  .rail-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+  .rail-note{
+    font-size:11.5px;line-height:1.55;color:var(--ink-3);
+    border:1px dashed var(--line);border-radius:var(--r-md);
+    padding:10px 11px;background:color-mix(in oklch, var(--surface) 50%, transparent);
+  }
+  .rail-note b{color:var(--ink-2);font-weight:600}
+  .theme-btn{
+    appearance:none;border:1px solid var(--line);background:var(--surface);
+    color:var(--ink-2);border-radius:9px;padding:7px 10px;
+    font:inherit;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:8px;
+    transition:transform var(--d-tap) var(--sp-tap), background var(--d-quick) var(--sp-quick);
+  }
+  .theme-btn:active{transform:scale(.97)}
+
+  /* ── main ── */
+  .main{overflow-y:auto;overflow-x:hidden;padding:26px 32px 56px;scroll-behavior:smooth}
+  .main::-webkit-scrollbar{width:10px}
+  .main::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px;border:3px solid var(--bg)}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+  .crumb{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:7px}
+  .crumb b{color:var(--ink-2);font-weight:550}
+  .top-actions{display:flex;align-items:center;gap:8px}
+
+  .view{display:none}
+  .view.is-on{display:block;animation:viewIn var(--d-move) var(--sp-move)}
+  @keyframes viewIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .view-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:20px}
+  h1{font-size:23px;line-height:1.2;letter-spacing:-.022em;margin:0 0 6px;font-weight:640}
+  .sub{margin:0;font-size:13px;line-height:1.6;color:var(--ink-3);max-width:62ch}
+  .head-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;padding-top:2px}
+
+  /* ── primitives ── */
+  .btn{
+    appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+    border-radius:9px;padding:7px 13px;font:inherit;font-size:12.5px;font-weight:520;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;
+    transition:transform var(--d-tap) var(--sp-tap), background var(--d-quick) var(--sp-quick), box-shadow var(--d-quick) var(--sp-quick);
+    box-shadow:var(--shadow-sm);
+  }
+  .btn:hover{background:var(--surface-2)}
+  .btn:active{transform:scale(.965)}
+  .btn.primary{background:var(--primary);border-color:transparent;color:white;box-shadow:0 8px 20px -12px color-mix(in oklch, var(--primary) 80%, transparent)}
+  .btn.primary:hover{background:color-mix(in oklch, var(--primary) 88%, black)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .btn.wide{width:100%;justify-content:center;padding:10px 14px;font-size:13px}
+
+  .pill{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:11px;font-weight:560;letter-spacing:.01em;
+    padding:2.5px 8px;border-radius:999px;
+    background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line-soft);
+  }
+  .pill.ok{background:var(--ok-wash);color:var(--ok);border-color:color-mix(in oklch, var(--ok) 22%, transparent)}
+  .pill.warn{background:var(--warn-wash);color:var(--warn);border-color:color-mix(in oklch, var(--warn) 26%, transparent)}
+  .pill.bad{background:var(--danger-wash);color:var(--danger);border-color:color-mix(in oklch, var(--danger) 22%, transparent)}
+  .pill.brand{background:var(--primary-wash);color:var(--primary-ink);border-color:color-mix(in oklch, var(--primary) 20%, transparent)}
+  .dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+  .card{
+    background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r-lg);
+    padding:16px 18px;box-shadow:var(--shadow-sm);
+  }
+  .card + .card{margin-top:12px}
+  .card-hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:13px}
+  .card-hd h2{font-size:13.5px;margin:0;font-weight:620;letter-spacing:-.01em}
+  .card-hd .hint{margin:0}
+  .hint{font-size:11.5px;color:var(--ink-3);line-height:1.55}
+  .hint.block{display:block;margin:10px 0 0;padding:8px 10px;border-radius:8px;background:var(--surface-2)}
+  code{font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px}
+  .hint code{color:var(--ink-2);background:color-mix(in oklch, var(--surface-3) 80%, transparent);padding:1px 4px;border-radius:4px}
+
+  .config-grid{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:18px;align-items:start}
+  .config-grid > *,.console-grid > *,.ledger-grid > *{min-width:0}
+  .preview-col{position:sticky;top:20px;display:flex;flex-direction:column;gap:12px}
+
+  /* segmented */
+  .seg{
+    position:relative;display:inline-flex;padding:3px;gap:2px;
+    background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;
+  }
+  .seg-pill{
+    position:absolute;top:3px;bottom:3px;left:0;width:0;border-radius:7px;
+    background:var(--surface);box-shadow:var(--shadow-sm);
+    transition:transform var(--d-move) var(--sp-move), width var(--d-move) var(--sp-move);
+    pointer-events:none;
+  }
+  [data-theme="dark"] .seg-pill{background:var(--surface-3)}
+  .seg-item{
+    position:relative;z-index:1;appearance:none;border:0;background:transparent;
+    padding:6px 16px;border-radius:7px;font:inherit;font-size:12.5px;font-weight:540;
+    color:var(--ink-3);cursor:pointer;
+    transition:color var(--d-quick) var(--sp-quick), transform var(--d-tap) var(--sp-tap);
+  }
+  .seg-item:hover{color:var(--ink-2)}
+  .seg-item:active{transform:scale(.97)}
+  .seg-item.is-on{color:var(--ink)}
+  .seg-desc{margin:11px 0 0;font-size:12px;line-height:1.6;color:var(--ink-3)}
+
+  /* chips */
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;
+    font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+    background:var(--surface-2);border:1px solid var(--line-soft);
+    color:var(--ink-2);padding:4px 8px;border-radius:7px;
+    transition:border-color var(--d-quick) var(--sp-quick), background var(--d-quick) var(--sp-quick);
+  }
+  .chip:hover{border-color:var(--line);background:var(--surface-3)}
+  .chip .x{color:var(--ink-3);cursor:pointer;font-size:12px;line-height:1}
+  .chip.add{color:var(--primary-ink);background:var(--primary-wash);border-color:color-mix(in oklch, var(--primary) 16%, transparent);cursor:pointer;font-family:inherit;font-size:11.5px}
+  .chip .rec{
+    font-family:inherit;font-size:9.5px;font-weight:600;letter-spacing:.02em;
+    color:var(--primary-ink);background:var(--primary-wash);
+    border-radius:4px;padding:1px 5px;
+  }
+
+  .route{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+  .route-row{
+    display:grid;grid-template-columns:36px minmax(0,1fr);gap:10px;align-items:center;min-width:0;
+    padding:8px 10px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line-soft);
+  }
+  .route-row .verb{font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--ok);text-align:center}
+  .route-row .verb.post{color:var(--primary)}
+  .route-row code{font-size:11.5px;color:var(--ink);overflow-wrap:anywhere}
+  .route-row small{display:block;font-size:10.5px;color:var(--ink-3);margin-top:2px;font-family:inherit}
+
+  /* field grid */
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11px;color:var(--ink-3);letter-spacing:.01em}
+  .field code{
+    display:block;font-size:11.5px;color:var(--ink);
+    background:var(--surface-2);border:1px solid var(--line-soft);
+    padding:6px 9px;border-radius:7px;
+  }
+  .field.full{grid-column:1 / -1}
+  .map{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .map span{
+    font-size:10.5px;font-family:"SF Mono",ui-monospace,monospace;
+    color:var(--ink-3);background:var(--surface-2);border:1px solid var(--line-soft);
+    border-radius:6px;padding:3px 7px;
+  }
+  .map span b{color:var(--ink-2);font-weight:600}
+  .map span i{font-style:normal;color:var(--ink-3);opacity:.6;margin:0 3px}
+
+  .billing{display:flex;gap:14px;align-items:stretch;flex-wrap:wrap}
+  .billing .big{font-size:24px;letter-spacing:-.03em;font-weight:620;line-height:1}
+  .billing .big small{font-size:12px;font-weight:400;color:var(--ink-3);letter-spacing:0;margin-left:3px}
+  .expr{
+    flex:1;min-width:210px;font-family:"SF Mono",ui-monospace,monospace;font-size:11px;
+    color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line-soft);
+    border-radius:8px;padding:9px 11px;line-height:1.6;white-space:pre-wrap;
+  }
+  .expr b{color:var(--primary-ink);font-weight:600}
+
+  /* code block */
+  pre.code{
+    margin:0;font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11px;line-height:1.62;color:var(--ink-2);
+    background:var(--surface-2);border:1px solid var(--line-soft);border-radius:9px;
+    padding:11px 12px;overflow:auto;max-height:340px;tab-size:2;
+  }
+  #configJson{white-space:pre-wrap;word-break:break-all;max-height:none}
+  pre.code::-webkit-scrollbar{width:8px;height:8px}
+  pre.code::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
+  .k{color:var(--primary-ink)}
+  .s{color:var(--ok)}
+  .n{color:var(--warn)}
+  .c{color:var(--ink-3)}
+
+  .check{display:flex;flex-direction:column;gap:9px}
+  .check-item{display:flex;gap:9px;align-items:flex-start;font-size:11.5px;line-height:1.5;color:var(--ink-2)}
+  .check-item .ic{
+    width:15px;height:15px;border-radius:50%;flex-shrink:0;margin-top:1px;
+    display:grid;place-items:center;font-size:9px;font-weight:700;
+  }
+  .check-item.ok .ic{background:var(--ok-wash);color:var(--ok)}
+  .check-item.warn .ic{background:var(--warn-wash);color:var(--warn)}
+  .check-item b{font-weight:600;color:var(--ink)}
+  .check-item span{display:block;color:var(--ink-3);font-size:11px;margin-top:1px}
+
+  /* ── console ── */
+  .console-grid{display:grid;grid-template-columns:352px minmax(0,1fr);gap:18px;align-items:start}
+  .composer{position:sticky;top:20px}
+  .composer .field + .field{margin-top:13px}
+  select,input[type="text"],textarea{
+    appearance:none;width:100%;font:inherit;font-size:12.5px;color:var(--ink);
+    background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;outline:none;resize:vertical;
+    transition:border-color var(--d-quick) var(--sp-quick), box-shadow var(--d-quick) var(--sp-quick), background var(--d-quick) var(--sp-quick);
+  }
+  select{background-image:none;cursor:pointer}
+  textarea{min-height:78px;line-height:1.55}
+  select:focus,input:focus,textarea:focus{
+    border-color:color-mix(in oklch, var(--primary) 55%, transparent);
+    box-shadow:0 0 0 3px color-mix(in oklch, var(--primary) 12%, transparent);
+    background:var(--surface);
+  }
+  .label-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .label-row label{font-size:11px;color:var(--ink-3)}
+
+  .switch{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
+  .switch input{position:absolute;opacity:0;pointer-events:none}
+  .track{
+    width:34px;height:20px;border-radius:999px;background:var(--surface-3);
+    border:1px solid var(--line);position:relative;flex-shrink:0;
+    transition:background var(--d-quick) var(--sp-quick), border-color var(--d-quick) var(--sp-quick);
+  }
+  .track::after{
+    content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:white;box-shadow:0 1px 3px oklch(0 0 0 / .28);
+    transition:transform var(--d-tap) var(--sp-tap);
+  }
+  .switch input:checked + .track{background:var(--primary);border-color:transparent}
+  .switch input:checked + .track::after{transform:translateX(14px)}
+  .switch .txt{font-size:11.5px;color:var(--ink-2)}
+  .switch .txt small{display:block;color:var(--ink-3);font-size:10.5px}
+
+  .transcript{display:flex;flex-direction:column;gap:10px;min-height:520px}
+  .empty{
+    border:1px dashed var(--line);border-radius:var(--r-lg);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    min-height:520px;color:var(--ink-3);text-align:center;padding:24px;
+  }
+  .empty .glyph{
+    width:44px;height:44px;border-radius:14px;display:grid;place-items:center;
+    background:var(--surface-2);border:1px solid var(--line-soft);
+  }
+  .empty .glyph svg{width:20px;height:20px;stroke:var(--ink-3);fill:none;stroke-width:1.6}
+  .empty b{font-size:13px;color:var(--ink-2);font-weight:560}
+  .empty p{margin:0;font-size:11.5px;line-height:1.6;max-width:34ch}
+
+  .exch{
+    background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r-lg);
+    overflow:hidden;box-shadow:var(--shadow-sm);
+    animation:exchIn var(--d-move) var(--sp-move);
+  }
+  @keyframes exchIn{from{opacity:0;transform:translateY(10px) scale(.995)}to{opacity:1;transform:none}}
+  .exch-hd{
+    display:flex;align-items:center;gap:9px;padding:9px 13px;
+    border-bottom:1px solid var(--line-soft);background:color-mix(in oklch, var(--surface-2) 55%, transparent);
+  }
+  .exch-hd .verb{
+    font-size:9.5px;font-weight:700;letter-spacing:.05em;
+    padding:2px 6px;border-radius:5px;background:var(--primary-wash);color:var(--primary-ink);
+  }
+  .exch-hd .verb.get{background:var(--ok-wash);color:var(--ok)}
+  .exch-hd .verb.bad{background:var(--danger-wash);color:var(--danger)}
+  .exch-hd code{font-size:11px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .exch-hd .time{margin-left:auto;font-size:10.5px;color:var(--ink-3);font-family:"SF Mono",ui-monospace,monospace;flex-shrink:0}
+  .exch-body{padding:11px 13px}
+  .exch-body .status-line{display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:11.5px;color:var(--ink-3)}
+  .exch-body .status-line b{font-size:12px;color:var(--ink);font-weight:600}
+  .exch.err{border-color:color-mix(in oklch, var(--danger) 26%, transparent)}
+  .exch.err .exch-hd{background:var(--danger-wash)}
+
+  .shot{
+    position:relative;border-radius:11px;overflow:hidden;border:1px solid var(--line-soft);
+    aspect-ratio:16/9;margin-bottom:9px;
+    background:
+      radial-gradient(120% 100% at 18% 12%, oklch(0.72 0.16 265 / .55), transparent 62%),
+      radial-gradient(90% 90% at 84% 78%, oklch(0.70 0.15 330 / .42), transparent 60%),
+      linear-gradient(150deg, oklch(0.30 0.07 265), oklch(0.21 0.05 250));
+  }
+  .shot::after{
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(115deg, oklch(1 0 0 / .045) 0 1px, transparent 1px 22px);
+  }
+  .shot .play{
+    position:absolute;inset:0;margin:auto;width:42px;height:42px;border-radius:50%;
+    background:oklch(1 0 0 / .18);backdrop-filter:blur(8px);
+    border:1px solid oklch(1 0 0 / .34);
+    display:grid;place-items:center;
+  }
+  .shot .play svg{width:15px;height:15px;fill:white;stroke:none;margin-left:2px}
+  .shot .tc{
+    position:absolute;left:10px;bottom:9px;font-size:10px;color:oklch(1 0 0 / .82);
+    font-family:"SF Mono",ui-monospace,monospace;letter-spacing:.04em;
+  }
+
+  .meta-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .meta-row span{
+    font-size:10.5px;color:var(--ink-3);background:var(--surface-2);
+    border:1px solid var(--line-soft);border-radius:5px;padding:2px 6px;
+    font-family:"SF Mono",ui-monospace,monospace;
+  }
+
+  .note{
+    font-size:11px;line-height:1.6;color:var(--ink-3);
+    padding:8px 11px;border-radius:8px;background:var(--surface-2);
+    border-left:2px solid var(--line);margin-top:9px;
+  }
+  .note.hot{background:var(--danger-wash);border-left-color:var(--danger);color:color-mix(in oklch, var(--danger) 78%, var(--ink))}
+
+  /* ── ledger ── */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+  .stat{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r-md);padding:12px 14px;box-shadow:var(--shadow-sm)}
+  .stat .k{font-size:11px;color:var(--ink-3);margin-bottom:6px}
+  .stat .v{font-size:21px;letter-spacing:-.03em;font-weight:620;line-height:1}
+  .stat .v small{font-size:11px;font-weight:400;color:var(--ink-3);letter-spacing:0;margin-left:4px}
+
+  .ledger-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .table-wrap{overflow:auto;border-radius:9px;border:1px solid var(--line-soft)}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  thead th{
+    text-align:left;font-weight:560;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;
+    color:var(--ink-3);padding:7px 10px;background:var(--surface-2);
+    border-bottom:1px solid var(--line-soft);white-space:nowrap;
+  }
+  tbody td{padding:8px 10px;border-bottom:1px solid var(--line-soft);color:var(--ink-2);white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr{cursor:pointer;transition:background var(--d-quick) var(--sp-quick)}
+  tbody tr:hover{background:var(--surface-2)}
+  tbody tr.sel{background:var(--primary-wash)}
+  tbody tr.sel td{color:var(--ink)}
+  tbody tr.dim{opacity:.42}
+  td.mono,th.mono{font-family:"SF Mono",ui-monospace,monospace;font-size:10.5px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+  .join-note{
+    display:flex;align-items:flex-start;gap:10px;margin-top:14px;
+    padding:12px 14px;border-radius:var(--r-md);
+    background:var(--primary-wash);border:1px solid color-mix(in oklch, var(--primary) 15%, transparent);
+    font-size:11.5px;line-height:1.6;color:var(--ink-2);
+  }
+  .join-note svg{width:15px;height:15px;stroke:var(--primary-ink);fill:none;stroke-width:1.8;flex-shrink:0;margin-top:1px}
+  .join-note b{color:var(--ink)}
+
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .flow .node{
+    font-size:11px;padding:5px 9px;border-radius:7px;
+    background:var(--surface-2);border:1px solid var(--line-soft);color:var(--ink-2);
+    font-family:"SF Mono",ui-monospace,monospace;
+  }
+  .flow .node.hi{background:var(--primary-wash);color:var(--primary-ink);border-color:color-mix(in oklch, var(--primary) 18%, transparent)}
+  .flow .arw{color:var(--ink-3);font-size:11px}
+
+  .detail{
+    margin-top:12px;padding:12px 14px;border-radius:var(--r-md);
+    background:var(--surface-2);border:1px solid var(--line-soft);
+    font-size:11.5px;line-height:1.7;color:var(--ink-2);
+  }
+  .detail b{color:var(--ink)}
+  .detail code{font-size:11px}
+
+  @media (max-width:1120px){
+    .app{grid-template-columns:68px 1fr}
+    .brand small,.nav-item span,.rail-note,.theme-btn span{display:none}
+    .brand{justify-content:center;padding:2px 0}
+    .nav-item{justify-content:center;padding:10px}
+    .nav-item em{display:none}
+    .theme-btn{justify-content:center}
+    .config-grid,.console-grid,.ledger-grid{grid-template-columns:1fr}
+    .preview-col,.composer{position:static}
+    .stats{grid-template-columns:repeat(2,1fr)}
+  }
+  @media (max-width:720px){
+    .main{padding:18px 16px 44px}
+    .view-head{flex-direction:column;gap:12px}
+    .fields{grid-template-columns:1fr}
+    .stats{grid-template-columns:1fr 1fr}
+    pre.code{white-space:pre-wrap;word-break:break-all}
+    .app{grid-template-columns:1fr}
+    .rail{display:none}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+    .main{scroll-behavior:auto}
+  }
+  @media (prefers-reduced-transparency: reduce){
+    .rail{background:var(--surface);backdrop-filter:none}
+    .shot .play{backdrop-filter:none;background:oklch(1 0 0 / .3)}
+  }
+  @media (prefers-contrast: more){
+    :root{--line:oklch(0.72 0.01 258);--line-soft:oklch(0.80 0.01 258);--ink-3:oklch(0.42 0.015 258)}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark">a</span>
+      <div><b>apiduo</b><small>控制台原型 · 0.0.47</small></div>
+    </div>
+
+    <nav class="nav" aria-label="视图">
+      <button class="nav-item is-on" data-view="config" aria-selected="true">
+        <svg viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h9M17 18h3"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+        <span>渠道配置</span><em>8001</em>
+      </button>
+      <button class="nav-item" data-view="console" aria-selected="false">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>
+        <span>任务调试台</span>
+      </button>
+      <button class="nav-item" data-view="ledger" aria-selected="false">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M4 10h16M9 10v9"/></svg>
+        <span>任务与账单</span>
+      </button>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="rail-note">
+        <b>产品原型</b><br />
+        交互与文案是产品面，数值与形状取自真实实现：协议预设、字段映射、错误码、tasks / logs 落表。
+      </div>
+      <button class="theme-btn" id="themeBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>
+        <span id="themeLabel">深色</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb">
+        <span>渠道</span><span>/</span><b>高级异步 · 火山方舟</b>
+      </div>
+      <div class="top-actions">
+        <span class="pill brand"><span class="dot"></span>type 8001</span>
+        <span class="pill ok"><span class="dot"></span>运行中</span>
+      </div>
+    </div>
+
+    <!-- ══════════════ 1. 渠道配置 ══════════════ -->
+    <section class="view is-on" data-view="config">
+      <div class="view-head">
+        <div>
+          <h1>高级异步渠道</h1>
+          <p class="sub">只中继「上游自己返回任务号」的模型。网关不替上游造任务，也不把同步请求转成异步；图片与视频共用一条渠道，靠协议区分形状。</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn" id="testBtn">测试渠道</button>
+          <button class="btn primary" id="saveBtn">保存</button>
+        </div>
+      </div>
+
+      <div class="config-grid">
+        <div class="col">
+          <section class="card">
+            <div class="card-hd"><h2>协议</h2><span class="hint">决定响应形状，不决定地址</span></div>
+            <div class="seg" data-seg="protocol">
+              <span class="seg-pill"></span>
+              <button class="seg-item is-on" data-val="ark">Ark</button>
+              <button class="seg-item" data-val="images">Images</button>
+            </div>
+            <p class="seg-desc" id="protocolDesc"></p>
+          </section>
+
+          <section class="card">
+            <div class="card-hd"><h2>下游入口</h2><span class="hint">客户端 → 网关，按 base URL 选一条</span></div>
+            <div class="chips" id="incomingChips"></div>
+            <p class="hint block" id="incomingHint"></p>
+          </section>
+
+          <section class="card">
+            <div class="card-hd"><h2>上游端点</h2><span class="hint">网关 → 方舟，随渠道可改</span></div>
+            <div class="route" style="margin-top:0">
+              <div class="route-row">
+                <span class="verb post">POST</span>
+                <div><code id="submitPath"></code><small>提交：上游返回任务号，网关换成自己的 task_xxxx</small></div>
+              </div>
+              <div class="route-row">
+                <span class="verb">GET</span>
+                <div><code id="queryPath"></code><small>查询：轮询到终态后回结果地址</small></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-hd"><h2>字段映射</h2><span class="hint">上游响应里的 dot-path</span></div>
+            <div class="fields">
+              <div class="field"><label>任务号</label><code id="fTaskId"></code></div>
+              <div class="field"><label>状态</label><code id="fStatus"></code></div>
+              <div class="field"><label>结果地址</label><code id="fResult"></code></div>
+              <div class="field"><label>错误信息</label><code id="fError"></code></div>
+            </div>
+            <div class="map" id="statusMap"></div>
+          </section>
+
+          <section class="card">
+            <div class="card-hd"><h2>计费</h2><span class="hint">提交时预扣，终态按实际结算</span></div>
+            <div class="billing">
+              <div class="big" id="billBig">5<small>秒 / 默认</small></div>
+              <div class="expr" id="billExpr"></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="preview-col">
+          <section class="card">
+            <div class="card-hd"><h2>写进 other_settings 的配置</h2><span class="hint">随渠道保存</span></div>
+            <pre class="code" id="configJson"></pre>
+          </section>
+
+          <section class="card">
+            <div class="card-hd"><h2>保存前校验</h2><span class="hint">不通过不允许保存</span></div>
+            <div class="check">
+              <div class="check-item ok"><span class="ic">✓</span><div><b>同步入口已排除</b><span>/v1/images/generations 不能作为任何异步协议的入站路径</span></div></div>
+              <div class="check-item ok"><span class="ic">✓</span><div><b>上下游路径均以 / 开头</b><span>查询路径含 {task_id}</span></div></div>
+              <div class="check-item ok"><span class="ic">✓</span><div><b>状态映射都在枚举内</b><span>QUEUED / IN_PROGRESS / SUCCESS / FAILURE</span></div></div>
+              <div class="check-item warn"><span class="ic">!</span><div><b>callback_url 会被拒绝</b><span>方舟回调带的是上游任务号，客户端查不到</span></div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════ 2. 任务调试台 ══════════════ -->
+    <section class="view" data-view="console">
+      <div class="view-head">
+        <div>
+          <h1>任务调试台</h1>
+          <p class="sub">按方舟 SDK 的方式调：提交拿任务号，然后按 id 轮询。下面是网关真实会返回的每一帧。</p>
+        </div>
+        <div class="head-actions">
+          <span class="pill brand">Ark 协议</span>
+          <span class="pill">seedance-1.0-pro</span>
+        </div>
+      </div>
+
+      <div class="console-grid">
+        <section class="card composer">
+          <div class="card-hd"><h2>请求</h2><span class="pill ok"><span class="dot"></span>已鉴权</span></div>
+
+          <div class="field">
+            <div class="label-row"><label for="modelSel">模型</label><span class="hint">按模型归属到本渠道</span></div>
+            <select id="modelSel">
+              <option value="seedance-1.0-pro">seedance-1.0-pro</option>
+              <option value="seedance-1.0-lite">seedance-1.0-lite</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <div class="label-row"><label for="prompt">提示词</label><span class="hint" id="promptLen">0 / 2000</span></div>
+            <textarea id="prompt" maxlength="2000" placeholder="描述画面与镜头运动…">镜头缓慢推进，海面泛着冷光，远处灯塔规律闪烁</textarea>
+          </div>
+
+          <div class="field">
+            <div class="label-row"><label>时长</label><span class="hint">按秒计费</span></div>
+            <div class="seg" data-seg="duration">
+              <span class="seg-pill"></span>
+              <button class="seg-item is-on" data-val="5">5 秒</button>
+              <button class="seg-item" data-val="10">10 秒</button>
+            </div>
+          </div>
+
+          <div class="field" style="margin-top:14px">
+            <label class="switch">
+              <input type="checkbox" id="cbSwitch" />
+              <span class="track"></span>
+              <span class="txt">带 callback_url<small>用于演示被拒绝的错误信封</small></span>
+            </label>
+          </div>
+
+          <button class="btn primary wide" id="sendBtn" style="margin-top:16px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h13M12 6l6 6-6 6"/></svg>
+            提交任务
+          </button>
+          <p class="hint" style="margin-top:9px">POST /api/v3/contents/generations/tasks</p>
+        </section>
+
+        <div class="transcript" id="transcript">
+          <div class="empty" id="emptyState">
+            <span class="glyph">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+            </span>
+            <b>还没有请求</b>
+            <p>点「提交任务」，这里会依次出现提交响应、三次轮询和终态结果。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════ 3. 任务与账单 ══════════════ -->
+    <section class="view" data-view="ledger">
+      <div class="view-head">
+        <div>
+          <h1>任务与账单</h1>
+          <p class="sub">任务本体在 <code>tasks</code>，计费与调用流水在 <code>logs</code>（type=2）。同一笔任务两行记录，靠 task_id 对齐。</p>
+        </div>
+        <div class="head-actions">
+          <span class="pill">最近 24 小时</span>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="k">任务总数</div><div class="v">128</div></div>
+        <div class="stat"><div class="k">成功</div><div class="v">121<small>94.5%</small></div></div>
+        <div class="stat"><div class="k">失败 / 退款</div><div class="v">3</div></div>
+        <div class="stat"><div class="k">消费</div><div class="v">¥12.84</div></div>
+      </div>
+
+      <div class="ledger-grid">
+        <section class="card">
+          <div class="card-hd"><h2>tasks · 任务生命周期</h2><span class="hint">点一行看对应账单</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>task_id</th><th>模型</th><th>时长</th><th>状态</th><th class="num">quota</th></tr></thead>
+              <tbody id="taskRows">
+                <tr data-log="90231" class="sel">
+                  <td class="mono">task_9f2a…c41d</td><td>seedance-1.0-pro</td><td>5s</td>
+                  <td><span class="pill ok"><span class="dot"></span>SUCCESS</span></td><td class="num">82,000</td>
+                </tr>
+                <tr data-log="90230">
+                  <td class="mono">task_3c77…08be</td><td>seedance-1.0-pro</td><td>10s</td>
+                  <td><span class="pill warn"><span class="dot"></span>IN_PROGRESS</span></td><td class="num">164,000</td>
+                </tr>
+                <tr data-log="90228 90227">
+                  <td class="mono">task_b1e4…7a90</td><td>seedance-1.0-lite</td><td>5s</td>
+                  <td><span class="pill bad"><span class="dot"></span>FAILURE</span></td><td class="num">0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="flow">
+            <span class="node hi">POST /api/v3/…/tasks</span><span class="arw">→</span>
+            <span class="node">tasks 插入 · SUBMITTED</span><span class="arw">→</span>
+            <span class="node">worker 轮询</span><span class="arw">→</span>
+            <span class="node">SUCCESS / FAILURE</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-hd"><h2>logs · 计费流水</h2><span class="hint">type=2 消费日志</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>id</th><th>模型</th><th>内容</th><th class="num">quota</th></tr></thead>
+              <tbody id="logRows">
+                <tr data-log="90231" class="sel">
+                  <td class="mono">90231</td><td>seedance-1.0-pro</td><td>Action · 5s 结算</td><td class="num">82,000</td>
+                </tr>
+                <tr data-log="90230">
+                  <td class="mono">90230</td><td>seedance-1.0-pro</td><td>Action · 预扣 10s</td><td class="num">164,000</td>
+                </tr>
+                <tr data-log="90228">
+                  <td class="mono">90228</td><td>seedance-1.0-lite</td><td>Action · 预扣</td><td class="num">82,000</td>
+                </tr>
+                <tr data-log="90227">
+                  <td class="mono">90227</td><td>seedance-1.0-lite</td><td>退款 · type=6</td><td class="num">82,000</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="detail" id="ledgerDetail">
+            <b>task_9f2a…c41d</b> 在 <code>tasks</code> 里存状态、上游原始响应与 <code>content.video_url</code>；
+            同一笔在 <code>logs</code>（type=2）里存 <code>quota</code>、<code>other.is_task=true</code> 与请求路径。
+            前者是任务能不能取结果，后者是这笔钱怎么算的。
+          </div>
+        </section>
+      </div>
+
+      <div class="join-note">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+        <div><b>为什么不是一个表：</b>任务要能被轮询、能被重试，生命周期比账单长；账单要能被聚合、能按 token / 渠道 / 用户筛选，写放大也更大。
+        所以任务写 <code>tasks</code>，每次计费动作写 <code>logs</code> —— 预扣一行、结算或退款再一行，金额永远可追溯。</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+  /* ── theme ── */
+  var root = document.documentElement;
+  var themeBtn = $('#themeBtn');
+  var themeLabel = $('#themeLabel');
+  function applyTheme(mode) {
+    root.setAttribute('data-theme', mode);
+    themeLabel.textContent = mode === 'dark' ? '浅色' : '深色';
+    try { localStorage.setItem('apiduo-proto-theme', mode); } catch (e) {}
+  }
+  var stored = null;
+  try { stored = localStorage.getItem('apiduo-proto-theme'); } catch (e) {}
+  applyTheme(stored === 'dark' ? 'dark' : 'light');
+  themeBtn.addEventListener('click', function () {
+    applyTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  /* ── view switching ── */
+  function showView(name) {
+    $$('.nav-item').forEach(function (b) {
+      var on = b.dataset.view === name;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    $$('.view').forEach(function (v) {
+      v.classList.toggle('is-on', v.dataset.view === name);
+    });
+    $('.main').scrollTop = 0;
+    requestAnimationFrame(function () { $$('.seg').forEach(movePill); });
+  }
+  $$('.nav-item').forEach(function (b) {
+    b.addEventListener('click', function () { showView(b.dataset.view); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var map = { '1': 'config', '2': 'console', '3': 'ledger' };
+    if (map[e.key]) showView(map[e.key]);
+  });
+
+  /* ── segmented control ── */
+  function movePill(seg) {
+    var on = seg.querySelector('.seg-item.is-on');
+    var pill = seg.querySelector('.seg-pill');
+    if (!on || !pill || !on.offsetWidth) return;
+    pill.style.width = on.offsetWidth + 'px';
+    pill.style.transform = 'translateX(' + on.offsetLeft + 'px)';
+  }
+  $$('.seg').forEach(function (seg) {
+    seg.addEventListener('click', function (e) {
+      var item = e.target.closest('.seg-item');
+      if (!item) return;
+      $$('.seg-item', seg).forEach(function (b) { b.classList.toggle('is-on', b === item); });
+      movePill(seg);
+      if (seg.dataset.seg === 'protocol') renderProtocol(item.dataset.val);
+      if (seg.dataset.seg === 'duration') renderCost();
+    });
+  });
+  window.addEventListener('resize', function () { $$('.seg').forEach(movePill); });
+
+  /* ── protocol presets ── */
+  var PRESETS = {
+    ark: {
+      name: 'Ark',
+      desc: '火山方舟任务 API：提交与查询都在 /api/v3/contents/generations/tasks，按任务号轮询。响应是方舟任务对象，失败走 {error:{code,message}}。',
+      incoming: ['/v1/contents/generations/tasks', '/contents/generations/tasks', '/api/v3/contents/generations/tasks'],
+      locked: true,
+      incomingHint: '三条是同一套协议的别名，按客户端 base URL 选：域名 → <code>/contents/…</code>；<code>/v1</code> → <code>/v1/contents/…</code>；<code>/api/v3</code> → <code>/api/v3/contents/…</code>。前两条是网关静态路由，第三条是插件原生入口；三条都不需要运营手填。',
+      submit: '/api/v3/contents/generations/tasks',
+      query: '/api/v3/contents/generations/tasks/{task_id}',
+      taskId: 'id',
+      status: 'status',
+      result: 'content.video_url',
+      error: 'error.message',
+      durationPath: 'duration',
+      defaultSeconds: 5,
+      map: [['queued', 'QUEUED'], ['running', 'IN_PROGRESS'], ['succeeded', 'SUCCESS'], ['failed', 'FAILURE'], ['cancelled', 'FAILURE'], ['expired', 'FAILURE']]
+    },
+    images: {
+      name: 'Images',
+      desc: '内置图像异步形状：提交拿任务号，GET <入站>/{id} 回标准 Images 响应。与同步的 /v1/images/generations 物理隔离。',
+      incoming: ['/v1/images/generations/async'],
+      locked: false,
+      incomingHint: '也可以按业务分段写 <code>/{biz}/v1/images/generations</code>，biz 段由运营在渠道里写死，不是通配符。',
+      submit: '/v1/images/generations',
+      query: '/v1/images/generations/{task_id}',
+      taskId: 'id',
+      status: 'status',
+      result: 'data.0.url',
+      error: 'error.message',
+      durationPath: '',
+      defaultSeconds: 0,
+      map: [['queued', 'QUEUED'], ['pending', 'QUEUED'], ['processing', 'IN_PROGRESS'], ['completed', 'SUCCESS'], ['failed', 'FAILURE']]
+    }
+  };
+  var current = 'ark';
+
+  function jsonPreview(p) {
+    var payload = {
+      protocol: current,
+      incoming_paths: p.incoming,
+      submit: { upstream_path: p.submit, method: 'POST', content_type: 'json', auth: { type: 'header', name: 'Authorization', value: 'Bearer {api_key}' } },
+      query: { upstream_path: p.query, method: 'GET', task_id_param: 'task_id', task_id_location: 'path', auth: { type: 'header', name: 'Authorization', value: 'Bearer {api_key}' } },
+      fields: {
+        task_id_path: [p.taskId],
+        status_path: [p.status],
+        result_url_path: p.result.split('.'),
+        error_path: p.error.split('.'),
+        status_map: p.map.reduce(function (acc, pair) { acc[pair[0]] = pair[1]; return acc; }, {})
+      },
+      billing: current === 'ark'
+        ? { mode: 'per_second', duration_path: [p.durationPath], default_seconds: p.defaultSeconds }
+        : { mode: 'per_call' }
+    };
+    return syntax(JSON.stringify(payload, null, 2));
+  }
+
+  function syntax(text) {
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/("(?:[^"\\]|\\.)*")(\s*:)?/g, function (m, str, colon) {
+        if (colon) return '<span class="k">' + str + '</span>' + colon;
+        return '<span class="s">' + str + '</span>';
+      })
+      .replace(/\b(true|false|null)\b/g, '<span class="n">$1</span>');
+  }
+
+  function renderProtocol(val) {
+    current = val;
+    var p = PRESETS[val];
+    $('#protocolDesc').textContent = p.desc;
+
+    var chips = $('#incomingChips');
+    chips.innerHTML = '';
+    p.incoming.forEach(function (path, index) {
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      var badge = index === 0 && val === 'ark' ? '<span class="rec">推荐</span>' : '';
+      var remove = p.locked ? '' : '<span class="x" aria-hidden="true">×</span>';
+      chip.innerHTML = badge + '<span>' + path + '</span>' + remove;
+      chips.appendChild(chip);
+    });
+    if (!p.locked) {
+      var add = document.createElement('span');
+      add.className = 'chip add';
+      add.textContent = '+ 添加路径';
+      chips.appendChild(add);
+    }
+
+    $('#incomingHint').innerHTML = p.incomingHint;
+    $('#submitPath').textContent = p.submit;
+    $('#queryPath').textContent = p.query;
+    $('#fTaskId').textContent = p.taskId;
+    $('#fStatus').textContent = p.status;
+    $('#fResult').textContent = p.result;
+    $('#fError').textContent = p.error;
+
+    var map = $('#statusMap');
+    map.innerHTML = '';
+    p.map.forEach(function (pair) {
+      var s = document.createElement('span');
+      s.innerHTML = '<b>' + pair[0] + '</b><i>→</i>' + pair[1];
+      map.appendChild(s);
+    });
+
+    if (val === 'ark') {
+      $('#billBig').innerHTML = p.defaultSeconds + '<small>秒 / 默认</small>';
+      $('#billExpr').innerHTML = '按秒计费：<b>duration</b> 取自请求体，缺省 ' + p.defaultSeconds + ' 秒\n' +
+        'tier("request", fixed(seconds) * 0.028)   <span class="c">// 美元 / 秒</span>\n' +
+        '提交预扣 → 终态按上游 usage 结算，失败整笔退';
+    } else {
+      $('#billBig').innerHTML = '1<small>次 / 固定</small>';
+      $('#billExpr').innerHTML = '按次计费：每次提交固定扣费\n' +
+        'tier("request", fixed(0.04))   <span class="c">// 美元 / 次</span>\n' +
+        '提交预扣 → 终态不调整；失败整笔退';
+    }
+
+    $('#configJson').innerHTML = jsonPreview(p);
+  }
+
+  /* ── cost in composer ── */
+  var durationSec = 5;
+  function renderCost() {
+    durationSec = $('#durationSeg') ? 5 : 5;
+  }
+  // read from the duration segment directly
+  function currentDuration() {
+    var on = document.querySelector('[data-seg="duration"] .seg-item.is-on');
+    return on ? Number(on.dataset.val) : 5;
+  }
+
+  /* ── console simulation ── */
+  var transcript = $('#transcript');
+  var emptyState = $('#emptyState');
+  var timers = [];
+  var seq = 0;
+
+  function clearTimers() {
+    timers.forEach(function (t) { clearTimeout(t); });
+    timers = [];
+  }
+  function stamp() {
+    return (performance.now() / 1000).toFixed(2) + 's';
+  }
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function taskId() {
+    var hex = '0123456789abcdef';
+    var out = '';
+    for (var i = 0; i < 24; i++) out += hex[Math.floor(Math.random() * 16)];
+    return 'task_' + out;
+  }
+  function removeEmpty() {
+    if (emptyState && emptyState.parentNode) emptyState.parentNode.removeChild(emptyState);
+  }
+  function block(opts) {
+    var el = document.createElement('div');
+    el.className = 'exch' + (opts.error ? ' err' : '');
+    el.innerHTML =
+      '<div class="exch-hd">' +
+        '<span class="verb' + (opts.bad ? ' bad' : opts.get ? ' get' : '') + '">' + opts.method + '</span>' +
+        '<code>' + esc(opts.path) + '</code>' +
+        '<span class="time">' + opts.time + '</span>' +
+      '</div>' +
+      '<div class="exch-body">' +
+        (opts.head || '') +
+        '<pre class="code">' + syntax(opts.body) + '</pre>' +
+        (opts.note || '') +
+      '</div>';
+    transcript.appendChild(el);
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return el;
+  }
+  function statusHead(status, cls, extra) {
+    return '<div class="status-line"><span class="pill ' + cls + '"><span class="dot"></span>' + status + '</span>' +
+      (extra ? '<span>' + extra + '</span>' : '') + '</div>';
+  }
+
+  function submit() {
+    var prompt = $('#prompt').value.trim();
+    var model = $('#modelSel').value;
+    var cb = $('#cbSwitch').checked;
+    var seconds = currentDuration();
+    var base = Math.floor(Date.now() / 1000);
+
+    if (!prompt) {
+      var ta = $('#prompt');
+      ta.focus();
+      ta.style.borderColor = 'var(--danger)';
+      ta.style.boxShadow = '0 0 0 3px color-mix(in oklch, var(--danger) 14%, transparent)';
+      setTimeout(function () { ta.style.borderColor = ''; ta.style.boxShadow = ''; }, 1400);
+      return;
+    }
+
+    clearTimers();
+    removeEmpty();
+    transcript.innerHTML = '';
+    seq += 1;
+    var local = seq;
+
+    var body = {
+      model: model,
+      content: [{ type: 'text', text: prompt }],
+      duration: seconds,
+      resolution: seconds === 10 ? '1080p' : '720p'
+    };
+    if (cb) body.callback_url = 'https://client.example.com/ark/callback';
+
+    var sendBtn = $('#sendBtn');
+    sendBtn.disabled = true;
+
+    block({
+      method: 'POST',
+      path: '/api/v3/contents/generations/tasks',
+      time: '0.00s',
+      body: JSON.stringify(body, null, 2),
+      head: '<div class="status-line"><span class="pill brand">request</span><span>Authorization: Bearer sk-…</span></div>'
+    });
+
+    /* callback_url: rejected before the task is created */
+    if (cb) {
+      timers.push(setTimeout(function () {
+        block({
+          method: '400',
+          bad: true,
+          path: '/api/v3/contents/generations/tasks',
+          time: '0.04s',
+          error: true,
+          body: JSON.stringify({
+            error: {
+              code: 'InvalidParameter',
+              message: 'callback_url is not supported; poll the task instead'
+            }
+          }, null, 2),
+          note: '<div class="note hot">拒绝发生在创建任务之前：没有扣费、没有 tasks 行。方舟回调带的是上游任务号，网关只发自己的 <code>task_xxxx</code>，客户端拿回调里的号查不到任何任务。</div>'
+        });
+        sendBtn.disabled = false;
+      }, 320));
+      return;
+    }
+
+    var id = taskId();
+    var created = base;
+
+    timers.push(setTimeout(function () {
+      if (local !== seq) return;
+      block({
+        method: '200',
+        path: '/api/v3/contents/generations/tasks',
+        time: '0.31s',
+        body: JSON.stringify({ id: id }, null, 2),
+        head: '<div class="status-line"><b>任务已受理</b><span>上游任务号已换成网关任务号</span></div>',
+        note: '<div class="note">响应只回 <code>id</code>。SDK 拿这个号轮询，与方舟原生形状一致。</div>'
+      });
+    }, 620));
+
+    var polls = [
+      { at: 1500, status: 'queued', label: 'QUEUED', cls: 'pill', note: '刚入队，上游还没开始。' },
+      { at: 3200, status: 'running', label: 'IN_PROGRESS', cls: 'pill warn', note: '生成中。网关每 15 秒查一次上游。' }
+    ];
+    polls.forEach(function (step) {
+      timers.push(setTimeout(function () {
+        if (local !== seq) return;
+        block({
+          method: 'GET',
+          get: true,
+          path: '/api/v3/contents/generations/tasks/' + id,
+          time: step.at / 1000 + 's',
+          body: JSON.stringify({
+            id: id,
+            model: model,
+            status: step.status,
+            created_at: created
+          }, null, 2),
+          head: statusHead(step.label, step.cls, '轮询'),
+          note: '<div class="note">' + step.note + '</div>'
+        });
+      }, step.at));
+    });
+
+    timers.push(setTimeout(function () {
+      if (local !== seq) return;
+      var done = created + seconds;
+      block({
+        method: 'GET',
+        get: true,
+        path: '/api/v3/contents/generations/tasks/' + id,
+        time: '5.06s',
+        body: JSON.stringify({
+          id: id,
+          model: model,
+          status: 'succeeded',
+          content: { video_url: 'https://apiduo.cn/api/task/media/' + id.replace('task_', '') + '.mp4' },
+          usage: { completion_tokens: seconds * 21780, total_tokens: seconds * 21780 },
+          created_at: created,
+          updated_at: done
+        }, null, 2),
+        head: statusHead('SUCCESS', 'pill ok', '终态 · 已结算') +
+          '<div class="shot"><span class="play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span class="tc">00:0' + seconds + ' · 1080p</span></div>',
+        note: '<div class="note">结算：预扣的 ' + seconds + ' 秒费用按 <code>usage</code> 落账。这次没有差额，<code>logs</code> 只留结算那一行。</div>'
+      });
+      sendBtn.disabled = false;
+    }, 5100));
+  }
+
+  $('#sendBtn').addEventListener('click', submit);
+  $('#prompt').addEventListener('input', function (e) {
+    $('#promptLen').textContent = e.target.value.length + ' / 2000';
+  });
+  $('#modelSel').addEventListener('change', function () {});
+  renderProtocol('ark');
+
+  /* ── ledger ── */
+  var DETAILS = {
+    '90231': '<b>task_9f2a…c41d</b> 在 <code>tasks</code> 里存状态、上游原始响应与 <code>content.video_url</code>；同一笔在 <code>logs</code>（type=2）里存 <code>quota</code>、<code>other.is_task=true</code> 与请求路径。前者是任务能不能取结果，后者是这笔钱怎么算的。',
+    '90230': '<b>task_3c77…08be</b> 还在轮询。提交时已按 10 秒预扣 164,000 quota，终态会按上游 <code>usage</code> 多退少补；这一笔目前只有预扣流水。',
+    '90228': '<b>task_b1e4…7a90</b> 上游返回 <code>failed</code>。任务行记 <code>FAILURE</code> 与失败原因；账单是两行 —— type=2 预扣 82,000，type=6 整笔退回 82,000，净额归零。金额永远能对上。'
+  };
+  function selectLedger(key) {
+    var ids = key.split(' ');
+    $$('#taskRows tr, #logRows tr').forEach(function (tr) {
+      var match = ids.indexOf(tr.dataset.log) >= 0;
+      tr.classList.toggle('sel', match);
+      tr.classList.toggle('dim', !match);
+    });
+    $('#ledgerDetail').innerHTML = DETAILS[ids[0]] || DETAILS['90231'];
+  }
+  $$('#taskRows tr, #logRows tr').forEach(function (tr) {
+    tr.addEventListener('click', function () { selectLedger(tr.dataset.log); });
+  });
+
+  /* ── save / test feedback ── */
+  $('#saveBtn').addEventListener('click', function () {
+    var b = $('#saveBtn');
+    var old = b.textContent;
+    b.textContent = '已保存';
+    b.disabled = true;
+    setTimeout(function () { b.textContent = old; b.disabled = false; }, 1600);
+  });
+  $('#testBtn').addEventListener('click', function () {
+    var b = $('#testBtn');
+    var old = b.textContent;
+    b.textContent = '连接正常 · 312ms';
+    setTimeout(function () { b.textContent = old; }, 1800);
+  });
+
+  /* initial paint */
+  requestAnimationFrame(function () { $$('.seg').forEach(movePill); });
+})();
+</script>
+</body>
+</html>

@@ -16,6 +16,17 @@ import (
 // It is intentionally data-only. Adding an upstream means editing this JSON,
 // not writing an adaptor.
 type AdvancedAsyncConfig struct {
+	// Protocol selects the built-in client shape this channel speaks:
+	//
+	//	"images"  submit answers a task id, GET <incoming>/{id} answers a
+	//	          standard Images response once the task is terminal;
+	//	"ark"     the Volcengine Ark task shape, the client polls the task
+	//	          object itself;
+	//	"custom"  no built-in shape, the fields below describe everything.
+	//
+	// 它只固定**形状**与默认值，不固定地址：上下游端点仍然逐条可改，
+	// 因为同一套形状在不同供应商那里的路径并不一致。默认 custom。
+	Protocol string `json:"protocol,omitempty"`
 	// IncomingPaths are the client paths this channel serves through its task
 	// API. The distributor matches them before the synchronous route table, so
 	// an async channel does not need a dummy sync route for the same path.
@@ -140,13 +151,56 @@ const (
 	AdvancedAsyncTaskIDQuery = "query"
 	AdvancedAsyncTaskIDPath  = "path"
 
+	AdvancedAsyncProtocolImages = "images"
+	AdvancedAsyncProtocolArk    = "ark"
+	AdvancedAsyncProtocolCustom = "custom"
+
+	// AdvancedAsyncSyncImagesPath is the synchronous OpenAI Images endpoint.
+	// Advanced-async channels (type 8001) never serve synchronous traffic, so
+	// no protocol may claim it as an inbound entry: a channel that did would be
+	// picked by the distributor's path filter for plain synchronous requests
+	// and then fail, because the type has no synchronous adaptor.
+	AdvancedAsyncSyncImagesPath = "/v1/images/generations"
+
+	// AdvancedAsyncSyncImagesEditsPath is the synchronous Images edit endpoint,
+	// reserved for the same reason.
+	AdvancedAsyncSyncImagesEditsPath = "/v1/images/edits"
+
 	advancedAsyncDefaultTaskIDParam = "task_id"
 )
 
+// IsAdvancedAsyncReservedSyncPath reports whether the path belongs to the
+// synchronous relay.
+//
+// Type 8001 is async-only: it has no synchronous adaptor, so it must never
+// answer such a path. The distributor's path filter would otherwise pick an
+// async channel for a plain synchronous request as soon as one of them listed
+// the path as its inbound entry.
+func IsAdvancedAsyncReservedSyncPath(requestPath string) bool {
+	switch strings.TrimSpace(requestPath) {
+	case AdvancedAsyncSyncImagesPath, AdvancedAsyncSyncImagesEditsPath:
+		return true
+	default:
+		return false
+	}
+}
+
 // SupportsIncomingPath reports whether the client path is served by the task
 // API. The distributor matches it before the synchronous route table.
+//
+// 路径可以是任意形状，包括按业务分段的一级前缀：
+//
+//	/v1/images/generations/async    默认形状，与同步入口区分
+//	/jimeng/v1/images/generations   按业务分段，biz 段由运营在渠道里写死
+//
+// 匹配是逐字相等（只有 {model} 当占位符），biz 段不是通配符：即梦的渠道
+// 只接 /jimeng/...，不会把海螺的流量一起接走。
 func (c *AdvancedAsyncConfig) SupportsIncomingPath(requestPath string) bool {
 	if c == nil || requestPath == "" {
+		return false
+	}
+	// Older configs may still list a sync entry; never let it match.
+	if IsAdvancedAsyncReservedSyncPath(requestPath) {
 		return false
 	}
 	for _, incoming := range c.IncomingPaths {
@@ -158,6 +212,25 @@ func (c *AdvancedAsyncConfig) SupportsIncomingPath(requestPath string) bool {
 		}
 	}
 	return false
+}
+
+// NormalizedProtocol returns the protocol name with the empty value folded to
+// custom, so configs written before the field existed keep working.
+func (c *AdvancedAsyncConfig) NormalizedProtocol() string {
+	if c == nil {
+		return AdvancedAsyncProtocolCustom
+	}
+	switch protocol := strings.ToLower(strings.TrimSpace(c.Protocol)); protocol {
+	case AdvancedAsyncProtocolImages, AdvancedAsyncProtocolArk:
+		return protocol
+	default:
+		return AdvancedAsyncProtocolCustom
+	}
+}
+
+// IsImageProtocol reports whether the channel speaks the built-in Images shape.
+func (c *AdvancedAsyncConfig) IsImageProtocol() bool {
+	return c.NormalizedProtocol() == AdvancedAsyncProtocolImages
 }
 
 // IsEnabled reports whether the channel carries an async configuration.
@@ -174,6 +247,14 @@ func (c *AdvancedAsyncConfig) Validate() error {
 	if c.Submit.UpstreamPath == "" && c.Query.UpstreamPath == "" {
 		return fmt.Errorf("advanced_async requires submit.upstream_path and query.upstream_path")
 	}
+	switch protocol := strings.ToLower(strings.TrimSpace(c.Protocol)); protocol {
+	case "":
+		c.Protocol = AdvancedAsyncProtocolCustom
+	case AdvancedAsyncProtocolImages, AdvancedAsyncProtocolArk, AdvancedAsyncProtocolCustom:
+		c.Protocol = protocol
+	default:
+		return fmt.Errorf("advanced_async.protocol is not supported: %s", c.Protocol)
+	}
 	for index, incoming := range c.IncomingPaths {
 		trimmed := strings.TrimSpace(incoming)
 		if !strings.HasPrefix(trimmed, "/") {
@@ -182,7 +263,19 @@ func (c *AdvancedAsyncConfig) Validate() error {
 		if strings.Contains(trimmed, "?") {
 			return fmt.Errorf("advanced_async.incoming_paths[%d] must not include query", index)
 		}
+		// 入站路径除非带 {model} 否则是逐字相等：尾斜杠会让
+		// /jimeng/v1/images/generations/ 与 /jimeng/v1/images/generations
+		// 变成两条不同的路径——保存时不报错，客户端却永远拿不到任务号。
+		if trimmed != "/" {
+			trimmed = strings.TrimRight(trimmed, "/")
+		}
+		if trimmed == "" || strings.Contains(trimmed, "//") {
+			return fmt.Errorf("advanced_async.incoming_paths[%d] is not a valid path", index)
+		}
 		c.IncomingPaths[index] = trimmed
+		if IsAdvancedAsyncReservedSyncPath(trimmed) {
+			return fmt.Errorf("advanced_async.incoming_paths must not reuse the synchronous endpoint %s", trimmed)
+		}
 	}
 
 	submitMethod, err := normalizeAdvancedAsyncMethod(c.Submit.Method, "POST", []string{"POST", "PUT", "PATCH"})

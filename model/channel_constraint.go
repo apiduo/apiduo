@@ -102,8 +102,18 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		// APIDUO:advanced-async:END
 		config := ch.GetOtherSettings().AdvancedCustom
 		// APIDUO:advanced-async:BEGIN
-		if ch.Type == constant.ChannelTypeAdvancedAsync && ch.GetOtherSettings().AdvancedAsync.SupportsIncomingPath(filter.RequestPath) {
-			return true
+		if ch.Type == constant.ChannelTypeAdvancedAsync {
+			asyncConfig := ch.GetOtherSettings().AdvancedAsync
+			if asyncConfig.SupportsIncomingPath(filter.RequestPath) {
+				return true
+			}
+			// 自定义入站端点会在分发之前被改写成任务中继路径，此时过滤器看到的
+			// 已经是中继路径。中继路径是网关内部约定，不该要求运营在每条渠道的
+			// 入站列表里再声明一遍 —— 漏写的结果是重入之后选不到渠道（503），
+			// 比不接管更糟。
+			if filter.RequestPath == constant.ApiduoTaskRelayPath {
+				return true
+			}
 		}
 		// APIDUO:advanced-async:END
 		// APIDUO:primary-endpoint:BEGIN

@@ -81,8 +81,9 @@ func TestApiduoArkDispatcherRoutesTaskByPlatform(t *testing.T) {
 	engine.Use(ApiduoArkAliasDispatcher(engine, func(c *gin.Context) {
 		c.String(http.StatusOK, "plugin:"+c.Request.URL.Path)
 	}))
-	// 中继侧的查询路由：别名把 :task_id 改写成这条路径。
-	engine.GET(apiduoArkRelaySubmitPath+"/:task_id", func(c *gin.Context) {
+	// 查询重入的是方舟形状的路由（不是 /v1/video/generations）：客户端打的是
+	// 方舟路径，响应形状必须跟着路径走，所以别名把 :task_id 改写成这条。
+	engine.GET(apiduoArkRelayRootPath+"/:task_id", func(c *gin.Context) {
 		relayTasks = append(relayTasks, c.Param("task_id"))
 		c.Status(http.StatusOK)
 	})

@@ -3,13 +3,17 @@ package advancedcustomasync
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
+
+	"github.com/gin-gonic/gin"
 )
 
 func testConfig() *kitdto.AdvancedAsyncConfig {
@@ -39,12 +43,17 @@ func testAdaptor(t *testing.T, config *kitdto.AdvancedAsyncConfig) *Adaptor {
 		t.Fatalf("config validate: %v", err)
 	}
 	adaptor := &Adaptor{}
-	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
-		ChannelBaseUrl:       "https://vendor.example.com",
-		ApiKey:               "sk-test",
-		UpstreamModelName:    "vendor-model",
-		ChannelOtherSettings: kitdto.ChannelOtherSettings{AdvancedAsync: config},
-	}})
+	adaptor.Init(&relaycommon.RelayInfo{
+		// 生产链路在 relay 入口就分配了 TaskRelayInfo；Validate 会读
+		// info.Action，不预置就是一个 nil 解引用。
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:       "https://vendor.example.com",
+			ApiKey:               "sk-test",
+			UpstreamModelName:    "vendor-model",
+			ChannelOtherSettings: kitdto.ChannelOtherSettings{AdvancedAsync: config},
+		},
+	})
 	return adaptor
 }
 
@@ -386,5 +395,76 @@ func TestAdjustBillingOnCompleteFallsBackToTaskProperties(t *testing.T) {
 
 	if got := adaptor.AdjustBillingOnComplete(task, &relaycommon.TaskInfo{Status: "SUCCESS"}); got != 250000 {
 		t.Fatalf("quota = %d, want 250000 (0.5 USD at 500k quota/unit)", got)
+	}
+}
+
+func TestAdvancedAsyncActionClassifiesContent(t *testing.T) {
+	cases := map[string]string{
+		`{"content":[{"type":"text","text":"a cat"}]}`:                                             constant.TaskActionTextToVideo,
+		`{"content":[{"type":"image_url","image_url":{"url":"x"}},{"type":"text","text":"move"}]}`: constant.TaskActionImageToVideo,
+		`{"prompt":"no content array"}`:                                                            constant.TaskActionTextToVideo,
+		`not-json`:                                                                                 constant.TaskActionImageToVideo,
+	}
+	for body, want := range cases {
+		if got := advancedAsyncAction([]byte(body)); got != want {
+			t.Fatalf("advancedAsyncAction(%q) = %q, want %q", body, got, want)
+		}
+	}
+}
+
+// 方舟的 callback_url 会带着**上游**任务号回调客户端，而网关只发放自己的
+// 任务号，客户端拿回调里的号查不到任何东西。与 doubao 插件一致直接拒绝；
+// images 协议没有这层号映射，不能跟着一起拒。
+func TestValidateRequestRejectsArkCallbackURL(t *testing.T) {
+	cases := []struct {
+		name       string
+		protocol   string
+		body       string
+		wantStatus int
+	}{
+		{
+			name:       "ark 拒绝 callback_url",
+			protocol:   kitdto.AdvancedAsyncProtocolArk,
+			body:       `{"model":"seedance","content":[{"type":"text","text":"hi"}],"callback_url":"https://client.example/cb"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:     "ark 允许 callback_url 为 null",
+			protocol: kitdto.AdvancedAsyncProtocolArk,
+			body:     `{"model":"seedance","content":[{"type":"text","text":"hi"}],"callback_url":null}`,
+		},
+		{
+			name:     "images 不受影响",
+			protocol: kitdto.AdvancedAsyncProtocolImages,
+			body:     `{"model":"flux","prompt":"hi","callback_url":"https://client.example/cb"}`,
+		},
+	}
+	for _, tc := range cases {
+		config := testConfig()
+		config.Protocol = tc.protocol
+		adaptor := testAdaptor(t, config)
+
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(tc.body))
+
+		taskErr := adaptor.ValidateRequestAndSetAction(c, adaptor.info)
+		if tc.wantStatus == 0 {
+			if taskErr != nil {
+				t.Fatalf("%s: unexpected error %v", tc.name, taskErr)
+			}
+			if len(adaptor.submitBody) == 0 {
+				t.Fatalf("%s: a valid body must be kept for the upstream submit", tc.name)
+			}
+			continue
+		}
+		if taskErr == nil {
+			t.Fatalf("%s: expected a rejection", tc.name)
+		}
+		if taskErr.StatusCode != tc.wantStatus {
+			t.Fatalf("%s: status = %d, want %d", tc.name, taskErr.StatusCode, tc.wantStatus)
+		}
+		if !strings.Contains(taskErr.Message, "callback_url") {
+			t.Fatalf("%s: message must name the field: %s", tc.name, taskErr.Message)
+		}
 	}
 }

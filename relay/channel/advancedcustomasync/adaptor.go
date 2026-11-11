@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -93,11 +94,46 @@ func (a *Adaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.
 	if len(bytes.TrimSpace(body)) == 0 {
 		return taskError(fmt.Errorf("request body is required"), "invalid_request", http.StatusBadRequest)
 	}
+	// 方舟的 callback_url 指向客户端，网关却把上游任务号换成了自己的。
+	// 回调送到客户端手里的号查不到任何任务，客户端只会以为回调丢了；
+	// 与 doubao 插件一致，直接拒绝，让客户端改用轮询。
+	if a.config.NormalizedProtocol() == kitdto.AdvancedAsyncProtocolArk {
+		var probe struct {
+			CallbackURL *string `json:"callback_url"`
+		}
+		if err := common.Unmarshal(body, &probe); err == nil && probe.CallbackURL != nil {
+			return taskError(
+				fmt.Errorf("callback_url is not supported; poll the task instead"),
+				"invalid_request", http.StatusBadRequest,
+			)
+		}
+	}
 	a.submitBody = body
 	if info != nil && info.Action == "" {
-		info.Action = "generate"
+		info.Action = advancedAsyncAction(body)
 	}
 	return nil
+}
+
+// advancedAsyncAction classifies the task from the Ark content parts: an image
+// part makes it image-to-video, anything else is text-to-video. A wrong guess
+// here mislabels every task log row and every per-action statistic.
+func advancedAsyncAction(body []byte) string {
+	var payload struct {
+		Content []struct {
+			Type string `json:"type"`
+		} `json:"content"`
+	}
+	if err := common.Unmarshal(body, &payload); err != nil {
+		return constant.TaskActionImageToVideo
+	}
+	for _, part := range payload.Content {
+		switch part.Type {
+		case "image_url", "image":
+			return constant.TaskActionImageToVideo
+		}
+	}
+	return constant.TaskActionTextToVideo
 }
 
 func (a *Adaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {

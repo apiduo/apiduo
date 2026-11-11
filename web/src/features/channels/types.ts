@@ -139,6 +139,10 @@ export interface FileRelayConfig {
 
 /* APIDUO:advanced-async:BEGIN */
 export interface AdvancedAsyncConfig {
+  /* APIDUO:image-async:BEGIN */
+  /** Built-in client shape: images | ark | custom. */
+  protocol?: string
+  /* APIDUO:image-async:END */
   incoming_paths?: string[]
   submit: AdvancedAsyncSubmit
   query: AdvancedAsyncQuery

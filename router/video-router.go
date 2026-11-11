@@ -14,6 +14,13 @@ func SetVideoRouter(router *gin.Engine) {
 	videoSharedRouter.Use(middleware.SystemPerformanceCheck())
 	videoSharedRouter.POST(
 		"/video/generations",
+		// APIDUO:image-async-alias:BEGIN An image submission rewritten onto this
+		// path carries its action in a header, which this bridge restores into
+		// the context key the task controller reads. It has to run here: the
+		// rewrite goes through HandleContext, whose context reset drops keys
+		// set before it.
+		ApiduoTaskActionHeaderBridge(),
+		// APIDUO:image-async-alias:END
 		middleware.PinTaskPluginEndpoint(),
 		middleware.TaskPluginEndpointOnly(middleware.ModelRequestRateLimit()),
 		middleware.PrepareTaskPluginEndpoint(),

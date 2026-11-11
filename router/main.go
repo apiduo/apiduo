@@ -32,6 +32,11 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	// APIDUO:ark-task-alias:BEGIN
 	pluginDispatcher = ApiduoArkAliasDispatcher(router, pluginDispatcher)
 	// APIDUO:ark-task-alias:END
+	// APIDUO:image-async-alias:BEGIN
+	// 渠道自己声明的入站端点没有静态路由，最外层接住它们；方舟原生路径由
+	// 上一条 dispatcher 处理，两者按路径互斥。
+	pluginDispatcher = SetApiduoImageAsyncRoutes(router, pluginDispatcher)
+	// APIDUO:image-async-alias:END
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""

@@ -93,10 +93,23 @@
 #      上游行，比新增一行更贵 —— 换成注册处前置，新增 9 行、零删改。
 # - added +30 即上述挂接点与标记块自身的行数（4 个块约 8 行标记 + 约 22 行代码）。
 
-files	115
+# 2026-11-11 协议内置化 + 上下游端点自定义（本次收紧 files -1、blocks 持平、
+# added +2）：
+# - files 115 → 114：router/task-plugin-protocol-router.go 的接管块删掉了 ——
+#   图像异步入口不再寄生在插件协议的 openai_image.generate 链上，改由 NoRoute
+#   按「渠道声明的入站路径」接管（插件链路恢复上游原样）。
+# - blocks 持平：新增的 router/main.go 挂接点与删掉的那个块正好抵消。main.go
+#   原本有「注册路由」「包一层分发器」两处接缝，合成一处：注册函数返回包好的
+#   dispatcher，路由与最外层接管同时就位，少一个块也少一处漏接的可能。
+# - added +2：channel_constraint.go 里 8001 对内部中继路径的放行（自定义入站
+#   端点会被改写成中继路径，不放过就会在重入后 503），其余代码都在 apiduo
+#   专有文件（constant/apiduo_async_entry.go、router/apiduo_image_async_alias.go、
+#   controller/apiduo_image_async.go、model 的查找函数）里，不占上游预算。
+# 3248 → 3250：按惯例记 CI 值（本地 -cost 少 1 行）。
+files	114
 blocks	344
 # 2026-11-11 轨迹图片外置（+3 行）：api-router.go 的 APIDUO:trace 块里多一条
 # 公开媒体路由。媒体 URL 写在 span 正文里、由 Langfuse 从另一个源加载，只能挂在
 # 公开路由上；路由注册没有第二个不占预算的落点。
-added	3248
+added	3250
 deleted	137

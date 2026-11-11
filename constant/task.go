@@ -13,6 +13,13 @@ const (
 	TaskActionFirstTailToVideo = "first_tail_to_video"
 	TaskActionReferenceToVideo = "reference_to_video"
 	TaskActionRemix            = "remix"
+	// APIDUO:image-async:BEGIN
+	// TaskActionImageGeneration is an image task submitted through an
+	// advanced-async channel, whose entry is the OpenAI images shape rather
+	// than a video one. Keeping it distinct stops image work from being
+	// counted as text-to-video in the task log and per-action statistics.
+	TaskActionImageGeneration = "image_generation"
+	// APIDUO:image-async:END
 )
 
 var legacyTaskActionAliases = map[string]string{

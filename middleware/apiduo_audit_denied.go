@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -68,6 +69,42 @@ func recordDeniedAccessAudit(c *gin.Context, user *model.UserBase, requiredRole 
 	if route == "" {
 		route = c.Request.URL.Path
 	}
+
+	// APIDUO:admin-circuit:BEGIN
+	// 熔断拦的不是请求 —— 调用方紧接着就会 403，请求本来也过不去。它拦的是
+	// **写入**：熔断前一个脚本每分钟能灌进 N 条记录，熔断后是 0 条，
+	// 审计表因此不再能被无限冲淡。
+	//
+	// 只对管理面生效：普通接口的 403 属于业务错误，不该影响用户正常使用。
+	if requiredRole >= common.RoleAdminUser {
+		if adminCircuitBlocked(c, user) {
+			return
+		}
+		if opened, routes := noteAdminDenial(user.Id, route); opened {
+			model.RecordAuditLog(c, model.AuditLog{
+				UserId:    user.Id,
+				Username:  user.Username,
+				ActorRole: user.Role,
+				Category:  model.AuditCategorySecurity,
+				Action:    "access.denied.circuit_open",
+				Content:   "Admin access circuit opened after probing multiple management endpoints",
+				Status:    http.StatusForbidden,
+				Success:   false,
+				Other: model.AuditOther{
+					Op: &model.AuditOperation{Action: "access.denied.circuit_open", Params: model.AuditFields{
+						"routes":        routes,
+						"route_count":   len(routes),
+						"window_secs":   int(adminCircuitWindow.Seconds()),
+						"ttl_seconds":   int(adminCircuitTTL.Seconds()),
+						"role":          user.Role,
+						"required_role": requiredRole,
+					}},
+				},
+			})
+		}
+	}
+	// APIDUO:admin-circuit:END
+
 	key := strconv.Itoa(user.Id) + "|" + method + "|" + route
 
 	now := time.Now()

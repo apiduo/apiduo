@@ -196,6 +196,7 @@ export const TASK_ACTIONS = {
   FIRST_TAIL_TO_VIDEO: 'first_tail_to_video',
   REFERENCE_TO_VIDEO: 'reference_to_video',
   REMIX: 'remix',
+  IMAGE_GENERATION: 'image_generation',
   // APIDUO:task-action-rename:END
 } as const
 
@@ -325,6 +326,10 @@ export const TASK_ACTION_MAPPINGS: Record<string, StatusMapping> = {
     variant: 'blue',
   },
   [TASK_ACTIONS.REMIX]: { label: 'Video Remix', variant: 'blue' },
+  [TASK_ACTIONS.IMAGE_GENERATION]: {
+    label: 'Image Generation',
+    variant: 'violet',
+  },
   // APIDUO:task-action-rename:END
 }
 

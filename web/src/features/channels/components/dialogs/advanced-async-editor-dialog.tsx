@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Check } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -27,7 +27,11 @@ import { Dialog } from '@/components/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
+  ADVANCED_ASYNC_LEGACY_PROTOCOL,
+  ADVANCED_ASYNC_PROTOCOLS,
+  applyAdvancedAsyncProtocol,
   createAdvancedAsyncConfig,
+  detectAdvancedAsyncProtocol,
   formatPathInput,
   formatStatusMapInput,
   normalizeAdvancedAsyncConfig,
@@ -37,6 +41,7 @@ import {
   stringifyAdvancedAsyncConfig,
   validateAdvancedAsyncConfig,
 } from '../../lib/advanced-async'
+import type { AdvancedAsyncProtocol } from '../../lib/advanced-async'
 import type {
   AdvancedAsyncConfig,
   AdvancedCustomRouteAuth,
@@ -54,6 +59,13 @@ const SUBMIT_METHODS = ['POST', 'PUT', 'PATCH'] as const
 const QUERY_METHODS = ['GET', 'POST'] as const
 const CONTENT_TYPES = ['json', 'multipart'] as const
 const TASK_ID_LOCATIONS = ['query', 'path'] as const
+const BILLING_MODES = ['per_call', 'per_second', 'per_token'] as const
+
+const BILLING_MODE_LABELS: Record<string, string> = {
+  per_call: 'Per call',
+  per_second: 'Per second',
+  per_token: 'Per token',
+}
 
 export function AdvancedAsyncEditorDialog({
   open,
@@ -72,6 +84,8 @@ export function AdvancedAsyncEditorDialog({
     )
   )
   const [jsonError, setJsonError] = useState<string | null>(null)
+  const [protocol, setProtocol] = useState<AdvancedAsyncProtocol>('custom')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -80,6 +94,9 @@ export function AdvancedAsyncEditorDialog({
     setJsonText(stringifyAdvancedAsyncConfig(next))
     setJsonError(null)
     setActiveTab('form')
+    setProtocol(detectAdvancedAsyncProtocol(next))
+    // 新建时字段映射还是默认的骨架，先展开比让人以为没有这些设置好。
+    setAdvancedOpen(!next.submit.upstream_path.trim())
   }, [open, value])
 
   const validationError = useMemo(
@@ -103,6 +120,14 @@ export function AdvancedAsyncEditorDialog({
     update({ fields: { ...config.fields, ...patch } })
   }
 
+  const updateBilling = (
+    patch: Partial<NonNullable<AdvancedAsyncConfig['billing']>>
+  ) => {
+    update({
+      billing: { ...(config.billing || { mode: 'per_call' }), ...patch },
+    })
+  }
+
   const updateAuth = (
     target: 'submit' | 'query',
     patch: Partial<AdvancedCustomRouteAuth>
@@ -117,6 +142,15 @@ export function AdvancedAsyncEditorDialog({
     }
     if (target === 'submit') updateSubmit({ auth: next })
     else updateQuery({ auth: next })
+  }
+
+  const selectProtocol = (next: AdvancedAsyncProtocol) => {
+    setProtocol(next)
+    if (next === 'custom') return
+    setConfig(applyAdvancedAsyncProtocol(config, next))
+    // 预设已经写全字段映射，收起高级区，把注意力留给真正还要填的东西：
+    // 模型名与鉴权。
+    setAdvancedOpen(false)
   }
 
   const switchTab = (nextTab: string) => {
@@ -140,6 +174,7 @@ export function AdvancedAsyncEditorDialog({
     }
     setJsonError(null)
     setConfig(parsed)
+    setProtocol(detectAdvancedAsyncProtocol(parsed))
     return parsed
   }
 
@@ -151,6 +186,25 @@ export function AdvancedAsyncEditorDialog({
     onOpenChange(false)
   }
 
+  // 老配置可能写着 custom：只有在这种情况下才把历史项挂出来，新配置永远
+  // 只在 Images / Ark 之间选。
+  const protocolOptions = ADVANCED_ASYNC_PROTOCOLS.some(
+    (candidate) => candidate.value === protocol
+  )
+    ? ADVANCED_ASYNC_PROTOCOLS
+    : [...ADVANCED_ASYNC_PROTOCOLS, ADVANCED_ASYNC_LEGACY_PROTOCOL]
+  const activeProtocol = protocolOptions.find(
+    (candidate) => candidate.value === protocol
+  )
+  const billingMode = config.billing?.mode || 'per_call'
+  const fieldCount = [
+    config.fields.task_id_path,
+    config.fields.status_path,
+    config.fields.result_url_path,
+    config.fields.progress_path,
+    config.fields.error_path,
+  ].filter((path) => (path || []).length > 0).length
+
   return (
     <Dialog
       open={open}
@@ -158,12 +212,12 @@ export function AdvancedAsyncEditorDialog({
       title={t('Advanced async routes')}
       titleClassName='apiduo-text'
       description={t(
-        'Describe the upstream task API. The gateway submits work and polls for the result.'
+        'Pick the upstream task protocol, then adjust whatever differs.'
       )}
-      contentClassName='flex max-h-[min(90dvh,var(--dialog-available-height))] flex-col gap-0 p-0 sm:max-w-4xl'
+      contentClassName='flex h-[min(90dvh,var(--dialog-available-height,calc(100dvh-2rem)))] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl'
       headerClassName='border-b px-6 py-4'
-      footerClassName='border-t px-6 py-4'
-      contentHeight='70vh'
+      footerClassName='border-t p-4 sm:mx-0 sm:mb-0 sm:p-6'
+      contentHeight='100%'
       footer={
         <>
           <Button
@@ -185,7 +239,7 @@ export function AdvancedAsyncEditorDialog({
       }
     >
       <Tabs value={activeTab} onValueChange={switchTab} className='min-w-0 gap-0'>
-        <div className='border-b px-4 py-3'>
+        <div className='bg-popover sticky top-0 z-10 border-b px-4 py-3'>
           <TabsList className='grid h-auto w-full grid-cols-2 gap-1'>
             <TabsTrigger value='form'>{t('Form')}</TabsTrigger>
             <TabsTrigger value='json'>{t('Full JSON')}</TabsTrigger>
@@ -199,26 +253,55 @@ export function AdvancedAsyncEditorDialog({
             </Alert>
           ) : null}
 
-          <Field
-            label={t('Incoming paths')}
-            hint={t('One client path per line, for example /v1/video/generations')}
-          >
-            <textarea
-              className='border-input bg-background min-h-16 w-full rounded-md border px-3 py-2 font-mono text-sm'
-              value={(config.incoming_paths || []).join('\n')}
-              onChange={(event) =>
-                update({
-                  incoming_paths: event.target.value
-                    .split('\n')
-                    .map((line) => line.trim())
-                    .filter(Boolean),
-                })
-              }
-            />
-          </Field>
+          <section className='space-y-3 rounded-lg border p-3'>
+            <Field label={t('Protocol')}>
+              <select
+                className='border-input bg-background h-9 w-full rounded-md border px-3 text-sm'
+                value={protocol}
+                onChange={(event) =>
+                  selectProtocol(event.target.value as AdvancedAsyncProtocol)
+                }
+              >
+                {protocolOptions.map((candidate) => (
+                  <option key={candidate.value} value={candidate.value}>
+                    {t(candidate.label)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {activeProtocol?.description ? (
+              <p className='text-muted-foreground text-xs'>
+                {t(activeProtocol.description)}
+              </p>
+            ) : null}
+            <Field
+              label={t('Downstream path')}
+              hint={t(
+                'One client path per line. Clients poll it as GET <path>/{task_id}.'
+              )}
+            >
+              <textarea
+                className='border-input bg-background min-h-16 w-full rounded-md border px-3 py-2 font-mono text-sm'
+                value={(config.incoming_paths || []).join('\n')}
+                onChange={(event) =>
+                  update({
+                    incoming_paths: event.target.value
+                      .split('\n')
+                      .map((line) => line.trim())
+                      .filter(Boolean),
+                  })
+                }
+              />
+            </Field>
+          </section>
 
           <section className='space-y-3'>
-            <h3 className='text-sm font-medium'>{t('Submit')}</h3>
+            <h3 className='text-sm font-medium'>{t('Upstream submit')}</h3>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Paths join the channel base URL; a full http(s) URL overrides it.'
+              )}
+            </p>
             <div className='grid gap-3 sm:grid-cols-2'>
               <Field label={t('Upstream path')}>
                 <input
@@ -269,7 +352,7 @@ export function AdvancedAsyncEditorDialog({
           </section>
 
           <section className='space-y-3'>
-            <h3 className='text-sm font-medium'>{t('Query')}</h3>
+            <h3 className='text-sm font-medium'>{t('Upstream query')}</h3>
             <div className='grid gap-3 sm:grid-cols-2'>
               <Field
                 label={t('Upstream path')}
@@ -330,54 +413,148 @@ export function AdvancedAsyncEditorDialog({
           </section>
 
           <section className='space-y-3'>
-            <h3 className='text-sm font-medium'>{t('Response fields')}</h3>
-            <p className='text-muted-foreground text-xs'>
-              {t('Dot-separated paths into the vendor JSON, e.g. data.task.id')}
-            </p>
-            <div className='grid gap-3 sm:grid-cols-2'>
-              <PathField
-                label={t('Task id path')}
-                value={config.fields.task_id_path}
-                onChange={(path) => updateFields({ task_id_path: path })}
-              />
-              <PathField
-                label={t('Status path')}
-                value={config.fields.status_path}
-                onChange={(path) => updateFields({ status_path: path })}
-              />
-              <PathField
-                label={t('Result URL path')}
-                value={config.fields.result_url_path}
-                onChange={(path) => updateFields({ result_url_path: path })}
-              />
-              <PathField
-                label={t('Progress path')}
-                value={config.fields.progress_path}
-                onChange={(path) => updateFields({ progress_path: path })}
-              />
-              <PathField
-                label={t('Error path')}
-                value={config.fields.error_path}
-                onChange={(path) => updateFields({ error_path: path })}
-              />
+            <h3 className='text-sm font-medium'>{t('Billing')}</h3>
+            <div className='grid gap-3 sm:grid-cols-3'>
+              <Field label={t('Billing mode')}>
+                <select
+                  className='border-input bg-background h-9 w-full rounded-md border px-3 text-sm'
+                  value={billingMode}
+                  onChange={(event) => updateBilling({ mode: event.target.value })}
+                >
+                  {BILLING_MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {t(BILLING_MODE_LABELS[mode])}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {billingMode === 'per_second' ? (
+                <>
+                  <PathField
+                    label={t('Duration path')}
+                    value={config.billing?.duration_path}
+                    onChange={(path) => updateBilling({ duration_path: path })}
+                    placeholder='duration'
+                  />
+                  <Field
+                    label={t('Default seconds')}
+                    hint={t('Used when the request carries no duration')}
+                  >
+                    <input
+                      type='number'
+                      min={1}
+                      className='border-input bg-background h-9 w-full rounded-md border px-3 text-sm'
+                      value={config.billing?.default_seconds ?? ''}
+                      onChange={(event) =>
+                        updateBilling({
+                          default_seconds: event.target.value
+                            ? Number(event.target.value)
+                            : undefined,
+                        })
+                      }
+                    />
+                  </Field>
+                </>
+              ) : null}
+              {billingMode === 'per_token' ? (
+                <Field
+                  label={t('Token fallback price')}
+                  hint={t('Charged when the vendor reports no token counts')}
+                >
+                  <input
+                    type='number'
+                    min={0}
+                    step='0.000001'
+                    className='border-input bg-background h-9 w-full rounded-md border px-3 text-sm'
+                    value={config.billing?.token_fallback_price ?? ''}
+                    onChange={(event) =>
+                      updateBilling({
+                        token_fallback_price: event.target.value
+                          ? Number(event.target.value)
+                          : undefined,
+                      })
+                    }
+                  />
+                </Field>
+              ) : null}
             </div>
           </section>
 
-          <Field
-            label={t('Status mapping')}
-            hint={t('One vendor status per line: vendor = GATEWAY_STATUS')}
-          >
-            <textarea
-              className='border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 font-mono text-sm'
-              value={formatStatusMapInput(config.fields.status_map)}
-              placeholder={'succeeded = SUCCESS\nfailed = FAILURE'}
-              onChange={(event) =>
-                updateFields({
-                  status_map: parseStatusMapInput(event.target.value),
-                })
-              }
-            />
-          </Field>
+          <section className='rounded-lg border'>
+            <button
+              type='button'
+              onClick={() => setAdvancedOpen((current) => !current)}
+              className='flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left'
+            >
+              <span className='flex items-center gap-2 text-sm font-medium'>
+                {advancedOpen ? (
+                  <ChevronDown className='h-4 w-4' />
+                ) : (
+                  <ChevronRight className='h-4 w-4' />
+                )}
+                {t('Field paths and status mapping')}
+              </span>
+              <span className='text-muted-foreground text-xs'>
+                {t('{{count}} configured', { count: fieldCount })}
+              </span>
+            </button>
+            {advancedOpen ? (
+              <div className='space-y-3 border-t px-3 py-3'>
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Dot-separated paths into the vendor JSON, e.g. data.task.id'
+                  )}
+                </p>
+                <div className='grid gap-3 sm:grid-cols-2'>
+                  <PathField
+                    label={t('Task id path')}
+                    value={config.fields.task_id_path}
+                    onChange={(path) => updateFields({ task_id_path: path })}
+                    placeholder='id'
+                  />
+                  <PathField
+                    label={t('Status path')}
+                    value={config.fields.status_path}
+                    onChange={(path) => updateFields({ status_path: path })}
+                    placeholder='status'
+                  />
+                  <PathField
+                    label={t('Result URL path')}
+                    value={config.fields.result_url_path}
+                    onChange={(path) => updateFields({ result_url_path: path })}
+                    placeholder='content.video_url'
+                  />
+                  <PathField
+                    label={t('Progress path')}
+                    value={config.fields.progress_path}
+                    onChange={(path) => updateFields({ progress_path: path })}
+                    placeholder='progress'
+                  />
+                  <PathField
+                    label={t('Error path')}
+                    value={config.fields.error_path}
+                    onChange={(path) => updateFields({ error_path: path })}
+                    placeholder='error.message'
+                  />
+                </div>
+                <Field
+                  label={t('Status mapping')}
+                  hint={t('One vendor status per line: vendor = GATEWAY_STATUS')}
+                >
+                  <textarea
+                    className='border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 font-mono text-sm'
+                    value={formatStatusMapInput(config.fields.status_map)}
+                    placeholder={'succeeded = SUCCESS\nfailed = FAILURE'}
+                    onChange={(event) =>
+                      updateFields({
+                        status_map: parseStatusMapInput(event.target.value),
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+            ) : null}
+          </section>
         </TabsContent>
 
         <TabsContent value='json' className='flex flex-col gap-3 p-4'>
@@ -418,13 +595,14 @@ function PathField(props: {
   label: string
   value: string[] | undefined
   onChange: (value: string[]) => void
+  placeholder?: string
 }) {
   return (
     <Field label={props.label}>
       <input
         className='border-input bg-background h-9 w-full rounded-md border px-3 font-mono text-sm'
         value={formatPathInput(props.value)}
-        placeholder='data.task.id'
+        placeholder={props.placeholder || 'data.task.id'}
         onChange={(event) => props.onChange(parsePathInput(event.target.value))}
       />
     </Field>
