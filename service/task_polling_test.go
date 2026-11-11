@@ -1059,13 +1059,18 @@ func TestUpdateBatchTasksPollClassification(t *testing.T) {
 			wantStatus:   model.TaskStatusInProgress,
 			wantFailures: 1,
 		},
+		// APIDUO:task-poll-unrecognized:BEGIN
 		{
-			name:         "UNKNOWN increments",
+			// 与 TestUpdateVideoSingleTaskPollClassification 同一条规则：上游在 2xx
+			// 里给了一个读不懂（或没写）的状态，它并没有说失败。不累计、不改状态，
+			// 由 TASK_TIMEOUT_MINUTES 的超时清扫兜底。这个用例在 4eef95c4 里漏改了。
+			name:         "UNKNOWN on 2xx waits for the timeout sweep",
 			statusCode:   http.StatusOK,
 			resultStatus: model.TaskStatusUnknown,
 			wantStatus:   model.TaskStatusInProgress,
-			wantFailures: 1,
+			wantFailures: 0,
 		},
+		// APIDUO:task-poll-unrecognized:END
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {

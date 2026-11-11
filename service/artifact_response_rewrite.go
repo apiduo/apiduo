@@ -256,6 +256,46 @@ func storeRemoteArtifact(ctx context.Context, channelID int, raw string) (any, b
 	return persistAndDescribe(ctx, channelID, data, contentType, raw)
 }
 
+// FetchArtifactBytes downloads one remote reference and hands back the bytes.
+//
+// The response rewriter stores what it fetches; a caller that must honour
+// `response_format: b64_json` needs the bytes instead. Both go through the same
+// validator and client so the SSRF rules, the size ceiling and the timeout are
+// identical - a second download path would be a second thing to get wrong.
+func FetchArtifactBytes(ctx context.Context, raw string) ([]byte, string, error) {
+	if _, err := artifactFetchURLValidator(raw); err != nil {
+		return nil, "", err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	request.Header.Set("User-Agent", "apiduo-artifact-fetcher")
+	response, err := artifactFetchClient.Do(request)
+	if err != nil {
+		return nil, "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("fetch reference: HTTP %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, artifactRewriteMaxObject+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(data) == 0 {
+		return nil, "", errors.New("reference body is empty")
+	}
+	if len(data) > artifactRewriteMaxObject {
+		return nil, "", errors.New("reference exceeds the artifact size ceiling")
+	}
+	contentType := strings.TrimSpace(response.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = sniffContentType(data)
+	}
+	return data, contentType, nil
+}
+
 // persistAndDescribe stores the bytes and returns the address to write back.
 func persistAndDescribe(ctx context.Context, channelID int, data []byte, contentType, original string) (any, bool) {
 	stored, err := PersistArtifactBytes(ctx, channelID, artifactObjectKey(data, contentType), contentType, data)

@@ -134,7 +134,7 @@ func finishImageNativeResponse(
 		service.IOCopyBytesGracefully(c, resp, raw)
 		return &dto.Usage{}, nil
 	}
-	if !persistImageBytes(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL) {
+	if !alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL) {
 		service.IOCopyBytesGracefully(c, resp, raw)
 		return &dto.Usage{}, nil
 	}
@@ -169,35 +169,53 @@ func encodeImageResponse(response *imageResponse) ([]byte, error) {
 	return json.Marshal(envelope)
 }
 
-// persistImageBytes 把 b64 图片落到对象存储，换成长期可用的链接。
+// alignImageCarriers 让 data[] 的载体与客户端要的一致。
 //
-// 触发条件只有一个：客户端要的不是 b64（canonical 已把 response_format 归一成
-// url），而上游偏偏只给了 b64。**任何一步失败都保留上游原样** —— 没配存储是常态，
-// 配置缺口不该把一次成功的生成变成 502，也不该让客户端拿到半个响应。
-func persistImageBytes(ctx context.Context, channelID int, response *imageResponse, wantURL bool) bool {
-	if !wantURL || response == nil || len(response.Data) == 0 {
+// 两个方向都做，不只是「把 base64 换成链接」：
+//
+//	客户端要 url  而上游给 b64  ⇒ 落存储换链接（需要配置；失败保留 b64）
+//	客户端要 b64  而上游给 url  ⇒ 下载后重新编码（不依赖任何配置）
+//
+// 任何一步失败都保留上游原样 —— 配置缺口和网络抖动都不该把一次成功的生成
+// 变成错误响应。响应侧的 `url` 与 `b64_json` 互斥：换掉一个就清掉另一个。
+func alignImageCarriers(ctx context.Context, channelID int, response *imageResponse, wantURL bool) bool {
+	if response == nil || len(response.Data) == 0 {
 		return false
 	}
 	changed := false
 	for idx := range response.Data {
 		item := &response.Data[idx]
-		if item.B64JSON == "" {
+		if wantURL {
+			if item.B64JSON == "" {
+				continue
+			}
+			raw, err := base64.StdEncoding.DecodeString(item.B64JSON)
+			if err != nil || len(raw) == 0 {
+				continue
+			}
+			mime, err := detectImageMimeType(raw, "")
+			if err != nil {
+				mime = "image/png"
+			}
+			stored, err := service.PersistArtifactBytes(ctx, channelID, imageObjectKey(raw, mime), mime, raw)
+			if err != nil {
+				continue
+			}
+			item.URL = stored.URL
+			item.B64JSON = ""
+			changed = true
 			continue
 		}
-		raw, err := base64.StdEncoding.DecodeString(item.B64JSON)
+		// 客户端点名要 base64：上游给的是链接，只能自己取回来。
+		if item.URL == "" || item.B64JSON != "" {
+			continue
+		}
+		raw, _, err := service.FetchArtifactBytes(ctx, item.URL)
 		if err != nil || len(raw) == 0 {
 			continue
 		}
-		mime, err := detectImageMimeType(raw, "")
-		if err != nil {
-			mime = "image/png"
-		}
-		stored, err := service.PersistArtifactBytes(ctx, channelID, imageObjectKey(raw, mime), mime, raw)
-		if err != nil {
-			continue
-		}
-		item.URL = stored.URL
-		item.B64JSON = ""
+		item.B64JSON = base64.StdEncoding.EncodeToString(raw)
+		item.URL = ""
 		changed = true
 	}
 	return changed
@@ -381,7 +399,7 @@ func finishImageChatResponse(
 	// 客户端要链接、上游只给 base64：先落存储换成地址，再走折形。
 	// 失败就保留 base64 —— 那正是「没配存储就透传」的行为。
 	if info != nil {
-		persistImageBytes(c.Request.Context(), info.GetChannelID(), decoded, wantURL)
+		alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, wantURL)
 	}
 	// 空 data[] 不在这里升格成 5xx：入口的契约是「回包形状完整」
 	// （chat 要有 choices/message/content），不是替上游判定业务成败。

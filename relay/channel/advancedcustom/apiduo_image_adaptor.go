@@ -289,10 +289,11 @@ func (a *Adaptor) doImageProtocolResponse(
 		)
 		return usage, apiErr, true
 	}
-	// images / edits 平时是零解析透传。只有「客户端要链接 + 上游给的是 base64 +
-	// 存储确实配好了」这三条同时成立时才接管 —— 否则一个字节都不动。
-	// 没有这条闸门，没配存储的部署会白白解析每个响应却什么也换不来。
-	if !a.imageWantURL || service.ResolveArtifactStorageChainForChannelID(info.GetChannelID()).Empty() {
+	// images / edits 平时是零解析透传，只有真有可能改写时才接管：
+	//   要 b64 —— 一定接管。上游可能给的是链接，不解析就发现不了，
+	//              而「点了 b64 却拿到 url」不算兑现 response_format。
+	//   要 url —— 只有存储配好了才接管，没存储就没有可以把 b64 换成的东西。
+	if a.imageWantURL && service.ResolveArtifactStorageChainForChannelID(info.GetChannelID()).Empty() {
 		return nil, nil, false
 	}
 	// 只在能整份读完的情况下接管：读到一半发现超上限，就没有干净的退路了

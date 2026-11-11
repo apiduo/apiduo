@@ -772,11 +772,11 @@ func TestGPTImage2FormKeepsResponseFormat(t *testing.T) {
 
 // 存储没配（测试环境的常态）时，base64 必须原样留着 —— 这正是
 // 「缺配置就透传上游」的那条退路。
-func TestPersistImageBytesLeavesBase64WhenStoreDisabled(t *testing.T) {
+func TestAlignImageCarriersLeavesBase64WhenStoreDisabled(t *testing.T) {
 	b64 := base64.StdEncoding.EncodeToString(protocolTestPNG)
 	response := &imageResponse{Created: 1, Data: []imageResponseItem{{B64JSON: b64}}}
 
-	changed := persistImageBytes(context.Background(), 0, response, true)
+	changed := alignImageCarriers(context.Background(), 0, response, true)
 
 	if changed {
 		t.Fatal("nothing may change while no artifact storage is configured")
@@ -790,15 +790,30 @@ func TestPersistImageBytesLeavesBase64WhenStoreDisabled(t *testing.T) {
 }
 
 // 客户端明确要 b64 时，即便存储可用也不该动它。
-func TestPersistImageBytesRespectsExplicitB64(t *testing.T) {
+func TestAlignImageCarriersKeepsB64WhenClientAskedForIt(t *testing.T) {
 	b64 := base64.StdEncoding.EncodeToString(protocolTestPNG)
 	response := &imageResponse{Created: 1, Data: []imageResponseItem{{B64JSON: b64}}}
 
-	if persistImageBytes(context.Background(), 0, response, false) {
-		t.Fatal("wantURL=false must short-circuit before any upload")
+	if alignImageCarriers(context.Background(), 0, response, false) {
+		t.Fatal("nothing to do: upstream already answered with base64")
 	}
 	if response.Data[0].B64JSON != b64 {
 		t.Error("base64 must survive untouched")
+	}
+}
+
+// 反向：客户端要 b64 而上游给链接时，取不回来就保留链接 —— 不能因为一次
+// 下载失败就让整个响应失败。
+func TestAlignImageCarriersKeepsURLWhenFetchFails(t *testing.T) {
+	// 私网地址会被下载器直接拒绝，正好用来走失败分支。
+	url := "http://127.0.0.1:9/nope.png"
+	response := &imageResponse{Created: 1, Data: []imageResponseItem{{URL: url}}}
+
+	if alignImageCarriers(context.Background(), 0, response, false) {
+		t.Fatal("a rejected fetch must leave the item untouched")
+	}
+	if response.Data[0].URL != url || response.Data[0].B64JSON != "" {
+		t.Errorf("item changed: %#v", response.Data[0])
 	}
 }
 

@@ -8,9 +8,15 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	123
-blocks	365
-added	3521
-deleted	158
+blocks	366
+added	3528
+# 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
+# `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
+# 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
+deleted	160
+# 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
+# blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
+# `alignImageCarriers` 与它在那两个标记块里的行。
 
 # 2026-11-11 任务日志「模型 / 状态」筛选 + 模型列（显式上调一次
 # blocks +8 / added +37 / deleted +1，files 不变）：
