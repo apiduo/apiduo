@@ -9,7 +9,7 @@
 # 格式：<key>	<value>
 files	129
 blocks	383
-added	3718
+added	3723
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
@@ -134,3 +134,6 @@ deleted	186
 # `LegacyVideoMedia` 用 preload=metadata 时 Chrome 不绘制首帧，弹窗里是
 # 黑框 + 0:00（看起来像预览失败）。改成 #t=0.1 + preload=auto，一个块挂在
 # 上游 task-artifacts.tsx。
+
+# 2026-11-12 02:2x 修正：added 3718 -> 3723。worktree 量的 3718 少 5 行
+# （那边 task-artifacts.tsx 的基线比 CI 旧一版），以 CI 报的 3723 为准。
