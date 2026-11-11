@@ -50,13 +50,9 @@ export interface McpClient {
   note: string
 }
 
-const brand = (inner: React.ReactNode) => (
-  <svg viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'>
-    {inner}
-  </svg>
-)
+const brand = (inner: React.ReactNode) => inner
 
-export const MARKS: Record<string, React.ReactNode> = {
+const MARK_PATHS: Record<string, React.ReactNode> = {
   workbuddy: brand(
     <>
       <path d='M18.777 1.647c.28-.02.536.114.972.51 1.018.926 2.437 2.828 3.318 4.452l.34.631.482.24.11.06v3.638a5.206 5.206 0 00-5.32-1.23c-.491.166-1.021.471-2.08 1.082l-6.09 3.516c-1.057.61-1.586.916-1.975 1.259a5.208 5.208 0 00-1.493 5.572c.165.49.471 1.02 1.082 2.08l.315.543h-3.26c-.685 0-1.34-.135-1.939-.377-.169-.956-.009-1.789.469-2.335.158-.18.164-.189.13-.493a11.846 11.846 0 01-.057-1.711l.02-.444-.667-1.18C2.1 15.622 1.445 14.078 1.192 12.9c-.133-.647-.125-.934.04-1.146.1-.128.427-.261.822-.334.994-.175 3.162-.017 5.575.41l.25.043.551-.487c.915-.81 1.522-1.264 2.641-1.962 1.167-.73 2.484-1.331 3.967-1.807l.476-.152.261-.688c.937-2.471 1.896-4.293 2.58-4.9.235-.21.25-.22.422-.23z' />
@@ -143,6 +139,26 @@ export function jsonTemplate(kind: 'std' | 'vscode' | 'stdio', url: string) {
     }
   }
 }`
+}
+
+/** 品牌标：路径数据 + 固定 viewBox，尺寸由调用方给。 */
+export function Mark({
+  id,
+  className,
+}: {
+  id: string
+  className?: string
+}) {
+  return (
+    <svg
+      viewBox='0 0 24 24'
+      fill='currentColor'
+      aria-hidden='true'
+      className={className}
+    >
+      {MARK_PATHS[id]}
+    </svg>
+  )
 }
 
 const AUTH = `Authorization: Bearer ${TOKEN_SLOT}`
@@ -309,3 +325,20 @@ export const CLIENTS: McpClient[] = [
     note: '本服务不维持会话，一次请求一次响应。只支持 SSE 的客户端接不了，先用 mcp-remote 在本地转一层。',
   },
 ]
+
+/**
+ * 侧边栏要的是「组件」而不是渲染好的节点：nav 的渲染逻辑是
+ * `<item.icon className=… />`，传节点进去 React 会当成元素类型报错。
+ * 这里给每个客户端做一个引用稳定的组件，避免每次 render 重新挂载。
+ */
+export const CLIENT_ICONS: Record<
+  string,
+  React.ComponentType<{ className?: string }>
+> = Object.fromEntries(
+  CLIENTS.map((client) => [
+    client.id,
+    function ClientIcon({ className }: { className?: string }) {
+      return <Mark id={client.id} className={className} />
+    },
+  ])
+)

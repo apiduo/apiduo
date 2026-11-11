@@ -47,7 +47,11 @@ import { cn } from '@/lib/utils'
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state'
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = '13rem'
+/* APIDUO:sidebar-width:BEGIN */
+// 13rem 装不下「Cherry Studio」「Claude Desktop」这类名字，MCP 的 11 个客户端
+// 子项会被截成省略号。加宽到 15rem，中文名和品牌名都能整行放下。
+const SIDEBAR_WIDTH = '15rem'
+/* APIDUO:sidebar-width:END */
 const SIDEBAR_WIDTH_MOBILE = '17rem'
 const SIDEBAR_WIDTH_ICON = '2.75rem'
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b'

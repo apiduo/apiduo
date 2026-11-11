@@ -32,7 +32,7 @@ import {
   listTokens,
   type McpToken,
 } from './api'
-import { CLIENTS, jsonTemplate, MARKS, MCP_PATH, TOKEN_SLOT } from './clients'
+import { CLIENTS, jsonTemplate, Mark, MCP_PATH, TOKEN_SLOT } from './clients'
 import { TokenPicker } from './components/token-picker'
 import './mcp.css'
 
@@ -224,7 +224,7 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
             <div className='flex items-center gap-2.5 rounded-t-xl border-b border-border bg-muted/30 px-3.5 py-2.5 max-sm:flex-wrap'>
               <span className='flex size-[22px] shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary'>
                 <span className='block size-3.5 [&>svg]:size-full'>
-                  {MARKS[client.id]}
+                  <Mark id={client.id} className='size-full' />
                 </span>
               </span>
               <h2 className='shrink-0 text-[13.5px] font-semibold whitespace-nowrap'>{client.name}</h2>
