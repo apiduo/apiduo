@@ -95,7 +95,6 @@
     "same as the export endpoint": "identique à l'endpoint d'export",
     "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "Ce que le bouton « Langfuse » du tiroir de logs ouvre. Nécessaire seulement si l'endpoint d'export est joignable depuis la passerelle mais pas depuis un navigateur.",
     "Image {{index}}": "Image {{index}}",
-    "Preview unavailable": "Aperçu indisponible",
     "{{count}} image(s) · click to enlarge": "{{count}} image(s) · cliquez pour agrandir",
     "China clients": "Chine",
     "General clients": "Général",

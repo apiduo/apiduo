@@ -189,7 +189,6 @@
     "same as the export endpoint": "与上报地址相同",
     "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "日志抽屉里「Langfuse」按钮打开的地址。只有当地址对网关可达、对浏览器不可达时才需要单独填。",
     "Image {{index}}": "图片 {{index}}",
-    "Preview unavailable": "无法预览",
     "{{count}} image(s) · click to enlarge": "{{count}} 张图片 · 点击放大",
     "China clients": "国内",
     "General clients": "通用",

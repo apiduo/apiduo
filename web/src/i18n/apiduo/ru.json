@@ -95,7 +95,6 @@
     "same as the export endpoint": "как адрес экспорта",
     "What the \"Langfuse\" button in the log drawer opens. Only needed when the export endpoint is reachable from the gateway but not from a browser.": "Что открывает кнопка «Langfuse» в панели логов. Нужно, только если адрес экспорта доступен шлюзу, но не браузеру.",
     "Image {{index}}": "Изображение {{index}}",
-    "Preview unavailable": "Предпросмотр недоступен",
     "{{count}} image(s) · click to enlarge": "Изображений: {{count}} · нажмите, чтобы увеличить",
     "China clients": "Китай",
     "General clients": "Общие",
