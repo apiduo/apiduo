@@ -148,6 +148,13 @@ jobs:
       - name: Relay SQL budget
         run: go test ./router/ -run TestRelaySQLBudget -count=1
 
+      # 任务日志筛选契约：`model` / `status` 是 apiduo 加在 /api/task 上的 query 参数，
+      # 前后端只靠名字对齐 —— 改名、或在集合语义上退化（例如把非法的 status
+      # 当成「不过滤」），都没有任何编译期信号。这条从 handler 进、断言 HTTP 响应，
+      # 发版前把「筛选还认不认」跑一遍，坏改动不进镜像。
+      - name: Task log filter contract
+        run: go test ./controller/ -run TestTaskLogFilter -count=1
+
       # 标记块覆盖：上游已有的文件里，自上次同步以来新增的代码必须写在
       # APIDUO:<feature>:BEGIN/END 内。否则下次合并上游时无法区分哪些行是自己的，
       # 冲突只能靠记忆去拼。基线在 .apiduo/sync-base，见 docs/apiduo/upstream-sync.md。
