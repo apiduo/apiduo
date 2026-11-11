@@ -76,6 +76,23 @@ describe('scanMedia images response', () => {
     const { items } = scanMedia({ data })
     expect(items).toHaveLength(12)
   })
+
+  it('loads a thumbnail for a picture this gateway externalized', () => {
+    // The collector lifts large pictures out of over-cap responses, so a body
+    // that used to be megabytes of base64 now carries our own media URL.
+    // The tile asks for 512 px; the zoom layer keeps the original.
+    const url = 'https://apiduo.cn/api/apiduo/trace/media/xftIi89u4fbLlJotoCq1QL.jpg'
+    const { items, view } = scanMedia({ created: 1, data: [{ b64_json: url }] })
+
+    expect(items).toHaveLength(1)
+    expect(items[0].src).toBe(`${url}?w=512`)
+    expect(items[0].full).toBe(url)
+    expect(items[0].label).toBe('JPEG')
+    expect(items[0].remote).toBe(true)
+    expect((view as { data: Array<{ b64_json: string }> }).data[0].b64_json).toBe(
+      '[image 1 · JPEG]'
+    )
+  })
 })
 
 describe('scanMedia vision input', () => {
