@@ -25,6 +25,7 @@ import { usePlaygroundOptions } from '@/features/playground/hooks/use-playground
 import { usePlaygroundState } from '@/features/playground/hooks/use-playground-state'
 import type { ModelOption } from '@/features/playground/types'
 
+import { ModeTabs } from './components/mode-tabs'
 import { SpendBadge } from './components/price-strip'
 import { RequestDrawer } from './components/request-drawer'
 import { ChatWorkspace } from './chat/chat-workspace'
@@ -188,6 +189,16 @@ export function ApiduoPlayground() {
           owns yet, so it stays here — right-aligned next to the session spend,
           out of the corner where three chips used to sit.
         */}
+        {/*
+          The switch itself. Without this render ModeTabs was dead code and the
+          page had no way to leave the mode stored in localStorage — the other
+          two workspaces were unreachable by any means but clearing storage.
+        */}
+        <ModeTabs
+          disabled={isLoadingModels}
+          onChange={handleModeChange}
+          value={mode}
+        />
         <SpendBadge
           className='ml-auto'
           count={ledger.totals.count}
