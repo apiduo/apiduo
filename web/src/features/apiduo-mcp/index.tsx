@@ -89,9 +89,8 @@ function highlightJson(src: string) {
   return out
 }
 
-export function ApiduoMcp() {
+export function ApiduoMcp({ clientId }: { clientId?: string }) {
   const { t } = useTranslation()
-  const [clientId, setClientId] = useState(CLIENTS[0].id)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
@@ -220,32 +219,6 @@ export function ApiduoMcp() {
               'Pick a client, then drop the fields below into its MCP settings. The token sits in the Authorization header itself — click it to switch. Clients that read a config file keep theirs under the JSON block.'
             )}
           </p>
-
-          <div className='apiduo-mcp-rise mt-6 grid gap-5 lg:grid-cols-[196px_minmax(0,1fr)] lg:gap-6'>
-            <aside className='-mx-4 flex gap-4 overflow-x-auto px-4 [scrollbar-width:none] lg:mx-0 lg:flex-col lg:gap-3 lg:overflow-visible lg:px-0'>
-              {(['cn', 'gen'] as const).map((group) => (
-                <div key={group} className='shrink-0 lg:shrink'>
-                  <p className='mb-1 hidden px-2.5 text-[11px] font-medium tracking-wide text-muted-foreground lg:block'>
-                    {group === 'cn' ? t('China clients') : t('General clients')}
-                  </p>
-                  <div className='flex gap-1 lg:flex-col'>
-                    {CLIENTS.filter((item) => item.group === group).map(
-                      (item) => (
-                        <ClientChip
-                          key={item.id}
-                          id={item.id}
-                          name={item.name}
-                          active={item.id === clientId}
-                          onClick={() => setClientId(item.id)}
-                        />
-                      )
-                    )}
-                  </div>
-                </div>
-              ))}
-            </aside>
-
-            <div className='min-w-0'>
 
           <section className='apiduo-mcp-rise-soft rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
             <div className='flex items-center gap-2.5 rounded-t-xl border-b border-border bg-muted/30 px-3.5 py-2.5 max-sm:flex-wrap'>
@@ -397,40 +370,9 @@ export function ApiduoMcp() {
             <span className='text-border'>·</span>
             <span>{t('Only generation calls are billed')}</span>
           </p>
-            </div>
-          </div>
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
-  )
-}
-
-function ClientChip({
-  id,
-  name,
-  active,
-  onClick,
-}: {
-  id: string
-  name: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type='button'
-      onClick={onClick}
-      className={cn(
-        'apiduo-mcp-press inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12.5px] whitespace-nowrap',
-        'lg:h-8 lg:w-full lg:justify-start lg:rounded-lg lg:border-transparent lg:px-2.5',
-        active
-          ? 'border-transparent bg-primary/10 font-semibold text-primary'
-          : 'border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-      )}
-    >
-      <span className='block size-3.5 [&>svg]:size-full'>{MARKS[id]}</span>
-      {name}
-    </button>
   )
 }
 

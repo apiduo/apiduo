@@ -38,6 +38,7 @@ import { Route as AuthenticatedAppAppSlugRouteImport } from './routes/_authentic
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
 import { Route as AuthenticatedConnectIndexRouteImport } from './routes/_authenticated/connect/index'
+import { Route as AuthenticatedConnectClientIdRouteImport } from './routes/_authenticated/connect/$clientId'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
@@ -219,6 +220,12 @@ const AuthenticatedConnectIndexRoute =
   AuthenticatedConnectIndexRouteImport.update({
     id: '/connect/',
     path: '/connect/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedConnectClientIdRoute =
+  AuthenticatedConnectClientIdRouteImport.update({
+    id: '/connect/$clientId',
+    path: '/connect/$clientId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedDashboardIndexRoute =
@@ -461,6 +468,7 @@ export interface FileRoutesByFullPath {
   '/user/reset': typeof authUserResetRoute
   '/app/$appSlug': typeof AuthenticatedAppAppSlugRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
+  '/connect/$clientId': typeof AuthenticatedConnectClientIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -525,6 +533,7 @@ export interface FileRoutesByTo {
   '/user/reset': typeof authUserResetRoute
   '/app/$appSlug': typeof AuthenticatedAppAppSlugRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
+  '/connect/$clientId': typeof AuthenticatedConnectClientIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -593,6 +602,7 @@ export interface FileRoutesById {
   '/(auth)/user/reset': typeof authUserResetRoute
   '/_authenticated/app/$appSlug': typeof AuthenticatedAppAppSlugRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
+  '/_authenticated/connect/$clientId': typeof AuthenticatedConnectClientIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -660,6 +670,7 @@ export interface FileRouteTypes {
     | '/user/reset'
     | '/app/$appSlug'
     | '/chat/$chatId'
+    | '/connect/$clientId'
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
@@ -724,6 +735,7 @@ export interface FileRouteTypes {
     | '/user/reset'
     | '/app/$appSlug'
     | '/chat/$chatId'
+    | '/connect/$clientId'
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
@@ -791,6 +803,7 @@ export interface FileRouteTypes {
     | '/(auth)/user/reset'
     | '/_authenticated/app/$appSlug'
     | '/_authenticated/chat/$chatId'
+    | '/_authenticated/connect/$clientId'
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
@@ -1053,6 +1066,13 @@ declare module '@tanstack/react-router' {
       path: '/connect'
       fullPath: '/connect/'
       preLoaderRoute: typeof AuthenticatedConnectIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/connect/$clientId': {
+      id: '/_authenticated/connect/$clientId'
+      path: '/connect/$clientId'
+      fullPath: '/connect/$clientId'
+      preLoaderRoute: typeof AuthenticatedConnectClientIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard/': {
@@ -1404,6 +1424,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
   AuthenticatedAppAppSlugRoute: typeof AuthenticatedAppAppSlugRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
+  AuthenticatedConnectClientIdRoute: typeof AuthenticatedConnectClientIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
@@ -1432,6 +1453,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
   AuthenticatedAppAppSlugRoute: AuthenticatedAppAppSlugRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
+  AuthenticatedConnectClientIdRoute: AuthenticatedConnectClientIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,

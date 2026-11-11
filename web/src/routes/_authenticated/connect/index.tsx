@@ -16,12 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { ApiduoMcp } from '@/features/apiduo-mcp'
+import { CLIENTS } from '@/features/apiduo-mcp/clients'
 
 // `/mcp` itself is the protocol endpoint on the server, so the console page
-// that explains how to reach it lives one segment over.
+// that explains how to reach it lives one segment over. The bare path lands on
+// the first client; every other client has its own child route.
 export const Route = createFileRoute('/_authenticated/connect/')({
-  component: ApiduoMcp,
+  beforeLoad: () => {
+    throw redirect({
+      to: '/connect/$clientId',
+      params: { clientId: CLIENTS[0].id },
+    })
+  },
 })

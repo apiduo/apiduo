@@ -43,6 +43,9 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarBadges, SidebarData } from '@/components/layout/types'
+/* APIDUO:mcp-entry:BEGIN */
+import { CLIENTS as MCP_CLIENTS } from '@/features/apiduo-mcp/clients'
+/* APIDUO:mcp-entry:END */
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -94,8 +97,11 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
           /* APIDUO:mcp-entry:BEGIN */
           {
             title: t('MCP'),
-            url: '/connect',
             icon: Plug,
+            items: MCP_CLIENTS.map((client) => ({
+              title: client.name,
+              url: `/connect/${client.id}`,
+            })),
           },
           /* APIDUO:mcp-entry:END */
           {
