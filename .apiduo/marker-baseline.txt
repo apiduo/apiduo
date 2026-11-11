@@ -32,13 +32,7 @@
 12	web/src/features/system-settings/components/settings-page.tsx
 1	web/src/features/system-settings/site/section-registry.tsx
 1	web/src/features/system-settings/types.ts
-30	web/src/features/usage-logs/components/columns/task-logs-columns.tsx
-104	web/src/features/usage-logs/components/task-logs-filter-bar.tsx
-2	web/src/features/usage-logs/lib/filter.ts
 1	web/src/features/usage-logs/lib/format.ts
-1	web/src/features/usage-logs/lib/task-mobile-layout.ts
-5	web/src/features/usage-logs/lib/utils.ts
-10	web/src/features/usage-logs/types.ts
 2	web/src/hooks/use-sidebar-data.ts
 13	web/src/hooks/use-sidebar-view.ts
 4	web/src/hooks/use-top-nav-links.ts
