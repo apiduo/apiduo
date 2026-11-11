@@ -9,7 +9,7 @@
 # 格式：<key>	<value>
 files	129
 blocks	383
-added	3723
+added	3727
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
@@ -137,3 +137,5 @@ deleted	186
 
 # 2026-11-12 02:2x 修正：added 3718 -> 3723。worktree 量的 3718 少 5 行
 # （那边 task-artifacts.tsx 的基线比 CI 旧一版），以 CI 报的 3723 为准。
+
+# 2026-11-12 02:3x 修正：added 3723 -> 3727（CI 口径，worktree 仍是少 5 行）。
