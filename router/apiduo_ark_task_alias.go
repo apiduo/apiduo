@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"strconv"
@@ -168,12 +169,19 @@ func apiduoArkTaskUsesRelay(taskID string) bool {
 // entry rewrites Request.URL.Path onto the internal relay path before
 // distribution, and logs read that field — without this copy the console
 // reports /v1/video/generations for a request that never used it.
+//
+// The copy rides on Request.Context rather than gin's Keys: the re-entry goes
+// through engine.HandleContext, whose reset() clears c.Keys.
 func apiduoRememberClientPath(c *gin.Context) {
-	if c.GetString(constant.ApiduoClientPathContextKey) != "" {
+	if c == nil || c.Request == nil {
+		return
+	}
+	if path, _ := c.Request.Context().Value(constant.ApiduoClientPathKey{}).(string); path != "" {
 		return
 	}
 	if path := c.Request.URL.Path; path != "" {
-		c.Set(constant.ApiduoClientPathContextKey, path)
+		ctx := context.WithValue(c.Request.Context(), constant.ApiduoClientPathKey{}, path)
+		c.Request = c.Request.WithContext(ctx)
 	}
 }
 

@@ -21,10 +21,12 @@ func TaskExecutionSnapshotFromContext(ctx *gin.Context) *model.TaskExecutionSnap
 	}
 	// APIDUO:client-path:BEGIN
 	// 别名入口改写后的 URL.Path 是内部中继路径；快照要留客户端那条。
-	if path := ctx.GetString(constant.ApiduoClientPathContextKey); path != "" {
-		snapshot.RequestPath = path
-	} else if ctx.Request != nil && ctx.Request.URL != nil {
-		snapshot.RequestPath = ctx.Request.URL.Path
+	if ctx.Request != nil {
+		if path, _ := ctx.Request.Context().Value(constant.ApiduoClientPathKey{}).(string); path != "" {
+			snapshot.RequestPath = path
+		} else if ctx.Request.URL != nil {
+			snapshot.RequestPath = ctx.Request.URL.Path
+		}
 	}
 	// APIDUO:client-path:END
 

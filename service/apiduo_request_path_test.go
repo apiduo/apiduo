@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -20,8 +21,7 @@ import (
 func TestAppendRequestPathPrefersClientPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, constant.ApiduoTaskRelayPath, nil)
-	c.Set(constant.ApiduoClientPathContextKey, "/api/v3/contents/generations/tasks")
+	c.Request = withClientPath(httptest.NewRequest(http.MethodPost, constant.ApiduoTaskRelayPath, nil), "/api/v3/contents/generations/tasks")
 
 	other := model.NewLogOther()
 	appendRequestPath(c, nil, other)
@@ -49,10 +49,15 @@ func TestAppendRequestPathFallsBackToURLPath(t *testing.T) {
 func TestTaskExecutionSnapshotPrefersClientPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, constant.ApiduoTaskRelayPath, nil)
-	c.Set(constant.ApiduoClientPathContextKey, "/api/v3/contents/generations/tasks")
+	c.Request = withClientPath(httptest.NewRequest(http.MethodPost, constant.ApiduoTaskRelayPath, nil), "/api/v3/contents/generations/tasks")
 
 	snapshot := TaskExecutionSnapshotFromContext(c)
 	require.NotNil(t, snapshot)
 	assert.Equal(t, "/api/v3/contents/generations/tasks", snapshot.RequestPath)
+}
+
+// withClientPath mirrors what the alias entries do: the original path rides on
+// Request.Context, which survives engine.HandleContext (gin's Keys do not).
+func withClientPath(req *http.Request, path string) *http.Request {
+	return req.WithContext(context.WithValue(req.Context(), constant.ApiduoClientPathKey{}, path))
 }

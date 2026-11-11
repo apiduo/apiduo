@@ -9,6 +9,15 @@ package constant
 //
 // 入口路径是每条渠道自己声明的（incoming_paths），下面的常量只是**默认值**
 // 与网关内部落地点的唯一来源：分发器、控制器、路由和前端预设都引用它。
+
+// ApiduoClientPathKey carries the path the client actually called across the
+// dispatcher's rewrite onto the internal relay path.
+//
+// It lives in Request.Context, not in gin's Keys: the alias entries re-enter
+// through engine.HandleContext, whose reset() clears c.Keys — a value stored
+// with c.Set would be gone before the handler that writes the log runs.
+type ApiduoClientPathKey struct{}
+
 const (
 	// ApiduoImageAsyncIncomingPath is the default client path of the built-in
 	// Images async protocol.
@@ -26,12 +35,6 @@ const (
 	// advanced-async channel serves it: the dispatcher rewrites a client path
 	// onto it before distribution.
 	ApiduoTaskRelayPath = "/v1/video/generations"
-
-	// ApiduoClientPathContextKey carries the path the client actually called
-	// across the dispatcher's rewrite onto the internal relay path. Logs read
-	// it first: without the copy the console reports /v1/video/generations for
-	// a request that arrived on /api/v3/contents/generations/tasks.
-	ApiduoClientPathContextKey = "apiduo_client_path"
 
 	// Protocol names persisted in advanced_async.protocol.
 	ApiduoAsyncProtocolImages = "images"

@@ -49,7 +49,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 	}
 	other := model.NewLogOther()
 	other.SetPublic("is_task", true)
-	other.SetPublic("request_path", c.Request.URL.Path)
+	// APIDUO:client-path:BEGIN
+	// 任务日志（图片/视频消费）同样回显客户端路径：别名入口已经把
+	// URL.Path 改写成内部中继路径。
+	appendRequestPath(c, info, other)
+	// APIDUO:client-path:END
 	if taskDeliveredInline(c, task) {
 		other.SetPublic("task_sync", true)
 	}

@@ -8,12 +8,12 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	128
-blocks	379
-added	3690
+blocks	380
+added	3695
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
-deleted	174
+deleted	176
 # 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
 # blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
 # `alignImageCarriers` 与它在那两个标记块里的行。
@@ -104,3 +104,18 @@ deleted	174
 # deleted 171->174：错误日志（type5）也改走 appendRequestPath。
 # `service/relay_error.go` 原来直接 `SetPublic("request_path", c.Request.URL.Path)`，
 # 绕过了上面的修复；改成调用同一个 helper（5 行块），旧 4 行被替换。
+
+# 2026-11-12 02:0x 上调 added 3690->3695（+5，files/blocks/deleted 不变）：
+# 主端点页签改「下游 → 收口点 → 上游」数据流，需要知道上游客是谁。
+# `baseUrl` 从抽屉经对话框透传到编辑器：抽屉 1 行（formValues.base_url）、
+# 对话框 4 行（props 注释 + 字段 + 解构 + 传参）。挂接点都在已有的
+# primary-endpoint 标记块内部，故块数不变。
+# 数值取自 /tmp/mk-flow 干净 worktree（HEAD aaaeae4b + 本次改动）实测；
+# 本地工作树的 33 个并行未提交改动未计入（会虚高 2 行）。
+
+# 2026-11-12 01:5x 再补 task_billing.go：任务消费日志（图片/视频）原来也直接
+# `SetPublic("request_path", c.Request.URL.Path)`，同样绕过修复。改成
+# appendRequestPath（blocks +1 / added +3 / deleted +1）。
+# 另：gin 的 engine.HandleContext 会 reset 掉 c.Keys，所以客户端路径改存
+# Request.Context（constant.ApiduoClientPathKey），这是第一版上线后线上仍显示
+# 旧路径的根因。本地实测：图片异步日志 request_path = /v1/images/generations/async。
