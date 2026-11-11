@@ -70,6 +70,24 @@ images 的 `data[]` 里没有任何好处，而客户端不写这个字段通常
 - **响应侧不做二次归一化。** 客户端要 `url` 而上游只给 b64 时，`b64_json` 原样透传，
   由客户端按自己的入口预期处理（chat 会把它变成 `data:` URI 写进 markdown）。
 
+### 2.3 载体双向对齐与 chat 的例外
+
+`alignImageCarriers` 让 `data[]` 与客户端的 `response_format` 一致，**两个方向都做**：
+
+| 客户端要 | 上游给 | 结果 |
+|---|---|---|
+| url | b64 | 落对象存储换链接（渠道要开存储；失败保留 b64） |
+| url | url | 透传 |
+| b64 | b64 | 透传 |
+| b64 | url | 下载后重新编码（不依赖任何配置） |
+
+任一步失败都保留上游原样。响应侧 `url` 与 `b64_json` **互斥**：换掉一个就清掉另一个。
+
+⚠️ **chat 入口没有这个开关。** `dto.GeneralOpenAIRequest.ResponseFormat` 是
+`{type, json_schema}` 结构体 —— chat 的 `response_format` 指的是 `json_object` / `text`，
+与 images 的同名字段只是同名。传 `"b64_json"` 字符串在**反序列化阶段**就 400，到不了转换层。
+所以：**chat 入口永远给 url；要 base64 必须走 `/v1/images/generations`。**
+
 ## 3. 主端点的合法形状
 
 - 必须是路径（`/` 开头），不带域名、query、fragment。

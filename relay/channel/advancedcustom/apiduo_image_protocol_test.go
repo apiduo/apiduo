@@ -459,6 +459,30 @@ func TestCanonicalDefaultsResponseFormatToURL(t *testing.T) {
 	}
 }
 
+// 契约：chat 入口的载体固定是 url。
+//
+// chat 的 response_format 是 {type, json_schema}，语义是「输出 JSON 还是自由文本」，
+// 与 images 的同名字段只是同名；字符串写法在反序列化阶段就被 dto.ResponseFormat 拒了，
+// 根本到不了这里。这条测试钉住的是「即使请求带了它，canonical 仍按默认走 url」，
+// 顺带声明一处刻意偏差：要 base64 只能走 /v1/images/generations。
+func TestFoldChatNeverTreatsResponseFormatAsCarrier(t *testing.T) {
+	request := &dto.GeneralOpenAIRequest{
+		Model:          "m",
+		Messages:       []dto.Message{{Role: "user", Content: "draw a cat"}},
+		ResponseFormat: &dto.ResponseFormat{Type: "json_object"},
+	}
+	canonical, err := canonicalFromChat(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := canonical.normalize(); err != nil {
+		t.Fatal(err)
+	}
+	if got := canonical.fields["response_format"]; got != "url" {
+		t.Fatalf("chat response_format leaked into the carrier: %#v", got)
+	}
+}
+
 func TestFoldChatTakesLastUserTurnAndKeepsSystemImagesOut(t *testing.T) {
 	request := &dto.GeneralOpenAIRequest{
 		Model: "m",

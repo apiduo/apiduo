@@ -105,6 +105,11 @@ func canonicalFromChat(request *dto.GeneralOpenAIRequest) (*imageCanonical, erro
 	canonical := newImageCanonical()
 	canonical.fields["model"] = request.Model
 	canonical.fields["prompt"] = prompt
+	// 刻意不搬 request.ResponseFormat：chat 里它是 {type, json_schema}，语义是
+	// 「输出 JSON 还是自由文本」，与 images 的同名字段只是同名，不是载体开关。
+	// 搬过来 normalize 只会看到一个不是字符串的值，结论没变但意图变模糊了。
+	// 结果是：chat 入口永远给 url，客户端要 b64 就走 /v1/images/generations
+	// —— 而且它连传都传不进来，字符串在反序列化阶段就被 dto.ResponseFormat 拒了。
 	if len(refs) > 0 {
 		if len(refs) == 1 {
 			canonical.fields["image"] = refs[0]
