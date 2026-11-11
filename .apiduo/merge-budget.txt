@@ -9,7 +9,7 @@
 # 格式：<key>	<value>
 files	128
 blocks	380
-added	3695
+added	3698
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
@@ -119,3 +119,6 @@ deleted	176
 # 另：gin 的 engine.HandleContext 会 reset 掉 c.Keys，所以客户端路径改存
 # Request.Context（constant.ApiduoClientPathKey），这是第一版上线后线上仍显示
 # 旧路径的根因。本地实测：图片异步日志 request_path = /v1/images/generations/async。
+
+# 2026-11-12 01:5x 修正：上一笔把 added 写成 3695（应为 3698），CI 报
+# 「added 3695 -> 3698（多出 3）」卡住发版。这里补回实际值。
