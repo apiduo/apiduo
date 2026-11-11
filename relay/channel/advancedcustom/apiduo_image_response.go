@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/pkg/apiduo/trace"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -111,7 +112,9 @@ func (i imageResponseItem) referenceForItem() (string, error) {
 
 // chatImageMarkdown 把 canonical 的图片列表拼成 Markdown。
 // 需求口径：**只有流式** chat 用 md 包装（大量 SSE 客户端只认 string delta.content）；
-// 非流式用结构化的 image_url parts，见 chatImageParts。
+// 非流式与流式共用同一份 markdown：chat 的 message.content 在 OpenAI 规范里
+// 只能是字符串，数组形式只存在于「请求」的多模态消息里。同一个入口在
+// stream 两边给两种形状，客户端就得写两套解析。
 func chatImageMarkdown(response *imageResponse) (string, error) {
 	var builder strings.Builder
 	for _, item := range response.Data {
@@ -127,29 +130,6 @@ func chatImageMarkdown(response *imageResponse) (string, error) {
 		builder.WriteByte(')')
 	}
 	return builder.String(), nil
-}
-
-// chatImageParts 生成非流式 chat 的 content：结构化的 image_url parts。
-// 每张图的附加字段（revised_prompt / size …）跟着各自的 part 走。
-func chatImageParts(response *imageResponse) ([]map[string]any, error) {
-	parts := make([]map[string]any, 0, len(response.Data))
-	for _, item := range response.Data {
-		ref, err := item.referenceForItem()
-		if err != nil {
-			return nil, err
-		}
-		part := map[string]any{
-			"type":      "image_url",
-			"image_url": map[string]any{"url": ref},
-		}
-		for key, value := range item.Extras {
-			if key != "type" && key != "image_url" {
-				part[key] = value
-			}
-		}
-		parts = append(parts, part)
-	}
-	return parts, nil
 }
 
 func chatEnvelopeBase(response *imageResponse, model string, object string) map[string]any {
@@ -191,7 +171,7 @@ func carryOverResponseExtras(envelope map[string]any, response *imageResponse, i
 // wrapChatCompletion 把 canonical 响应包成非流式 chat.completion。
 // 需求口径：非流式不用 md，content 是 image_url parts 数组（skill §2.2 形状）。
 func wrapChatCompletion(response *imageResponse, model string) ([]byte, error) {
-	parts, err := chatImageParts(response)
+	markdown, err := chatImageMarkdown(response)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +180,7 @@ func wrapChatCompletion(response *imageResponse, model string) ([]byte, error) {
 		"index": 0,
 		"message": map[string]any{
 			"role":    "assistant",
-			"content": parts,
+			"content": markdown,
 		},
 		"finish_reason": "stop",
 	}}
@@ -317,6 +297,11 @@ func finishImageChatResponse(
 		c.Writer.WriteHeader(http.StatusOK)
 		_, _ = c.Writer.Write(output)
 		c.Writer.Flush()
+		// Bytes written straight to the ResponseWriter never pass through
+		// IOCopyBytesGracefully, which is where the trace collector hooks in.
+		// Without this the drawer showed an empty body for every streamed
+		// chat image — the request looked like it produced nothing.
+		trace.CaptureResponseBody(c, output)
 	} else {
 		service.IOCopyBytesGracefully(c, resp, output)
 	}

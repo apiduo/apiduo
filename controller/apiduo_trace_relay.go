@@ -71,8 +71,16 @@ func apiduoTraceFinalize(c *gin.Context, info *relaycommon.RelayInfo, apiErr *ty
 func apiduoTraceOperation(format types.RelayFormat) string {
 	switch format {
 	case types.RelayFormatOpenAI, types.RelayFormatClaude, types.RelayFormatGemini,
-		types.RelayFormatOpenAIResponses, types.RelayFormatOpenAIImage:
+		types.RelayFormatOpenAIResponses:
 		return "chat"
+	case types.RelayFormatOpenAIImage:
+		// An image request is not a conversation: it carries no `messages` and
+		// answers with `data[]`. Folding it into "chat" put every image call in
+		// the chat bucket — and it made the drawer label an images request
+		// "chat flux-3-image" right next to a `{"data":[…]}` body, which reads
+		// as "the chat endpoint answered in the wrong shape". It did not; the
+		// label was wrong.
+		return "image"
 	default:
 		return string(format)
 	}

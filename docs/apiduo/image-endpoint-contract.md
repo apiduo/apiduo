@@ -31,6 +31,24 @@
 
 「发出」这一列在任何情况下都只有主端点一个值。若实现里出现第二个目标，先回看 I4。
 
+### 2.1 chat 回包口径
+
+chat 入口的回包**与文本模型同构**：`choices[0].message.content` 是**字符串**，图片写成 markdown。
+
+```
+流式：content 是 SSE delta 里的 markdown 片段
+非流式：content 是整个 markdown 字符串，如 "![image](https://…)"
+```
+
+两条约束：
+
+- **两条路径必须共用同一个生成函数**（`chatImageMarkdown`）。曾经非流式给的是
+  `image_url` parts 数组 —— 那是**请求**里多模态消息的写法，响应里 OpenAI 只允许 string；
+  于是同一个入口在 `stream` 两边给两种形状，客户端得写两套解析，标准 SDK 直接读不了。
+- **只支持单轮**：取最后一条 user 轮，更早的 user 轮与全部 assistant 轮丢弃（指令类
+  system/developer 文本前拼）。这是刻意的交易 —— 拒绝最安全、截断最可用，选了截断就要
+  接受「静默丢上下文」。多轮编辑场景不在本协议范围内（见 skill §6）。
+
 ## 3. 主端点的合法形状
 
 - 必须是路径（`/` 开头），不带域名、query、fragment。

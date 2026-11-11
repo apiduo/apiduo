@@ -487,11 +487,14 @@ func TestFoldChatRejectsNoUserAndUnknownRole(t *testing.T) {
 	}
 }
 
-func TestWrapChatCompletionUsesImageURLParts(t *testing.T) {
+// 口径：chat 回包与文本模型同构 —— message.content 是字符串，图片写成
+// markdown。流式与非流式共用同一份 chatImageMarkdown，否则同一个入口在
+// stream 两边给两种形状，客户端得写两套解析。
+func TestWrapChatCompletionUsesMarkdownContent(t *testing.T) {
 	response := &imageResponse{
 		Created: 1730000000,
 		Data: []imageResponseItem{
-			{URL: "https://cdn.example.com/a.png", Extras: map[string]any{"revised_prompt": "rp"}},
+			{URL: "https://cdn.example.com/a.png"},
 			{B64JSON: base64.StdEncoding.EncodeToString(protocolTestPNG)},
 		},
 		Extras: map[string]any{"usage": map[string]any{"total_tokens": 7}},
@@ -507,18 +510,15 @@ func TestWrapChatCompletionUsesImageURLParts(t *testing.T) {
 	if envelope["object"] != "chat.completion" || envelope["model"] != "client-model" {
 		t.Fatalf("wrong envelope: %#v", envelope)
 	}
-	// 需求口径：非流式不用 md，content 是 image_url parts 数组。
-	parts, ok := envelope["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"].([]any)
-	if !ok || len(parts) != 2 {
-		t.Fatalf("content must be an image_url parts array, got %#v", envelope["choices"])
+	content, ok := envelope["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)["content"].(string)
+	if !ok {
+		t.Fatalf("content must be a string like a text model, got %#v", envelope["choices"])
 	}
-	first := parts[0].(map[string]any)
-	if first["type"] != "image_url" || first["revised_prompt"] != "rp" {
-		t.Fatalf("data[] extras must follow each part, got %#v", first)
+	if !strings.Contains(content, "![image](https://cdn.example.com/a.png)") {
+		t.Fatalf("url image missing from markdown: %q", content)
 	}
-	second := parts[1].(map[string]any)["image_url"].(map[string]any)["url"].(string)
-	if !strings.HasPrefix(second, "data:image/png;base64,") {
-		t.Fatalf("b64_json must become a data URI, got %s", second)
+	if !strings.Contains(content, "![image](data:image/png;base64,") {
+		t.Fatalf("b64_json must become a data URI, got %q", content)
 	}
 	if usage, ok := envelope["usage"].(map[string]any); !ok || usage["total_tokens"] != float64(7) {
 		t.Fatalf("upstream usage lost: %#v", envelope["usage"])
@@ -580,9 +580,9 @@ func TestEmptyImageDataKeepsChatContentShape(t *testing.T) {
 	if !exists {
 		t.Fatal("content key must exist even when upstream returned no images")
 	}
-	parts, ok := content.([]any)
-	if !ok || len(parts) != 0 {
-		t.Fatalf("content should be an empty parts array, got %#v", content)
+	// 与文本模型同构：没有图就是空字符串，不是一个空数组。
+	if text, ok := content.(string); !ok || text != "" {
+		t.Fatalf("content should be an empty string, got %#v", content)
 	}
 }
 
