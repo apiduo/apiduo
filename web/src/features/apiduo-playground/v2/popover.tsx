@@ -33,6 +33,13 @@ interface FluidPopoverProps {
   className?: string
   label?: string
   /**
+   * Panel width in px. Each picker earns its own: a model row carries a name
+   * and a line of facts, while the aspect ratio grid has to fit four tiles
+   * across, and forcing both into one width either wraps the row or strands
+   * the tiles in a column of white space.
+   */
+  width?: number
+  /**
    * The surface the anchor sits inside. A panel opening upwards clears this
    * surface instead of the anchor: a chip in the composer is only 28 px tall,
    * and a menu that stops above *it* still covers the prompt being typed.
@@ -72,6 +79,7 @@ export function FluidPopover({
   align = 'start',
   className,
   label,
+  width,
   boundary,
 }: FluidPopoverProps) {
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -161,17 +169,21 @@ export function FluidPopover({
       className={cn('apg-pop', className)}
       ref={panelRef}
       role='dialog'
-      style={
-        pos
-          ? cssVars({
+      style={cssVars({
+        // Width lands before the first measurement: `place()` reads
+        // `offsetWidth`, so a panel that only resizes after positioning would
+        // be placed against the default width.
+        '--apg-pop-w': width ? `${width}px` : '268px',
+        ...(pos
+          ? {
               top: pos.top,
               left: pos.left,
               '--pop-ox': pos.ox,
               '--pop-oy': pos.oy,
               visibility: 'visible',
-            })
-          : ({ visibility: 'hidden' } as React.CSSProperties)
-      }
+            }
+          : { visibility: 'hidden' }),
+      })}
       tabIndex={-1}
     >
       {children}

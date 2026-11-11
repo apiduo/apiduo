@@ -35,11 +35,6 @@ interface MoneyChipProps {
   onToggle: () => void
 }
 
-function statusLabel(billing: MessageBilling): string | null {
-  if (billing.status === 'estimated') return 'est.'
-  return null
-}
-
 export function MoneyChip({ billing, expanded, onToggle }: MoneyChipProps) {
   const { t } = useTranslation()
   const [fresh, setFresh] = useState(false)
@@ -67,7 +62,7 @@ export function MoneyChip({ billing, expanded, onToggle }: MoneyChipProps) {
 
   const pending = billing.status === 'pending'
   const estimated = billing.status === 'estimated'
-  const label = statusLabel(billing)
+  const label = billing.status === 'estimated' ? t('est.') : null
 
   return (
     <button
@@ -98,7 +93,7 @@ export function MoneyChip({ billing, expanded, onToggle }: MoneyChipProps) {
         <span>{t('Reconciling…')}</span>
       ) : (
         <RollingValue
-          value={`${formatQuota(billing.quota)}${label ? ` ${t(label)}` : ''}`}
+          value={`${formatQuota(billing.quota)}${label ? ` ${label}` : ''}`}
         />
       )}
       <ChevronDown

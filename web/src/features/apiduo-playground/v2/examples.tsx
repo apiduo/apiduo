@@ -43,12 +43,14 @@ interface Example {
   title: string
   /** What the card says in the shelf. */
   desc: string
-  /** What goes on the wire. Never translated — the upstream reads English. */
+  /** What goes on the wire. Translated: a card that reads in Chinese has to
+      hand over a Chinese prompt, or the box fills with a language the reader
+      did not choose. Locales without a translation fall back to this string. */
   prompt: string
   art: 0 | 1 | 2
 }
 
-const EXAMPLES: Example[] = [
+const IMAGE_EXAMPLES: Example[] = [
   // Nine cards, three pages. 「换一批」 only earns its place if the deck is
   // deeper than one turn of the page — with three cards it would just reorder
   // the same three pictures.
@@ -145,6 +147,71 @@ const EXAMPLES: Example[] = [
     prompt:
       'An isometric view of a small gallery, white walls and a skylight, reflective floor, afternoon slant light',
     art: 0,
+  },
+]
+
+const VIDEO_EXAMPLES: Example[] = [
+  // Six cards, two pages: a clip is harder to describe than a still (what
+  // moves, how fast, what the camera does), so the shelf carries a second page.
+  {
+    id: 'rooftop-sunset',
+    model: 'seedance-1-0-pro',
+    ratio: '16:9',
+    title: 'Rooftop sunset',
+    desc: 'A time-lapse of a rooftop at dusk, cloud shadows crossing the towers',
+    prompt:
+      'Time-lapse of a city rooftop at sunset, cloud shadows sweeping across the towers, sky turning from gold to violet',
+    art: 0,
+  },
+  {
+    id: 'coffee-pour',
+    model: 'seedance-1-0-pro',
+    ratio: '9:16',
+    title: 'Pouring coffee',
+    desc: 'Slow motion pour, swirls rising, crema catching the light',
+    prompt:
+      'Coffee poured into a cup in slow motion, bubbles and swirls rising, crema catching the light',
+    art: 2,
+  },
+  {
+    id: 'pine-snow',
+    model: 'veo-3',
+    ratio: '16:9',
+    title: 'Snow on a pine branch',
+    desc: 'A macro shot of snow settling on pine needles, pale grey sky behind',
+    prompt:
+      'Macro of snow settling on a pine branch, shallow depth of field, fine grain, pale grey sky behind',
+    art: 1,
+  },
+  {
+    id: 'waves-on-rocks',
+    model: 'seedance-1-0-pro',
+    ratio: '16:9',
+    title: 'Waves on rocks',
+    desc: 'Low angle, spray glowing in the backlight, slow shutter',
+    prompt:
+      'Waves breaking over dark rocks, low angle, spray glowing in backlight, slow shutter',
+    art: 1,
+  },
+  {
+    id: 'night-subway',
+    model: 'veo-3',
+    ratio: '9:16',
+    title: 'Late-night subway',
+    desc: 'Handheld inside the car, city lights streaking past the window',
+    prompt:
+      'Late-night subway car, city lights streaking past the window, slight handheld sway',
+    art: 0,
+  },
+  {
+    id: 'desert-road',
+    model: 'seedance-1-0-pro',
+    ratio: '16:9',
+    title: 'Desert highway',
+    desc: 'Aerial shot at noon, heat shimmer, one car trailing dust',
+    prompt:
+      'Aerial shot of a desert highway at noon, heat shimmer, a single car trailing dust',
+    art: 2,
   },
 ]
 
@@ -285,18 +352,26 @@ interface ExamplesProps {
   available: string[]
   /** Fallback label when a card's preferred model is not available here. */
   model: string
+  /** Which deck: a still and a clip are described differently. */
+  kind?: 'image' | 'video'
 }
 
 const PER_PAGE = 3
 
-export function ExamplesShelf({ onPick, available, model }: ExamplesProps) {
+export function ExamplesShelf({
+  onPick,
+  available,
+  model,
+  kind = 'image',
+}: ExamplesProps) {
   const { t } = useTranslation()
   const [page, setPage] = useState(0)
   /** Remount key for the arrow: a second turn has to restart the spin. */
   const [turns, setTurns] = useState(0)
 
-  const pages = Math.ceil(EXAMPLES.length / PER_PAGE)
-  const visible = EXAMPLES.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE)
+  const deck = kind === 'video' ? VIDEO_EXAMPLES : IMAGE_EXAMPLES
+  const pages = Math.ceil(deck.length / PER_PAGE)
+  const visible = deck.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE)
 
   const badgeFor = (example: Example) =>
     available.includes(example.model) ? example.model : model
@@ -323,7 +398,9 @@ export function ExamplesShelf({ onPick, available, model }: ExamplesProps) {
         ) : null}
       </div>
       <div className='apg-suggest-sub'>
-        {t('One picture from the latest model · open it and make it yours')}
+        {kind === 'video'
+          ? t('One clip from the latest model · open it and make it yours')
+          : t('One picture from the latest model · open it and make it yours')}
       </div>
 
       <div className='apg-ex-row'>
@@ -336,7 +413,7 @@ export function ExamplesShelf({ onPick, available, model }: ExamplesProps) {
               key={example.id}
               onClick={() =>
                 onPick({
-                  prompt: example.prompt,
+                  prompt: t(example.prompt),
                   ratio: example.ratio,
                   model: badge,
                 })

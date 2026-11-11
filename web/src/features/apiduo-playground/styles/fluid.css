@@ -85,18 +85,48 @@ For commercial licensing, please contact support@quantumnous.com
   --d-sheet: 0.38s;
   --d-bounce: 0.62s;
 
+  /* ── the prototype's palette, re-pointed at the console tokens ──
+     docs/prototypes/playground-layout.html is the design of record, and the
+     rules below are meant to be read next to it. `--card`, not
+     `--background`, is its `--surface`: the page and a panel are two
+     different whites there, and still are here. */
+  --apg-bg: var(--background);
+  --apg-surface: var(--card);
+  --apg-surface-2: var(--muted);
+  --apg-line: var(--border);
+  --apg-line-soft: color-mix(in oklch, var(--border) 55%, transparent);
+  --apg-ink: var(--foreground);
+  --apg-ink-2: var(--muted-foreground);
+  --apg-ink-3: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
+  --apg-primary-ink: var(--apiduo-ink, var(--primary));
+  --apg-r-lg: 14px;
+  --apg-r-xl: 18px;
+  --apg-shadow-lg:
+    0 20px 54px -30px oklch(0 0 0 / 0.38), 0 1px 2px oklch(0 0 0 / 0.05);
+  --apg-shadow-focus:
+    0 24px 64px -32px oklch(0 0 0 / 0.45), 0 1px 2px oklch(0 0 0 / 0.05);
+
   /* The shot column. One number decides the composer, the shelf and the
      widest a picture may get, so the three cannot drift apart at a breakpoint. */
   --col: 700px;
   /* Wider than the canvas on purpose: the canvas is a reading column, the
      composer is a control panel with six controls on one line. */
   --col-bar: 768px;
-  --stage-pad: 28px;
   /* The canvas has to leave room for the app header and the composer under it:
      a 68vh picture plus a 25px meta row overflows a 900px window, and the meta
      then sits clipped at the top of the scroller. Budget the chrome instead of
      a bare vh. */
   --res-h: min(calc(100vh - 300px), 640px);
+}
+
+/* Harsher shadows on a near-black page: the light ones read as a grey haze
+   rather than as a lift. */
+.dark .apg,
+.dark .apg-pop {
+  --apg-shadow-lg:
+    0 22px 58px -30px oklch(0 0 0 / 0.75), 0 1px 2px oklch(0 0 0 / 0.35);
+  --apg-shadow-focus:
+    0 26px 68px -32px oklch(0 0 0 / 0.8), 0 1px 2px oklch(0 0 0 / 0.35);
 }
 
 /* The shell layout is only for the page root. The popover shares the tokens
@@ -105,6 +135,7 @@ For commercial licensing, please contact support@quantumnous.com
 .apg {
   display: flex;
   min-height: 0;
+  line-height: normal;
   flex: 1 1 auto;
   flex-direction: column;
   position: relative;
@@ -175,29 +206,53 @@ For commercial licensing, please contact support@quantumnous.com
 /* ───────── stage ───────── */
 
 .apg-stage {
-  min-height: 0;
+  position: relative;
+  display: flex;
   flex: 1 1 auto;
-  overflow-y: auto;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
   overflow-x: hidden;
-  scrollbar-gutter: stable;
+  overflow-y: auto;
+  padding: 22px 16px 12px;
+  scrollbar-width: thin;
 }
 
+.apg-stage::-webkit-scrollbar {
+  width: 9px;
+}
+
+.apg-stage::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 99px;
+  background: color-mix(in oklch, var(--apg-ink) 16%, transparent);
+  background-clip: content-box;
+}
+
+/* Content scrolls under the composer. Without a fade the last visible picture
+   is cut by a hard horizontal edge, which reads as a broken layout rather than
+   "there is more below". Sticky + a negative margin keeps it out of flow. */
+.apg-stage::after {
+  content: '';
+  position: sticky;
+  bottom: -12px;
+  flex: 0 0 auto;
+  width: 100%;
+  height: 34px;
+  margin-top: -34px;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--apg-bg, var(--background)) 24%, transparent);
+}
+
+/* Canvas + shelf are one group, so they share one auto margin: centring the
+   column alone tore the two apart on a tall phone. */
 .apg-stage-inner {
   display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  justify-content: center;
-  gap: 18px;
-  padding: var(--stage-pad) 16px;
   width: 100%;
   max-width: var(--col);
-  margin: 0 auto;
-}
-
-/* Anything shorter than a result should sit slightly above centre: a block
-   optically centred in a tall column reads as "a bit low". */
-.apg-stage-inner[data-empty='true'] {
-  padding-bottom: 8vh;
+  flex-direction: column;
+  gap: 16px;
+  margin-block: auto;
 }
 
 /* ───────── examples shelf ───────── */
@@ -215,9 +270,9 @@ For commercial licensing, please contact support@quantumnous.com
 
 .apg-suggest-title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 560;
   letter-spacing: 0.005em;
-  color: var(--foreground);
+  color: var(--apg-ink);
 }
 
 /* The shelf is not a fixed list, so the escape hatch belongs on the shelf's own
@@ -231,7 +286,7 @@ For commercial licensing, please contact support@quantumnous.com
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-3);
   font: inherit;
   font-size: 11px;
   cursor: pointer;
@@ -272,7 +327,7 @@ For commercial licensing, please contact support@quantumnous.com
 .apg-suggest-sub {
   margin: 3px 2px 12px;
   font-size: 11.5px;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-3);
 }
 
 .apg-ex-row {
@@ -289,9 +344,9 @@ For commercial licensing, please contact support@quantumnous.com
   flex-direction: column;
   padding: 0;
   text-align: left;
-  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  border: 1px solid var(--apg-line);
   border-radius: 14px;
-  background: var(--background);
+  background: var(--apg-surface);
   overflow: hidden;
   cursor: pointer;
   animation: apg-ex-in var(--d-move) var(--apg-move) backwards;
@@ -322,7 +377,7 @@ For commercial licensing, please contact support@quantumnous.com
   display: block;
   aspect-ratio: 16 / 10;
   overflow: hidden;
-  background: var(--muted);
+  background: var(--apg-surface-2);
 }
 .apg-ex-thumb > svg {
   display: block;
@@ -369,7 +424,7 @@ For commercial licensing, please contact support@quantumnous.com
   background: oklch(0 0 0 / 0.58);
   color: #fff;
   font-size: 10px;
-  line-height: 1.5;
+  line-height: 1.1;
   letter-spacing: 0.01em;
   text-shadow: 0 1px 1px oklch(0 0 0 / 0.35);
   white-space: nowrap;
@@ -422,9 +477,9 @@ For commercial licensing, please contact support@quantumnous.com
   flex: 1 1 auto;
   min-width: 0;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 560;
   letter-spacing: 0.005em;
-  color: var(--foreground);
+  color: var(--apg-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -433,8 +488,8 @@ For commercial licensing, please contact support@quantumnous.com
   flex: 0 0 auto;
   font-style: normal;
   font-size: 10.5px;
-  font-weight: 550;
-  color: var(--primary);
+  font-weight: 520;
+  color: var(--apg-primary-ink);
   opacity: 0.68;
   transition: opacity 0.16s ease;
 }
@@ -451,7 +506,7 @@ For commercial licensing, please contact support@quantumnous.com
   padding: 3px 11px 11px;
   font-size: 11.5px;
   line-height: 1.55;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-2);
   text-wrap: pretty;
 }
 
@@ -460,6 +515,10 @@ For commercial licensing, please contact support@quantumnous.com
 .apg-round {
   position: relative;
   isolation: isolate;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 7px;
   animation: apg-rise var(--d-bounce) var(--apg-bounce) backwards;
 }
 
@@ -499,13 +558,18 @@ For commercial licensing, please contact support@quantumnous.com
   margin-inline: auto;
 }
 
+/* A fixed height, not a min-height: the row's text changes with the job's
+   status, and a line that wraps on one status but not the other makes the card
+   grow 7px the moment the result lands. */
 .apg-round-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 2px 7px;
+  gap: 7px;
+  height: 18px;
+  padding: 0 2px;
   font-size: 11px;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-3);
+  white-space: nowrap;
 }
 
 .apg-round-meta .mono {
@@ -527,11 +591,9 @@ For commercial licensing, please contact support@quantumnous.com
 .apg-art {
   position: relative;
   overflow: hidden;
-  border-radius: 14px;
-  background: var(--muted);
-  box-shadow:
-    0 1px 2px oklch(0 0 0 / 0.06),
-    inset 0 0 0 1px color-mix(in oklch, var(--foreground) 7%, transparent);
+  border-radius: var(--apg-r-lg);
+  background: var(--apg-surface-2);
+  box-shadow: 0 0 0 1px var(--apg-line-soft);
 }
 
 .apg-art {
@@ -771,91 +833,448 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* ───────── composer ───────── */
 
+/* The chat stage before the first message: a line of text, not a shelf. */
+.apg-empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 64px 24px;
+  text-align: center;
+}
+
+.apg-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--apg-ink) 5%, transparent);
+  color: var(--apg-ink-3);
+}
+
+.apg-empty-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.apg-empty-title {
+  font-size: 13.5px;
+  font-weight: 560;
+  color: var(--apg-ink);
+}
+
+.apg-empty-sub {
+  max-width: 34ch;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--apg-ink-3);
+}
+
+/* The chat composer's one attachment door: a 28 px paperclip, the size the
+   prototype gives it, sitting left of the model chip. */
+.apg-attach {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--apg-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--apg-ink-2);
+  cursor: pointer;
+  transition:
+    color 0.15s var(--apg-quick),
+    border-color 0.15s var(--apg-quick),
+    background-color 0.15s var(--apg-quick);
+}
+
+.apg-attach:hover {
+  border-color: color-mix(in oklch, var(--primary) 40%, var(--apg-line));
+  background: color-mix(in oklch, var(--primary) 7%, transparent);
+  color: var(--apg-primary-ink);
+}
+
+.apg-attach svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Attachments ride above the bubble: the text is the question, the pictures
+   are what the question is about. */
+.apg-msg-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.apg-msg-images.right {
+  justify-content: flex-end;
+}
+
+.apg-msg-image {
+  display: block;
+  width: 104px;
+  height: 104px;
+  overflow: hidden;
+  border: 1px solid var(--apg-line);
+  border-radius: 10px;
+  background: var(--apg-surface-2);
+}
+
+.apg-msg-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .apg-composer {
   flex: 0 0 auto;
-  padding: 0 16px 10px;
+  padding: 10px 16px 14px;
+  background: linear-gradient(to top, var(--background) 62%, transparent);
 }
 
 .apg-composer-inner {
   position: relative;
   width: 100%;
   max-width: var(--col-bar);
-  margin: 0 auto;
-  padding: 10px 10px 8px;
-  border-radius: 18px;
-  background: var(--background);
-  box-shadow:
-    0 1px 2px oklch(0 0 0 / 0.06),
-    0 18px 44px -30px oklch(0 0 0 / 0.45),
-    0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent);
+  margin-inline: auto;
+  border-radius: var(--apg-r-xl);
+  background: var(--apg-surface);
+  box-shadow: var(--apg-shadow-lg), 0 0 0 1px var(--apg-line);
   transition:
     box-shadow var(--d-move) var(--apg-move),
     transform var(--d-move) var(--apg-move);
 }
 
+/* Not a glow — a rise. The thing you are typing into should feel like it came
+   a millimetre toward you. */
 .apg-composer-inner:focus-within {
   transform: translateY(-1px);
   box-shadow:
-    0 1px 2px oklch(0 0 0 / 0.06),
-    0 22px 52px -30px oklch(0 0 0 / 0.5),
-    0 0 0 1px color-mix(in oklch, var(--primary) 42%, transparent);
+    var(--apg-shadow-focus),
+    0 0 0 1px color-mix(in oklch, var(--primary) 42%, var(--apg-line));
 }
 
+/* No inner padding on the panel: the text starts where the box does, and the
+   toolbar carries its own inset. A panel padded on both sides ends up with a
+   4px ring of background around the chips that reads as a second border. */
 .apg-prompt {
   display: block;
   width: 100%;
-  min-height: 52px;
-  max-height: 168px;
-  resize: none;
+  min-height: 78px;
+  max-height: 190px;
+  padding: 14px 16px 4px;
   border: 0;
   background: transparent;
-  padding: 2px 4px 6px;
+  color: var(--apg-ink);
   font: inherit;
   font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--foreground);
+  line-height: 1.62;
+  resize: none;
   outline: none;
 }
 
 .apg-prompt::placeholder {
-  color: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
+  color: var(--apg-ink-3);
 }
 
 /* ───────── toolbar ───────── */
+
+/* ── 参考图：文件是请求的一部分，不是渲染的一部分 ──
+   一张参考图把请求从文生图变成图生图，所以它坐在它所属的文字上方，
+   而不是和宽高比这些「只改变怎么画」的参数排在一行。 */
+
+.apg-drop-hint {
+  position: absolute;
+  inset: 4px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed
+    color-mix(in oklch, var(--primary) 58%, transparent);
+  border-radius: calc(var(--apg-r-xl) - 4px);
+  background: color-mix(in oklch, var(--apg-surface) 82%, transparent);
+  color: var(--apg-primary-ink);
+  font-size: 11.5px;
+  font-weight: 520;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.988);
+  transition:
+    opacity 0.18s var(--apg-quick),
+    transform var(--d-sheet) var(--apg-sheet),
+    visibility 0s 0.18s;
+  pointer-events: none;
+}
+
+.apg-composer-inner.dropping {
+  transform: translateY(-2px);
+}
+
+.apg-composer-inner.dropping .apg-drop-hint {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+}
+
+.apg-refs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 0;
+}
+
+.apg-ref-row {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.apg-ref {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--apg-line);
+  border-radius: 9px;
+  background: var(--apg-surface-2);
+}
+
+.apg-ref img,
+.apg-ref svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.apg-ref img {
+  object-fit: cover;
+}
+
+/* A frame slot is a named position, not a bag item: the label sits on the
+   picture because which one it is decides what the clip does. */
+.apg-ref-slot-label {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 1px 0 2px;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.62), transparent);
+  color: #fff;
+  font-size: 9px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+/* The whole tile opens the picker: with both frames filled there is no "+"
+   left to aim at, so replacing has to start from the picture itself. */
+.apg-ref-pick {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.apg-ref-slot:hover {
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 55%, transparent);
+}
+
+/* The strip sits at the bottom of the screen while the picture just pasted is
+   somewhere in the middle: without a local cue the new tile is easy to miss. */
+.apg-ref.fresh {
+  animation: apg-ref-in 0.34s var(--apg-bounce);
+}
+
+@keyframes apg-ref-in {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.apg-ref-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 99px;
+  background: oklch(0 0 0 / 0.42);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.8;
+  transition:
+    opacity 0.14s ease,
+    background-color 0.14s ease;
+}
+
+.apg-ref:hover .apg-ref-x,
+.apg-ref:focus-within .apg-ref-x {
+  opacity: 1;
+  background: oklch(0 0 0 / 0.62);
+}
+
+.apg-ref-x svg {
+  width: 9px;
+  height: 9px;
+}
+
+.apg-ref-add {
+  display: inline-flex;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0;
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: nowrap;
+  border: 1px dashed
+    color-mix(in oklch, var(--apg-ink) 26%, transparent);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--apg-ink-3);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.09s ease-out;
+}
+
+.apg-ref-add:hover {
+  border-color: color-mix(in oklch, var(--primary) 45%, transparent);
+  background: color-mix(in oklch, var(--primary) 7%, transparent);
+  color: var(--apg-primary-ink);
+}
+
+.apg-ref-add:active {
+  transform: scale(0.97);
+}
+
+.apg-ref-add svg {
+  width: 13px;
+  height: 13px;
+}
+
+.apg-ref-cap {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--apg-ink-3);
+  white-space: nowrap;
+}
+
+.apg-ref-cap.full {
+  color: var(--apg-ink-2);
+}
+
+/* 隐藏但有焦点：display:none 会让键盘用户永远到不了选择器 */
+.apg-ref-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 
 .apg-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 7px;
+  padding: 5px 9px 9px;
 }
 
+/* One chip, one question. Outlined rather than filled: six grey slabs in a row
+   read as six disabled buttons, and this row is where every choice is made. */
 .apg-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   height: 28px;
-  padding: 0 8px;
-  border: 0;
+  max-width: 230px;
+  padding: 0 8px 0 9px;
+  border: 1px solid var(--apg-line);
   border-radius: 8px;
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  color: var(--foreground);
+  background: transparent;
+  color: var(--apg-ink);
+  font: inherit;
   font-size: 11.5px;
-  line-height: 1;
+  font-weight: 520;
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color 0.13s var(--apg-quick),
-    color 0.13s var(--apg-quick),
-    transform var(--d-tap) var(--apg-tap);
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.09s ease-out;
 }
 
 .apg-chip:hover {
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+  background: color-mix(in oklch, var(--apg-ink) 4%, transparent);
+  border-color: color-mix(in oklch, var(--apg-ink) 22%, transparent);
 }
 
 .apg-chip[data-tone='quiet'] {
-  color: var(--muted-foreground);
+  color: var(--apg-ink-3);
+}
+
+/* Width follows the name, capped at the prototype's 230: a chip that stays
+   wide when the id is short leaves the name floating in the middle of an empty
+   box, and the model row is the first thing read in this bar. */
+.apg-chip-model {
+  flex: 0 1 auto;
+  max-width: 230px;
+}
+
+.apg-chip-model .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.apg-chip-model .chev {
+  margin-left: 1px;
+}
+
+.apg-chip .name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 .apg-chip .mono {
@@ -863,22 +1282,50 @@ For commercial licensing, please contact support@quantumnous.com
   letter-spacing: -0.01em;
 }
 
+/* The ratio chip carries a miniature of the frame it produces: 1:1 and 16:9
+   are one character apart in text and nothing alike as shapes. */
+.apg-shape {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--apg-primary-ink);
+}
+
+.apg-shape i {
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
 .apg-chip svg {
   width: 13px;
   height: 13px;
-  opacity: 0.7;
 }
 
-/* A brand mark is already a silhouette; dimming it to the same 0.7 as a UI
-   glyph makes it read as a smudge at 13px. */
+/* A brand mark is already a silhouette; the chip's ink at 13px turns it into a
+   smudge, so it keeps the lab's own tint mixed toward the text colour. */
 .apg-chip .apg-by svg {
-  opacity: 0.85;
+  color: color-mix(
+    in oklch,
+    var(--apg-tint, var(--apg-primary-ink)) 86%,
+    var(--apg-ink)
+  );
+}
+
+/* A label in front of the value, dimmed: the chip reads "温度 0.7" but only
+   the number is the setting. */
+.apg-chip-dim {
+  color: var(--apg-ink-3);
+  font-weight: 450;
 }
 
 .apg-chip .chev {
   width: 11px;
   height: 11px;
-  opacity: 0.45;
+  color: var(--apg-ink-3);
 }
 
 /* `margin-left:auto` rather than a spacer element: when the chips wrap on a
@@ -887,54 +1334,91 @@ For commercial licensing, please contact support@quantumnous.com
 .apg-bar-end {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   margin-left: auto;
 }
 
+/* The price is the only place the billing group becomes visible, so the group
+   rides the number instead of taking a chip of its own. */
 .apg-price {
   display: inline-flex;
-  align-items: baseline;
-  gap: 1px;
-  padding: 0 2px 0 4px;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 6px 0 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
   font-size: 11px;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-3);
   white-space: nowrap;
+  cursor: pointer;
   font-variant-numeric: tabular-nums;
 }
 
 .apg-price b {
-  font-family: var(--font-mono, ui-monospace);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--foreground);
+  color: var(--apg-ink-2);
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+}
+
+/* The chevron is the size the prototype gives it — a 10 px mark, not the 16 px
+   lucide default: at 16 it reads as a second control next to the group name. */
+.apg-price .chev {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  color: var(--apg-ink-3);
+}
+
+.apg-price-grp {
+  max-width: 66px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 450;
+  color: var(--apg-ink-3);
 }
 
 .apg-send {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 11px;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
   border: 0;
   border-radius: 9px;
   background: var(--primary);
   color: #fff;
-  font-size: 11.5px;
-  font-weight: 550;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
+  letter-spacing: 0.01em;
   cursor: pointer;
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 0.12),
+    inset 0 1px 0 oklch(1 0 0 / 0.18);
   transition:
-    filter 0.13s var(--apg-quick),
-    transform var(--d-tap) var(--apg-tap);
+    filter 0.16s ease,
+    transform 0.09s ease-out,
+    box-shadow 0.2s ease;
 }
 
 .apg-send:hover:not(:disabled) {
   filter: brightness(1.06);
+  box-shadow:
+    0 4px 14px -4px color-mix(in oklch, var(--primary) 55%, transparent),
+    inset 0 1px 0 oklch(1 0 0 / 0.18);
 }
 
+/* Busy is not "unavailable": the button dims to 42 %, which is the difference
+   between "you cannot" and "not yet". */
 .apg-send:disabled {
   cursor: default;
-  opacity: 0.45;
+  opacity: 0.42;
+  box-shadow: none;
 }
 
 .apg-send svg {
@@ -945,23 +1429,24 @@ For commercial licensing, please contact support@quantumnous.com
 /* Clearing the canvas is a 28px target in the same row as the price: it applies
    to what is above the composer, not to the request that is about to be sent. */
 .apg-clear {
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 28px;
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-3);
   cursor: pointer;
   transition:
-    background-color 0.13s var(--apg-quick),
-    color 0.13s var(--apg-quick);
+    background-color 0.16s ease,
+    color 0.16s ease;
 }
 .apg-clear:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--foreground);
+  background: color-mix(in oklch, var(--apg-ink) 6%, transparent);
+  color: var(--apg-ink);
 }
 .apg-clear:disabled {
   opacity: 0.35;
@@ -974,22 +1459,46 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* How many generations are running against the cap. A dead 0/3 is still worth
    printing: it is the only place the ceiling is stated. */
+/* Concurrency belongs to the engine, so it sits next to 生成 rather than in the
+   parameter row. Always rendered: a chip that appears on submit and leaves on
+   finish would reflow the toolbar twice per job. */
 .apg-conc {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 5px;
+  gap: 5px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 99px;
+  box-shadow: inset 0 0 0 1px var(--apg-line-soft);
   font-size: 10.5px;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.apg-conc b {
+  min-width: 26px;
+  text-align: right;
+  font-weight: 560;
+  color: var(--apg-ink-2);
 }
 .apg-conc i {
   width: 5px;
   height: 5px;
   border-radius: 99px;
-  background: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
+  background: color-mix(in oklch, var(--apg-ink) 28%, transparent);
   transition: background-color 0.2s ease;
+}
+.apg-conc[data-live='true'] {
+  color: var(--apg-primary-ink);
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 24%, transparent);
+}
+.apg-conc[data-live='true'] b {
+  color: var(--apg-primary-ink);
 }
 .apg-conc[data-live='true'] i {
   background: var(--primary);
@@ -1002,11 +1511,17 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .apg-hint {
-  max-width: var(--col-bar);
+  max-width: var(--col);
   margin: 7px auto 0;
   font-size: 10.5px;
+  color: var(--apg-ink-3);
   text-align: center;
-  color: color-mix(in oklch, var(--muted-foreground) 82%, transparent);
+  letter-spacing: 0.005em;
+}
+
+/* 换模型把参考图裁掉时，这句话顶替键盘提示：被丢的东西必须说出来。 */
+.apg-hint.warn {
+  color: var(--destructive);
 }
 
 /* ───────── popover ───────── */
@@ -1014,8 +1529,15 @@ For commercial licensing, please contact support@quantumnous.com
 .apg-pop {
   position: fixed;
   z-index: 60;
-  min-width: 200px;
-  max-width: min(340px, calc(100vw - 24px));
+  /* One base size, as the prototype has. The panel is portalled into <body>,
+     so the console's 16 px root would otherwise leak into every metric that
+     does not state its own, and the list would come out a quarter too large. */
+  font-size: 12px;
+  line-height: normal;
+  /* Per-picker, written by the component: a model row carries a name and a
+     line of facts, while the ratio grid has to fit four tiles across. */
+  width: var(--apg-pop-w, 268px);
+  max-width: min(var(--apg-pop-w, 268px), calc(100vw - 24px));
   overflow: hidden;
   border-radius: 13px;
   background: var(--background);
@@ -1029,16 +1551,143 @@ For commercial licensing, please contact support@quantumnous.com
   animation: apg-pop-in var(--d-sheet) var(--apg-sheet) both;
 }
 
+/* Type and model are one decision made twice: the switch lives on top of the
+   list it filters, so changing what you are making does not mean leaving the
+   list you came to read. Its own class, because `.apg-pop-head` is also the
+   plain title of the ratio / resolution / count panels and those keep no rule
+   under the text. */
+.apg-pop-tabbar {
+  /* No negative margin: the prototype's panel carries 6 px of padding and the
+     head escapes it; ours has none, so an escape would eat 6 px off the top. */
+  margin: 0 0 3px;
+  padding: 6px 6px 4px;
+  border-bottom: 1px solid var(--apg-line-soft);
+}
+
+.apg-pop-tabs {
+  position: relative;
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: color-mix(in oklch, var(--apg-ink) 5%, transparent);
+}
+
+/* One thumb that travels instead of a fill that hops: hopping reads as two
+   states, travelling reads as one control moving. Its width is the column
+   width, so a step is its own width plus the 2 px gap. */
+.apg-pop-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc((100% - 4px) / 3);
+  height: calc(100% - 6px);
+  border-radius: 7px;
+  background: var(--apg-surface, var(--surface));
+  box-shadow: var(--apg-shadow-sm, 0 1px 2px rgb(0 0 0 / 0.06));
+  pointer-events: none;
+  transition: transform var(--d-sheet, 0.34s) var(--sp-sheet, ease);
+}
+
+.apg-pop-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--apg-ink-3);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 520;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.apg-pop-tab svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.apg-pop-tab .n {
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}
+
+.apg-pop-tab:hover {
+  color: var(--apg-ink);
+}
+
+.apg-pop-tab[aria-selected='true'] {
+  color: var(--apg-ink);
+  font-weight: 600;
+}
+
+.apg-pop-tab[aria-selected='true'] svg,
+.apg-pop-tab[aria-selected='true'] .n {
+  opacity: 1;
+  color: var(--apg-primary-ink);
+}
+
+/* The section label under the tabs: it names what the rows below have in
+   common (one kind of model, one way of paying) and holds no control. */
+.apg-pop-label {
+  padding: 7px 8px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--apg-ink-3);
+}
+
+/* A rule carries the eye from the group name to the right edge; without it the
+   three groups read as one grid that happens to have headings in it. */
+.apg-enum-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--apg-ink-3);
+}
+
+.apg-enum-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--apg-line-soft);
+}
+
+.apg-enum-sec + .apg-enum-sec {
+  margin-top: 3px;
+}
+
 .apg-pop-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px 6px;
-  font-size: 10.5px;
-  font-weight: 550;
-  letter-spacing: 0.02em;
+  gap: 7px;
+  padding: 7px 8px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-3);
 }
 
 .apg-pop-body {
@@ -1047,16 +1696,71 @@ For commercial licensing, please contact support@quantumnous.com
   padding: 0 6px 6px;
 }
 
+/* Duration and resolution are two-to-three value choices that fit inline, so
+   they are a segment rather than a popover: one click instead of two for the
+   thing people change most on a video. */
+.apg-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--apg-ink) 5%, transparent);
+}
+
+.apg-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  min-width: 30px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--apg-ink-3);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.09s ease-out;
+}
+
+.apg-seg-btn:hover {
+  color: var(--apg-ink);
+}
+
+.apg-seg-btn[aria-pressed='true'] {
+  background: var(--apg-surface, var(--surface));
+  color: var(--apg-ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+.apg-seg-btn:active {
+  transform: scale(0.95);
+}
+
 .apg-pop-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
-  border-top: 1px solid
-    color-mix(in oklch, var(--foreground) 8%, transparent);
-  font-size: 10.5px;
-  color: var(--muted-foreground);
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--apg-line-soft);
+  font-size: 9.5px;
+  color: var(--apg-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.apg-pop-foot .r {
+  margin-left: auto;
+  text-align: right;
 }
 
 /* model rows */
@@ -1067,7 +1771,7 @@ For commercial licensing, please contact support@quantumnous.com
   width: 100%;
   padding: 7px 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -1079,7 +1783,42 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .apg-row[aria-selected='true'] {
-  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  background: color-mix(in oklch, var(--primary) 7%, transparent);
+}
+
+/* Weight, not a colour: the tick already marks the row, and a second colour in
+   the same row would leave nothing to say "this one is the current pick" the
+   next time the list grows. */
+.apg-row[aria-selected='true'] .apg-row-name {
+  font-weight: 560;
+}
+
+.apg-row[aria-selected='true']:hover {
+  background: color-mix(in oklch, var(--primary) 11%, transparent);
+}
+
+/* Provenance as a well, not a picture: a 20 px tinted square reads as an
+   author badge at a glance, where a 20 px logo reads as noise. The tint is what
+   separates two rows from different labs before either name is read. */
+.apg-mby {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 7px;
+  background: color-mix(
+    in oklch,
+    var(--apg-tint, var(--apg-ink-3)) 13%,
+    transparent
+  );
+  color: color-mix(in oklch, var(--apg-tint, var(--apg-ink-3)) 84%, var(--apg-ink));
+}
+
+.apg-mby svg {
+  width: 12px;
+  height: 12px;
 }
 
 .apg-row-main {
@@ -1090,20 +1829,70 @@ For commercial licensing, please contact support@quantumnous.com
   gap: 2px;
 }
 
-.apg-row-name {
+/* Name plus the one tag that adds information: the row's first line. */
+.apg-row-which {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-family: var(--font-mono, ui-monospace);
-  font-size: 11.5px;
-  color: var(--foreground);
+  gap: 6px;
+  min-width: 0;
+  /* Pinned, because `normal` is a property of the font, not of the design: the
+     console face resolves to 17 px here where the prototype's resolves to 15,
+     and five rows of two extra pixels is a list that scrolls when it should
+     not. */
+  line-height: 15px;
+}
+
+.apg-row-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Tabular digits, not a monospace face: the prototype's `.mono` is a column
+     alignment hint, and switching the family turns an id into code. */
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--apg-ink);
   letter-spacing: -0.01em;
 }
 
+/* A display name is a caption, not the subject: it truncates before the id it
+   belongs to, because the id is what the user came to read. */
+/* A model the operator tagged "new" gets the prototype's 9 px flag; it is
+   data (model tags), not a guess about what shipped last. */
+.apg-row-new {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--primary) 13%, transparent);
+  color: var(--apg-primary-ink);
+  font-size: 8.5px;
+  font-weight: 650;
+  line-height: 14px;
+  letter-spacing: 0.04em;
+}
+
+.apg-row-cap {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  font-weight: 450;
+  letter-spacing: 0.005em;
+  color: var(--apg-ink-3);
+}
+
+/* Two lines of facts, clamped: the list has to stay a list, and a row that
+   grows with its description pushes the next model below the fold. */
 .apg-row-desc {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: 10.5px;
-  line-height: 1.35;
-  color: var(--muted-foreground);
+  line-height: 1.45;
+  color: var(--apg-ink-3);
 }
 
 .apg-row-price {
@@ -1129,62 +1918,171 @@ For commercial licensing, please contact support@quantumnous.com
   flex: 0 0 auto;
   width: 13px;
   height: 13px;
-  margin-top: 2px;
-  color: var(--primary);
+  align-self: center;
+  margin: 0 0 0 2px;
+  color: var(--apg-primary-ink);
 }
 
-/* ratio tiles: a shape says "portrait" faster than the label does */
+/* The group list puts the tick in front, where the chosen row is scanned for
+   first; the trailing margin above would push it away from the name. */
+.apg-check-lead {
+  margin: 0 2px 0 0;
+}
+
+/* A tile is 46 px tall and holds a 22 px picture plus a label, because "21:9"
+   and "9:21" differ by one character and by everything else. */
 .apg-tiles {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 2px;
+  gap: 3px;
+  padding: 0 2px;
+}
+
+.apg-tiles-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .apg-tile {
   display: flex;
+  height: 46px;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 8px 4px 6px;
-  border: 0;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 2px;
+  border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--apg-ink-2);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition:
-    background-color 0.12s var(--apg-quick),
-    color 0.12s var(--apg-quick);
+    background-color 0.14s var(--apg-quick),
+    border-color 0.14s var(--apg-quick),
+    color 0.14s var(--apg-quick),
+    transform 0.09s ease-out;
 }
 
 .apg-tile:hover {
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--foreground);
+  background: color-mix(in oklch, var(--apg-ink) 6%, transparent);
 }
 
 .apg-tile[aria-pressed='true'] {
-  background: color-mix(in oklch, var(--primary) 11%, transparent);
-  color: var(--apiduo-ink, var(--primary));
+  border-color: color-mix(in oklch, var(--primary) 32%, transparent);
+  background: color-mix(in oklch, var(--primary) 9%, transparent);
+  color: var(--apg-ink);
+  font-weight: 560;
+}
+
+/* Unsupported is dimmed, never hidden: the shape space has to stay the same
+   size when the model changes, so the reader can see what was lost. */
+.apg-tile[aria-disabled='true'] {
+  opacity: 0.26;
+  cursor: not-allowed;
+}
+
+.apg-tile[aria-disabled='true']:hover {
+  background: transparent;
 }
 
 .apg-tile-box {
-  width: 22px;
+  display: flex;
   height: 22px;
-  display: grid;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
 }
 
 .apg-tile-box i {
   display: block;
   border: 1.5px solid currentColor;
   border-radius: 2px;
-  opacity: 0.85;
+  opacity: 0.7;
+}
+
+.apg-tile-box i.dash {
+  border-radius: 3px;
+  border-style: dashed;
+}
+
+.apg-tile[aria-pressed='true'] .apg-tile-box i {
+  opacity: 1;
+  color: var(--apg-primary-ink);
 }
 
 .apg-tile-label {
-  font-family: var(--font-mono, ui-monospace);
-  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+
+/* `auto` answers a different question than the rest, so it gets a row of its
+   own instead of a cell in the shape grid. */
+.apg-tile-auto {
+  height: auto;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 9px;
+}
+
+.apg-tile-auto .apg-tile-box {
+  width: 18px;
+}
+
+.apg-tile-auto .apg-tile-sub {
+  margin-left: auto;
+}
+
+.apg-tile-sub {
+  font-size: 9px;
+  font-weight: 450;
+  color: var(--apg-ink-3);
+}
+
+.apg-tile[aria-pressed='true'] .apg-tile-sub {
+  color: var(--apg-primary-ink);
+  opacity: 0.85;
+}
+
+/* A resolution tile carries a second line, so it is taller than a shape. */
+.apg-tiles-2 .apg-tile {
+  height: 52px;
+  gap: 2px;
+}
+
+/* Counts are numbers, not shapes: a 34 px cell is enough and it keeps four of
+   them on one line. */
+.apg-picks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  padding: 0 2px;
+}
+
+.apg-pick {
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--apg-ink-2);
+  font-size: 12px;
+  font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color 0.14s var(--apg-quick),
+    border-color 0.14s var(--apg-quick),
+    color 0.14s var(--apg-quick);
+}
+
+.apg-pick:hover {
+  background: color-mix(in oklch, var(--apg-ink) 6%, transparent);
+}
+
+.apg-pick[aria-pressed='true'] {
+  border-color: color-mix(in oklch, var(--primary) 32%, transparent);
+  background: color-mix(in oklch, var(--primary) 9%, transparent);
+  color: var(--apg-ink);
 }
 
 /* ───────── motion ───────── */
@@ -1290,8 +2188,15 @@ For commercial licensing, please contact support@quantumnous.com
   .apg {
     --col: 100%;
     --col-bar: 100%;
-    --stage-pad: 16px;
     --res-h: min(52vh, 420px);
+  }
+
+  /* A 232px chip plus three parameters does not fit a phone: the fixed width
+     is a desktop guarantee, and here the row wraps anyway. */
+  .apg-chip-model {
+    width: auto;
+    flex: 0 1 auto;
+    max-width: 56vw;
   }
 
   /* Three cards side by side would shrink the picture to a postage stamp, so
@@ -1315,11 +2220,49 @@ For commercial licensing, please contact support@quantumnous.com
   }
 
   .apg-composer {
-    padding: 0 10px 8px;
+    padding: 8px 10px 12px;
   }
 
+  /* The hint is the only line that spells out the mode and the keys; the
+     prototype keeps it at 10 px on a phone instead of dropping it. */
   .apg-hint {
+    font-size: 10px;
+  }
+
+  /* 46 px is a desktop guarantee; the prototype shrinks the tiles with the
+     viewport so two frames plus the counter still fit one row. */
+  .apg-ref,
+  .apg-ref-add {
+    width: 40px;
+    height: 40px;
+  }
+
+  .apg-bar,
+  .apg-bar-end {
+    gap: 6px;
+  }
+
+  .apg-seg-btn {
+    min-width: 26px;
+    padding: 0 5px;
+  }
+}
+
+/* The group suffix is a second selector inside a chip that already answers
+   "how much"; at 390 it is what pushes the toolbar onto a third line. */
+@media (max-width: 760px) {
+  .apg-price-grp {
     display: none;
+  }
+
+  .apg-chip {
+    max-width: 186px;
+  }
+}
+
+@media (max-width: 430px) {
+  .apg-chip {
+    max-width: 176px;
   }
 }
 

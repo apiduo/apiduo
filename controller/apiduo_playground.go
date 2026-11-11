@@ -70,6 +70,22 @@ func PlaygroundImage(c *gin.Context) {
 	Relay(c, types.RelayFormatOpenAIImage)
 }
 
+// PlaygroundImageEdit 走图像编辑 relay：multipart 与对外 /v1/images/edits
+// 一致，参考图由上游按模型能力裁决（双端点渠道透传文件流，Ark 风格单端点
+// 渠道由图像协议折叠成 generations JSON）。
+//
+// 🔴 请求体必须保持 multipart 原样转发给 Relay，不能像 generations 那样
+// 当 JSON 读——文件流只存在于原始 body 里，读过一次再重放就没了。
+// relay_mode 显式给的原因同 PlaygroundImage。
+func PlaygroundImageEdit(c *gin.Context) {
+	c.Set("relay_mode", relayconstant.RelayModeImagesEdits)
+	if newAPIError := setupPlaygroundRelay(c, types.RelayFormatOpenAIImage); newAPIError != nil {
+		respondPlaygroundError(c, newAPIError)
+		return
+	}
+	Relay(c, types.RelayFormatOpenAIImage)
+}
+
 // PlaygroundVideo 走异步任务链路：返回任务 id，前端再轮询 PlaygroundVideoFetch。
 func PlaygroundVideo(c *gin.Context) {
 	c.Set("relay_mode", relayconstant.RelayModeVideoSubmit)

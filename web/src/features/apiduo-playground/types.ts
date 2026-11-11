@@ -55,4 +55,8 @@ export interface VideoTask {
   quota: number
   requestId: string
   durationSeconds: number
+  /** 提交时的尺寸。卡片要显示这一次的值，不能跟着当前 composer 变。 */
+  resolution: string
+  /** 0 = 文生视频，1 = 图生视频，2 = 首尾帧。 */
+  frameCount?: number
 }

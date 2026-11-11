@@ -46,6 +46,8 @@ function model(overrides: Partial<PricingModel> = {}): PricingModel {
     cacheRatio: 0.5,
     enableGroups: ['default', 'vip'],
     endpointTypes: ['openai'],
+    description: '',
+    tags: [],
     ...overrides,
   }
 }

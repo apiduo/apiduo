@@ -21,8 +21,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   applyChatCompletionResponse,
   applyStreamingChunk,
-  buildChatCompletionPayload,
   completeAssistantMessage,
+  getMessageContent,
   hasChatCompletionChoice,
   isAssistantMessageFinal,
   parseRequestErrorDetails,
@@ -38,6 +38,7 @@ import { handleServerError } from '@/lib/handle-server-error'
 
 import type { ChatUsageTokens } from '../billing/types'
 import { parseUsage } from '../billing/usage'
+import { buildChatPayload, type ChatImages } from './payload'
 import { fetchChatCompletion, streamChatCompletion } from './stream-client'
 
 /** 一次请求结束时的结算输入；usage 为空表示只能估算 */
@@ -54,8 +55,42 @@ export interface RequestOutcome {
 interface UseChatHandlerOptions {
   config: PlaygroundConfig
   parameterEnabled: ParameterEnabled
+  /** 只把这个 token 预算内的历史发出去；不传就整段发。 */
+  contextTokens?: number
   onMessageUpdate: (updater: (prev: Message[]) => Message[]) => void
   onFinish: (outcome: RequestOutcome) => void
+}
+
+/**
+ * Tokens cannot be counted exactly in the browser, but the two scripts differ
+ * enough to estimate: a CJK character is about one token, a Latin character
+ * about a quarter. That is accurate enough to decide which old turns to drop,
+ * and it costs one pass over the text.
+ */
+export function estimateTokens(text: string): number {
+  let ascii = 0
+  let wide = 0
+  for (const char of text) {
+    if ((char.codePointAt(0) ?? 0) < 128) ascii += 1
+    else wide += 1
+  }
+  return Math.ceil(ascii / 4) + wide
+}
+
+/** Keep the newest turns that fit; the last one always stays, since sending an
+ *  empty prompt would fail in a way the user cannot see. */
+export function trimToContext(messages: Message[], limit?: number): Message[] {
+  if (!limit || messages.length === 0) return messages
+  const kept: Message[] = []
+  let used = 0
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    const cost = estimateTokens(getMessageContent(message))
+    if (kept.length > 0 && used + cost > limit) break
+    kept.unshift(message)
+    used += cost
+  }
+  return kept
 }
 
 const STREAM_UPDATE_FLUSH_MS = 50
@@ -74,6 +109,7 @@ function mergePendingChunk(current: string, next: string): string {
 export function useChatHandler({
   config,
   parameterEnabled,
+  contextTokens,
   onMessageUpdate,
   onFinish,
 }: UseChatHandlerOptions) {
@@ -178,7 +214,7 @@ export function useChatHandler({
   )
 
   const sendChat = useCallback(
-    (messages: Message[]) => {
+    (messages: Message[], images: ChatImages = {}) => {
       const generation = generationRef.current + 1
       generationRef.current = generation
       abortRef.current?.abort()
@@ -188,10 +224,11 @@ export function useChatHandler({
       const controller = new AbortController()
       abortRef.current = controller
 
-      const payload = buildChatCompletionPayload(
-        messages,
+      const payload = buildChatPayload(
+        trimToContext(messages, contextTokens),
         config,
-        parameterEnabled
+        parameterEnabled,
+        images
       )
 
       const now = Date.now()
@@ -327,6 +364,7 @@ export function useChatHandler({
     [
       config,
       parameterEnabled,
+      contextTokens,
       discardPending,
       scheduleFlush,
       flush,

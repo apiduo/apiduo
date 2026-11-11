@@ -24,23 +24,14 @@ import { toast } from 'sonner'
 import { usePlaygroundOptions } from '@/features/playground/hooks/use-playground-options'
 import { usePlaygroundState } from '@/features/playground/hooks/use-playground-state'
 import type { ModelOption } from '@/features/playground/types'
-import { cn } from '@/lib/utils'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
-import { ModeTabs } from './components/mode-tabs'
-import { PriceStrip, SpendBadge } from './components/price-strip'
+import { SpendBadge } from './components/price-strip'
 import { RequestDrawer } from './components/request-drawer'
 import { ChatWorkspace } from './chat/chat-workspace'
 import { ImageStage } from './v2/image-stage'
 import { useBillingLedger } from './hooks/use-billing-ledger'
 import { useApiduoSpring } from './hooks/use-motion'
-import { buildOfficialCurl } from './lib/official-curl'
+import { buildRequestCurl, type RequestMeta } from './lib/request-meta'
 import './styles/fluid.css'
 import './styles/motion.css'
 import { VideoWorkspace } from './video/video-workspace'
@@ -86,6 +77,7 @@ export function ApiduoPlayground() {
     null
   )
   const [drawerKey, setDrawerKey] = useState<string | null>(null)
+  const [drawerMeta, setDrawerMeta] = useState<RequestMeta | null>(null)
 
   const {
     config,
@@ -117,6 +109,18 @@ export function ApiduoPlayground() {
     [models, ledger.pricing, mode]
   )
 
+  /* The tab bar states how many models each workspace holds. Counting all
+     three every render is three filters over a list that is already in memory,
+     and it keeps the number honest while a channel is being edited. */
+  const modeCounts = useMemo(
+    () => ({
+      chat: filterModels(models, ledger.pricing, 'chat').length,
+      image: filterModels(models, ledger.pricing, 'image').length,
+      video: filterModels(models, ledger.pricing, 'video').length,
+    }),
+    [models, ledger.pricing]
+  )
+
   // 切模式后如果当前模型不在该模式的可选范围内，自动落到第一个可用模型
   useEffect(() => {
     if (visibleModels.length === 0) return
@@ -142,18 +146,18 @@ export function ApiduoPlayground() {
     setExpandedBillingKey((current) => (current === key ? null : key))
   }, [])
 
-  const handleOpenRequest = useCallback((key: string) => {
+  const handleOpenRequest = useCallback((key: string, meta?: RequestMeta) => {
     setDrawerKey(key)
+    setDrawerMeta(meta ?? null)
   }, [])
 
   const handleCopyCurl = useCallback(
-    (key: string) => {
-      void key
+    (_key: string, meta?: RequestMeta) => {
       const origin =
         typeof window === 'undefined'
           ? 'https://apiduo.cn'
           : window.location.origin
-      const { curl } = buildOfficialCurl(mode, config.model, origin)
+      const { curl } = buildRequestCurl(meta, mode, config.model, origin)
       void navigator.clipboard
         .writeText(curl)
         .then(
@@ -168,52 +172,13 @@ export function ApiduoPlayground() {
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
       <header className='border-border/60 flex flex-wrap items-center gap-2 border-b px-4 py-2'>
-        <ModeTabs onChange={handleModeChange} value={mode} />
-
         {/*
-          In image mode the composer owns the model: the picker sits where the
-          parameters are, and a second dropdown in the header would let the two
-          disagree for a frame. Chat and video keep the header pair until they
-          get the same treatment.
+          The header no longer repeats any of the three choices. Each workspace
+          states them where they are used: image on its chips, chat and video in
+          their own composers. The mode switch is the one thing no composer
+          owns yet, so it stays here — right-aligned next to the session spend,
+          out of the corner where three chips used to sit.
         */}
-        {mode === 'image' ? null : (
-          <Select
-            onValueChange={(value) => {
-              if (value !== null) updateConfig('model', value)
-            }}
-            value={config.model}
-          >
-            <SelectTrigger className='h-7 w-[190px] font-mono text-[11.5px]'>
-              <SelectValue placeholder={t('Select a model')} />
-            </SelectTrigger>
-            <SelectContent>
-              {visibleModels.map((model) => (
-                <SelectItem key={model.value} value={model.value}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        <Select
-          onValueChange={(value) => {
-            if (value !== null) updateConfig('group', value)
-          }}
-          value={config.group}
-        >
-          <SelectTrigger className='h-7 w-[118px] font-mono text-[11.5px]'>
-            <SelectValue placeholder={t('Group')} />
-          </SelectTrigger>
-          <SelectContent>
-            {groups.map((group) => (
-              <SelectItem key={group.value} value={group.value}>
-                {group.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
         <SpendBadge
           className='ml-auto'
           count={ledger.totals.count}
@@ -222,16 +187,8 @@ export function ApiduoPlayground() {
         />
       </header>
 
-      {mode === 'image' ? null : (
-        <div className={cn('px-4 pt-1.5 pb-1')}>
-          <PriceStrip
-            group={config.group}
-            mode={mode}
-            model={config.model}
-            pricing={ledger.pricing}
-          />
-        </div>
-      )}
+      {/* The price lives on the composer's price chip in every mode now, so the
+          strip that used to repeat it above the workspace is gone. */}
 
       {/*
         One motion.div keyed by mode, not three siblings that get swapped. The
@@ -256,8 +213,11 @@ export function ApiduoPlayground() {
             isLoadingModels={isLoadingModels}
             ledger={ledger}
             messages={messages}
+            mode={mode}
+            modeCounts={modeCounts}
             models={visibleModels}
             onCopyCurl={handleCopyCurl}
+            onModeChange={handleModeChange}
             onOpenRequest={handleOpenRequest}
             onToggleBilling={handleToggleBilling}
             parameterEnabled={parameterEnabled}
@@ -272,9 +232,14 @@ export function ApiduoPlayground() {
             expandedBillingKey={expandedBillingKey}
             group={config.group}
             ledger={ledger}
+            groups={groups}
+            mode={mode}
+            modeCounts={modeCounts}
             model={config.model}
             models={visibleModels}
             onCopyCurl={handleCopyCurl}
+            onGroupChange={(value) => updateConfig('group', value)}
+            onModeChange={handleModeChange}
             onModelChange={(value) => updateConfig('model', value)}
             onOpenRequest={handleOpenRequest}
             onToggleBilling={handleToggleBilling}
@@ -285,8 +250,15 @@ export function ApiduoPlayground() {
           <VideoWorkspace
             expandedBillingKey={expandedBillingKey}
             group={config.group}
+            groups={groups}
             ledger={ledger}
             model={config.model}
+            mode={mode}
+            modeCounts={modeCounts}
+            models={visibleModels}
+            onGroupChange={(value) => updateConfig('group', value)}
+            onModeChange={handleModeChange}
+            onModelChange={(value) => updateConfig('model', value)}
             onCopyCurl={handleCopyCurl}
             onOpenRequest={handleOpenRequest}
             onToggleBilling={handleToggleBilling}
@@ -297,10 +269,14 @@ export function ApiduoPlayground() {
       <RequestDrawer
         billing={drawerKey ? (ledger.billingByKey[drawerKey] ?? null) : null}
         group={config.group}
+        meta={drawerMeta}
         mode={mode}
         modelName={config.model}
         onOpenChange={(open) => {
-          if (!open) setDrawerKey(null)
+          if (!open) {
+            setDrawerKey(null)
+            setDrawerMeta(null)
+          }
         }}
         open={drawerKey !== null}
       />

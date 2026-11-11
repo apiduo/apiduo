@@ -70,6 +70,7 @@ func SetRelayRouter(router *gin.Engine) {
 		// APIDUO:playground-modality:BEGIN
 		// 同一套会话鉴权下的多模态入口：路径与对外 /v1 保持一致，只换成 /pg 前缀
 		playgroundRouter.POST("/images/generations", controller.PlaygroundImage)
+		playgroundRouter.POST("/images/edits", controller.PlaygroundImageEdit)
 		playgroundRouter.POST("/video/generations", controller.PlaygroundVideo)
 		// APIDUO:playground-modality:END
 	}

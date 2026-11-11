@@ -34,6 +34,10 @@ export interface PricingModel {
   enableGroups: string[]
   /** 该模型支持的端点类型，用来把生图/生视频模型筛到对应工作区 */
   endpointTypes: string[]
+  /** 模型管理里填的一句话介绍；空串表示运营没写 */
+  description: string
+  /** 模型管理里打的标签（已小写）。运营可以用它标 NEW。 */
+  tags: string[]
 }
 
 export interface PricingSnapshot {

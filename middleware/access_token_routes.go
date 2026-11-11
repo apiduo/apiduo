@@ -334,6 +334,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// panel calls /pg/chat/completions: from the browser, with the session
 	// cookie. A relay key must not be able to drive them.
 	"POST /pg/images/generations":        accessTokenSessionRule,
+	"POST /pg/images/edits":              accessTokenSessionRule,
 	"POST /pg/video/generations":         accessTokenSessionRule,
 	"GET /pg/video/generations/:task_id": accessTokenSessionRule,
 	// APIDUO:playground:END

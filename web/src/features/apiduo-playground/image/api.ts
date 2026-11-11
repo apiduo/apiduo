@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { postJson } from '../lib/request'
+import { postForm, postJson } from '../lib/request'
 import type { ImageGenerationResultItem } from '../types'
 
 const IMAGE_ENDPOINT = '/pg/images/generations'
+const IMAGE_EDIT_ENDPOINT = '/pg/images/edits'
 
 export const IMAGE_SIZES = [
   '1024x1024',
@@ -55,6 +56,53 @@ function toDataUrl(base64: string): string {
   return base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`
 }
 
+export interface ImageEditRequestOptions extends ImageRequestOptions {
+  /** 参考图文件；1 张走 `image`，多张走 `image[]`（与 OpenAI 一致） */
+  files: File[]
+}
+
+/**
+ * 参考图走编辑入口：multipart 与对外 /v1/images/edits 同构。响应形状与
+ * generations 相同，所以解析复用同一段。
+ */
+export async function editImages(
+  options: ImageEditRequestOptions
+): Promise<ImageApiResult> {
+  const form = new FormData()
+  form.append('model', options.model)
+  form.append('prompt', options.prompt)
+  form.append('n', String(options.n))
+  if (options.size) form.append('size', options.size)
+  if (options.quality) form.append('quality', options.quality)
+  const field = options.files.length > 1 ? 'image[]' : 'image'
+  for (const file of options.files) form.append(field, file, file.name)
+
+  const { data, requestId, error } = await postForm<ImageApiResponse>(
+    IMAGE_EDIT_ENDPOINT,
+    form
+  )
+  if (error || !data) {
+    return { items: [], requestId, error: error ?? 'Request failed' }
+  }
+  return { items: parseImageItems(data), requestId }
+}
+
+function parseImageItems(data: ImageApiResponse): ImageGenerationResultItem[] {
+  const items: ImageGenerationResultItem[] = []
+  for (const item of data.data ?? []) {
+    // 优先 url：b64 在部分渠道会被截断，url 更省内存
+    if (item.url) {
+      items.push({ url: item.url, revisedPrompt: item.revised_prompt })
+    } else if (item.b64_json) {
+      items.push({
+        url: toDataUrl(item.b64_json),
+        revisedPrompt: item.revised_prompt,
+      })
+    }
+  }
+  return items
+}
+
 export async function generateImages(
   options: ImageRequestOptions
 ): Promise<ImageApiResult> {
@@ -76,18 +124,5 @@ export async function generateImages(
     return { items: [], requestId, error: error ?? 'Request failed' }
   }
 
-  const items: ImageGenerationResultItem[] = []
-  for (const item of data.data ?? []) {
-    // 优先 url：b64 在部分渠道会被截断，url 更省内存
-    if (item.url) {
-      items.push({ url: item.url, revisedPrompt: item.revised_prompt })
-    } else if (item.b64_json) {
-      items.push({
-        url: toDataUrl(item.b64_json),
-        revisedPrompt: item.revised_prompt,
-      })
-    }
-  }
-
-  return { items, requestId }
+  return { items: parseImageItems(data), requestId }
 }

@@ -26,11 +26,12 @@ import {
 } from '@/components/ai-elements/conversation'
 import { Loader } from '@/components/ai-elements/loader'
 import { Message } from '@/components/ai-elements/message'
+import { ChatEmptyStage } from './chat-empty-stage'
 
-import { PlaygroundEmptyState } from '@/features/playground/components/chat/playground-empty-state'
 import { MessageActions } from '@/features/playground/components/message/message-actions'
 import { MessageErrorActions } from '@/features/playground/components/message/message-error-actions'
 import { PlaygroundMessageContent } from '@/features/playground/components/message/playground-message-content'
+import type { RequestMeta } from '../lib/request-meta'
 import { PlaygroundMessageEditor } from '@/features/playground/components/message/playground-message-editor'
 import {
   getChatMessageRenderState,
@@ -53,10 +54,12 @@ const MAX_RENDERED_HISTORY_MESSAGES = 24
 interface ChatThreadProps {
   messages: MessageType[]
   billingByKey: Record<string, MessageBilling>
+  /** 用户消息附带的图片（data URL），按消息 key 索引。 */
+  imagesByKey?: Record<string, Array<{ id: string; url: string }>>
   expandedBillingKey: string | null
   onToggleBilling: (key: string) => void
-  onOpenRequest: (key: string) => void
-  onCopyCurl: (key: string) => void
+  onOpenRequest: (key: string, meta?: RequestMeta) => void
+  onCopyCurl: (key: string, meta?: RequestMeta) => void
   modelName: string
   vendor?: string
   onCopyMessage?: (message: MessageType) => void
@@ -76,6 +79,7 @@ interface ChatThreadProps {
 export function ChatThread({
   messages,
   billingByKey,
+  imagesByKey = {},
   expandedBillingKey,
   onToggleBilling,
   onOpenRequest,
@@ -137,6 +141,16 @@ export function ChatThread({
     const previousUserMessage = isError
       ? getPreviousUserMessage(messages, messageIndex)
       : null
+    /* The drawer and the copied cURL quote this turn: the user's own words,
+       the model that answered, and how many pictures rode along. */
+    const requestMeta = (): RequestMeta => {
+      const ask = getPreviousUserMessage(messages, messageIndex)
+      return {
+        prompt: ask?.versions[0]?.content ?? content,
+        model: modelName,
+        refs: ask ? (imagesByKey[ask.key]?.length ?? 0) : 0,
+      }
+    }
     const alignment = getMessageAlignment(message, messageLayoutMode)
     const isSourceVisible = sourceMessageKeys.has(message.key)
     const billing = billingByKey[message.key]
@@ -160,6 +174,26 @@ export function ChatThread({
               originalText={originalText}
             />
           ) : (
+            <>
+              {imagesByKey[message.key]?.length ? (
+                <div
+                  className={`apg-msg-images${
+                    alignment === 'right' ? ' right' : ''
+                  }`}
+                >
+                  {imagesByKey[message.key].map((image) => (
+                    <a
+                      className='apg-msg-image'
+                      href={image.url}
+                      key={image.id}
+                      rel='noreferrer'
+                      target='_blank'
+                    >
+                      <img alt='' src={image.url} />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
             <PlaygroundMessageContent
               alignment={alignment}
               actions={
@@ -191,8 +225,8 @@ export function ChatThread({
                   <BillPanelSlot
                     billing={billing}
                     modelName={modelName}
-                    onCopyCurl={() => onCopyCurl(message.key)}
-                    onOpenRequest={() => onOpenRequest(message.key)}
+                    onCopyCurl={() => onCopyCurl(message.key, requestMeta())}
+                    onOpenRequest={() => onOpenRequest(message.key, requestMeta())}
                     open={billingExpanded}
                     vendor={vendor}
                   />
@@ -224,6 +258,7 @@ export function ChatThread({
               message={message}
               versionContent={content}
             />
+            </>
           )}
           {/*
             放在 PlaygroundMessageContent 外面：首 token 还没到的时候，
@@ -239,7 +274,7 @@ export function ChatThread({
 
   if (visibleMessages.length === 0 && onSelectPrompt) {
     chatContent = [
-      <PlaygroundEmptyState key='empty' onSelectPrompt={onSelectPrompt} />,
+      <ChatEmptyStage key='empty' />,
     ]
   }
 

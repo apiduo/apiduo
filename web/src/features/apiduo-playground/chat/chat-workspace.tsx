@@ -16,11 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 
-import { PlaygroundInput } from '@/features/playground/components/input/playground-input'
 import { usePlaygroundConversation } from '@/features/playground/hooks/use-playground-conversation'
-import type { MessageStateUpdater } from '@/features/playground/lib'
+import {
+  createLoadingAssistantMessage,
+  createUserMessage,
+  type MessageStateUpdater,
+} from '@/features/playground/lib'
 import type {
   Message,
   ParameterEnabled,
@@ -31,8 +36,23 @@ import {
   estimateTokens,
   type BillingLedger,
 } from '../hooks/use-billing-ledger'
+import { compressImage } from '../lib/compress-image'
+import type { RequestMeta } from '../lib/request-meta'
+import type { PlaygroundMode } from '../types'
+import { Composer } from '../v2/composer'
+import type { RefImage } from '../v2/types'
+import { formatCurrencyFromUSD } from '@/lib/currency'
+
+import { findModel, resolveGroupRatio } from '../billing/pricing'
 import { ChatThread } from './chat-thread'
 import { useChatHandler, type RequestOutcome } from './use-chat-handler'
+
+const CHAT_TEMPERATURES = [0.2, 0.7, 1.0] as const
+/* How much history goes on the wire, in tokens. A long thread otherwise runs
+   into the model's window with no warning and the request fails outright. */
+const CHAT_CONTEXTS = [2048, 8192, 32768] as const
+/* 原型给聊天模型 4–8 张；我们统一 4 张，单张压到 768px JPEG 后再发送。 */
+const CHAT_REF_LIMIT = 4
 
 interface ChatWorkspaceProps {
   config: PlaygroundConfig
@@ -49,9 +69,12 @@ interface ChatWorkspaceProps {
   ) => void
   updateParameterEnabled: (key: keyof ParameterEnabled, value: boolean) => void
   clearMessages: () => void
+  mode: PlaygroundMode
+  modeCounts: Record<PlaygroundMode, number>
+  onModeChange: (mode: PlaygroundMode) => void
   ledger: BillingLedger
-  onOpenRequest: (messageKey: string) => void
-  onCopyCurl: (messageKey: string) => void
+  onOpenRequest: (messageKey: string, meta?: RequestMeta) => void
+  onCopyCurl: (messageKey: string, meta?: RequestMeta) => void
   expandedBillingKey: string | null
   onToggleBilling: (messageKey: string) => void
 }
@@ -63,17 +86,62 @@ export function ChatWorkspace({
   isLoadingMessages,
   models,
   groups,
-  isLoadingModels,
   updateMessages,
   updateConfig,
   updateParameterEnabled,
   clearMessages,
+  mode,
+  modeCounts,
+  onModeChange,
   ledger,
   onOpenRequest,
   onCopyCurl,
   expandedBillingKey,
   onToggleBilling,
 }: ChatWorkspaceProps) {
+  const { t } = useTranslation()
+  const [prompt, setPrompt] = useState('')
+
+  /* Same arithmetic the price strip uses: model ratio 1 = $2 per million
+     input tokens, output = input × completionRatio, both after the group
+     discount. Takes a model id so the picker can quote every row, not just
+     the selected one. */
+  const priceOf = useCallback(
+    (target: string) => {
+      const info = findModel(ledger.pricing, target)
+      if (!info) return ''
+      const { effective } = resolveGroupRatio(
+        ledger.pricing,
+        config.group,
+        target
+      )
+      const unit = info.quotaType === 1 ? info.modelPrice : info.modelRatio * 2
+      const input = unit * effective
+      const output = input * (info.completionRatio || 1)
+      const fmt = (usd: number) =>
+        formatCurrencyFromUSD(usd, {
+          digitsLarge: 2,
+          digitsSmall: 4,
+          abbreviate: false,
+        })
+      return `${t('In')} ${fmt(input)} · ${t('Out')} ${fmt(output)}`
+    },
+    [config.group, ledger.pricing, t]
+  )
+  const priceLabel = useMemo(
+    () => priceOf(config.model),
+    [priceOf, config.model]
+  )
+  const isNew = useCallback(
+    (target: string) =>
+      (findModel(ledger.pricing, target)?.tags ?? []).includes('new'),
+    [ledger.pricing]
+  )
+  /* 运营在模型管理里写的一句话，列表第二行就是它；没写才回落到能力事实。 */
+  const descOf = useCallback(
+    (target: string) => findModel(ledger.pricing, target)?.description || null,
+    [ledger.pricing]
+  )
   const pendingOutcomeRef = useRef<RequestOutcome | null>(null)
   // 停止时消息内容可能没变（引用相同），messages 不会触发 effect；
   // 用递增计数强制跑一次结算，否则会偶发「停止后没有金额」。
@@ -84,12 +152,64 @@ export function ChatWorkspace({
     setSettleTick((tick) => tick + 1)
   }, [])
 
+  const [contextTokens, setContextTokens] = useState<number>(CHAT_CONTEXTS[1])
+  const [refs, setRefs] = useState<RefImage[]>([])
+  /* Images live beside the messages, keyed by message key: the persisted
+     message schema has no slot for base64, and a few pictures would blow the
+     localStorage quota. The map is what both the request and the bubble read. */
+  const [imagesByKey, setImagesByKey] = useState<
+    Record<string, Array<{ id: string; url: string }>>
+  >({})
+  const imagesByKeyRef = useRef(imagesByKey)
+  imagesByKeyRef.current = imagesByKey
+  const liveRefs = useRef(refs)
+  liveRefs.current = refs
+
+  const addRefFiles = useCallback((files: File[]) => {
+    const images = files.filter((file) => file.type.startsWith('image/'))
+    if (images.length === 0) return
+    setRefs((prev) => {
+      const room = Math.max(0, CHAT_REF_LIMIT - prev.length)
+      return [
+        ...prev,
+        ...images.slice(0, room).map((file) => ({
+          id: `chat-ref-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          file,
+          url: URL.createObjectURL(file),
+        })),
+      ]
+    })
+  }, [])
+
+  const removeRef = useCallback((id: string) => {
+    const target = liveRefs.current.find((item) => item.id === id)
+    if (target) URL.revokeObjectURL(target.url)
+    setRefs((prev) => prev.filter((item) => item.id !== id))
+  }, [])
+
+  useEffect(
+    () => () => {
+      for (const item of liveRefs.current) URL.revokeObjectURL(item.url)
+    },
+    []
+  )
+
+
   const { sendChat, stopGeneration, isGenerating: isRequesting } = useChatHandler({
     config,
     parameterEnabled,
+    contextTokens,
     onMessageUpdate: updateMessages,
     onFinish: handleFinish,
   })
+
+  /* Every send path — send, regenerate, edit-and-resend — goes through this
+     wrapper, so an image attached three turns ago still travels with the
+     history the model is asked to read. */
+  const sendChatWithImages = useCallback(
+    (next: Message[]) => sendChat(next, imagesByKeyRef.current),
+    [sendChat]
+  )
 
   const {
     editingMessageKey,
@@ -102,8 +222,41 @@ export function ChatWorkspace({
   } = usePlaygroundConversation({
     messages,
     updateMessages,
-    sendChat,
+    sendChat: sendChatWithImages,
   })
+
+  /* A turn with pictures needs its own message pair: the shared helper only
+     appends text, and the images are keyed by the user message's id. */
+  const sendWithAttachments = useCallback(
+    async (text: string, files: File[]) => {
+      try {
+        const urls = await Promise.all(files.map((file) => compressImage(file)))
+        const startedAt = Date.now()
+        const userMessage = createUserMessage(text, startedAt)
+        const next = [
+          ...messages,
+          userMessage,
+          createLoadingAssistantMessage(startedAt),
+        ]
+        const map = {
+          ...imagesByKeyRef.current,
+          [userMessage.key]: urls.map((url, index) => ({
+            id: `${userMessage.key}-img-${index}`,
+            url,
+          })),
+        }
+        imagesByKeyRef.current = map
+        setImagesByKey(map)
+        updateMessages(next)
+        sendChat(next, map)
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : t('Attachment failed')
+        )
+      }
+    },
+    [messages, sendChat, t, updateMessages]
+  )
 
   // 请求结束到消息落库之间隔一次 render，用 effect 取最后一条的 key 再结算
   useEffect(() => {
@@ -147,10 +300,11 @@ export function ChatWorkspace({
   }
 
   return (
-    <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
+    <div className='apg relative flex size-full min-h-0 flex-col overflow-hidden'>
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
         <ChatThread
           billingByKey={ledger.billingByKey}
+          imagesByKey={imagesByKey}
           editingKey={editingMessageKey}
           expandedBillingKey={expandedBillingKey}
           isGenerating={isRequesting}
@@ -170,27 +324,74 @@ export function ChatWorkspace({
         />
       </div>
 
-      <div className='mx-auto w-full max-w-4xl'>
-        <PlaygroundInput
-          config={config}
-          disabled={isRequesting}
-          groupValue={config.group}
-          groups={groups}
-          hasMessages={messages.length > 0}
-          isGenerating={isRequesting}
-          isModelLoading={isLoadingModels}
-          models={models}
-          modelValue={config.model}
-          onClearMessages={handleClear}
-          onConfigChange={updateConfig}
-          onGroupChange={(value) => updateConfig('group', value)}
-          onModelChange={(value) => updateConfig('model', value)}
-          onParameterEnabledChange={updateParameterEnabled}
-          onStop={stopGeneration}
-          onSubmit={send}
-          parameterEnabled={parameterEnabled}
-        />
-      </div>
+      {/* One composer for the page: chat keeps the same shell as image and
+          video, so the three modes read as one surface rather than three. */}
+      <Composer
+        busy={isRequesting}
+        cap={1}
+        count={1}
+        descOf={descOf}
+        isNew={isNew}
+        group={config.group}
+        groups={groups}
+        hasResults={messages.length > 0}
+        mode={mode}
+        modeCounts={modeCounts}
+        model={config.model}
+        models={models}
+        priceApprox={false}
+        priceLabel={priceLabel}
+        priceUnit={t('M tokens')}
+        temperature={config.temperature}
+        temperatures={CHAT_TEMPERATURES}
+        onTemperatureChange={(value) => {
+          updateConfig('temperature', value)
+          // The chip is the only temperature control left on this page, so a
+          // value the payload drops would be a knob that reads but does not
+          // apply. A previously disabled flag re-arms on the first change.
+          if (!parameterEnabled.temperature) {
+            updateParameterEnabled('temperature', true)
+          }
+        }}
+        context={contextTokens}
+        contexts={CHAT_CONTEXTS}
+        onContextChange={setContextTokens}
+        allowRefs
+        onAddRefs={addRefFiles}
+        onClear={handleClear}
+        onCountChange={() => undefined}
+        onGroupChange={(value) => updateConfig('group', value)}
+        onModeChange={onModeChange}
+        onModelChange={(value) => updateConfig('model', value)}
+        onPromptChange={setPrompt}
+        onRatioChange={() => undefined}
+        onRemoveRef={removeRef}
+        onResolutionChange={() => undefined}
+        onStop={stopGeneration}
+        onSubmit={() => {
+          const text = prompt.trim()
+          if (!text) return
+          setPrompt('')
+          if (refs.length > 0) {
+            const files = refs.map((item) => item.file)
+            for (const item of refs) URL.revokeObjectURL(item.url)
+            setRefs([])
+            void sendWithAttachments(text, files)
+            return
+          }
+          send(text)
+        }}
+        placeholder={t('Ask anything…')}
+        priceOf={priceOf}
+        prompt={prompt}
+        ratio='1:1'
+        refCap={CHAT_REF_LIMIT}
+        refNote=''
+        refs={refs}
+        resolution='1024'
+        running={isRequesting ? 1 : 0}
+        totalOf={() => ''}
+      />
     </div>
   )
 }

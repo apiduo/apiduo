@@ -41,6 +41,18 @@ export interface StageRun {
   items: RunImage[]
   status: 'pending' | 'done' | 'error'
   error?: string
+  /** 这次请求带的参考图字节。只在内存里，重试时按它重放同一个请求。 */
+  refFiles?: File[]
+}
+
+/**
+ * 一张参考图。`url` 是 object URL，归 composer 渲染、归持有方撤销：
+ * 缩略图 46px 只是文件的预览，真正的字节始终在 `file` 里，提交时才进 multipart。
+ */
+export interface RefImage {
+  id: string
+  file: File
+  url: string
 }
 
 export type AmbientFamily = 'g0' | 'g1' | 'g2' | 'g3'

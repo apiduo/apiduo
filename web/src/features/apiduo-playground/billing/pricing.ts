@@ -34,6 +34,18 @@ function toNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(num) ? num : fallback
 }
 
+/** Tags arrive as a comma/semicolon separated string; lower-case them once so
+ *  every reader agrees on what "new" means. */
+function parseTags(raw: unknown): string[] {
+  let values: string[] = []
+  if (Array.isArray(raw)) {
+    values = raw.filter((item): item is string => typeof item === 'string')
+  } else if (typeof raw === 'string') {
+    values = raw.split(/[,;]/)
+  }
+  return values.map((item) => item.trim().toLowerCase()).filter(Boolean)
+}
+
 function parseModel(raw: Record<string, unknown>): PricingModel | null {
   const modelName = typeof raw.model_name === 'string' ? raw.model_name : ''
   if (!modelName) return null
@@ -57,6 +69,9 @@ function parseModel(raw: Record<string, unknown>): PricingModel | null {
     cacheRatio: toNumber(raw.cache_ratio, 1),
     enableGroups: groups,
     endpointTypes,
+    description:
+      typeof raw.description === 'string' ? raw.description.trim() : '',
+    tags: parseTags(raw.tags),
   }
 }
 

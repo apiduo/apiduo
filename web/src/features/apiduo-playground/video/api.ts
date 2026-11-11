@@ -34,6 +34,23 @@ export interface VideoRequestOptions {
   prompt: string
   duration: number
   resolution: string
+  /** 首帧/尾帧：data URL（上游只认 URL 或 Base64，data URL 就是后者）。 */
+  firstFrame?: string
+  lastFrame?: string
+}
+
+/** 浏览器里把文件读成 data URL：链路接受 Base64，不需要先上传。 */
+export function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () =>
+      resolve(String(reader.result ?? ''))
+    )
+    reader.addEventListener('error', () =>
+      reject(reader.error ?? new Error('read failed'))
+    )
+    reader.readAsDataURL(file)
+  })
 }
 
 export interface VideoTaskSnapshot {
@@ -135,6 +152,12 @@ function parseTask(raw: unknown, fallbackId = ''): VideoTaskSnapshot {
 export async function createVideoTask(
   options: VideoRequestOptions
 ): Promise<{ snapshot: VideoTaskSnapshot | null; error?: string }> {
+  /* 首尾帧走 metadata：方舟/海螺插件读的就是 `first_frame_image` /
+     `last_frame_image`（`plugins/tasks/hailuo/plugin.js` 的 v1 与 H3 两条路径都认）。 */
+  const metadata: Record<string, string> = {}
+  if (options.firstFrame) metadata.first_frame_image = options.firstFrame
+  if (options.lastFrame) metadata.last_frame_image = options.lastFrame
+
   const { data, requestId, error } = await postJson<Record<string, unknown>>(
     VIDEO_ENDPOINT,
     {
@@ -143,6 +166,7 @@ export async function createVideoTask(
       // 对齐 OpenAI video 规范：seconds 是字符串，size 是「宽x高」枚举
       seconds: String(options.duration),
       size: options.resolution,
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     }
   )
 

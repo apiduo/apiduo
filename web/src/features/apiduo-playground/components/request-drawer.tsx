@@ -28,13 +28,17 @@ import {
 
 import { formatQuota } from '../billing/quota'
 import type { MessageBilling } from '../hooks/use-billing-ledger'
-import { buildOfficialCurl } from '../lib/official-curl'
+import { buildRequestCurl, type RequestMeta } from '../lib/request-meta'
 import type { PlaygroundMode } from '../types'
 
-const PLAYGROUND_PATHS: Record<PlaygroundMode, string> = {
-  chat: '/pg/chat/completions',
-  image: '/pg/images/generations',
-  video: '/pg/video/generations',
+/* The playground route is the public one with the /pg prefix — except image
+   edits, which are a different route, not a different body. */
+function playgroundPath(mode: PlaygroundMode, refs: number): string {
+  if (mode === 'image') {
+    return refs > 0 ? '/pg/images/edits' : '/pg/images/generations'
+  }
+  if (mode === 'video') return '/pg/video/generations'
+  return '/pg/chat/completions'
 }
 
 const SETTLEMENT_LABELS: Record<string, string> = {
@@ -50,6 +54,8 @@ interface RequestDrawerProps {
   modelName: string
   group: string
   mode: PlaygroundMode
+  /** 这一笔运行实际发出的内容；刷新后为空，回落到示例。 */
+  meta?: RequestMeta | null
 }
 
 interface KvRowProps {
@@ -73,11 +79,12 @@ export function RequestDrawer({
   modelName,
   group,
   mode,
+  meta,
 }: RequestDrawerProps) {
   const { t } = useTranslation()
   const origin =
     typeof window === 'undefined' ? 'https://apiduo.cn' : window.location.origin
-  const official = buildOfficialCurl(mode, modelName, origin)
+  const official = buildRequestCurl(meta, mode, modelName, origin)
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -137,7 +144,7 @@ export function RequestDrawer({
               />
               <KvRow
                 label={t('Playground route')}
-                value={PLAYGROUND_PATHS[mode]}
+                value={playgroundPath(mode, meta?.refs ?? 0)}
               />
               <KvRow label={t('Public route')} value={official.path} />
               <KvRow

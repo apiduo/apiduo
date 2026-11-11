@@ -106,6 +106,13 @@ export interface ModelImageCapability {
   ratios: string[]
   resolutions: string[]
   maxCount: number
+  /**
+   * 参考图容量，0 = 该模型没有已知的编辑入口。与 ratios 同一哲学：只声明
+   * 有把握的家族，未知家族给 0（不显示入口），因为一个不收参考图的渠道
+   * 对 multipart 的回答是上游报错，而一个被静默丢弃参考图的渠道会假装
+   * 成功——后者才是不能给的。
+   */
+  maxRefs: number
 }
 
 const ALL_RATIOS = RATIOS.map((item) => item.id)
@@ -120,8 +127,11 @@ const FIXED: ReadonlyArray<{
   ratios: string[]
   resolutions?: string[]
   maxCount?: number
+  /** 编辑入口的参考图容量；缺省 0（不显示参考图入口） */
+  maxRefs?: number
 }> = [
   // DALL·E 3 takes exactly three shapes and one size, and n is always 1.
+  // It has no edits endpoint that takes a reference at all.
   {
     match: /dall-e-3/i,
     ratios: ['1:1', '3:2', '2:3'],
@@ -132,6 +142,16 @@ const FIXED: ReadonlyArray<{
     match: /gpt-image-1/i,
     ratios: ['1:1', '3:2', '2:3'],
     resolutions: ['1024'],
+    maxRefs: 16,
+  },
+  // DALL·E 2 is the one model whose edits endpoint takes exactly one square
+  // PNG — the original /v1/images/edits contract.
+  {
+    match: /dall-e-2/i,
+    ratios: ['1:1'],
+    resolutions: ['1024'],
+    maxCount: 1,
+    maxRefs: 1,
   },
   // SD 1.5/XL inherit the 1024-ish buckets their LoRAs were trained on.
   {
@@ -141,6 +161,17 @@ const FIXED: ReadonlyArray<{
   },
 ]
 
+/**
+ * 参考图容量按家族给，不按渠道给：同一家族的编辑契约是模型定的，不是渠道
+ * 定的。数字与各家文档对齐——gpt-image-1 十六张、FLUX 3 十张（与 MCP 注册表
+ * 的 max_ref_images 一致）、Seedream 十张（Ark 图生图上限）。没写进表里的
+ * 家族一律 0：宁缺入口，不给一个会被静默丢弃参考图的入口。
+ */
+const REF_LIMITS: ReadonlyArray<{ match: RegExp; max: number }> = [
+  { match: /(?:^|[/._-])flux(?:[/._-]|$)/i, max: 10 },
+  { match: /seedream/i, max: 10 },
+]
+
 export function capabilityFor(model: string): ModelImageCapability {
   const fixed = FIXED.find((entry) => entry.match.test(model))
   if (fixed) {
@@ -148,7 +179,17 @@ export function capabilityFor(model: string): ModelImageCapability {
       ratios: fixed.ratios,
       resolutions: fixed.resolutions ?? ['1024'],
       maxCount: fixed.maxCount ?? 4,
+      maxRefs: fixed.maxRefs ?? refLimitOf(model),
     }
   }
-  return { ratios: ALL_RATIOS, resolutions: ALL_RES, maxCount: 4 }
+  return {
+    ratios: ALL_RATIOS,
+    resolutions: ALL_RES,
+    maxCount: 4,
+    maxRefs: refLimitOf(model),
+  }
+}
+
+function refLimitOf(model: string): number {
+  return REF_LIMITS.find((entry) => entry.match.test(model))?.max ?? 0
 }
