@@ -19,6 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 
 /*
  * Motion for the MCP onboarding surface.
+ * fill-mode 一律 backwards 而不是 both：both 会在动画结束后永久保留关键帧里的
+ * transform/filter 值，哪怕值是 none，也会把元素钉死在自己的层叠上下文里，
+ * 下拉菜单的 z-index 就逃不出主卡片的层级。backwards 只覆盖 delay 期，
+ * 结束即回到元素自身样式，层叠立即恢复正常。
  *
  * Only structure lives here — timing, easing, transforms, keyframes. Colour and
  * type come from Tailwind classes so the page follows the console theme.
@@ -60,11 +64,11 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .apiduo-mcp-rise {
-  animation: apiduo-mcp-rise 0.6s var(--apiduo-swift) both;
+  animation: apiduo-mcp-rise 0.6s var(--apiduo-swift) backwards;
 }
 
 .apiduo-mcp-rise-soft {
-  animation: apiduo-mcp-rise-soft 0.72s var(--apiduo-swift) both;
+  animation: apiduo-mcp-rise-soft 0.72s var(--apiduo-swift) backwards;
 }
 
 /* 切客户端：每一行错峰浮现，28ms 一档。 */
@@ -82,7 +86,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .apiduo-mcp-stagger .apiduo-mcp-row {
-  animation: apiduo-mcp-row 0.46s var(--apiduo-swift) both;
+  animation: apiduo-mcp-row 0.46s var(--apiduo-swift) backwards;
   animation-delay: calc(var(--apiduo-row-index, 0) * 48ms);
 }
 
@@ -100,7 +104,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .apiduo-mcp-swap {
-  animation: apiduo-mcp-swap 0.42s var(--apiduo-swift) both;
+  animation: apiduo-mcp-swap 0.42s var(--apiduo-swift) backwards;
 }
 
 @keyframes apiduo-mcp-text {
@@ -115,7 +119,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .apiduo-mcp-text {
-  animation: apiduo-mcp-text 0.38s var(--apiduo-swift) both;
+  animation: apiduo-mcp-text 0.38s var(--apiduo-swift) backwards;
 }
 
 @keyframes apiduo-mcp-pop {
@@ -133,7 +137,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .apiduo-mcp-pop {
-  animation: apiduo-mcp-pop 0.46s var(--apiduo-pop) both;
+  animation: apiduo-mcp-pop 0.46s var(--apiduo-pop) backwards;
 }
 
 @keyframes apiduo-mcp-breathe {
@@ -250,7 +254,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* 首次进入时把「这里可以点」说一遍，之后不再重复。 */
 .apiduo-mcp-nudge .apiduo-mcp-chevron {
-  animation: apiduo-mcp-nudge 1.5s var(--apiduo-swift) 1.5s 1 both;
+  animation: apiduo-mcp-nudge 1.5s var(--apiduo-swift) 1.5s 1 backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
