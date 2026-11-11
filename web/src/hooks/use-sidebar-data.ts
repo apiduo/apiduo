@@ -27,6 +27,9 @@ import {
   LayoutDashboard,
   ListTodo,
   MessageSquare,
+  /* APIDUO:mcp-entry:BEGIN */
+  Plug,
+  /* APIDUO:mcp-entry:END */
   PlugZap,
   Radio,
   ServerCog,
@@ -88,6 +91,13 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             url: '/keys',
             icon: Key,
           },
+          /* APIDUO:mcp-entry:BEGIN */
+          {
+            title: t('MCP'),
+            url: '/connect',
+            icon: Plug,
+          },
+          /* APIDUO:mcp-entry:END */
           {
             title: t('Usage Logs'),
             url: '/usage-logs/common',

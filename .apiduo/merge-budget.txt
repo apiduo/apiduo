@@ -107,9 +107,18 @@
 #   controller/apiduo_image_async.go、model 的查找函数）里，不占上游预算。
 # 3248 → 3250：按惯例记 CI 值（本地 -cost 少 1 行）。
 files	114
-blocks	344
+blocks	346
 # 2026-11-11 轨迹图片外置（+3 行）：api-router.go 的 APIDUO:trace 块里多一条
 # 公开媒体路由。媒体 URL 写在 span 正文里、由 Langfuse 从另一个源加载，只能挂在
 # 公开路由上；路由注册没有第二个不占预算的落点。
-added	3250
+added	3260
 deleted	137
+
+# 2026-11-11 MCP 接入页落地（files 不变 / blocks +2 / added +10）：
+# - web/src/hooks/use-sidebar-data.ts 两个块：图标 import 与导航项。
+#   侧边栏条目只能登记在这张表里，没有第二个不占预算的落点 —— 与
+#   2026-11-10 设置页注册表那条同一类挂接点。
+# - 页面本体、客户端目录、令牌接口、动效、路由全部是新文件
+#   （web/src/features/apiduo-mcp/*、routes/_authenticated/mcp/index.tsx），
+#   不计入上游文件数，也不占 added。
+# - 文案进 web/src/i18n/apiduo/*.json，上游 locale 一个字节没动。

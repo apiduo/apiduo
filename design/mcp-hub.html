@@ -57,12 +57,18 @@
   h1{font-size:27px}
   .lead{margin:8px 0 0;color:var(--ink-2);font-size:14px}
 
-  /* 令牌：登录态自动关联，公开页降级手填 */
-  .tok{display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap;position:relative;z-index:20}
-  .tok label{font-size:12.5px;color:var(--muted);flex:0 0 auto}
+  /* 令牌行：挂在卡片底部，紧挨它影响的那几行 */
+  .trow{
+    position:relative;display:grid;grid-template-columns:16px 100px minmax(0,1fr) auto;
+    gap:8px;align-items:center;padding:7px 10px 8px 13px;
+    border-top:1px solid var(--line);background:#fcfcfd;border-radius:0 0 12px 12px;
+  }
+  .trow .fk{font-size:12.5px;color:var(--muted)}
+  .trow .tkin .i{display:none}
+  .trow .tkin input{padding-left:11px}
   .tw{position:relative;display:flex;align-items:center;min-width:0}
   .tsel{
-    display:inline-flex;align-items:center;gap:7px;max-width:100%;height:33px;
+    display:inline-flex;align-items:center;gap:7px;max-width:100%;height:30px;
     padding:0 8px 0 10px;border:1px solid var(--line-strong);border-radius:8px;background:#fff;
     transition:border-color .16s var(--ease),background .16s var(--ease),transform .14s var(--ease);
   }
@@ -123,7 +129,7 @@
   }
   .tkin input::placeholder{color:#b0b0bb}
   .tkin input:focus{border-color:#b9b9c4;box-shadow:0 0 0 3px var(--surface-2)}
-  .tok a{font-size:12px;flex:0 0 auto;color:var(--accent-ink)}
+  .trow a{font-size:12px;flex:0 0 auto;color:var(--accent-ink);white-space:nowrap}
 
   .pick{display:grid;grid-template-columns:34px minmax(0,1fr);gap:7px 6px;margin:20px 0 0;align-items:center}
   .pl{font-size:11px;color:var(--muted);text-align:right;letter-spacing:.02em}
@@ -141,10 +147,11 @@
 
   /* 表单卡片 */
   .panel{
-    margin-top:14px;border:1px solid var(--line);border-radius:13px;overflow:hidden;
+    position:relative;z-index:5;margin-top:14px;
+    border:1px solid var(--line);border-radius:13px;
     box-shadow:0 1px 2px rgba(20,20,25,.025),0 8px 24px -20px rgba(20,20,25,.18);
   }
-  .phead{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 15px;border-bottom:1px solid var(--line);background:#fcfcfd}
+  .phead{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 15px;border-bottom:1px solid var(--line);background:#fcfcfd;border-radius:12px 12px 0 0}
   .pico{
     width:22px;height:22px;border-radius:6px;flex:0 0 auto;
     display:inline-flex;align-items:center;justify-content:center;
@@ -260,6 +267,13 @@
       order:3;flex:1 0 100%;margin-left:30px;white-space:normal;overflow:visible;text-overflow:clip;
       font-size:11.5px;line-height:1.55;
     }
+    .trow{grid-template-columns:14px minmax(0,1fr) auto;gap:2px 9px;padding:9px 10px 10px 13px}
+    .trow .fi{grid-column:1;grid-row:1;margin-top:1px}
+    .trow .fk{grid-column:2 / 4;grid-row:1;font-size:11.5px;line-height:1.4}
+    .trow .tw,.trow .tkin{grid-column:2;grid-row:2;margin-top:1px}
+    .trow a{grid-column:3;grid-row:2;justify-self:end;align-self:center;margin:0}
+    .menu{top:auto;bottom:calc(100% + 6px);transform-origin:bottom left;transform:translateY(7px) scale(.965)}
+    .menu.in{transform:none}
     .frow{grid-template-columns:14px minmax(0,1fr) 34px;gap:1px 9px;padding:8px 8px 9px 13px}
     .fi{grid-column:1;grid-row:1;margin-top:1px}
     .fk{grid-column:2;font-size:11.5px;line-height:1.4}
@@ -271,16 +285,15 @@
   @keyframes rise{0%{opacity:0;transform:translateY(9px)}100%{opacity:1;transform:none}}
   main>*{animation:rise .6s var(--glide) both}
   @keyframes riseSoft{0%{opacity:0;transform:translateY(12px);filter:blur(3px)}100%{opacity:1;transform:none;filter:none}}
-  main>*:nth-child(1),main>*:nth-child(2),main>*:nth-child(5){animation-name:riseSoft;animation-duration:.72s}
+  main>*:nth-child(1),main>*:nth-child(2),main>*:nth-child(4){animation-name:riseSoft;animation-duration:.72s}
   main>*:nth-child(1){animation-delay:0ms}
-  main>*:nth-child(2){animation-delay:54ms}
-  main>*:nth-child(3){animation-delay:104ms}
-  main>*:nth-child(4){animation-delay:150ms}
-  main>*:nth-child(5){animation-delay:206ms}
-  main>*:nth-child(6){animation-delay:262ms}
+  main>*:nth-child(2){animation-delay:50ms}
+  main>*:nth-child(3){animation-delay:100ms}
+  main>*:nth-child(4){animation-delay:156ms}
+  main>*:nth-child(5){animation-delay:232ms}
+  main>*:nth-child(6){animation-delay:268ms}
   main>*:nth-child(7){animation-delay:300ms}
-  main>*:nth-child(8){animation-delay:334ms}
-  main>*:nth-child(9){animation-delay:364ms}
+  main>*:nth-child(8){animation-delay:330ms}
 
   @media (prefers-reduced-transparency:reduce){
     .menu{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}
@@ -309,27 +322,6 @@
   <h1>MCP 接入</h1>
   <p class="lead">选客户端，把下面几项填进它的 MCP 设置。要改配置文件的，展开最后一段 JSON。</p>
 
-  <div class="tok">
-    <label for="t-sel">令牌</label>
-
-    <div class="tw" id="t-wrap">
-      <button class="tsel" id="t-sel" aria-haspopup="listbox" aria-expanded="false">
-        <span class="edot" id="t-dot" aria-hidden="true"></span>
-        <span class="tname" id="t-name"></span>
-        <span class="tkey" id="t-key"></span>
-        <span class="ch" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></span>
-      </button>
-      <div class="menu" id="t-menu" role="listbox" hidden></div>
-    </div>
-
-    <div class="tkin" id="t-guest" style="display:none">
-      <span class="i" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.2" cy="12" r="3.4"/><path d="M11.6 12H21"/><path d="M17.6 12v3.1M20.2 12v2.2"/></svg></span>
-      <input id="tk" type="text" placeholder="sk-你的令牌" autocomplete="off" spellcheck="false">
-    </div>
-
-    <a href="/console/token" id="t-link">管理令牌</a>
-  </div>
-
   <div class="pick">
     <span class="pl">国内</span>
     <div class="chips" id="pick-cn"></div>
@@ -346,6 +338,28 @@
     </div>
     <div id="p-rows"></div>
     <p class="pnote" id="p-note"></p>
+
+    <div class="trow">
+      <span class="fi" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.2" cy="12" r="3.4"/><path d="M11.6 12H21"/><path d="M17.6 12v3.1M20.2 12v2.2"/></svg></span>
+      <label class="fk" for="t-sel">令牌</label>
+
+      <div class="tw" id="t-wrap">
+        <button class="tsel" id="t-sel" aria-haspopup="listbox" aria-expanded="false">
+          <span class="edot" id="t-dot" aria-hidden="true"></span>
+          <span class="tname" id="t-name"></span>
+          <span class="tkey" id="t-key"></span>
+          <span class="ch" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg></span>
+        </button>
+        <div class="menu" id="t-menu" role="listbox" hidden></div>
+      </div>
+
+      <div class="tkin" id="t-guest" style="display:none">
+        <span class="i" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.2" cy="12" r="3.4"/><path d="M11.6 12H21"/><path d="M17.6 12v3.1M20.2 12v2.2"/></svg></span>
+        <input id="tk" type="text" placeholder="sk-你的令牌" autocomplete="off" spellcheck="false">
+      </div>
+
+      <a href="/console/token" id="t-link">管理令牌</a>
+    </div>
   </section>
 
   <details class="json" id="p-json">
@@ -362,8 +376,9 @@
       <div class="row">先确认令牌和网络都通，应返回四个工具名：</div>
       <pre id="d-curl"></pre>
       <div class="row"><b>401</b> — 令牌没带上或已失效，看看 <code>Bearer</code> 后面有没有空格。</div>
-      <div class="row"><b>连不上、一直转圈</b> — 客户端在等 SSE。本服务不维持会话，只回 JSON；把传输类型换成 Streamable HTTP，或用 <code>mcp-remote</code> 桥一层。</div>
-      <div class="row"><b>看得到工具但调不动</b> — 令牌范围不够：图像要 <code>image:write</code>，视频要 <code>video:write</code>，任务查询要 <code>task:read</code>。</div>
+      <div class="row"><b>400 Accept</b> — 调用方没发 <code>Accept</code> 头。curl 默认发 <code>*/*</code>，照上面那条能过；别的工具得自己加，值写 <code>application/json, text/event-stream</code>。</div>
+      <div class="row"><b>连不上、一直转圈</b> — 旧版 SSE 客户端：它 GET <code>/mcp</code>，服务端只收 POST，405 后反复重试。把传输类型换成 Streamable HTTP，或用 <code>mcp-remote</code> 桥一层。</div>
+      <div class="row"><b>看得到工具但调不动</b> — 错误原文会带回来。最常见三种：能力注册里没有启用的模型（<code>models.list</code> 返回 0）、令牌额度不足或限了模型、参数超出该模型的声明（本地就拒了，不计费）。</div>
     </div>
   </details>
 
@@ -377,7 +392,7 @@
     </div>
   </details>
 
-  <div class="foot"><span class="live" aria-hidden="true"></span>Streamable HTTP · <code>https://apiduo.cn/mcp</code> · 按实际调用计费</div>
+  <div class="foot"><span class="live" aria-hidden="true"></span>Streamable HTTP · <code>https://apiduo.cn/mcp</code> · 只有生成调用计费</div>
 </main>
 
 <script>
@@ -676,6 +691,7 @@ function render(){
     'curl -s https://apiduo.cn/mcp \\\n' +
     '  -H "Authorization: Bearer ' + tk() + '" \\\n' +
     '  -H "Content-Type: application/json" \\\n' +
+    '  -H "Accept: application/json, text/event-stream" \\\n' +
     "  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'";
 }
 

@@ -1,0 +1,311 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/**
+ * Client catalogue for the MCP onboarding page.
+ *
+ * Brand marks come from LobeHub Icons (@lobehub/icons-static-svg, MIT) and are
+ * inlined as paths so the page never blocks on a CDN. Two of them are drawn by
+ * hand: CodeBuddy shares WorkBuddy's glyph in the icon set, and VS Code is not
+ * in it at all.
+ */
+
+export const MCP_PATH = '/mcp'
+
+export const TOKEN_SLOT = 'sk-你的令牌'
+
+export type ClientGroup = 'cn' | 'gen'
+
+export interface ClientRow {
+  label: string
+  value: string
+}
+
+export interface McpClient {
+  id: string
+  name: string
+  group: ClientGroup
+  /** Where the MCP settings live inside the client. */
+  where: string
+  /** Config file this client reads, if it supports one. */
+  file?: string
+  json?: 'std' | 'vscode' | 'stdio'
+  rows: ClientRow[]
+  note: string
+}
+
+const brand = (inner: React.ReactNode) => (
+  <svg viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'>
+    {inner}
+  </svg>
+)
+
+export const MARKS: Record<string, React.ReactNode> = {
+  workbuddy: brand(
+    <>
+      <path d='M18.777 1.647c.28-.02.536.114.972.51 1.018.926 2.437 2.828 3.318 4.452l.34.631.482.24.11.06v3.638a5.206 5.206 0 00-5.32-1.23c-.491.166-1.021.471-2.08 1.082l-6.09 3.516c-1.057.61-1.586.916-1.975 1.259a5.208 5.208 0 00-1.493 5.572c.165.49.471 1.02 1.082 2.08l.315.543h-3.26c-.685 0-1.34-.135-1.939-.377-.169-.956-.009-1.789.469-2.335.158-.18.164-.189.13-.493a11.846 11.846 0 01-.057-1.711l.02-.444-.667-1.18C2.1 15.622 1.445 14.078 1.192 12.9c-.133-.647-.125-.934.04-1.146.1-.128.427-.261.822-.334.994-.175 3.162-.017 5.575.41l.25.043.551-.487c.915-.81 1.522-1.264 2.641-1.962 1.167-.73 2.484-1.331 3.967-1.807l.476-.152.261-.688c.937-2.471 1.896-4.293 2.58-4.9.235-.21.25-.22.422-.23z' />
+      <path d='M12.139 18.2a1.203 1.203 0 011.642.44l1.296 2.243a1.204 1.204 0 01-2.083 1.203l-1.296-2.243a1.203 1.203 0 01.44-1.644zM18.629 14.452a1.203 1.203 0 011.642.44l1.295 2.244a1.203 1.203 0 11-2.083 1.203l-1.295-2.243a1.203 1.203 0 01.44-1.644z' />
+    </>
+  ),
+  doubao: brand(
+    <>
+      <path
+        d='M5.31 15.756c.172-3.75 1.883-5.999 2.549-6.739-3.26 2.058-5.425 5.658-6.358 8.308v1.12C1.501 21.513 4.226 24 7.59 24a6.59 6.59 0 002.2-.375c.353-.12.7-.248 1.039-.378.913-.899 1.65-1.91 2.243-2.992-4.877 2.431-7.974.072-7.763-4.5l.002.001z'
+        fillOpacity={0.72}
+      />
+      <path d='M22.57 10.283c-1.212-.901-4.109-2.404-7.397-2.8.295 3.792.093 8.766-2.1 12.773a12.782 12.782 0 01-2.244 2.992c3.764-1.448 6.746-3.457 8.596-5.219 2.82-2.683 3.353-5.178 3.361-6.66a2.737 2.737 0 00-.216-1.084v-.002zM14.303 1.867C12.955.7 11.248 0 9.39 0 7.532 0 5.883.677 4.545 1.807 2.791 3.29 1.627 5.557 1.5 8.125v9.201c.932-2.65 3.097-6.25 6.357-8.307.5-.318 1.025-.595 1.569-.829 1.883-.801 3.878-.932 5.746-.706-.222-2.83-.718-5.002-.87-5.617h.001z' />
+      <path
+        d='M17.305 4.961a199.47 199.47 0 01-1.08-1.094c-.202-.213-.398-.419-.586-.622l-1.333-1.378c.151.615.648 2.786.869 5.617 3.288.395 6.185 1.898 7.396 2.8-1.306-1.275-3.475-3.487-5.266-5.323z'
+        fillOpacity={0.72}
+      />
+    </>
+  ),
+  trae: brand(
+    <path d='M24 20.541H3.428v-3.426H0V3.4h24V20.54zM3.428 17.115h17.144V6.827H3.428v10.288zm8.573-5.196l-2.425 2.424-2.424-2.424 2.424-2.424 2.425 2.424zm6.857-.001l-2.424 2.423-2.425-2.423 2.425-2.425 2.424 2.425z' />
+  ),
+  codebuddy: brand(
+    <path d='M9.6 5.55 3.35 12l6.25 6.45 1.86-1.82L6.98 12l4.48-4.63zM14.4 5.55l-1.86 1.82L17.02 12l-4.48 4.63 1.86 1.82L20.65 12z' />
+  ),
+  lingma: brand(
+    <path d='M19.713 2.825h-5.907c0-.251-.066-.503-.196-.728L12.819.728A1.46 1.46 0 0 0 11.559 0h-1.58c-.52 0-1 .275-1.26.728l-2.42 4.19a1.45 1.45 0 0 0 0 1.453l.791 1.37c.26.448.74.727 1.26.727h11.36c.52 0 1-.275 1.26-.728l.79-1.37a1.45 1.45 0 0 0 0-1.451l-.79-1.37a1.46 1.46 0 0 0-1.26-.728zM.195 9.905l2.951 5.115a1.46 1.46 0 0 0-.531.531l-.791 1.37a1.45 1.45 0 0 0 0 1.452l.79 1.37c.26.448.74.727 1.26.727h4.84c.52 0 1-.275 1.26-.728l.79-1.37a1.45 1.45 0 0 0 0-1.451L5.086 7.083a1.46 1.46 0 0 0-1.26-.728h-1.58c-.52 0-1 .276-1.26.728l-.79 1.37a1.45 1.45 0 0 0 0 1.452m15.888 13.367 2.951-5.115c.217.125.469.196.728.196h1.582c.52 0 1-.275 1.26-.728l.79-1.37a1.45 1.45 0 0 0 0-1.451l-2.42-4.191a1.46 1.46 0 0 0-1.259-.728h-1.582c-.52 0-1 .276-1.259.728l-5.678 9.838a1.45 1.45 0 0 0 0 1.452l.79 1.37c.26.448.74.727 1.26.727h1.582c.52 0 1-.275 1.26-.728z' />
+  ),
+  cherry: brand(
+    <>
+      <path d='M6.513 18.419c-1.6 0-3.107-.64-4.247-1.802A6.146 6.146 0 01.5 12.287c0-1.63.626-3.168 1.766-4.33 1.14-1.162 2.647-1.802 4.247-1.802s3.132.655 4.25 1.795c.835.849.835 2.23 0 3.078a2.11 2.11 0 01-3.02 0 1.737 1.737 0 00-1.234-.521c-.945 0-1.744.813-1.744 1.776 0 .964.799 1.777 1.744 1.777.46 0 .907-.19 1.234-.522a2.11 2.11 0 013.02 0c.835.85.835 2.23 0 3.079a5.997 5.997 0 01-4.25 1.794v.008z' />
+      <path d='M12.026 24c-1.6 0-3.107-.64-4.247-1.802a6.146 6.146 0 01-1.766-4.33c0-1.63.644-3.193 1.762-4.337a2.11 2.11 0 013.021 0c.834.849.834 2.23 0 3.078-.324.331-.51.788-.51 1.255 0 .964.798 1.777 1.744 1.777.945 0 1.744-.813 1.744-1.777 0-.341-.083-.83-.475-1.233a6.255 6.255 0 01-1.77-4.348c0-1.615.627-3.168 1.767-4.33s2.646-1.802 4.247-1.802c1.6 0 3.107.64 4.247 1.802a6.146 6.146 0 011.766 4.33c0 1.63-.644 3.194-1.762 4.337a2.11 2.11 0 01-3.021 0 2.206 2.206 0 010-3.078c.323-.331.51-.788.51-1.255 0-.964-.798-1.777-1.744-1.777s-1.744.813-1.744 1.777c0 .47.19.935.521 1.27 1.115 1.136 1.727 2.667 1.727 4.311a6.122 6.122 0 01-1.766 4.33C15.137 23.36 13.63 24 12.03 24h-.004z' />
+      <path d='M12.026 6.867L8.53 3.587a1.336 1.336 0 111.827-1.949l1.4 1.313L13.744.495a1.336 1.336 0 012.075 1.68l-3.798 4.692h.004z' />
+    </>
+  ),
+  cursor: brand(
+    <path d='M22.106 5.68L12.5.135a.998.998 0 00-.998 0L1.893 5.68a.84.84 0 00-.419.726v11.186c0 .3.16.577.42.727l9.607 5.547a.999.999 0 00.998 0l9.608-5.547a.84.84 0 00.42-.727V6.407a.84.84 0 00-.42-.726zm-.603 1.176L12.228 22.92c-.063.108-.228.064-.228-.061V12.34a.59.59 0 00-.295-.51l-9.11-5.26c-.107-.062-.063-.228.062-.228h18.55c.264 0 .428.286.296.514z' />
+  ),
+  'claude-code': brand(
+    <path
+      clipRule='evenodd'
+      d='M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z'
+    />
+  ),
+  vscode: brand(
+    <path d='M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z' />
+  ),
+  desktop: brand(
+    <path d='M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z' />
+  ),
+  raw: brand(
+    <>
+      <path d='M15.688 2.343a2.588 2.588 0 00-3.61 0l-9.626 9.44a.863.863 0 01-1.203 0 .823.823 0 010-1.18l9.626-9.44a4.313 4.313 0 016.016 0 4.116 4.116 0 011.204 3.54 4.3 4.3 0 013.609 1.18l.05.05a4.115 4.115 0 010 5.9l-8.706 8.537a.274.274 0 000 .393l1.788 1.754a.823.823 0 010 1.18.863.863 0 01-1.203 0l-1.788-1.753a1.92 1.92 0 010-2.754l8.706-8.538a2.47 2.47 0 000-3.54l-.05-.049a2.588 2.588 0 00-3.607-.003l-7.172 7.034-.002.002-.098.097a.863.863 0 01-1.204 0 .823.823 0 010-1.18l7.273-7.133a2.47 2.47 0 00-.003-3.537z' />
+      <path d='M14.485 4.703a.823.823 0 000-1.18.863.863 0 00-1.204 0l-7.119 6.982a4.115 4.115 0 000 5.9 4.314 4.314 0 006.016 0l7.12-6.982a.823.823 0 000-1.18.863.863 0 00-1.204 0l-7.119 6.982a2.588 2.588 0 01-3.61 0 2.47 2.47 0 010-3.54l7.12-6.982z' />
+    </>
+  ),
+}
+
+/** JSON templates; `json` on a client picks one of these. */
+export function jsonTemplate(kind: 'std' | 'vscode' | 'stdio', url: string) {
+  const auth = `Bearer ${TOKEN_SLOT}`
+  if (kind === 'stdio') {
+    return `{
+  "mcpServers": {
+    "apiduo": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote", "${url}",
+        "--header", "Authorization: ${auth}"
+      ]
+    }
+  }
+}`
+  }
+  const root = kind === 'vscode' ? 'servers' : 'mcpServers'
+  return `{
+  "${root}": {
+    "apiduo": {
+      "type": "http",
+      "url": "${url}",
+      "headers": {
+        "Authorization": "${auth}"
+      }
+    }
+  }
+}`
+}
+
+const AUTH = `Authorization: Bearer ${TOKEN_SLOT}`
+
+export const CLIENTS: McpClient[] = [
+  {
+    id: 'workbuddy',
+    name: 'WorkBuddy',
+    group: 'cn',
+    where: '连接器 → 自定义连接器 → 配置 MCP',
+    file: '~/.workbuddy/mcp.json',
+    json: 'std',
+    rows: [
+      { label: '服务器名称', value: 'apiduo' },
+      { label: '传输类型', value: 'HTTP' },
+      { label: '服务器 URL', value: '{url}' },
+      { label: '请求头', value: AUTH },
+    ],
+    note: '保存后回列表点一次「信任」，不点不启用。个别版本认不出 http，换成 streamablehttp 再试。',
+  },
+  {
+    id: 'doubao',
+    name: '豆包工作',
+    group: 'cn',
+    where: '技能·连接器·伙伴 → 连接器 → 新建自定义连接器',
+    rows: [
+      { label: '服务器名称', value: 'apiduo' },
+      { label: '传输类型', value: 'HTTP' },
+      { label: '服务器 URL', value: '{url}' },
+      { label: '自定义 Headers', value: `Authorization = Bearer ${TOKEN_SLOT}` },
+    ],
+    note: '自定义连接器只在电脑版有。保存后回「我的技能 · 连接器」把开关打开，再新建一个工作任务验证。',
+  },
+  {
+    id: 'trae',
+    name: 'Trae',
+    group: 'cn',
+    where: '设置 → MCP → 添加 → 手动添加',
+    file: '.trae/mcp.json',
+    json: 'std',
+    rows: [
+      { label: '名称', value: 'apiduo' },
+      { label: '传输类型', value: 'HTTP' },
+      { label: 'URL', value: '{url}' },
+      { label: '请求头', value: AUTH },
+    ],
+    note: '不需要写 type，有 url + headers 就够。云端任务读不到本地 MCP，验证请用本地任务。',
+  },
+  {
+    id: 'codebuddy',
+    name: 'CodeBuddy',
+    group: 'cn',
+    where: '配置 → MCP 设置 → 配置 MCP',
+    file: '~/.codebuddy/.mcp.json',
+    json: 'std',
+    rows: [
+      { label: '名称', value: 'apiduo' },
+      { label: '传输类型', value: 'HTTP' },
+      { label: 'URL', value: '{url}' },
+      { label: '请求头', value: AUTH },
+    ],
+    note: '保存后回 MCP 列表刷新，状态变绿即可。',
+  },
+  {
+    id: 'lingma',
+    name: '通义灵码',
+    group: 'cn',
+    where: '个人设置 → MCP 服务 → + → 手动添加',
+    rows: [
+      { label: '名称', value: 'apiduo' },
+      { label: '类型', value: 'STDIO' },
+      { label: '命令', value: 'npx' },
+      {
+        label: '参数',
+        value: `-y mcp-remote {url} --header "${AUTH}"`,
+      },
+    ],
+    note: '只有 SSE 和 STDIO，没有填请求头的地方，只能用 mcp-remote 在本机桥一层（需 Node 18+）。新版 Qoder CN 支持远程地址，直接填 URL + 请求头即可。',
+  },
+  {
+    id: 'cherry',
+    name: 'Cherry Studio',
+    group: 'cn',
+    where: '设置 → MCP 服务器 → 添加',
+    rows: [
+      { label: '名称', value: 'apiduo' },
+      { label: '类型', value: '可流式传输的 HTTP' },
+      { label: 'URL', value: '{url}' },
+      { label: '请求头', value: `Authorization=Bearer ${TOKEN_SLOT}` },
+    ],
+    note: '请求头按「键=值」逐行填。保存后在「工具」标签页应能看到 4 个工具，回对话记得把这个服务器打开。',
+  },
+  {
+    id: 'cursor',
+    name: 'Cursor',
+    group: 'gen',
+    where: 'Settings → MCP',
+    file: '~/.cursor/mcp.json',
+    json: 'std',
+    rows: [
+      { label: '名称', value: 'apiduo' },
+      { label: '传输类型', value: 'HTTP' },
+      { label: 'URL', value: '{url}' },
+      { label: '请求头', value: AUTH },
+    ],
+    note: '存盘后看 apiduo 是不是绿点，不是就点刷新。项目内也可以在 .cursor/mcp.json 里写一份。',
+  },
+  {
+    id: 'claude-code',
+    name: 'Claude Code',
+    group: 'gen',
+    where: '终端 claude mcp add --transport http',
+    file: '.mcp.json',
+    json: 'std',
+    rows: [
+      { label: '传输类型', value: 'http' },
+      { label: '名称', value: 'apiduo' },
+      { label: 'URL', value: '{url}' },
+      { label: '请求头', value: AUTH },
+    ],
+    note: `必须显式写传输类型，否则会被当成 stdio。等价命令：claude mcp add --transport http apiduo {url} --header "Authorization: Bearer ${TOKEN_SLOT}"`,
+  },
+  {
+    id: 'vscode',
+    name: 'VS Code',
+    group: 'gen',
+    where: '命令面板 → MCP: 添加服务器',
+    file: '.vscode/mcp.json',
+    json: 'vscode',
+    rows: [
+      { label: '名称', value: 'apiduo' },
+      { label: '传输类型', value: 'HTTP' },
+      { label: 'URL', value: '{url}' },
+      { label: '请求头', value: AUTH },
+    ],
+    note: '顶层键是 servers，不是 mcpServers —— 照抄别处的配置会加载不出来。',
+  },
+  {
+    id: 'desktop',
+    name: 'Claude Desktop',
+    group: 'gen',
+    where: 'Settings → Connectors → Add custom connector',
+    file: 'claude_desktop_config.json',
+    json: 'stdio',
+    rows: [
+      { label: '名称', value: 'apiduo' },
+      { label: '传输类型', value: 'HTTP' },
+      { label: 'URL', value: '{url}' },
+      { label: '请求头', value: AUTH },
+    ],
+    note: '新版能直接填 URL 和请求头。旧版只支持本地 stdio，用下面 JSON 里的 mcp-remote 写法。',
+  },
+  {
+    id: 'raw',
+    name: '其他客户端',
+    group: 'gen',
+    where: '任何支持 Streamable HTTP 的客户端',
+    json: 'std',
+    rows: [
+      { label: 'URL', value: '{url}' },
+      { label: '传输类型', value: 'Streamable HTTP（POST，JSON 响应）' },
+      { label: '请求头', value: AUTH },
+    ],
+    note: '本服务不维持会话，一次请求一次响应。只支持 SSE 的客户端接不了，先用 mcp-remote 在本地转一层。',
+  },
+]

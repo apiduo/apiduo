@@ -1,0 +1,241 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/*
+ * Motion for the MCP onboarding surface.
+ *
+ * Only structure lives here — timing, easing, transforms, keyframes. Colour and
+ * type come from Tailwind classes so the page follows the console theme.
+ *
+ * Easing follows the two Apple curves the rest of apiduo uses:
+ *   --apiduo-swift  fast out, long tail, no overshoot (entrances)
+ *   --apiduo-pop    small overshoot, only for acknowledgements (checks)
+ */
+
+.apiduo-mcp {
+  --apiduo-swift: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --apiduo-out: cubic-bezier(0.4, 0, 1, 1);
+  --apiduo-pop: cubic-bezier(0.34, 1.38, 0.64, 1);
+}
+
+/* 首屏：逐块浮起。前三个带一点对焦，比纯位移更像镜头。 */
+@keyframes apiduo-mcp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes apiduo-mcp-rise-soft {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.apiduo-mcp-rise {
+  animation: apiduo-mcp-rise 0.6s var(--apiduo-swift) both;
+}
+
+.apiduo-mcp-rise-soft {
+  animation: apiduo-mcp-rise-soft 0.72s var(--apiduo-swift) both;
+}
+
+/* 切客户端：每一行错峰浮现，28ms 一档。 */
+@keyframes apiduo-mcp-row {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+    filter: blur(2.5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.apiduo-mcp-stagger .apiduo-mcp-row {
+  animation: apiduo-mcp-row 0.46s var(--apiduo-swift) both;
+  animation-delay: calc(var(--apiduo-row-index, 0) * 48ms);
+}
+
+@keyframes apiduo-mcp-swap {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.apiduo-mcp-swap {
+  animation: apiduo-mcp-swap 0.42s var(--apiduo-swift) both;
+}
+
+@keyframes apiduo-mcp-text {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.apiduo-mcp-text {
+  animation: apiduo-mcp-text 0.38s var(--apiduo-swift) both;
+}
+
+@keyframes apiduo-mcp-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  62% {
+    transform: scale(1.08);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.apiduo-mcp-pop {
+  animation: apiduo-mcp-pop 0.46s var(--apiduo-pop) both;
+}
+
+@keyframes apiduo-mcp-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgb(18 161 80 / 0.12);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgb(18 161 80 / 0.04);
+  }
+}
+
+.apiduo-mcp-breathe {
+  animation: apiduo-mcp-breathe 4.4s ease-in-out infinite;
+}
+
+@keyframes apiduo-mcp-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.apiduo-mcp-reveal[open] > *:not(summary) {
+  animation: apiduo-mcp-reveal 0.4s var(--apiduo-swift);
+}
+
+/*
+ * 下拉面板。撑开靠 data-open，收起时只摘这一个属性，过渡从当前位置反向，
+ * 所以中途再点能直接打断（不做 display:none 的硬切）。
+ */
+.apiduo-mcp-menu {
+  opacity: 0;
+  transform: translateY(-7px) scale(0.965);
+  transform-origin: top left;
+  pointer-events: none;
+  transition:
+    opacity 0.2s var(--apiduo-out),
+    transform 0.26s var(--apiduo-out);
+}
+
+.apiduo-mcp-menu[data-open='true'] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition:
+    opacity 0.28s var(--apiduo-swift),
+    transform 0.44s var(--apiduo-swift);
+}
+
+/* 菜单从底部行向上弹时，起点也反过来，否则方向会拧。 */
+.apiduo-mcp-menu[data-side='top'] {
+  transform-origin: bottom left;
+  transform: translateY(7px) scale(0.965);
+}
+
+.apiduo-mcp-menu[data-side='top'][data-open='true'] {
+  transform: none;
+}
+
+.apiduo-mcp-press {
+  transition:
+    transform 0.14s var(--apiduo-swift),
+    background-color 0.16s var(--apiduo-swift),
+    border-color 0.16s var(--apiduo-swift),
+    color 0.16s var(--apiduo-swift);
+}
+
+.apiduo-mcp-press:active {
+  transform: scale(0.955);
+}
+
+@keyframes apiduo-mcp-nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  22% {
+    transform: translateY(2px);
+  }
+  44% {
+    transform: translateY(0);
+  }
+  66% {
+    transform: translateY(2px);
+  }
+}
+
+/* 首次进入时把「这里可以点」说一遍，之后不再重复。 */
+.apiduo-mcp-nudge .apiduo-mcp-chevron {
+  animation: apiduo-mcp-nudge 1.5s var(--apiduo-swift) 1.5s 1 both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apiduo-mcp *,
+  .apiduo-mcp *::before,
+  .apiduo-mcp *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
