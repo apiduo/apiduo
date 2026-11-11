@@ -143,6 +143,29 @@ func TestApiduoTaskModelFilterScopedToUser(t *testing.T) {
 	assert.Equal(t, "origin-only", items[0].TaskID)
 }
 
+// properties 列在 SQLite 上是 TEXT（GORM 的 type:json 只是声明，SQLite 不做校验），
+// 旧版本或手工改库都可能留下坏 JSON。MySQL/PostgreSQL 的 json 列由数据库保证合法，
+// 这条只对 SQLite 有意义 —— 而它正是最容易「一行脏数据让整页 500」的那条路径。
+func TestApiduoTaskModelFilterToleratesBrokenJSONRow(t *testing.T) {
+	useApiduoTaskTestDB(t)
+	if DB.Dialector.Name() != "sqlite" {
+		t.Skip("only SQLite stores properties as TEXT without validation")
+	}
+	newApiduoTaskFilterFixture(t)
+	require.NoError(t, DB.Exec(
+		"INSERT INTO tasks (task_id, platform, user_id, channel_id, action, status, submit_time, properties) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"broken-json", "kling", 9, 99, "text_to_video", "SUCCESS", 500, "{oops",
+	).Error)
+
+	// 坏 JSON 里的字面量不该被当成命中，也不该让整条查询报错。
+	assert.Empty(t, listApiduoTaskIDs(t, SyncTaskQueryParams{Model: "oops"}))
+	assert.Equal(t,
+		[]string{"origin-only"},
+		listApiduoTaskIDs(t, SyncTaskQueryParams{Model: "hailuo"}),
+		"a broken row must not break the whole page",
+	)
+}
+
 func TestApiduoTaskStatusFilter(t *testing.T) {
 	useApiduoTaskTestDB(t)
 	newApiduoTaskFilterFixture(t)
