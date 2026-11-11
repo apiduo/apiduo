@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -546,5 +547,56 @@ func TestContentTypeForSniffsGenericBinary(t *testing.T) {
 		if got := contentTypeFor(c.header, png); got != c.want {
 			t.Errorf("contentTypeFor(%q) = %q, want %q", c.header, got, c.want)
 		}
+	}
+}
+
+// 把「客户端要 b64、上游只给链接」这条真实路径跑一遍：下载 → 类型按魔数重判。
+//
+// 校验器和 client 都是包级变量，替换掉就能让 httptest 的 127.0.0.1 通过
+// —— 生产里它们拦的正是这种地址，这里换掉的只是测试夹具，不是被测逻辑。
+func TestFetchArtifactBytesDownloadsAndSniffsType(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\n" + "0123456789abcdef")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 故意用通用二进制类型：COS 直链就是这样，必须靠魔数纠正。
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(png)
+	}))
+	defer srv.Close()
+
+	previousValidator, previousClient := artifactFetchURLValidator, artifactFetchClient
+	artifactFetchURLValidator = func(raw string) (*url.URL, error) { return url.Parse(raw) }
+	artifactFetchClient = &http.Client{Timeout: 5 * time.Second}
+	t.Cleanup(func() {
+		artifactFetchURLValidator, artifactFetchClient = previousValidator, previousClient
+	})
+
+	got, contentType, err := FetchArtifactBytes(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("fetch failed: %v", err)
+	}
+	if !bytes.Equal(got, png) {
+		t.Errorf("bytes mismatch: got %d, want %d", len(got), len(png))
+	}
+	if contentType != "image/png" {
+		t.Errorf("contentType = %q, want image/png", contentType)
+	}
+}
+
+// 上游返回非 2xx 时必须报错，让调用方保留原引用而不是写入一段错误页。
+func TestFetchArtifactBytesRejectsNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "gone", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	previousValidator, previousClient := artifactFetchURLValidator, artifactFetchClient
+	artifactFetchURLValidator = func(raw string) (*url.URL, error) { return url.Parse(raw) }
+	artifactFetchClient = &http.Client{Timeout: 5 * time.Second}
+	t.Cleanup(func() {
+		artifactFetchURLValidator, artifactFetchClient = previousValidator, previousClient
+	})
+
+	if _, _, err := FetchArtifactBytes(context.Background(), srv.URL); err == nil {
+		t.Fatal("a 404 must not be treated as a downloadable artifact")
 	}
 }
