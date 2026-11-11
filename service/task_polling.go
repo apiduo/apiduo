@@ -784,6 +784,15 @@ func unrecognizedPollDetail(reason string, body []byte) string {
 }
 
 func recordPollFailure(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, class string, statusCode int, detail string) error {
+	// 上游在 2xx 里给了一个我们读不懂（或根本没写）的状态：它**没有说失败**，
+	// 只是这条状态我们还认不出来。这种「不知道」不该累计成失败 —— 二十次就把
+	// 一个其实还在出图的任务判死，比让它多转一会儿更糟。不计数、不改状态，
+	// 由 TASK_TIMEOUT_MINUTES 的超时清扫兜底；WARN 保留，否则没人知道它在原地转。
+	// 4xx 配 non-terminal 状态不走这条：那是上游明确拒绝了这次查询。
+	if class == pollClassUnrecognized && classifyPollHTTP(statusCode) == pollClassOK {
+		logger.LogWarn(ctx, common.LogText("task %s poll %s (failures=%d, http=%d): %s", task.TaskID, class, task.PrivateData.PollFailures, statusCode, detail))
+		return nil
+	}
 	task.PrivateData.PollFailures++
 	// TASK_POLL_MAX_FAILURES <= 0 disables the consecutive-failure cutoff, matching
 	// TASK_TIMEOUT_MINUTES semantics; the 72h sweep (TASK_TIMEOUT_MINUTES default

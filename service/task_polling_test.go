@@ -920,9 +920,22 @@ func TestUpdateVideoSingleTaskPollClassification(t *testing.T) {
 			wantReason:    "Failed to query the upstream task status",
 		},
 		{
-			name:          "UNKNOWN increments",
+			// 上游在 2xx 里没写状态、或写了个我们不认识的词：它没说失败，
+			// 只是这条状态还读不懂。不累计、不改状态，等系统超时兜底。
+			name:          "UNKNOWN on 2xx waits for the timeout sweep",
 			statusCode:    http.StatusOK,
 			parse:         &relaycommon.TaskInfo{Status: model.TaskStatusUnknown, Reason: "weird"},
+			priorFailures: 3,
+			maxFailures:   5,
+			wantStatus:    model.TaskStatusInProgress,
+			wantFailures:  3,
+			wantUnchanged: true,
+		},
+		{
+			// 4xx 配 non-terminal 状态不一样：那是上游明确拒绝了这次查询。
+			name:          "UNKNOWN on 4xx still counts",
+			statusCode:    http.StatusBadRequest,
+			parse:         &relaycommon.TaskInfo{Status: model.TaskStatusUnknown},
 			wantStatus:    model.TaskStatusInProgress,
 			wantFailures:  1,
 			wantUnchanged: true,
