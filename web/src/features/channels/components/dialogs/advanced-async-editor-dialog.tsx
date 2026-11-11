@@ -27,6 +27,7 @@ import { Dialog } from '@/components/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
+  ADVANCED_ASYNC_ARK_ENTRY_PATHS,
   ADVANCED_ASYNC_LEGACY_PROTOCOL,
   ADVANCED_ASYNC_PROTOCOLS,
   applyAdvancedAsyncProtocol,
@@ -40,8 +41,8 @@ import {
   parseStatusMapInput,
   stringifyAdvancedAsyncConfig,
   validateAdvancedAsyncConfig,
+  type AdvancedAsyncProtocol,
 } from '../../lib/advanced-async'
-import type { AdvancedAsyncProtocol } from '../../lib/advanced-async'
 import type {
   AdvancedAsyncConfig,
   AdvancedCustomRouteAuth,
@@ -181,8 +182,14 @@ export function AdvancedAsyncEditorDialog({
   const save = () => {
     const next = activeTab === 'json' ? applyJson() : config
     if (!next) return
-    if (validateAdvancedAsyncConfig(next)) return
-    onSave(stringifyAdvancedAsyncConfig(next))
+    // 方舟入口固定：老配置里可能还留着 /v1/video/generations，直接回填成
+    // 三条内置路径，别把一个「看起来配过、其实不生效」的列表存下去。
+    const normalized =
+      detectAdvancedAsyncProtocol(next) === 'ark'
+        ? { ...next, incoming_paths: [...ADVANCED_ASYNC_ARK_ENTRY_PATHS] }
+        : next
+    if (validateAdvancedAsyncConfig(normalized)) return
+    onSave(stringifyAdvancedAsyncConfig(normalized))
     onOpenChange(false)
   }
 
@@ -196,6 +203,9 @@ export function AdvancedAsyncEditorDialog({
   const activeProtocol = protocolOptions.find(
     (candidate) => candidate.value === protocol
   )
+  // 方舟入口是网关内置的（ApiduoArkAliasDispatcher 按模型认领三条路径），
+  // 渠道里的 incoming_paths 对它们没有作用，置灰免得运营以为改了会生效。
+  const arkEntriesBuiltIn = protocol === 'ark'
   const billingMode = config.billing?.mode || 'per_call'
   const fieldCount = [
     config.fields.task_id_path,
@@ -277,19 +287,31 @@ export function AdvancedAsyncEditorDialog({
             <Field
               label={t('Downstream path')}
               hint={t(
-                'One client path per line. Clients poll it as GET <path>/{task_id}.'
+                arkEntriesBuiltIn
+                  ? 'Ark entries are built into the gateway and matched by model, so these three paths are fixed: editing them changes nothing. Only the Images and Custom protocols read this list.'
+                  : 'One client path per line. Clients poll it as GET <path>/{task_id}.'
               )}
             >
               <textarea
-                className='border-input bg-background min-h-16 w-full rounded-md border px-3 py-2 font-mono text-sm'
-                value={(config.incoming_paths || []).join('\n')}
-                onChange={(event) =>
-                  update({
-                    incoming_paths: event.target.value
-                      .split('\n')
-                      .map((line) => line.trim())
-                      .filter(Boolean),
-                  })
+                className={`border-input bg-background min-h-16 w-full rounded-md border px-3 py-2 font-mono text-sm${
+                  arkEntriesBuiltIn ? ' cursor-not-allowed opacity-60' : ''
+                }`}
+                readOnly={arkEntriesBuiltIn}
+                value={
+                  arkEntriesBuiltIn
+                    ? ADVANCED_ASYNC_ARK_ENTRY_PATHS.join('\n')
+                    : (config.incoming_paths || []).join('\n')
+                }
+                onChange={
+                  arkEntriesBuiltIn
+                    ? undefined
+                    : (event) =>
+                        update({
+                          incoming_paths: event.target.value
+                            .split('\n')
+                            .map((line) => line.trim())
+                            .filter(Boolean),
+                        })
                 }
               />
             </Field>

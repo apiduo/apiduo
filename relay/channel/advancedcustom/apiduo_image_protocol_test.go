@@ -769,3 +769,67 @@ func TestGPTImage2FormKeepsResponseFormat(t *testing.T) {
 		t.Fatal("the illegal value must not reach the upstream verbatim")
 	}
 }
+
+// 存储没配（测试环境的常态）时，base64 必须原样留着 —— 这正是
+// 「缺配置就透传上游」的那条退路。
+func TestPersistImageBytesLeavesBase64WhenStoreDisabled(t *testing.T) {
+	b64 := base64.StdEncoding.EncodeToString(protocolTestPNG)
+	response := &imageResponse{Created: 1, Data: []imageResponseItem{{B64JSON: b64}}}
+
+	changed := persistImageBytes(context.Background(), 0, response, true)
+
+	if changed {
+		t.Fatal("nothing may change while no artifact storage is configured")
+	}
+	if response.Data[0].B64JSON != b64 {
+		t.Error("base64 must survive untouched")
+	}
+	if response.Data[0].URL != "" {
+		t.Errorf("url must stay empty, got %q", response.Data[0].URL)
+	}
+}
+
+// 客户端明确要 b64 时，即便存储可用也不该动它。
+func TestPersistImageBytesRespectsExplicitB64(t *testing.T) {
+	b64 := base64.StdEncoding.EncodeToString(protocolTestPNG)
+	response := &imageResponse{Created: 1, Data: []imageResponseItem{{B64JSON: b64}}}
+
+	if persistImageBytes(context.Background(), 0, response, false) {
+		t.Fatal("wantURL=false must short-circuit before any upload")
+	}
+	if response.Data[0].B64JSON != b64 {
+		t.Error("base64 must survive untouched")
+	}
+}
+
+func TestEncodeImageResponseRoundTripsExtras(t *testing.T) {
+	response := &imageResponse{
+		Created: 1730000000,
+		Data: []imageResponseItem{{
+			URL:    "https://cdn.example.com/a.png",
+			Extras: map[string]any{"revised_prompt": "rp", "size": "1024x1024"},
+		}},
+		Extras: map[string]any{"usage": map[string]any{"total_tokens": 7}},
+	}
+	encoded, err := encodeImageResponse(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope["created"] != float64(1730000000) {
+		t.Errorf("created lost: %#v", envelope["created"])
+	}
+	if _, ok := envelope["usage"]; !ok {
+		t.Error("usage is the billing input and must survive")
+	}
+	entry := envelope["data"].([]any)[0].(map[string]any)
+	if entry["url"] != "https://cdn.example.com/a.png" || entry["revised_prompt"] != "rp" {
+		t.Errorf("item fields lost: %#v", entry)
+	}
+	if _, exists := entry["b64_json"]; exists {
+		t.Error("b64_json must not appear once it was replaced by a url")
+	}
+}

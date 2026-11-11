@@ -15,6 +15,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -106,6 +107,8 @@ func (a *Adaptor) prepareImageProtocol(
 
 	a.imageProtocolHandled = true
 	a.imageClientModel = canonical.model()
+	// 归一化之后只剩两个值，所以这里等价于「客户端要的不是 b64」。
+	a.imageWantURL = canonical.fields["response_format"] != "b64_json"
 	a.imageUpstreamPath = plan.UpstreamPath
 	a.imageRequestCount = 1
 	// canonical 的字段来自 JSON 解码，number 一律是 float64；只有直接读表单的
@@ -277,12 +280,27 @@ func (a *Adaptor) doImageProtocolResponse(
 ) (any, *types.NewAPIError, bool) {
 	// 入口只负责「按入口回包」，不替业务判定成败。上游 200 + 空 data[]
 	// 时 chat 仍回一个 content 齐备的 chat.completion，images 入口原样透传。
-	// 不读 body、不改 resp.Body，正常路径与上游零差异。
-	if !a.imageProtocolHandled || info.RelayMode != relayconstant.RelayModeChatCompletions {
+	if !a.imageProtocolHandled {
 		return nil, nil, false
 	}
-	usage, apiErr := finishImageChatResponse(
-		c, resp, info, a.imageClientModel, a.imageRequestCount, a.imageStream,
-	)
+	if info.RelayMode == relayconstant.RelayModeChatCompletions {
+		usage, apiErr := finishImageChatResponse(
+			c, resp, info, a.imageClientModel, a.imageRequestCount, a.imageStream, a.imageWantURL,
+		)
+		return usage, apiErr, true
+	}
+	// images / edits 平时是零解析透传。只有「客户端要链接 + 上游给的是 base64 +
+	// 存储确实配好了」这三条同时成立时才接管 —— 否则一个字节都不动。
+	// 没有这条闸门，没配存储的部署会白白解析每个响应却什么也换不来。
+	if !a.imageWantURL || service.ResolveArtifactStorageChainForChannelID(info.GetChannelID()).Empty() {
+		return nil, nil, false
+	}
+	// 只在能整份读完的情况下接管：读到一半发现超上限，就没有干净的退路了
+	// —— 已经吐出的字节收不回来，硬写会把响应截断。分块长度的响应
+	// （Content-Length = -1）同样不碰。
+	if resp.ContentLength <= 0 || resp.ContentLength > imageResponseMaxBytes {
+		return nil, nil, false
+	}
+	usage, apiErr := finishImageNativeResponse(c, resp, info, a)
 	return usage, apiErr, true
 }

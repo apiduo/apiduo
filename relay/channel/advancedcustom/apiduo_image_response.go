@@ -2,7 +2,10 @@ package advancedcustom
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,6 +111,106 @@ func (i imageResponseItem) referenceForItem() (string, error) {
 		return i.URL, nil
 	}
 	return "", errors.New("image item has neither url nor b64_json")
+}
+
+// finishImageNativeResponse 接管 images / edits 的响应，只为把 base64 换成
+// 存储地址。任何一步失败都退回原样写回 —— 存储是增值，不是前置条件。
+//
+// 调用方已经用 Content-Length 卡过上限，所以这里的读取不会超。
+func finishImageNativeResponse(
+	c *gin.Context,
+	resp *http.Response,
+	info *common.RelayInfo,
+	a *Adaptor,
+) (any, *types.NewAPIError) {
+	raw, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		service.IOCopyBytesGracefully(c, resp, raw)
+		return &dto.Usage{}, nil
+	}
+	decoded, err := decodeImageResponse(raw)
+	if err != nil {
+		service.IOCopyBytesGracefully(c, resp, raw)
+		return &dto.Usage{}, nil
+	}
+	if !persistImageBytes(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL) {
+		service.IOCopyBytesGracefully(c, resp, raw)
+		return &dto.Usage{}, nil
+	}
+	out, err := encodeImageResponse(decoded)
+	if err != nil {
+		service.IOCopyBytesGracefully(c, resp, raw)
+		return &dto.Usage{}, nil
+	}
+	service.IOCopyBytesGracefully(c, resp, out)
+	return &dto.Usage{}, nil
+}
+
+// encodeImageResponse 把 canonical 还原成 images 形状。Extras 原样带回，
+// usage 是计费依据，丢一次就等于丢一次收入。
+func encodeImageResponse(response *imageResponse) ([]byte, error) {
+	envelope := make(map[string]any, len(response.Extras)+2)
+	maps.Copy(envelope, response.Extras)
+	envelope["created"] = response.Created
+	items := make([]any, 0, len(response.Data))
+	for _, item := range response.Data {
+		entry := make(map[string]any, len(item.Extras)+2)
+		maps.Copy(entry, item.Extras)
+		if item.B64JSON != "" {
+			entry["b64_json"] = item.B64JSON
+		}
+		if item.URL != "" {
+			entry["url"] = item.URL
+		}
+		items = append(items, entry)
+	}
+	envelope["data"] = items
+	return json.Marshal(envelope)
+}
+
+// persistImageBytes 把 b64 图片落到对象存储，换成长期可用的链接。
+//
+// 触发条件只有一个：客户端要的不是 b64（canonical 已把 response_format 归一成
+// url），而上游偏偏只给了 b64。**任何一步失败都保留上游原样** —— 没配存储是常态，
+// 配置缺口不该把一次成功的生成变成 502，也不该让客户端拿到半个响应。
+func persistImageBytes(ctx context.Context, channelID int, response *imageResponse, wantURL bool) bool {
+	if !wantURL || response == nil || len(response.Data) == 0 {
+		return false
+	}
+	changed := false
+	for idx := range response.Data {
+		item := &response.Data[idx]
+		if item.B64JSON == "" {
+			continue
+		}
+		raw, err := base64.StdEncoding.DecodeString(item.B64JSON)
+		if err != nil || len(raw) == 0 {
+			continue
+		}
+		mime, err := detectImageMimeType(raw, "")
+		if err != nil {
+			mime = "image/png"
+		}
+		stored, err := service.PersistArtifactBytes(ctx, channelID, imageObjectKey(raw, mime), mime, raw)
+		if err != nil {
+			continue
+		}
+		item.URL = stored.URL
+		item.B64JSON = ""
+		changed = true
+	}
+	return changed
+}
+
+// imageObjectKey 按内容寻址：同一张图重复生成只占一份存储，写两次也是同一个地址。
+func imageObjectKey(raw []byte, mime string) string {
+	ext := strings.TrimPrefix(mime, "image/")
+	if ext == "jpeg" {
+		ext = "jpg"
+	}
+	sum := sha256.Sum256(raw)
+	return "images/" + hex.EncodeToString(sum[:16]) + "." + ext
 }
 
 // chatImageMarkdown 把 canonical 的图片列表拼成 Markdown。
@@ -238,6 +341,7 @@ func finishImageChatResponse(
 	model string,
 	requestedCount int,
 	stream bool,
+	wantURL bool,
 ) (any, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
 		return nil, types.NewOpenAIError(
@@ -273,6 +377,11 @@ func finishImageChatResponse(
 	decoded, err := decodeImageResponse(raw)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+	}
+	// 客户端要链接、上游只给 base64：先落存储换成地址，再走折形。
+	// 失败就保留 base64 —— 那正是「没配存储就透传」的行为。
+	if info != nil {
+		persistImageBytes(c.Request.Context(), info.GetChannelID(), decoded, wantURL)
 	}
 	// 空 data[] 不在这里升格成 5xx：入口的契约是「回包形状完整」
 	// （chat 要有 choices/message/content），不是替上游判定业务成败。

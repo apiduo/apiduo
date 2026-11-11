@@ -834,6 +834,16 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 			return
 		}
 	}
+	// APIDUO:image-async:BEGIN
+	// 图像异步（protocol=images）的客户端只要一个任务号：这类上游受理就是
+	// 202 + {task_id}，网关再塞 status/model/created_at 只是把自己的任务形状
+	// 漏给客户端 —— 那些字段客户端既不用也不该依赖。
+	if outcome.RelayInfo.ChannelOtherSettings.AdvancedAsync.IsImageProtocol() {
+		diagnostics.present(outcome.Task, "image_async_create")
+		c.JSON(http.StatusOK, map[string]any{"task_id": outcome.Task.TaskID})
+		return
+	}
+	// APIDUO:image-async:END
 	createdAt := outcome.Task.CreatedAt
 	if createdAt == 0 {
 		createdAt = outcome.Task.SubmitTime

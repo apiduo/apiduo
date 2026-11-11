@@ -45,6 +45,9 @@ type Adaptor struct {
 	imageUpstreamPath    string
 	imageRequestCount    int
 	imageStream          bool
+	// imageWantURL is the client's response_format, resolved to a boolean at
+	// request time: canonical has already normalised it to url|b64_json.
+	imageWantURL bool
 	// APIDUO:image-protocol:END
 }
 
