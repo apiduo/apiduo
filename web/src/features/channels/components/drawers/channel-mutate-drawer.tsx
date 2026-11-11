@@ -752,6 +752,20 @@ export function ChannelMutateDrawer({
       ),
     [currentAdvancedCustom, formValues.settings]
   )
+  // 摘要分两层读：先「几条路由、中心在哪」，再是入口清单。原来五个 badge 平铺，
+  // 计数、状态、入口三类信息同权，读起来像五个并列项；入口名又是英文全称，
+  // 一换行第二行就只剩两个，参差。
+  const declaredPrimary = readPrimaryEndpoint(formValues.settings)
+  const imageProtocolSettings = readImageProtocol(formValues.settings)
+  let primaryCenter = t('Primary endpoint off')
+  if (declaredPrimary) {
+    primaryCenter = t('Primary endpoint: {{path}}', { path: declaredPrimary })
+  } else if (imageProtocolSettings?.enabled) {
+    primaryCenter = t('Image protocol on')
+  }
+  const primarySummary = `${t('{{count}} routes', {
+    count: advancedCustomStats.routeCount,
+  })} · ${primaryCenter}`
   /* APIDUO:primary-endpoint:END */
   /* APIDUO:advanced-async:BEGIN */
   const advancedAsyncStats = useMemo(
@@ -4363,47 +4377,27 @@ export function ChannelMutateDrawer({
                 render={({ field }) => (
                   <FormItem className='space-y-3 border-y py-4'>
                     <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
-                      <div className='space-y-2'>
-                        <FormLabel>{t('Advanced Custom Routes')}</FormLabel>
-                        <div className='flex flex-wrap gap-2'>
-                          <Badge variant='secondary'>
-                            {t('Routes')}: {advancedCustomStats.routeCount}
-                          </Badge>
-                          {/* APIDUO:primary-endpoint:BEGIN */}
-                          <Badge
-                            variant={
-                              readPrimaryEndpoint(formValues.settings) ||
-                              readImageProtocol(formValues.settings)?.enabled
-                                ? 'outline'
-                                : 'secondary'
-                            }
-                            className='max-w-[16rem]'
-                            title={readPrimaryEndpoint(formValues.settings) || ''}
+                      {/* APIDUO:primary-endpoint:BEGIN */}
+                      <div className='min-w-0 space-y-2'>
+                        {/* 标题行右侧是状态（几条 + 中心），下一行才是入口清单。
+                            状态用文字、入口用 badge：两者不是同类项，不该同一种视觉。 */}
+                        <div className='flex min-w-0 items-baseline gap-x-2 gap-y-1'>
+                          <FormLabel className='shrink-0'>
+                            {t('Advanced Custom Routes')}
+                          </FormLabel>
+                          <span
+                            className='text-muted-foreground min-w-0 text-xs break-all'
+                            title={primarySummary}
                           >
-                            <span
-                              className='apiduo-text truncate'
-                              data-apiduo={apiduoBlockMark(
-                                'channel:primary-endpoint'
-                              )}
-                            >
-                              {readPrimaryEndpoint(formValues.settings)
-                                ? t('Primary endpoint: {{path}}', {
-                                    path: readPrimaryEndpoint(
-                                      formValues.settings
-                                    ),
-                                  })
-                                : readImageProtocol(formValues.settings)
-                                      ?.enabled
-                                  ? t('Image protocol on')
-                                  : t('Primary endpoint off')}
-                            </span>
-                          </Badge>
-                          {/* APIDUO:primary-endpoint:END */}
+                            {primarySummary}
+                          </span>
+                        </div>
+                        <div className='flex flex-wrap gap-1.5'>
                           {advancedCustomRouteTypeLabels.map((label) => (
                             <Badge
                               key={label}
                               variant='outline'
-                              className='max-w-[12rem]'
+                              className='max-w-[12rem] font-normal'
                               title={label}
                             >
                               <span className='truncate'>{label}</span>
@@ -4423,6 +4417,7 @@ export function ChannelMutateDrawer({
                             </Badge>
                           )}
                         </div>
+                        {/* APIDUO:primary-endpoint:END */}
                       </div>
                       <Button
                         type='button'

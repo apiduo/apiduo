@@ -158,3 +158,33 @@ func TestImageProtocolValidateMatchesPrimaryEndpointShape(t *testing.T) {
 		}
 	}
 }
+
+// 0.0.70 及更早把 image_protocol.upstream 存成型号名（seedream / gpt-image-2）。
+// 改名为协议名（ark / openai）时没随附数据迁移，老渠道 settings 里仍是旧值；
+// 读取侧不收敛的话，发版后这些渠道的每次图片请求都会在 Validate 上 400，
+// 而报错发生在请求期，运维看不出是配置问题。
+func TestNormalizeImageUpstream(t *testing.T) {
+	cases := []struct{ raw, want string }{
+		{"seedream", ImageUpstreamARK},
+		{"gpt-image-2", ImageUpstreamOpenAI},
+		{"ark", ImageUpstreamARK},
+		{"openai", ImageUpstreamOpenAI},
+		{" ARK ", ImageUpstreamARK},
+		{"", ""},
+		{"something-else", "something-else"},
+	}
+	for _, c := range cases {
+		if got := NormalizeImageUpstream(c.raw); got != c.want {
+			t.Errorf("NormalizeImageUpstream(%q) = %q, want %q", c.raw, got, c.want)
+		}
+	}
+}
+
+func TestValidateImageProtocolAcceptsLegacyUpstream(t *testing.T) {
+	for _, legacy := range []string{"seedream", "gpt-image-2"} {
+		cfg := &ImageProtocolConfig{Enabled: true, Upstream: legacy}
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("legacy upstream %q rejected: %v", legacy, err)
+		}
+	}
+}

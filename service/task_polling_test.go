@@ -831,10 +831,18 @@ type scriptedPollingAdaptor struct {
 	fetchErr   error
 	parse      *relaycommon.TaskInfo
 	parseErr   error
+	// APIDUO:multi-key-polling:BEGIN
+	// gotKeys records the credential each FetchTask was called with, so a test
+	// can assert which key a poll used.
+	gotKeys []string
+	// APIDUO:multi-key-polling:END
 }
 
 func (a *scriptedPollingAdaptor) Init(*relaycommon.RelayInfo) {}
-func (a *scriptedPollingAdaptor) FetchTask(string, string, *model.Task, string) (*http.Response, error) {
+// APIDUO:multi-key-polling:BEGIN
+func (a *scriptedPollingAdaptor) FetchTask(_ string, key string, _ *model.Task, _ string) (*http.Response, error) {
+	a.gotKeys = append(a.gotKeys, key)
+	// APIDUO:multi-key-polling:END
 	if a.fetchErr != nil {
 		return nil, a.fetchErr
 	}
@@ -1035,6 +1043,75 @@ func TestUpdateVideoSingleTaskPollClassification(t *testing.T) {
 		})
 	}
 }
+
+// APIDUO:multi-key-polling:BEGIN
+// 多 key 渠道的 Channel.Key 是所有 key 换行拼起来的，直接拿去请求上游只会 401。
+// 轮询必须用提交任务时记下的那把 key（这里是按 fingerprint 反查到的第二把）。
+func TestUpdateVideoSingleTaskUsesBoundMultiKey(t *testing.T) {
+	truncate(t)
+	const userID, tokenID, channelID = 511, 511, 511
+	const initialQuota, preConsumed, tokenRemain = 10_000, 4_000, 7_000
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, "sk-poll-bound", tokenRemain)
+
+	ch := &model.Channel{
+		Id:     channelID,
+		Type:   constant.ChannelTypeKling,
+		Name:   "poll-multi",
+		Key:    "sk-key-one\nsk-key-two",
+		Status: common.ChannelStatusEnabled,
+	}
+	ch.ChannelInfo.IsMultiKey = true
+	ch.ChannelInfo.MultiKeySize = 2
+	ch.ChannelInfo.MultiKeyMode = constant.MultiKeyModePolling
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.TaskID = "task_poll_bound"
+	task.PrivateData.UpstreamTaskID = "upstream_poll_bound"
+	task.PrivateData.MultiKeyIndex = 1
+	task.PrivateData.MultiKeyFingerprint = model.MultiKeyFingerprint("sk-key-two")
+	require.NoError(t, model.DB.Create(task).Error)
+
+	adaptor := &scriptedPollingAdaptor{statusCode: http.StatusOK}
+	require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, ch, task.GetUpstreamTaskID(), map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	}))
+
+	require.Len(t, adaptor.gotKeys, 1)
+	assert.Equal(t, "sk-key-two", adaptor.gotKeys[0])
+}
+
+// 单 key 渠道不能因为这次修复改变行为：GetTaskKey 会原样返回 Channel.Key。
+func TestUpdateVideoSingleTaskKeepsSingleKey(t *testing.T) {
+	truncate(t)
+	const userID, tokenID, channelID = 512, 512, 512
+	const initialQuota, preConsumed, tokenRemain = 10_000, 4_000, 7_000
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, "sk-poll-single", tokenRemain)
+
+	ch := &model.Channel{
+		Id:     channelID,
+		Type:   constant.ChannelTypeKling,
+		Name:   "poll-single",
+		Key:    "sk-only-key",
+		Status: common.ChannelStatusEnabled,
+	}
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.TaskID = "task_poll_single"
+	task.PrivateData.UpstreamTaskID = "upstream_poll_single"
+	require.NoError(t, model.DB.Create(task).Error)
+
+	adaptor := &scriptedPollingAdaptor{statusCode: http.StatusOK}
+	require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, ch, task.GetUpstreamTaskID(), map[string]*model.Task{
+		task.GetUpstreamTaskID(): task,
+	}))
+
+	require.Len(t, adaptor.gotKeys, 1)
+	assert.Equal(t, "sk-only-key", adaptor.gotKeys[0])
+}
+
+// APIDUO:multi-key-polling:END
 
 func TestUpdateBatchTasksPollClassification(t *testing.T) {
 	testCases := []struct {

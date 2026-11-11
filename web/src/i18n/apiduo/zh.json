@@ -230,6 +230,7 @@
     "Image-to-image stays on the same endpoint; image references travel in the JSON body and mask is not forwarded.": "图生图仍走同一端点，图片引用放在 JSON 里，mask 不转发。",
     "Folded by the image protocol": "图片协议接管",
     "Override ignored": "覆盖不生效",
-    "The image protocol picks the endpoint itself; this entry does not use its own upstream.": "图片协议自己选端点：这个入口不按自己的上游转发，改这里不会影响请求。"
+    "The image protocol picks the endpoint itself; this entry does not use its own upstream.": "图片协议自己选端点：这个入口不按自己的上游转发，改这里不会影响请求。",
+    "{{count}} routes": "{{count}} 条路由"
   }
 }

@@ -507,6 +507,17 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if privateData.Key != "" {
 		key = privateData.Key
 	}
+	// APIDUO:multi-key-task-binding:BEGIN
+	// 多 key 渠道的 Channel.Key 是所有 key 用换行拼起来的：拿它当一把 key
+	// 发出去，上游只会回 401，任务永远停在 NOT_START。轮询必须用提交这个
+	// 任务时的那把 key（UpstreamKey / fingerprint 反查），单 key 渠道
+	// GetTaskKey 会原样返回 Channel.Key，行为不变。
+	if privateData.Key == "" {
+		if bound, _ := model.GetTaskKey(ch, task); bound != "" {
+			key = bound
+		}
+	}
+	// APIDUO:multi-key-task-binding:END
 	snap := task.Snapshot()
 	resp, err := adaptor.FetchTask(baseURL, key, task, proxy)
 	if err != nil {

@@ -8,12 +8,12 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	125
-blocks	371
-added	3577
+blocks	375
+added	3666
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
-deleted	162
+deleted	170
 # 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
 # blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
 # `alignImageCarriers` 与它在那两个标记块里的行。
@@ -62,3 +62,26 @@ deleted	162
 #   判定本身在 controller/apiduo_media_range.go（新文件，不占上游文件数）。
 # - files +1 不是本会话的：61a7db89（并行会话）改的上游文件
 #   web/src/features/channels/components/primary-endpoint-editor.tsx 已经进树。
+
+# 2026-11-12 01:1x 上调 added 3577->3579、deleted 162->169（+2 / +7，块数不变）：
+# 渠道抽屉「高级自定义路由」摘要重排 —— 五个 badge 平铺改成「状态一行 + 入口一行」。
+# 挂接点在上游 channel-mutate-drawer.tsx 的 FormField render 里：标题、计数 badge、
+# 状态 badge、入口 badge 是同一段 JSX，中间没有可以单独切开的边界，故整段入
+# 已有的 primary-endpoint 块（块数不变）。
+# added +2 是净增行；deleted +7 是"路由 N"计数 badge、主端点/协议状态 badge
+# 和它们的容器行被替换掉（不是新增，是改写的代价）。
+# 数值取自本工作树 markercheck -cost 实测；并行会话那 33 个未提交改动没有计入。
+
+# 2026-11-12 01:1x 上调 blocks 371->372、added 3579->3658、deleted 169->170
+# （+1 块 / +79 行 / +1 行）：多 key 渠道的后台轮询用错了 key。
+#
+# `updateVideoSingleTask` 原来只认 `private_data.key`（只有 Gemini / Vertex /
+# NewAPI 才写），8001 渠道拿不到它，于是 fallback 到 `channels.key` —— 多 key
+# 时那是所有 key 换行拼接的整串，上游只回 401，任务永远停在 NOT_START
+# （实测 poll_failures 涨到 3、GET 一直 queued）。改成走 `model.GetTaskKey`
+# （UpstreamKey → index+fingerprint 反查）。
+#
+# 增量几乎全在 `service/task_polling_test.go`：两个用例（多 key 用绑定 key、
+# 单 key 行为不变）。生产代码只多 1 个块 + 10 行。
+# 数值取自 /tmp/mk-fix-tree 干净 worktree 的 markercheck -cost（HEAD ef265778
+# + 本次两个文件），并行会话的未提交改动没有计入。

@@ -152,6 +152,7 @@
     "This path does not end with generations, so image requests will not land where the protocol expects.": "This path does not end with generations, so image requests will not land where the protocol expects.",
     "Folded by the image protocol": "Folded by the image protocol",
     "Override ignored": "Override ignored",
-    "The image protocol picks the endpoint itself; this entry does not use its own upstream.": "The image protocol picks the endpoint itself; this entry does not use its own upstream."
+    "The image protocol picks the endpoint itself; this entry does not use its own upstream.": "The image protocol picks the endpoint itself; this entry does not use its own upstream.",
+    "{{count}} routes": "{{count}} routes"
   }
 }

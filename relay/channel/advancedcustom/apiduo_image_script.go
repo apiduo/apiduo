@@ -132,7 +132,8 @@ func planImageRequest(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePl
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	switch cfg.Upstream {
+	// 历史值（seedream / gpt-image-2）在这里一并收敛，见 NormalizeImageUpstream。
+	switch dto.NormalizeImageUpstream(cfg.Upstream) {
 	case dto.ImageUpstreamARK:
 		return planSeedream(c, cfg)
 	case dto.ImageUpstreamOpenAI:

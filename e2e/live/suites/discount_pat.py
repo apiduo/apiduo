@@ -95,7 +95,7 @@ def main():
         if it.get("name") == chname:
             call("DELETE", f"/api/channel/{it['id']}", None, admin)
     settings = {"primary_endpoint": "/v1/images/generations",
-                "image_protocol": {"enabled": True, "upstream": "seedream"},
+                "image_protocol": {"enabled": True, "upstream": "ark"},
                 "advanced_custom": {"advanced_routes": [{"incoming_path": "/v1/images/edits"}]}}
     st, res = call("POST", "/api/channel/", {"mode": "single", "channel": {
         "name": chname, "type": 58, "key": "sk-e2e", "base_url": os.environ.get("E2E_UPSTREAM", "http://127.0.0.1:39403"),

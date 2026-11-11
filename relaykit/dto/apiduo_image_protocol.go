@@ -38,11 +38,30 @@ type ImageProtocolConfig struct {
 	// 逐跳重定向校验、连接前解析 IP、大小上限、并发上限）。
 }
 
+// NormalizeImageUpstream 把历史型号名收敛成协议名。
+//
+// 0.0.70 及更早的版本把存储值写成型号（seedream / gpt-image-2），改成协议名
+// （ark / openai）时没有随附数据迁移：老渠道 settings 里仍是旧字符串，而校验
+// 只认新值 —— 直接发版会让这些渠道的每次图片请求都 400，且报错发生在请求期，
+// 运维看不出是配置问题。在读取侧收敛后，老配置不用动、不用等迁移脚本，
+// 下次在编辑页保存时自然写成新值。
+func NormalizeImageUpstream(raw string) string {
+	// 大小写不敏感：有人在 settings JSON 里手填过 ARK，不该因此被拒。
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "seedream", ImageUpstreamARK:
+		return ImageUpstreamARK
+	case "gpt-image-2", ImageUpstreamOpenAI:
+		return ImageUpstreamOpenAI
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+}
+
 func (c *ImageProtocolConfig) Validate() error {
 	if c == nil || !c.Enabled {
 		return nil
 	}
-	switch strings.TrimSpace(c.Upstream) {
+	switch NormalizeImageUpstream(c.Upstream) {
 	case ImageUpstreamARK, ImageUpstreamOpenAI:
 	default:
 		return fmt.Errorf(

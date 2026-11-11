@@ -146,7 +146,7 @@ def main():
         ("带查询串", {"edit_path": "/v1/images/edits?x=1"}),
         ("管理面路径", {"primary_path": "/api/advanced-custom/models"}),
     ):
-        cfg = {"enabled": True, "upstream": "seedream", **path}
+        cfg = {"enabled": True, "upstream": "ark", **path}
         r = create(at, "adv-a", "adv-a", {
             "primary_endpoint": "/v1/images/generations",
             "image_protocol": cfg,
@@ -202,7 +202,7 @@ def main():
           (entry or {}).get("path") == "/v1/images/pinned", (entry or {}).get("path", "-"))
 
     r = update(at, "adv-override", lambda s: s.__setitem__(
-        "image_protocol", {"enabled": True, "upstream": "seedream"}))
+        "image_protocol", {"enabled": True, "upstream": "ark"}))
     check("A5 打开协议", r.status_code == 200 and json.loads(r.text).get("success") is True,
           (r.text or "")[:80])
     wait_visible(at, "adv-override")
@@ -215,7 +215,7 @@ def main():
     # ---------- A6：协议接管 generations，即使路由表只声明了 chat ----------
     r = create(at, "adv-routeonly", "adv-routeonly", {
         "primary_endpoint": "/v1/images/generations",
-        "image_protocol": {"enabled": True, "upstream": "seedream"},
+        "image_protocol": {"enabled": True, "upstream": "ark"},
         "advanced_custom": {"advanced_routes": [{"incoming_path": "/v1/chat/completions"}]}})
     check("A6 建渠道（只声明对话路由）", r.status_code == 200, error_of(r)[:90])
     wait_visible(at, "adv-routeonly")
@@ -241,7 +241,7 @@ def main():
     # ---------- A8：Responses 入口不参与折叠，按自己的路由走 ----------
     r = create(at, "adv-resp", "adv-resp", {
         "primary_endpoint": "/v1/images/generations",
-        "image_protocol": {"enabled": True, "upstream": "seedream"},
+        "image_protocol": {"enabled": True, "upstream": "ark"},
         "advanced_custom": {"advanced_routes": [
             {"incoming_path": "/v1/images/generations"},
             {"incoming_path": "/v1/responses", "upstream_path": "/v1/responses"}]}})

@@ -122,7 +122,7 @@ def main():
 
     # ---------- C1：主端点 + 空 upstream 跟随 + 显式覆盖 ----------
     c1 = {"primary_endpoint": " /v1/images/custom-gen ",
-          "image_protocol": {"enabled": True, "upstream": "seedream"},
+          "image_protocol": {"enabled": True, "upstream": "ark"},
           "advanced_custom": {"advanced_routes": [
               {"incoming_path": "/v1/images/edits"},
               {"incoming_path": "/v1/chat/completions", "upstream_path": "/v1/chat/completions"},
@@ -222,7 +222,7 @@ def main():
 
     # ---------- C3：聊天主端点不抢图片协议 ----------
     c3 = {"primary_endpoint": "/v1/chat/completions",
-          "image_protocol": {"enabled": True, "upstream": "seedream"},
+          "image_protocol": {"enabled": True, "upstream": "ark"},
           "advanced_custom": {"advanced_routes": [{"incoming_path": "/v1/images/generations"}]}}
     r = create(at, "e2e-chatprimary", "e2e-chatprimary", c3)
     check("C3 建渠道 200", r.status_code == 200, f"status={r.status_code}")
@@ -235,7 +235,7 @@ def main():
 
     # ---------- C4：显式 primary_path 优先于主端点 ----------
     c4 = {"primary_endpoint": "/v1/images/primary-x",
-          "image_protocol": {"enabled": True, "upstream": "seedream", "primary_path": "/v1/images/explicit-y"},
+          "image_protocol": {"enabled": True, "upstream": "ark", "primary_path": "/v1/images/explicit-y"},
           "advanced_custom": {"advanced_routes": [{"incoming_path": "/v1/images/generations"}]}}
     r = create(at, "e2e-explicit", "e2e-explicit", c4)
     check("C4 建渠道 200", r.status_code == 200, f"status={r.status_code}")

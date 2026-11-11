@@ -134,7 +134,7 @@ def ensure_channels(at):
 
     img_settings = {
         "primary_endpoint": "/v1/images/generations",
-        "image_protocol": {"enabled": True, "upstream": "seedream"},
+        "image_protocol": {"enabled": True, "upstream": "ark"},
         "advanced_custom": {"advanced_routes": [
             {"incoming_path": "/v1/chat/completions", "upstream_path": "/v1/chat/completions"}]},
     }
