@@ -164,6 +164,26 @@
     "Left empty, the last segment of the primary endpoint is swapped from generations to edits. Fill it in only when the upstream path differs.": "Left empty, the last segment of the primary endpoint is swapped from generations to edits. Fill it in only when the upstream path differs.",
     "One endpoint": "One endpoint",
     "Two endpoints": "Two endpoints",
-    "Open the protocol details to change how image-to-image reaches the upstream.": "Open the protocol details to change how image-to-image reaches the upstream."
+    "Open the protocol details to change how image-to-image reaches the upstream.": "Open the protocol details to change how image-to-image reaches the upstream.",
+    "Where each entry goes": "Where each entry goes",
+    "Text to image / Image to image": "Text to image / Image to image",
+    "Converted into an image task; with an image it takes the image-to-image line": "Converted into an image task; with an image it takes the image-to-image line",
+    "Not intercepted; forwarded as-is": "Not intercepted; forwarded as-is",
+    "Turned into an image task": "Turned into an image task",
+    "One upstream path": "One upstream path",
+    "Two upstream paths": "Two upstream paths",
+    "Every request": "Every request",
+    "Without an image": "Without an image",
+    "With an image": "With an image",
+    "How does the primary endpoint land upstream?": "How does the primary endpoint land upstream?",
+    "Downstream entries only talk to this endpoint; however many endpoints the upstream has, they all converge here.": "Downstream entries only talk to this endpoint; however many endpoints the upstream has, they all converge here.",
+    "Converges to the primary endpoint": "Converges to the primary endpoint",
+    "Turned into an image task, then converges to the primary endpoint": "Turned into an image task, then converges to the primary endpoint",
+    "Not intercepted; keeps its own landing": "Not intercepted; keeps its own landing",
+    "Converge": "Converge",
+    "Convert": "Convert",
+    "However many endpoints the upstream has, they all converge here; every downstream entry is converted from it.": "However many endpoints the upstream has, they all converge here; every downstream entry is converted from it.",
+    "Converted from the primary endpoint": "Converted from the primary endpoint",
+    "Turned into an image task, then converted from the primary endpoint": "Turned into an image task, then converted from the primary endpoint"
   }
 }

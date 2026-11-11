@@ -249,6 +249,26 @@
     "Left empty, the last segment of the primary endpoint is swapped from generations to edits. Fill it in only when the upstream path differs.": "留空時把主端點末段的 generations 換成 edits；上游路徑不按這個規則時再手填。",
     "One endpoint": "1 個端點",
     "Two endpoints": "2 個端點",
-    "Open the protocol details to change how image-to-image reaches the upstream.": "展開協議細節，改圖生圖的走法。"
+    "Open the protocol details to change how image-to-image reaches the upstream.": "展開協議細節，改圖生圖的走法。",
+    "Where each entry goes": "入口去向",
+    "Text to image / Image to image": "文生圖 / 圖生圖",
+    "Converted into an image task; with an image it takes the image-to-image line": "轉成出圖任務；帶圖時走圖生圖那條線",
+    "Not intercepted; forwarded as-is": "協議不接管，原樣轉發",
+    "Turned into an image task": "轉出圖",
+    "One upstream path": "上游 1 條路",
+    "Two upstream paths": "上游 2 條路",
+    "Every request": "全部請求",
+    "Without an image": "無圖",
+    "With an image": "帶圖",
+    "How does the primary endpoint land upstream?": "主端點在上游怎麼落地？",
+    "Downstream entries only talk to this endpoint; however many endpoints the upstream has, they all converge here.": "下游入口只跟它互動；上游無論幾個端點，都收口到這裡。",
+    "Converges to the primary endpoint": "收口到主端點",
+    "Turned into an image task, then converges to the primary endpoint": "轉成出圖任務，再收口到主端點",
+    "Not intercepted; keeps its own landing": "不接管，走自己的落點",
+    "Converge": "收口",
+    "Convert": "轉換",
+    "However many endpoints the upstream has, they all converge here; every downstream entry is converted from it.": "上游無論幾個端點，都收口到這裡；下游每個入口都由它轉換而來。",
+    "Converted from the primary endpoint": "由主端點轉換而來",
+    "Turned into an image task, then converted from the primary endpoint": "先轉成出圖任務，再由主端點轉換"
   }
 }

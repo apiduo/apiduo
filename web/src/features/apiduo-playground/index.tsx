@@ -31,6 +31,7 @@ import { ChatWorkspace } from './chat/chat-workspace'
 import { ImageStage } from './v2/image-stage'
 import { useBillingLedger } from './hooks/use-billing-ledger'
 import { useApiduoSpring } from './hooks/use-motion'
+import { modelKind } from './lib/model-kind'
 import { buildRequestCurl, type RequestMeta } from './lib/request-meta'
 import './styles/fluid.css'
 import './styles/motion.css'
@@ -39,11 +40,12 @@ import type { PlaygroundMode } from './types'
 
 const MODE_STORAGE_KEY = 'apiduo_playground_mode'
 
-const MODE_ENDPOINTS: Record<PlaygroundMode, string[]> = {
-  chat: ['openai', 'anthropic', 'gemini', 'openai-response'],
-  image: ['image-generation'],
-  video: ['openai-video'],
-}
+const CHAT_ENDPOINTS = new Set([
+  'openai',
+  'anthropic',
+  'gemini',
+  'openai-response',
+])
 
 function readStoredMode(): PlaygroundMode {
   if (typeof window === 'undefined') return 'chat'
@@ -52,8 +54,9 @@ function readStoredMode(): PlaygroundMode {
 }
 
 /**
- * 模型按端点类型分到三个工作区。一个模型都没匹配上时退回全量列表，
- * 宁可选错也不要让用户面对空下拉框——很多自建渠道并不上报 endpoint 类型。
+ * 模型按端点类型分到三个工作区，端点缺失时按名字兜底（见 model-kind.ts）。
+ * 一个模型都没匹配上时退回全量列表，宁可选错也不要让用户面对空下拉框——
+ * 很多自建渠道并不上报 endpoint 类型。
  */
 function filterModels(
   models: ModelOption[],
@@ -61,11 +64,17 @@ function filterModels(
   mode: PlaygroundMode
 ): ModelOption[] {
   if (!pricing) return models
-  const wanted = MODE_ENDPOINTS[mode]
   const matched = models.filter((model) => {
     const info = pricing.models[model.value]
-    if (!info || info.endpointTypes.length === 0) return mode === 'chat'
-    return info.endpointTypes.some((type) => wanted.includes(type))
+    if (!info) return mode === 'chat'
+    const kind = modelKind(model.value, info.endpointTypes)
+    if (kind !== mode) return false
+    // Unknown endpoints still count as chat: a channel that reports nothing
+    // should not lose its text models.
+    if (kind === 'chat' && info.endpointTypes.length > 0) {
+      return info.endpointTypes.some((type) => CHAT_ENDPOINTS.has(type))
+    }
+    return true
   })
   return matched.length > 0 ? matched : models
 }

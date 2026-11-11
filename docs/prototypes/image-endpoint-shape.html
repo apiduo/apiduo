@@ -64,6 +64,12 @@
     background: var(--muted); padding: 1px 5px; border-radius: 5px;
     border: 1px solid var(--border);
   }
+  .banner {
+    border: 1px solid var(--border); border-left: 3px solid var(--warn);
+    background: var(--warn-soft); border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 24px; font-size: 12.5px; line-height: 1.7;
+  }
+  .banner strong { display: block; margin-bottom: 2px; }
   .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
   .toggle {
     flex: none; display: inline-flex; align-items: center; gap: 8px;
@@ -257,7 +263,15 @@
 <body>
 <div class="wrap">
 
-  <div class="head">
+  <div class="banner">
+  <strong>落地说明（2026-11-12 02:5x）</strong>
+  本页是方案阶段的对照分析。最终上线的表述改成<b>收敛契约</b>：
+  上游不分几个端点都<em>收口</em>到主端点，下游每个入口都由主端点<em>转换</em>而来。
+  所以线上卡片标题是「上游 1 条路 / 上游 2 条路」，行标签是「全部请求 / 无图 / 带图」，
+  不再按「文生图 / 图生图」组织——那是下游的视角，会把两层混在一起。
+</div>
+
+<div class="head">
     <div>
       <h1>单端点 / 双端点，到底在选什么</h1>
       <p class="lede">

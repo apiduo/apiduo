@@ -59,21 +59,26 @@ import { cn } from '@/lib/utils'
 // 每张卡只说两件事：图生图走哪、用什么编码——这正是两种布局的全部差别。
 const [IMAGE_SHAPE_SINGLE, IMAGE_SHAPE_DUAL] = IMAGE_PROTOCOL_UPSTREAMS
 
+// 每张卡只回答一个问题：主端点在上游落成几条路径。
+// 不复述下游请求类型——下游只认主端点，那是另一层的事（见入口卡的「入口去向」）。
 const IMAGE_SHAPE_CARDS = [
   {
     value: IMAGE_SHAPE_SINGLE.value,
-    title: 'Same route',
+    title: 'One upstream path',
     subtitle: IMAGE_SHAPE_SINGLE.label,
+    rows: [{ label: 'Every request', target: 'primary', encoding: 'JSON' }],
     note: 'Image references stay in the JSON body; mask is not forwarded.',
-    encoding: 'JSON',
     dual: false,
   },
   {
     value: IMAGE_SHAPE_DUAL.value,
-    title: 'A different route',
+    title: 'Two upstream paths',
     subtitle: IMAGE_SHAPE_DUAL.label,
+    rows: [
+      { label: 'Without an image', target: 'primary', encoding: 'JSON' },
+      { label: 'With an image', target: 'edit', encoding: 'multipart' },
+    ],
     note: 'Image and mask are uploaded as files.',
-    encoding: 'multipart',
     dual: true,
   },
 ] as const
@@ -239,7 +244,7 @@ export function PrimaryEndpointEditor(props: {
             <p className='text-muted-foreground text-xs'>
               {enabled
                 ? t(
-                    'The shared landing address for every entry. A single entry can still point somewhere else.'
+                    'However many endpoints the upstream has, they all converge here; every downstream entry is converted from it.'
                   )
                 : t(
                     'Off: every entry forwards on its own route, exactly like new-api.'
@@ -255,44 +260,12 @@ export function PrimaryEndpointEditor(props: {
 
         {enabled ? (
           <div className='space-y-1.5 border-t px-4 py-3'>
-            {/* 数据流：下游入口 → 收口点（主端点）→ 上游。
-                以前只有一行输入框，用户看不出它在链条里的位置，也看不出上游是谁；
-                把三段并排画出来，「多个入口收紧成一个出口」这件事就不用解释了。 */}
-            <div className='grid grid-cols-1 gap-x-2 gap-y-1.5 lg:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] lg:items-end'>
-              {/* 三段的高度必须一致（标签行 16px + 值行 32px），否则底部对齐时
-                  两侧的标签会被输入框顶下去，三个标题就落在三个高度上。 */}
-              <div className='min-w-0'>
-                <p className='text-muted-foreground text-[11px] leading-4'>
-                  {t('Downstream')}
-                </p>
-                <p className='flex h-8 min-w-0 items-center truncate text-xs font-medium'>
-                  {t('{{count}} entries', { count: derivations.length })}
-                </p>
-              </div>
-
-              <ArrowRight
-                className='text-muted-foreground/50 mx-auto size-4 rotate-90 lg:mx-1 lg:mb-2 lg:rotate-0'
-                aria-hidden='true'
-              />
-
-              <div className='min-w-0'>
-                <p className='text-muted-foreground text-[11px] leading-4'>
-                  {t('Converges to')}
-                </p>
-                <Input
-                  value={declared}
-                  spellCheck={false}
-                  placeholder={derived || '/v1/images/generations'}
-                  className='mt-1 h-8 font-mono'
-                  onChange={(event) => setPath(event.target.value)}
-                />
-              </div>
-
-              <ArrowRight
-                className='text-muted-foreground/50 mx-auto size-4 rotate-90 lg:mx-1 lg:mb-2 lg:rotate-0'
-                aria-hidden='true'
-              />
-
+            {/* 收敛契约，读法是一条从左到右的句子：
+                  上游（无论几个端点）──收口──▶ 主端点 ──转换──▶ 下游（n 个入口）
+                顺序刻意不是请求方向：用户要理解的是「一个契约两头派生」，
+                写成 下游→主端点→上游 会让人以为下游才是源头。 */}
+            <div className='grid grid-cols-1 gap-x-2 gap-y-1.5 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.3fr)_auto_minmax(0,1fr)] lg:items-end'>
+              {/* 上游 */}
               <div className='min-w-0'>
                 <p className='text-muted-foreground text-[11px] leading-4'>
                   {t('Upstream')}
@@ -307,8 +280,8 @@ export function PrimaryEndpointEditor(props: {
                   >
                     {upstreamTarget || t('Not set')}
                   </p>
-                  {/* 上游格直接标出「几个端点」：这是布局在数据流里的唯一含义，
-                      不用先展开协议细节才知道现在是什么形态。点一下跳过去改。 */}
+                  {/* 上游格直接标出「几个端点」：它们全部收口到主端点。
+                      点一下展开协议细节去改形态。 */}
                   {protocolOn ? (
                     <button
                       type='button'
@@ -326,6 +299,50 @@ export function PrimaryEndpointEditor(props: {
                     </button>
                   ) : null}
                 </div>
+              </div>
+
+              <div className='flex flex-col items-center justify-end lg:pb-2'>
+                <span className='text-muted-foreground/80 text-[10px] leading-3'>
+                  {t('Converge')}
+                </span>
+                <ArrowRight
+                  className='text-muted-foreground/50 size-4 rotate-90 lg:rotate-0'
+                  aria-hidden='true'
+                />
+              </div>
+
+              {/* 主端点：唯一契约 */}
+              <div className='min-w-0'>
+                <p className='text-muted-foreground text-[11px] leading-4'>
+                  {t('Primary endpoint')}
+                </p>
+                <Input
+                  value={declared}
+                  spellCheck={false}
+                  placeholder={derived || '/v1/images/generations'}
+                  className='mt-1 h-8 font-mono'
+                  onChange={(event) => setPath(event.target.value)}
+                />
+              </div>
+
+              <div className='flex flex-col items-center justify-end lg:pb-2'>
+                <span className='text-muted-foreground/80 text-[10px] leading-3'>
+                  {t('Convert')}
+                </span>
+                <ArrowRight
+                  className='text-muted-foreground/50 size-4 rotate-90 lg:rotate-0'
+                  aria-hidden='true'
+                />
+              </div>
+
+              {/* 下游 */}
+              <div className='min-w-0'>
+                <p className='text-muted-foreground text-[11px] leading-4'>
+                  {t('Downstream')}
+                </p>
+                <p className='flex h-8 min-w-0 items-center truncate text-xs font-medium'>
+                  {t('{{count}} entries', { count: derivations.length })}
+                </p>
               </div>
             </div>
             {declared ? null : (
@@ -411,7 +428,7 @@ export function PrimaryEndpointEditor(props: {
                         走哪个路径、用什么编码。两卡同时可见才比得出来。 */}
                     <div className='space-y-1.5'>
                       <p className='text-xs'>
-                        {t('How does the upstream take image-to-image?')}
+                        {t('How does the primary endpoint land upstream?')}
                       </p>
                       <div
                         role='radiogroup'
@@ -420,9 +437,6 @@ export function PrimaryEndpointEditor(props: {
                       >
                         {IMAGE_SHAPE_CARDS.map((card) => {
                           const checked = upstreamLayout === card.value
-                          const imageToImage = card.dual
-                            ? editPathPreview
-                            : primary
                           return (
                             <button
                               key={card.value}
@@ -467,43 +481,43 @@ export function PrimaryEndpointEditor(props: {
                                 </span>
                               </span>
 
+                              {/* 一行一条上游路径。标签说「什么时候走它」，
+                                  不是「客户端调了哪个接口」——后者属于下游那一层。 */}
                               <span className='mt-2.5 block space-y-1'>
-                                <span className='flex items-center gap-1.5 text-[11px]'>
-                                  <span className='text-muted-foreground w-10 shrink-0'>
-                                    {t('Text to image')}
-                                  </span>
-                                  <ArrowRight
-                                    className='text-muted-foreground/60 size-3 shrink-0'
-                                    aria-hidden='true'
-                                  />
-                                  <span
-                                    className='bg-muted min-w-0 truncate rounded border px-1 py-0.5 font-mono text-[10px]'
-                                    title={primary || undefined}
-                                  >
-                                    {primary || t('Not set')}
-                                  </span>
-                                </span>
-                                <span className='flex items-center gap-1.5 text-[11px]'>
-                                  <span className='text-muted-foreground w-10 shrink-0'>
-                                    {t('Image to image')}
-                                  </span>
-                                  <ArrowRight
-                                    className='text-muted-foreground/60 size-3 shrink-0'
-                                    aria-hidden='true'
-                                  />
-                                  <span
-                                    className={cn(
-                                      'min-w-0 truncate rounded border px-1 py-0.5 font-mono text-[10px]',
-                                      card.dual ? 'bg-primary/10' : 'bg-muted'
-                                    )}
-                                    title={imageToImage || undefined}
-                                  >
-                                    {imageToImage || t('Not set')}
-                                  </span>
-                                  <span className='text-muted-foreground shrink-0 text-[10px]'>
-                                    {card.encoding}
-                                  </span>
-                                </span>
+                                {card.rows.map((row) => {
+                                  const target =
+                                    row.target === 'edit'
+                                      ? editPathPreview
+                                      : primary
+                                  return (
+                                    <span
+                                      key={row.label}
+                                      className='flex items-center gap-1.5 text-[11px]'
+                                    >
+                                      <span className='text-muted-foreground w-16 shrink-0 truncate'>
+                                        {t(row.label)}
+                                      </span>
+                                      <ArrowRight
+                                        className='text-muted-foreground/60 size-3 shrink-0'
+                                        aria-hidden='true'
+                                      />
+                                      <span
+                                        className={cn(
+                                          'min-w-0 truncate rounded border px-1 py-0.5 font-mono text-[10px]',
+                                          row.target === 'edit'
+                                            ? 'bg-primary/10'
+                                            : 'bg-muted'
+                                        )}
+                                        title={target || undefined}
+                                      >
+                                        {target || t('Not set')}
+                                      </span>
+                                      <span className='text-muted-foreground shrink-0 text-[10px]'>
+                                        {row.encoding}
+                                      </span>
+                                    </span>
+                                  )
+                                })}
                               </span>
 
                               <span className='text-muted-foreground mt-2 block text-[11px] leading-relaxed'>
@@ -606,11 +620,33 @@ export function PrimaryEndpointEditor(props: {
             </div>
           )}
 
-          <p className='text-muted-foreground border-t px-4 py-2 text-[11px] leading-relaxed'>
-            {t(
-              'Responses keeps its own route. With the image protocol on, chat entries are converted into image tasks, so keep that channel image-only.'
-            )}
-          </p>
+          {/* 逐入口写明「这一条被怎么处理」。原来只有一句静态提示、且只提 responses，
+              读的人没法回答「chat 走哪」——而 chat 恰恰是最容易想错的一条：
+              它会被转成出图任务，带图时和图生图同路。 */}
+          {protocolOn ? (
+            <div className='border-t px-4 py-2.5'>
+              <p className='text-muted-foreground text-[11px]'>
+                {t('Where each entry goes')}
+              </p>
+              <ul className='mt-1 space-y-0.5'>
+                {derivations.map((row) => (
+                  <li
+                    key={row.incomingPath}
+                    className='flex items-baseline gap-1.5 text-[11px]'
+                  >
+                    <span className='text-muted-foreground shrink-0 font-mono text-[10px]'>
+                      {row.incomingPath}
+                    </span>
+                    <ArrowRight
+                      className='text-muted-foreground/50 size-2.5 shrink-0 self-center'
+                      aria-hidden='true'
+                    />
+                    <span className='min-w-0'>{t(entryRouteKey(row.incomingPath))}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
 
       ) : (
@@ -625,6 +661,25 @@ export function PrimaryEndpointEditor(props: {
       )}
     </div>
   )
+}
+
+function isChatEntry(incomingPath: string): boolean {
+  return incomingPath.replace(/\/+$/, '').endsWith('/v1/chat/completions')
+}
+
+/**
+ * 每个入口被图片协议怎么处理。判据与后端 `prepareImageProtocol` 的 switch
+ * 一一对应：generations / edits / chat 三个分支接管，其余走 default 原样转发。
+ */
+function entryRouteKey(incomingPath: string): string {
+  const path = incomingPath.replace(/\/+$/, '')
+  if (path.endsWith('/v1/images/generations') || path.endsWith('/v1/images/edits')) {
+    return 'Converted from the primary endpoint'
+  }
+  if (isChatEntry(incomingPath)) {
+    return 'Turned into an image task, then converted from the primary endpoint'
+  }
+  return 'Not intercepted; keeps its own landing'
 }
 
 /**
@@ -752,15 +807,19 @@ function DerivationRow(props: {
     >
       <ArrowRight className='size-3 shrink-0' aria-hidden='true' />
       <span className='truncate'>{t('Primary endpoint')}</span>
+      {/* 两个徽标各说一件事：这条被怎么处理（转出图 / 协议），以及「存了覆盖值但
+          不会生效」。不能让后者顶掉前者——恰好是存了失效覆盖的行，最需要知道它被
+          协议接管了，否则看不懂为什么改不动。 */}
+      <Badge variant='outline' className='shrink-0 font-normal'>
+        {isChatEntry(row.incomingPath)
+          ? t('Turned into an image task')
+          : t('Protocol')}
+      </Badge>
       {overridden ? (
         <Badge variant='outline' className='shrink-0'>
           {t('Override ignored')}
         </Badge>
-      ) : (
-        <Badge variant='outline' className='shrink-0 font-normal'>
-          {t('Protocol')}
-        </Badge>
-      )}
+      ) : null}
     </span>
   )
 
