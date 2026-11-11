@@ -8,8 +8,8 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	129
-blocks	383
-added	3735
+blocks	384
+added	3746
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
@@ -148,3 +148,8 @@ deleted	186
 # PAT 声明（middleware/access_token_routes.go）与路由注册（router/relay-router.go）
 # 各 +1 行。两张表都是唯一落点，挪不进新文件；均落在既有 APIDUO 标记块内，
 # 所以 files/blocks 不变。
+
+# 2026-11-12 03:2x 上调 blocks 383 -> 384、added 3735 -> 3746：
+# `/pg/images/edits` 是 multipart，分发器在进入 controller 之前就要拿到 model，
+# 否则空模型直接 400（线上实测）。沿用 /v1/images/edits 的解析分支，加一个
+# APIDUO 标记块；位置在 middleware/distributor.go 的模型解析链上，不可替代。
