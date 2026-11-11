@@ -210,7 +210,7 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Content>
-        <div className='apiduo-mcp mx-auto w-full max-w-[1000px] px-1 pb-12 pt-4'>
+        <div className='apiduo-mcp mx-auto w-full max-w-[1200px] px-1 pb-12 pt-4'>
           <h2 className='text-[20px] font-bold tracking-tight'>
             {t('MCP access')}
           </h2>
@@ -271,8 +271,9 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
             </p>
           </section>
 
+          <div className='mt-4 grid gap-3 xl:grid-cols-[repeat(auto-fit,minmax(300px,1fr))]'>
           {client.json && (
-            <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-4 rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
+            <details className='apiduo-mcp-rise apiduo-mcp-reveal rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
               <summary className='flex cursor-pointer list-none items-center gap-2.5 rounded-t-xl px-3.5 py-2.5 text-[13px] font-semibold text-foreground marker:content-none hover:bg-muted/30'>
                 <ChevronDown className='apiduo-mcp-chev size-3.5 shrink-0 text-muted-foreground' />
                 {t('Use a config file (JSON)')}
@@ -297,7 +298,7 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
             </details>
           )}
 
-          <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-4 rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
+          <details className='apiduo-mcp-rise apiduo-mcp-reveal rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
             <summary className='flex cursor-pointer list-none items-center gap-2.5 rounded-t-xl px-3.5 py-2.5 text-[13px] font-semibold text-foreground marker:content-none hover:bg-muted/30'>
               <ChevronDown className='apiduo-mcp-chev size-3.5 shrink-0 text-muted-foreground' />
               {t('Verify and troubleshoot')}
@@ -337,7 +338,7 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
             </div>
           </details>
 
-          <details className='apiduo-mcp-rise apiduo-mcp-reveal mt-4 rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
+          <details className='apiduo-mcp-rise apiduo-mcp-reveal rounded-[13px] border border-border bg-card shadow-[0_1px_2px_rgba(20,20,25,0.025),0_8px_24px_-20px_rgba(20,20,25,0.18)]'>
             <summary className='flex cursor-pointer list-none items-center gap-2.5 rounded-t-xl px-3.5 py-2.5 text-[13px] font-semibold text-foreground marker:content-none hover:bg-muted/30'>
               <ChevronDown className='apiduo-mcp-chev size-3.5 shrink-0 text-muted-foreground' />
               {t('Four tools')}
@@ -361,6 +362,7 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
               </p>
             </div>
           </details>
+          </div>
 
           <p className='apiduo-mcp-rise mt-8 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11.5px] text-muted-foreground'>
             <span className='apiduo-mcp-breathe inline-block size-1.5 rounded-full bg-emerald-500' />

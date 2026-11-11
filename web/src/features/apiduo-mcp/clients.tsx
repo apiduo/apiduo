@@ -30,8 +30,6 @@ export const MCP_PATH = '/mcp'
 
 export const TOKEN_SLOT = 'sk-你的令牌'
 
-export type ClientGroup = 'cn' | 'gen'
-
 export interface ClientRow {
   label: string
   value: string
@@ -40,12 +38,11 @@ export interface ClientRow {
 export interface McpClient {
   id: string
   name: string
-  group: ClientGroup
   /** Where the MCP settings live inside the client. */
   where: string
   /** Config file this client reads, if it supports one. */
   file?: string
-  json?: 'std' | 'vscode' | 'stdio'
+  json?: 'std' | 'vscode'
   rows: ClientRow[]
   note: string
 }
@@ -112,21 +109,8 @@ const MARK_PATHS: Record<string, React.ReactNode> = {
 }
 
 /** JSON templates; `json` on a client picks one of these. */
-export function jsonTemplate(kind: 'std' | 'vscode' | 'stdio', url: string) {
+export function jsonTemplate(kind: 'std' | 'vscode', url: string) {
   const auth = `Bearer ${TOKEN_SLOT}`
-  if (kind === 'stdio') {
-    return `{
-  "mcpServers": {
-    "apiduo": {
-      "command": "npx",
-      "args": [
-        "-y", "mcp-remote", "${url}",
-        "--header", "Authorization: ${auth}"
-      ]
-    }
-  }
-}`
-  }
   const root = kind === 'vscode' ? 'servers' : 'mcpServers'
   return `{
   "${root}": {
@@ -163,158 +147,93 @@ export function Mark({
 
 const AUTH = `Authorization: Bearer ${TOKEN_SLOT}`
 
+/**
+ * 这几家填的都是同一组东西，只是措辞不同。真正的差异只剩标签叫法，
+ * 所以模板收敛到一处：以后加客户端只写差异，别再复制四行。
+ */
+const httpRows = (
+  over: Partial<{ name: string; url: string; headers: string; sep: ':' | '=' }> = {}
+): ClientRow[] => [
+  { label: over.name ?? '名称', value: 'apiduo' },
+  { label: '传输类型', value: 'HTTP' },
+  { label: over.url ?? 'URL', value: '{url}' },
+  {
+    label: over.headers ?? '请求头',
+    value:
+      over.sep === '='
+        ? `Authorization = Bearer ${TOKEN_SLOT}`
+        : `Authorization: Bearer ${TOKEN_SLOT}`,
+  },
+]
+
+/**
+ * 客户端目录 —— 增删客户端只改这个数组。
+ *
+ * 每个对象只写差异：显示名、客户端里的菜单路径（where）、可选的文件路径与
+ * JSON 模板类型、注意事项（note）。那四行字段全部来自 httpRows()，不要
+ * 再手抄一遍；需要改字段就改 httpRows，改完全站生效。
+ */
 export const CLIENTS: McpClient[] = [
   {
     id: 'workbuddy',
     name: 'WorkBuddy',
-    group: 'cn',
     where: '连接器 → 自定义连接器 → 配置 MCP',
     file: '~/.workbuddy/mcp.json',
     json: 'std',
-    rows: [
-      { label: '服务器名称', value: 'apiduo' },
-      { label: '传输类型', value: 'HTTP' },
-      { label: '服务器 URL', value: '{url}' },
-      { label: '请求头', value: AUTH },
-    ],
+    rows: httpRows({ name: '服务器名称', url: '服务器 URL' }),
     note: '保存后回列表点一次「信任」，不点不启用。个别版本认不出 http，换成 streamablehttp 再试。',
   },
   {
     id: 'doubao',
     name: '豆包工作',
-    group: 'cn',
     where: '技能·连接器·伙伴 → 连接器 → 新建自定义连接器',
-    rows: [
-      { label: '服务器名称', value: 'apiduo' },
-      { label: '传输类型', value: 'HTTP' },
-      { label: '服务器 URL', value: '{url}' },
-      { label: '自定义 Headers', value: `Authorization = Bearer ${TOKEN_SLOT}` },
-    ],
+    rows: httpRows({
+      name: '服务器名称',
+      url: '服务器 URL',
+      headers: '自定义 Headers',
+      sep: '=',
+    }),
     note: '自定义连接器只在电脑版有。保存后回「我的技能 · 连接器」把开关打开，再新建一个工作任务验证。',
   },
   {
     id: 'trae',
     name: 'Trae',
-    group: 'cn',
     where: '设置 → MCP → 添加 → 手动添加',
     file: '.trae/mcp.json',
     json: 'std',
-    rows: [
-      { label: '名称', value: 'apiduo' },
-      { label: '传输类型', value: 'HTTP' },
-      { label: 'URL', value: '{url}' },
-      { label: '请求头', value: AUTH },
-    ],
+    rows: httpRows(),
     note: '不需要写 type，有 url + headers 就够。云端任务读不到本地 MCP，验证请用本地任务。',
-  },
-  {
-    id: 'codebuddy',
-    name: 'CodeBuddy',
-    group: 'cn',
-    where: '配置 → MCP 设置 → 配置 MCP',
-    file: '~/.codebuddy/.mcp.json',
-    json: 'std',
-    rows: [
-      { label: '名称', value: 'apiduo' },
-      { label: '传输类型', value: 'HTTP' },
-      { label: 'URL', value: '{url}' },
-      { label: '请求头', value: AUTH },
-    ],
-    note: '保存后回 MCP 列表刷新，状态变绿即可。',
-  },
-  {
-    id: 'lingma',
-    name: '通义灵码',
-    group: 'cn',
-    where: '个人设置 → MCP 服务 → + → 手动添加',
-    rows: [
-      { label: '名称', value: 'apiduo' },
-      { label: '类型', value: 'STDIO' },
-      { label: '命令', value: 'npx' },
-      {
-        label: '参数',
-        value: `-y mcp-remote {url} --header "${AUTH}"`,
-      },
-    ],
-    note: '只有 SSE 和 STDIO，没有填请求头的地方，只能用 mcp-remote 在本机桥一层（需 Node 18+）。新版 Qoder CN 支持远程地址，直接填 URL + 请求头即可。',
-  },
-  {
-    id: 'cherry',
-    name: 'Cherry Studio',
-    group: 'cn',
-    where: '设置 → MCP 服务器 → 添加',
-    rows: [
-      { label: '名称', value: 'apiduo' },
-      { label: '类型', value: '可流式传输的 HTTP' },
-      { label: 'URL', value: '{url}' },
-      { label: '请求头', value: `Authorization=Bearer ${TOKEN_SLOT}` },
-    ],
-    note: '请求头按「键=值」逐行填。保存后在「工具」标签页应能看到 4 个工具，回对话记得把这个服务器打开。',
   },
   {
     id: 'cursor',
     name: 'Cursor',
-    group: 'gen',
     where: 'Settings → MCP',
     file: '~/.cursor/mcp.json',
     json: 'std',
-    rows: [
-      { label: '名称', value: 'apiduo' },
-      { label: '传输类型', value: 'HTTP' },
-      { label: 'URL', value: '{url}' },
-      { label: '请求头', value: AUTH },
-    ],
+    rows: httpRows(),
     note: '存盘后看 apiduo 是不是绿点，不是就点刷新。项目内也可以在 .cursor/mcp.json 里写一份。',
   },
   {
     id: 'claude-code',
     name: 'Claude Code',
-    group: 'gen',
     where: '终端 claude mcp add --transport http',
     file: '.mcp.json',
     json: 'std',
-    rows: [
-      { label: '传输类型', value: 'http' },
-      { label: '名称', value: 'apiduo' },
-      { label: 'URL', value: '{url}' },
-      { label: '请求头', value: AUTH },
-    ],
+    rows: httpRows(),
     note: `必须显式写传输类型，否则会被当成 stdio。等价命令：claude mcp add --transport http apiduo {url} --header "Authorization: Bearer ${TOKEN_SLOT}"`,
   },
   {
     id: 'vscode',
     name: 'VS Code',
-    group: 'gen',
     where: '命令面板 → MCP: 添加服务器',
     file: '.vscode/mcp.json',
     json: 'vscode',
-    rows: [
-      { label: '名称', value: 'apiduo' },
-      { label: '传输类型', value: 'HTTP' },
-      { label: 'URL', value: '{url}' },
-      { label: '请求头', value: AUTH },
-    ],
+    rows: httpRows(),
     note: '顶层键是 servers，不是 mcpServers —— 照抄别处的配置会加载不出来。',
-  },
-  {
-    id: 'desktop',
-    name: 'Claude Desktop',
-    group: 'gen',
-    where: 'Settings → Connectors → Add custom connector',
-    file: 'claude_desktop_config.json',
-    json: 'stdio',
-    rows: [
-      { label: '名称', value: 'apiduo' },
-      { label: '传输类型', value: 'HTTP' },
-      { label: 'URL', value: '{url}' },
-      { label: '请求头', value: AUTH },
-    ],
-    note: '新版能直接填 URL 和请求头。旧版只支持本地 stdio，用下面 JSON 里的 mcp-remote 写法。',
   },
   {
     id: 'raw',
     name: '其他客户端',
-    group: 'gen',
     where: '任何支持 Streamable HTTP 的客户端',
     json: 'std',
     rows: [
