@@ -5,6 +5,7 @@
 不看网关自己的日志——那只能证明它以为自己在干什么。
 """
 
+import base64
 import json
 import os
 
@@ -15,6 +16,11 @@ RELAY = os.environ.get("E2E_RELAY_KEY", "")
 ADMIN = (os.environ.get("E2E_ADMIN", "admin"), os.environ.get("E2E_ADMIN_PW", "apiduo-test-2026"))
 LOG = os.environ.get("E2E_IMAGE_LOG", "/tmp/apiduo-e2e/image.log")
 REF = "/tmp/apiduo-img-test/ref.png"
+# 参考图由套件自己造：以前依赖一个手工留在 /tmp 的 ref.png，换台机器/清过 /tmp
+# 就整条 T3 崩在 FileNotFoundError 上，而不是报一个有意义的结果。
+PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
 
 rows = []
 
@@ -101,6 +107,11 @@ def wait_visible(at, model, seconds=40):
 
 
 def main():
+    os.makedirs(os.path.dirname(REF), exist_ok=True)
+    if not os.path.exists(REF):
+        with open(REF, "wb") as fh:
+            fh.write(PNG_1X1)
+
     if not RELAY:
         raise SystemExit("E2E_RELAY_KEY is required (run via run_all.sh)")
     at = admin()
@@ -153,6 +164,24 @@ def main():
     check("T3 折叠成 JSON 且带图",
           (entry or {}).get("content_type") == "application/json" and j.get("image_count") == 1,
           f"ctype={(entry or {}).get('content_type')} image_count={j.get('image_count')}")
+
+    # T3.5 协议开启时 chat 的显式覆盖不生效：请求被折叠成出图任务打在主端点。
+    # C1 的 chat 明明配了 upstream_path=/v1/chat/completions，但 prepareImageProtocol
+    # 只要 image_protocol.enabled 就接管（RelayModeChatCompletions 分支），完全不看
+    # 路由的 upstream_path —— UI 上「图片协议接管 / 覆盖不生效」那行字说的就是它。
+    before = log_count()
+    r = relay("POST", "/v1/chat/completions",
+              json={"model": "e2e-primary",
+                    "messages": [{"role": "user", "content": "chat-folds"}]})
+    entry = log_last() if log_count() > before else None
+    check("T3.5 协议开启时 chat 200", r.status_code == 200, f"status={r.status_code} {r.text[:140]}")
+    check("T3.5 chat 覆盖被协议接管（打主端点，不是 /v1/chat/completions）",
+          entry is not None and entry.get("path") == "/v1/images/custom-gen",
+          (entry or {}).get("path", "-"))
+    j = (entry or {}).get("json") or {}
+    check("T3.5 chat 请求体折叠成出图任务（有 prompt、无 messages）",
+          j.get("prompt") == "chat-folds" and "messages" not in (j.get("keys") or []),
+          json.dumps({k: j.get(k) for k in ("prompt", "keys")}, ensure_ascii=False)[:160])
 
     # T4/T5 载体闸门
     before = log_count()
