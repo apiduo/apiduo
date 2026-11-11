@@ -249,11 +249,7 @@ func storeRemoteArtifact(ctx context.Context, channelID int, raw string) (any, b
 	if err != nil || len(data) == 0 || len(data) > artifactRewriteMaxObject {
 		return raw, false
 	}
-	contentType := strings.TrimSpace(response.Header.Get("Content-Type"))
-	if contentType == "" {
-		contentType = sniffContentType(data)
-	}
-	return persistAndDescribe(ctx, channelID, data, contentType, raw)
+	return persistAndDescribe(ctx, channelID, data, contentTypeFor(response.Header.Get("Content-Type"), data), raw)
 }
 
 // FetchArtifactBytes downloads one remote reference and hands back the bytes.
@@ -289,11 +285,7 @@ func FetchArtifactBytes(ctx context.Context, raw string) ([]byte, string, error)
 	if len(data) > artifactRewriteMaxObject {
 		return nil, "", errors.New("reference exceeds the artifact size ceiling")
 	}
-	contentType := strings.TrimSpace(response.Header.Get("Content-Type"))
-	if contentType == "" {
-		contentType = sniffContentType(data)
-	}
-	return data, contentType, nil
+	return data, contentTypeFor(response.Header.Get("Content-Type"), data), nil
 }
 
 // persistAndDescribe stores the bytes and returns the address to write back.
@@ -648,6 +640,29 @@ func artifactExtension(contentType string, data []byte) string {
 // sniffContentType identifies the common media formats from their magic bytes.
 // Upstreams frequently serve objects as application/octet-stream, and the
 // extension is what makes a rewritten link useful in a browser.
+// contentTypeFor 决定存进对象存储的类型。
+//
+// 上游偶尔把自己手里的字节一律标成 application/octet-stream（COS 直链就常见），
+// 照抄下去会让图片在严格客户端里变成"下载一个文件"而不是"显示一张图" ——
+// 而对象 key 那边已经按魔数补了 .png，两边就自相矛盾了。这种情况下按字节重认一次；
+// 上游明确声明了具体类型就以它为准。
+func contentTypeFor(header string, data []byte) string {
+	value := strings.TrimSpace(header)
+	if value == "" || isGenericBinaryType(value) {
+		return sniffContentType(data)
+	}
+	return value
+}
+
+func isGenericBinaryType(value string) bool {
+	base, _, _ := strings.Cut(value, ";")
+	switch strings.TrimSpace(strings.ToLower(base)) {
+	case "application/octet-stream", "binary/octet-stream", "application/binary":
+		return true
+	}
+	return false
+}
+
 func sniffContentType(data []byte) string {
 	if len(data) < 12 {
 		return "application/octet-stream"

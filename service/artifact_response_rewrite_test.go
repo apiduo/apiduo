@@ -526,3 +526,25 @@ func TestRewriteInPlaceKeepsBodyReadableOnNoChange(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, payload, string(body))
 }
+
+// 上游把自己的字节一律标成 octet-stream（COS 直链常见）时，照抄会让图片在
+// 严格客户端里变成"下载一个文件"，而对象 key 早就按魔数补了 .png —— 两边打架。
+func TestContentTypeForSniffsGenericBinary(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\n" + "0123456789abcdef")
+	cases := []struct {
+		header string
+		want   string
+	}{
+		{"application/octet-stream", "image/png"},
+		{"binary/octet-stream; charset=binary", "image/png"},
+		{"", "image/png"},
+		// 上游明确声明了具体类型就以它为准，不越权重判。
+		{"image/jpeg", "image/jpeg"},
+		{"text/plain; charset=utf-8", "text/plain; charset=utf-8"},
+	}
+	for _, c := range cases {
+		if got := contentTypeFor(c.header, png); got != c.want {
+			t.Errorf("contentTypeFor(%q) = %q, want %q", c.header, got, c.want)
+		}
+	}
+}
