@@ -7,9 +7,9 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	124
-blocks	370
-added	3574
+files	125
+blocks	371
+added	3577
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
@@ -55,3 +55,10 @@ deleted	162
 # 两处挂接点都在上游 controller/task.go：writeTaskArtifacts 补一个 image 条目、
 # TaskArtifactContent 放行 key=image 的代理。判定与投影规则写在新文件
 # controller/apiduo_task_artifact.go（不占上游文件数）。
+
+# 2026-11-12 00:0x 上调 files 124->125、blocks 370->371、added 3574->3577：
+# - blocks +1 / added +3：制品代理的 Range 语义修复。挂接点在上游
+#   controller/video_proxy.go 的响应拷贝处（一个小块调用 apiduo 侧 helper），
+#   判定本身在 controller/apiduo_media_range.go（新文件，不占上游文件数）。
+# - files +1 不是本会话的：61a7db89（并行会话）改的上游文件
+#   web/src/features/channels/components/primary-endpoint-editor.tsx 已经进树。

@@ -7,14 +7,13 @@ import (
 
 // 200 表示上游没按 Range 切分：这时不能再对外宣称 Accept-Ranges，否则浏览器
 // 会一直发 Range、拿回整包再中止（ERR_ABORTED），播放器停在「正在缓冲」。
-func TestCopyTaskMediaResponseHeadersOnlyAdvertisesRangesOnPartial(t *testing.T) {
-	source := http.Header{}
-	source.Set("Accept-Ranges", "bytes")
-	source.Set("Content-Range", "bytes 0-1/2")
-	source.Set("Content-Type", "video/mp4")
-
+func TestApiduoStripUnhonoredRangeHeaders(t *testing.T) {
 	full := http.Header{}
-	copyTaskMediaResponseHeaders(full, source, http.StatusOK)
+	full.Set("Accept-Ranges", "bytes")
+	full.Set("Content-Range", "bytes 0-1/2")
+	full.Set("Content-Type", "video/mp4")
+
+	apiduoStripUnhonoredRangeHeaders(full, http.StatusOK)
 	if got := full.Get("Accept-Ranges"); got != "" {
 		t.Fatalf("a 200 reply must not advertise Accept-Ranges, got %q", got)
 	}
@@ -26,7 +25,9 @@ func TestCopyTaskMediaResponseHeadersOnlyAdvertisesRangesOnPartial(t *testing.T)
 	}
 
 	partial := http.Header{}
-	copyTaskMediaResponseHeaders(partial, source, http.StatusPartialContent)
+	partial.Set("Accept-Ranges", "bytes")
+	partial.Set("Content-Range", "bytes 0-1/2")
+	apiduoStripUnhonoredRangeHeaders(partial, http.StatusPartialContent)
 	if got := partial.Get("Accept-Ranges"); got != "bytes" {
 		t.Fatalf("a 206 reply keeps Accept-Ranges, got %q", got)
 	}

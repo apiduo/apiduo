@@ -210,7 +210,7 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Content>
-        <div className='apiduo-mcp mx-auto w-full max-w-[1200px] px-1 pb-12 pt-4'>
+        <div className='apiduo-mcp w-full px-2 pb-12 pt-4'>
           <h2 className='text-[20px] font-bold tracking-tight'>
             {t('MCP access')}
           </h2>
@@ -237,7 +237,7 @@ export function ApiduoMcp({ clientId }: { clientId?: string }) {
             </div>
 
             <div
-              className='apiduo-mcp-stagger'
+              className='apiduo-mcp-stagger grid gap-x-6 xl:grid-cols-2'
             >
               {client.rows.map((row, index) => (
                 <div
