@@ -52,6 +52,11 @@ func apiduoArkTaskPayload(task *model.Task) map[string]any {
 		_ = common.Unmarshal(task.Data, &payload)
 	}
 	payload["id"] = task.TaskID
+	// model 回显客户端请求的那个名字：重定向场景下上游任务对象里是映射后的名字
+	// （hailuo-video），客户端看到自己没请求过的模型会以为拿错了任务。
+	if name := strings.TrimSpace(task.Properties.OriginModelName); name != "" {
+		payload["model"] = name
+	}
 	status := apiduoArkTaskStatusFor(task, payload)
 	payload["status"] = status
 	if _, ok := payload["created_at"]; !ok {

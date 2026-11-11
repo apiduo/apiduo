@@ -44,6 +44,25 @@ func TestApiduoArkTaskPayloadKeepsUpstreamDetail(t *testing.T) {
 	}
 }
 
+// 模型重定向时回显客户端请求名：上游任务对象里是映射后的名字。
+func TestApiduoArkTaskPayloadEchoesRequestedModel(t *testing.T) {
+	task := &model.Task{
+		TaskID:    "task_local",
+		Status:    model.TaskStatusInProgress,
+		CreatedAt: 1700000000,
+		Data:      json.RawMessage(`{"id":"cgt-upstream","model":"hailuo-video","status":"running"}`),
+		Properties: model.Properties{
+			OriginModelName:   "hailuo-video-sec",
+			UpstreamModelName: "hailuo-video",
+		},
+	}
+
+	payload := apiduoArkTaskPayload(task)
+	if payload["model"] != "hailuo-video-sec" {
+		t.Fatalf("model = %v, want the client spelling", payload["model"])
+	}
+}
+
 // 上游响应丢了 content 时用本地结果地址补齐；否则客户端拿到空 URL 却以为成功。
 func TestApiduoArkTaskPayloadFillsResultURL(t *testing.T) {
 	task := &model.Task{
