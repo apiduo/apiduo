@@ -19,6 +19,8 @@ import (
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/service"
 
+	"github.com/MoeForge/moego/ojson"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -106,6 +108,14 @@ func (a *Adaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.
 				fmt.Errorf("callback_url is not supported; poll the task instead"),
 				"invalid_request", http.StatusBadRequest,
 			)
+		}
+	}
+	// 渠道配了模型重定向时，上游请求体里的 model 也要跟着改：这一层原来只改
+	// 路由与计价，body 还是客户端那份，上游会拿一个它不认识的模型名把请求拒掉
+	// （海螺就是这么拒的：未知 model='hailuo-video-sec'）。没配映射时一个字节不动。
+	if info != nil && info.IsModelMapped && strings.TrimSpace(info.UpstreamModelName) != "" {
+		if patched, err := ojson.SetBytes(body, "model", info.UpstreamModelName); err == nil {
+			body = patched
 		}
 	}
 	a.submitBody = body

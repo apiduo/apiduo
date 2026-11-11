@@ -457,6 +457,50 @@ func TestAdvancedAsyncActionClassifiesContent(t *testing.T) {
 // 方舟的 callback_url 会带着**上游**任务号回调客户端，而网关只发放自己的
 // 任务号，客户端拿回调里的号查不到任何东西。与 doubao 插件一致直接拒绝；
 // images 协议没有这层号映射，不能跟着一起拒。
+// 渠道配了模型重定向时，上游 body 里的 model 必须换成映射后的名字：
+// 只改路由与计价、body 原样透传的话，上游会拿一个它不认识的模型名拒掉。
+func TestValidateRequestRewritesMappedModel(t *testing.T) {
+	adaptor := testAdaptor(t, testConfig())
+	adaptor.info.OriginModelName = "hailuo-video-sec"
+	adaptor.info.UpstreamModelName = "hailuo-video"
+	adaptor.info.IsModelMapped = true
+
+	body := `{"model":"hailuo-video-sec","content":[{"type":"text","text":"hi"}],"duration":6}`
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(body))
+
+	if taskErr := adaptor.ValidateRequestAndSetAction(c, adaptor.info); taskErr != nil {
+		t.Fatalf("unexpected error: %v", taskErr)
+	}
+	patched := string(adaptor.submitBody)
+	if !strings.Contains(patched, `"model":"hailuo-video"`) {
+		t.Fatalf("body must carry the mapped model, got %s", patched)
+	}
+	if strings.Contains(patched, "hailuo-video-sec") {
+		t.Fatalf("body must not keep the client spelling, got %s", patched)
+	}
+	if !strings.Contains(patched, `"duration":6`) {
+		t.Fatalf("other fields must survive, got %s", patched)
+	}
+}
+
+func TestValidateRequestKeepsModelWithoutMapping(t *testing.T) {
+	adaptor := testAdaptor(t, testConfig())
+	adaptor.info.OriginModelName = "hailuo-video"
+	adaptor.info.UpstreamModelName = "hailuo-video"
+
+	body := `{"model":"hailuo-video","content":[{"type":"text","text":"hi"}]}`
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(body))
+
+	if taskErr := adaptor.ValidateRequestAndSetAction(c, adaptor.info); taskErr != nil {
+		t.Fatalf("unexpected error: %v", taskErr)
+	}
+	if string(adaptor.submitBody) != body {
+		t.Fatalf("body must stay byte-identical without a mapping, got %s", adaptor.submitBody)
+	}
+}
+
 func TestValidateRequestRejectsArkCallbackURL(t *testing.T) {
 	cases := []struct {
 		name       string
