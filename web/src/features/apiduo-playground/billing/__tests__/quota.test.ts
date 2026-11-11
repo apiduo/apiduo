@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it, vi } from 'vitest'
 
-import { resolveGroupRatio } from '../pricing'
+import { fixedUnitPrice, resolveGroupRatio } from '../pricing'
 import { computeChatQuota, computeImageQuota, formatUsd } from '../quota'
 import type { PricingModel, PricingSnapshot } from '../types'
 
@@ -48,6 +48,8 @@ function model(overrides: Partial<PricingModel> = {}): PricingModel {
     endpointTypes: ['openai'],
     description: '',
     tags: [],
+    billingMode: '',
+    billingExpr: '',
     ...overrides,
   }
 }
@@ -166,6 +168,38 @@ describe('computeImageQuota', () => {
 
     expect(one?.quota).toBe(20000)
     expect(three?.quota).toBe(60000)
+  })
+})
+
+describe('fixedUnitPrice', () => {
+  it('reads the fixed amount out of a tiered expression', () => {
+    expect(
+      fixedUnitPrice({
+        ...model(),
+        billingMode: 'tiered_expr',
+        billingExpr: 'tier("base", fixed(0.2))',
+      })
+    ).toBe(0.2)
+    expect(
+      fixedUnitPrice({
+        ...model(),
+        billingMode: 'tiered_expr',
+        billingExpr: 'tier("request", fixed(0.00075))',
+      })
+    ).toBe(0.00075)
+  })
+
+  it('returns null when the expression is not a simple fixed price', () => {
+    expect(
+      fixedUnitPrice({
+        ...model(),
+        billingMode: 'tiered_expr',
+        billingExpr: 'tier("base", tokens × 0.5)',
+      })
+    ).toBeNull()
+    expect(
+      fixedUnitPrice({ ...model(), billingMode: '', billingExpr: '' })
+    ).toBeNull()
   })
 })
 

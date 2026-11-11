@@ -25,7 +25,11 @@ import type { ModelOption } from '@/features/playground/types'
 import { formatCurrencyFromUSD } from '@/lib/currency'
 
 import type { PlaygroundMode } from '../types'
-import { findModel, resolveGroupRatio } from '../billing/pricing'
+import {
+  findModel,
+  fixedUnitPrice,
+  resolveGroupRatio,
+} from '../billing/pricing'
 import { BillPanelSlot, MoneyChip } from '../components/message-billing'
 import type { BillingLedger } from '../hooks/use-billing-ledger'
 import { editImages, generateImages } from '../image/api'
@@ -129,7 +133,9 @@ export function ImageStage({
       const info = findModel(ledger.pricing, target)
       if (!info) return null
       const { effective } = resolveGroupRatio(ledger.pricing, group, target)
-      const base = info.quotaType === 1 ? info.modelPrice : info.modelRatio * 2
+      const base =
+        fixedUnitPrice(info) ??
+        (info.quotaType === 1 ? info.modelPrice : info.modelRatio * 2)
       return base * effective
     },
     [group, ledger.pricing]

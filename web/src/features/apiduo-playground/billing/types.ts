@@ -38,6 +38,10 @@ export interface PricingModel {
   description: string
   /** 模型管理里打的标签（已小写）。运营可以用它标 NEW。 */
   tags: string[]
+  /** 计费模式：空 = 按 ratio/price；tiered_expr = 由 billingExpr 决定。 */
+  billingMode: string
+  /** 计费表达式，例如 `tier("base", fixed(0.2))`。 */
+  billingExpr: string
 }
 
 export interface PricingSnapshot {

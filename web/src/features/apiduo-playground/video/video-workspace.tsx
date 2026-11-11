@@ -31,7 +31,11 @@ import { Composer } from '../v2/composer'
 import { ExamplesShelf } from '../v2/examples'
 import type { BillingLedger } from '../hooks/use-billing-ledger'
 import { useApiduoSpring } from '../hooks/use-motion'
-import { findModel, resolveGroupRatio } from '../billing/pricing'
+import {
+  findModel,
+  fixedUnitPrice,
+  resolveGroupRatio,
+} from '../billing/pricing'
 import type { RequestMeta } from '../lib/request-meta'
 import type { PlaygroundMode, VideoTask, VideoTaskStatus } from '../types'
 import type { RefImage } from '../v2/types'
@@ -109,7 +113,9 @@ export function VideoWorkspace({
       const info = findModel(ledger.pricing, target)
       if (!info) return ''
       const { effective } = resolveGroupRatio(ledger.pricing, group, target)
-      const unit = info.quotaType === 1 ? info.modelPrice : info.modelRatio * 2
+      const unit =
+        fixedUnitPrice(info) ??
+        (info.quotaType === 1 ? info.modelPrice : info.modelRatio * 2)
       return formatCurrencyFromUSD(unit * effective, {
         digitsLarge: 4,
         digitsSmall: 4,

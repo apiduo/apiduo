@@ -72,6 +72,10 @@ function parseModel(raw: Record<string, unknown>): PricingModel | null {
     description:
       typeof raw.description === 'string' ? raw.description.trim() : '',
     tags: parseTags(raw.tags),
+    billingMode:
+      typeof raw.billing_mode === 'string' ? raw.billing_mode.trim() : '',
+    billingExpr:
+      typeof raw.billing_expr === 'string' ? raw.billing_expr.trim() : '',
   }
 }
 
@@ -164,4 +168,21 @@ export function resolveGroupRatio(
     return { effective: base, discount: null, base }
   }
   return { effective: discount, discount, base }
+}
+
+/**
+ * Where a model is billed by an expression, the ratio table is not the price:
+ * production's `flux-3-image` declares `tier("base", fixed(0.2))` and no usable
+ * ratio, so quoting `model_ratio * 2` would print a per-million-token number
+ * for a per-image model. Only the simple `fixed(x)` shape is understood here;
+ * any other expression falls back to the ratio table.
+ */
+const FIXED_EXPR = /fixed\(\s*([0-9]+(?:\.[0-9]+)?)\s*\)/i
+
+export function fixedUnitPrice(info: PricingModel): number | null {
+  if (info.billingMode !== 'tiered_expr') return null
+  const match = FIXED_EXPR.exec(info.billingExpr)
+  if (!match) return null
+  const value = Number(match[1])
+  return Number.isFinite(value) ? value : null
 }
