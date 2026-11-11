@@ -7,13 +7,13 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	129
-blocks	384
-added	3746
+files	130
+blocks	385
+added	3760
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
-deleted	186
+deleted	185
 # 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
 # blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
 # `alignImageCarriers` 与它在那两个标记块里的行。
@@ -153,3 +153,21 @@ deleted	186
 # `/pg/images/edits` 是 multipart，分发器在进入 controller 之前就要拿到 model，
 # 否则空模型直接 400（线上实测）。沿用 /v1/images/edits 的解析分支，加一个
 # APIDUO 标记块；位置在 middleware/distributor.go 的模型解析链上，不可替代。
+
+# 2026-11-12 03:3x 上调 files 129->130、blocks 384->385、added 3746->3760、
+# 同时把 deleted 186 收紧到 185：`/pg/images/edits` 的 n 字段解析。
+#
+# 分发器修好之后仍 400，错误换成
+# `json: cannot unmarshal string into Go struct field Alias.n of type uint`。
+# 根因在 `relay/constant/relay_mode.go`：Path2RelayMode 只认 /v1 前缀，
+# /pg/images/edits 落成 RelayModeUnknown，校验层于是走「把表单值原样转 JSON」
+# 的默认分支 —— multipart 里的 n 恒是字符串，写进 *uint 直接炸。
+# 修法是给两个 /pg/images/* 入口提前返回真实模式（1 个标记块 / 13 行）。
+#
+# files +1 是 relay_mode.go 第一次带标记块进合并面；blocks +1 就是这一块；
+# added +13 = 4 行标记/空行 + 6 行注释 + 2 个 if/return 对。
+# 单测在新文件 relay/constant/relay_mode_pg_test.go 与
+# relay/helper/apiduo_playground_image_test.go，不占上游文件数。
+#
+# 数值取自 /tmp/mk-pgrelay 干净 worktree（HEAD 35477e37 + 本次三文件）实测
+# 3759；按以往「CI 比本地 -cost 多 1 行」的经验记 3760 卡上界。
