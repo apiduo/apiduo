@@ -169,23 +169,36 @@ For commercial licensing, please contact support@quantumnous.com
  * 下拉面板。撑开靠 data-open，收起时只摘这一个属性，过渡从当前位置反向，
  * 所以中途再点能直接打断（不做 display:none 的硬切）。
  */
+/*
+ * 收起时不做透明度过渡 —— 半透明的面板会把它盖住的文字透出来，和一个
+ * 密集的表单叠在一起就是一团浆糊。改用 visibility + transform：要么完全
+ * 看不见，要么完全不透明，中间没有可读性下降的状态。
+ */
 .apiduo-mcp-menu {
-  opacity: 0;
+  /*
+   * 背景写在这里而不是只靠 Tailwind 的 bg-popover：面板必须绝对不透明，
+   * 一旦这条声明丢了（变量缺省、类被 merge 掉、主题换了预设），整块就会
+   * 变成半透明，和底下的表单文字糊在一起。isolation 再把它拎成独立的
+   * 层叠上下文，避免被同级的合成层插进来。
+   */
+  background-color: var(--popover, #fff);
+  isolation: isolate;
+  visibility: hidden;
   transform: translateY(-7px) scale(0.965);
   transform-origin: top left;
   pointer-events: none;
   transition:
-    opacity 0.2s var(--apiduo-out),
-    transform 0.26s var(--apiduo-out);
+    transform 0.26s var(--apiduo-out),
+    visibility 0s linear 0.26s;
 }
 
 .apiduo-mcp-menu[data-open='true'] {
-  opacity: 1;
+  visibility: visible;
   transform: none;
   pointer-events: auto;
   transition:
-    opacity 0.28s var(--apiduo-swift),
-    transform 0.44s var(--apiduo-swift);
+    transform 0.44s var(--apiduo-swift),
+    visibility 0s;
 }
 
 /* 菜单从底部行向上弹时，起点也反过来，否则方向会拧。 */

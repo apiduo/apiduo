@@ -219,8 +219,8 @@ export function ApiduoMcp() {
             )}
           </p>
 
-          <div className='apiduo-mcp-rise mt-5 grid grid-cols-[34px_minmax(0,1fr)] items-center gap-x-1.5 gap-y-2 max-sm:grid-cols-1'>
-            <span className='text-right text-[11px] tracking-wide text-muted-foreground max-sm:hidden'>
+          <div className='apiduo-mcp-rise mt-5 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-2 max-sm:grid-cols-1'>
+            <span className='whitespace-nowrap text-right text-[11px] tracking-wide text-muted-foreground max-sm:hidden'>
               {t('China clients')}
             </span>
             <div className='flex flex-wrap gap-1.5 max-sm:-mx-4 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-4 max-sm:[scrollbar-width:none]'>
@@ -234,7 +234,7 @@ export function ApiduoMcp() {
                 />
               ))}
             </div>
-            <span className='text-right text-[11px] tracking-wide text-muted-foreground max-sm:hidden'>
+            <span className='whitespace-nowrap text-right text-[11px] tracking-wide text-muted-foreground max-sm:hidden'>
               {t('General clients')}
             </span>
             <div className='flex flex-wrap gap-1.5 max-sm:-mx-4 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-4 max-sm:[scrollbar-width:none]'>

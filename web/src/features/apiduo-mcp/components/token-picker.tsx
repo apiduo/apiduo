@@ -155,7 +155,7 @@ export function TokenPicker({
         aria-hidden={!open}
         className={cn(
           'apiduo-mcp-menu absolute left-0 z-30 mt-1.5 w-[292px] max-w-[calc(100vw-2rem)]',
-          'rounded-xl border border-border bg-popover p-1 shadow-xl',
+          'rounded-xl border border-border p-1 shadow-xl z-50',
           'max-sm:left-auto max-sm:right-0'
         )}
       >
