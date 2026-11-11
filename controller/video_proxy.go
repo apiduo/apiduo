@@ -22,6 +22,9 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
+	// APIDUO:artifact-deleted-channel:BEGIN
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
+	// APIDUO:artifact-deleted-channel:END
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
@@ -210,15 +213,17 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 		}
 	}
 
-	channel, err := model.CacheGetChannel(task.ChannelId)
-	if err != nil {
-		return &taskMediaProxyError{
-			status: http.StatusServiceUnavailable, code: "artifact_plugin_unavailable",
-			message: "Artifact channel is unavailable", err: err,
-		}
+	// APIDUO:artifact-deleted-channel:BEGIN
+	// 渠道被删除后，历史任务的制品仍然要能预览：渠道在这里只提供 proxy
+	// 设置，没有它就直连（SSRF 校验照常）。原来的实现直接 503，删一个渠道
+	// 等于把该渠道下所有已完成任务的视频一起弄丢。
+	setting := kitdto.ChannelSettings{}
+	proxy := ""
+	if channel, channelErr := model.CacheGetChannel(task.ChannelId); channelErr == nil && channel != nil {
+		setting = channel.GetSetting()
+		proxy = strings.TrimSpace(setting.Proxy)
 	}
-	setting := channel.GetSetting()
-	proxy := strings.TrimSpace(setting.Proxy)
+	// APIDUO:artifact-deleted-channel:END
 	if err := validateTaskMediaURL(rawURL, proxy); err != nil {
 		return &taskMediaProxyError{
 			status: http.StatusBadGateway, code: "artifact_request_rejected",

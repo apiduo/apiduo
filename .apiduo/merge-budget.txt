@@ -8,12 +8,12 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	128
-blocks	380
-added	3698
+blocks	382
+added	3711
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
-deleted	176
+deleted	184
 # 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
 # blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
 # `alignImageCarriers` 与它在那两个标记块里的行。
@@ -122,3 +122,9 @@ deleted	176
 
 # 2026-11-12 01:5x 修正：上一笔把 added 写成 3695（应为 3698），CI 报
 # 「added 3695 -> 3698（多出 3）」卡住发版。这里补回实际值。
+
+# 2026-11-12 02:1x 上调 blocks 380->381、added 3698->3709、deleted 176->184：
+# 删除渠道后历史任务制品 503/404（`proxyTaskMedia` 强依赖 `CacheGetChannel`）。
+# 改成渠道缺失时 proxy="" 直连（SSRF 校验照常），块挂在上游
+# controller/video_proxy.go。线上实例：删掉测试渠道 24 后，
+# 该渠道 3 个成功任务的「点击预览视频」全部黑屏（内容 URL 404/503）。
