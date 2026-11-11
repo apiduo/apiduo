@@ -8,8 +8,8 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	123
-blocks	366
-added	3528
+blocks	367
+added	3534
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
@@ -32,3 +32,13 @@ deleted	160
 # - 逻辑本体（三方言的 JSON 取值、状态白名单、LIKE 字面量转义）全在
 #   model/apiduo_task_filters.go，新文件不占预算。
 # 数值取自 35c17637 的干净工作树实测（含并行会话已提交的部分），与 CI 口径一致。
+
+# 2026-11-11 22:50 上调 blocks 366 -> 367、added 3528 -> 3534（+1 块 / +6 行）：
+# 这两笔不是本会话的改动 —— 我的 5f0b5279 只新增了 model/apiduo_task_filters_test.go，
+# 新文件不占预算。增量来自两次已提交的上游改动：
+#   e2ce47ba fix(ark)      controller/apiduo_ark_task_fetch.go +5 行
+#   55454041 feat(mcp)     web/src/hooks/use-sidebar-data.ts +8/-x 行
+# 数值取自 5f0b5279 的干净工作树实测（CI 同一口径）。
+# ⚠️ 并行会话还有一块未提交的 connect 路由 WIP（预计再加 3 行），它落库时
+# 需再上调一次；不要把它提前记进来 —— 记未提交的改动会让预算虚高，
+# 今天已经因此返工过一轮（见 47e046b3 / 702b8c7d）。
