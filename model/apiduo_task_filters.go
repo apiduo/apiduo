@@ -23,28 +23,17 @@ import (
 // 四个查询入口（列表/计数 × 管理员/本人）各加一行 applyApiduoTaskFilters，
 // 语义天然一致 —— 分开写必然漂。
 
-// apiduoTaskStatusWhitelist 是允许筛选的任务状态全集（与常量一一对应）。
-// 状态走 IN 拼接，白名单比转义更省心：非法值直接丢弃，不会把脏字符串塞进 SQL。
-var apiduoTaskStatusWhitelist = []string{
-	"NOT_START",
-	"SUBMITTED",
-	"QUEUED",
-	"IN_PROGRESS",
-	"SUCCESS",
-	"FAILURE",
-	"UNKNOWN",
-}
-
-// ParseApiduoTaskStatuses 把逗号分隔的状态过滤值收敛成白名单内的去重集合。
-// 大小写不敏感，空片段与重复值丢弃，顺序保持入参顺序（便于日志与测试阅读）。
+// ParseApiduoTaskStatuses 把逗号分隔的状态值拆成去重集合。
+//
+// 不设白名单、不做大小写折叠：未知值原样进 IN（值走参数占位符，不拼 SQL），
+// 查询自然是空结果 —— 与上游「status 等值匹配」同一语义。早期版本先过白名单
+// 再丢非法值，结果是条件退化成「不过滤」，一次拼写错误就把全量日志当成命中返回。
+// 空串（含只有分隔符）才表示没有这个筛选条件。
 func ParseApiduoTaskStatuses(raw string) []string {
 	statuses := make([]string, 0, 3)
 	for part := range strings.SplitSeq(raw, ",") {
-		part = strings.ToUpper(strings.TrimSpace(part))
+		part = strings.TrimSpace(part)
 		if part == "" || slices.Contains(statuses, part) {
-			continue
-		}
-		if !slices.Contains(apiduoTaskStatusWhitelist, part) {
 			continue
 		}
 		statuses = append(statuses, part)

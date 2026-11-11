@@ -105,6 +105,13 @@ func TestApiduoTaskStatusFilter(t *testing.T) {
 		[]string{"mapped"},
 		listApiduoTaskIDs(t, SyncTaskQueryParams{Statuses: ParseApiduoTaskStatuses("FAILURE")}),
 	)
+
+	// 拼错的状态必须是空结果。曾经的实现先过白名单、把非法值丢掉，
+	// 于是「不过滤」生效 ⇒ 一次笔误返回全量，线上排查会被这个骗。
+	assert.Empty(t,
+		listApiduoTaskIDs(t, SyncTaskQueryParams{Statuses: ParseApiduoTaskStatuses("FAILUR")}),
+		"an unknown status must match nothing, not everything",
+	)
 }
 
 func TestApiduoTaskStatusFilterAndModelCombine(t *testing.T) {
@@ -117,14 +124,25 @@ func TestApiduoTaskStatusFilterAndModelCombine(t *testing.T) {
 	assert.Empty(t, listApiduoTaskIDs(t, combined), "model and status must be ANDed")
 }
 
-func TestParseApiduoTaskStatusesDropsNoise(t *testing.T) {
+func TestParseApiduoTaskStatuses(t *testing.T) {
 	assert.Empty(t, ParseApiduoTaskStatuses(""))
-	assert.Empty(t, ParseApiduoTaskStatuses(" , ,"))
-	assert.Empty(t, ParseApiduoTaskStatuses("DROP TABLE tasks"), "unknown statuses are dropped, not passed through")
+	assert.Empty(t, ParseApiduoTaskStatuses(" , ,"), "only separators means no filter")
 	assert.Equal(t,
 		[]string{"SUCCESS", "FAILURE"},
-		ParseApiduoTaskStatuses(" success , FAILURE ,SUCCESS, "),
-		"whitespace, case and duplicates are normalized",
+		ParseApiduoTaskStatuses(" SUCCESS , FAILURE ,SUCCESS, "),
+		"whitespace, duplicates and a trailing comma are normalized",
+	)
+	// 值随参数占位符进 SQL，不拼字符串，所以未知值原样保留是安全的；
+	// 换来的语义是「未知 = 空结果」，与上游等值匹配一致。
+	assert.Equal(t,
+		[]string{"DROP TABLE tasks"},
+		ParseApiduoTaskStatuses("DROP TABLE tasks"),
+		"unknown values are passed through as literal values",
+	)
+	assert.Equal(t,
+		[]string{"success"},
+		ParseApiduoTaskStatuses("success"),
+		"case is preserved: the database decides how it compares",
 	)
 }
 
