@@ -62,6 +62,9 @@ func TestValidateApiduoOptionValue(t *testing.T) {
 		{"observability_setting.body_mode", "FULL"}, // 大小写不该决定成败
 		{"observability_setting.body_head_bytes", "0"},
 		{"observability_setting.body_head_bytes", strconv.Itoa(trace.MaxBodyWindowBytes)},
+		{"observability_setting.body_full_bytes", strconv.Itoa(trace.MinBodyFullBytes)},
+		{"observability_setting.body_full_bytes", "4194304"},
+		{"observability_setting.body_full_bytes", strconv.Itoa(trace.MaxBodyFullBytes)},
 		{"observability_setting.export_host", "http://apiduo-langfuse-web:3000"},
 		{"observability_setting.export_host", ""}, // 空 = 跟随环境变量
 		{"observability_setting.console_url", "https://langfuse.1task.cn"},
@@ -90,6 +93,11 @@ func TestValidateApiduoOptionValue(t *testing.T) {
 		{"observability_setting.rules", `[{"start":"18:00","end":"09:00"}]`, "结束时间要晚于开始时间"},
 		{"observability_setting.body_mode", "hedtali", "off / headtail / full"},
 		{"observability_setting.body_head_bytes", strconv.Itoa(trace.MaxBodyWindowBytes + 1), "超出范围"},
+		// 消息得说 MB：表单上写的是 1–16，运维要照着它改。
+		{"observability_setting.body_full_bytes", "0", "1 MB ~ 16 MB"},
+		{"observability_setting.body_full_bytes", strconv.Itoa(trace.MinBodyFullBytes - 1), "1 MB ~ 16 MB"},
+		{"observability_setting.body_full_bytes", strconv.Itoa(trace.MaxBodyFullBytes + 1), "1 MB ~ 16 MB"},
+		{"observability_setting.body_full_bytes", "abc", "1 MB ~ 16 MB"},
 		{"observability_setting.export_host", "langfuse.1task.cn", "http(s)"},
 		{"observability_setting.export_host", "ftp://langfuse", "http(s)"},
 		// 导出路径是 {host}/api/public/otel/v1/traces 直接拼的：带路径不报错，
@@ -193,5 +201,43 @@ func TestValidateApiduoOptionSetStorageEnabled(t *testing.T) {
 	// 关掉存储不受 targets 限制
 	if err := ValidateApiduoOptionSet(map[string]string{"artifact_storage_setting.enabled": "false"}); err != nil {
 		t.Errorf("关闭存储不该被拦，实际 %v", err)
+	}
+}
+
+// 设置页把 apiduoRange 的消息原样弹给运维。原先用 %g 格式化上界：
+// 1048576 会打成 1.048576e+06，谁也没法照着它把表单改对。
+func TestRangeMessagesStayReadable(t *testing.T) {
+	cases := []struct{ key, val string }{
+		{"observability_setting.body_full_bytes", strconv.Itoa(trace.MaxBodyFullBytes + 1)},
+		{"observability_setting.body_head_bytes", strconv.Itoa(trace.MaxBodyWindowBytes + 1)},
+		{"artifact_storage_setting.max_object_bytes", strconv.Itoa(1<<40 + 1)},
+		{"apiduo_appearance_setting.ring_px", "0.1"},
+	}
+	for _, c := range cases {
+		err := ValidateApiduoOptionValue(c.key, c.val)
+		if err == nil {
+			t.Fatalf("%s=%s 应当被拒", c.key, c.val)
+		}
+		msg := err.Error()
+		if strings.Contains(msg, "e+") || strings.Contains(msg, "E+") {
+			t.Errorf("%s 的消息里出现了科学计数法：%s", c.key, msg)
+		}
+	}
+}
+
+func TestApiduoNumKeepsFractions(t *testing.T) {
+	// 整数按整数打，小数不能被截成 0 —— ring_px 的下界就是 0.5。
+	for _, c := range []struct {
+		in   float64
+		want string
+	}{
+		{1048576, "1048576"},
+		{1 << 40, "1099511627776"},
+		{0.5, "0.5"},
+		{0.1, "0.1"},
+	} {
+		if got := apiduoNum(c.in); got != c.want {
+			t.Errorf("apiduoNum(%v) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }

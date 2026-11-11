@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -197,7 +198,12 @@ func ValidateApiduoOptionValue(key, value string) error {
 		// 上下界都是硬边界而不是建议值：这不是「窗口」，是每个 payload 的缓冲上限，
 		// 一个请求同时持有 input 与 output，队列再叠 QueueContent 份。
 		// 写入期拒绝，运行期 ClampBodyFullBytes 兜底。
-		return apiduoRange(key, v, trace.MinBodyFullBytes, trace.MaxBodyFullBytes)
+		// 回消息时换成 MB：表单上写的是 1–16，回一个 1048576 得让人心算一遍。
+		if err := apiduoRange(key, v, trace.MinBodyFullBytes, trace.MaxBodyFullBytes); err != nil {
+			return bad("%s 必须是 %d MB ~ %d MB 之间的整字节数（收到 %q）",
+				key, trace.MinBodyFullBytes>>20, trace.MaxBodyFullBytes>>20, v)
+		}
+		return nil
 	case "observability_setting.error_sample_rate":
 		return apiduoRange(key, v, 0, 100)
 	case "observability_setting.environment":
@@ -324,9 +330,19 @@ func apiduoRange(key, v string, min, max float64) error {
 		return fmt.Errorf("%s 必须是数字", key)
 	}
 	if n < min || n > max {
-		return fmt.Errorf("%s 超出范围：%g ~ %g（收到 %g）", key, min, max, n)
+		return fmt.Errorf("%s 超出范围：%s ~ %s（收到 %s）", key, apiduoNum(min), apiduoNum(max), apiduoNum(n))
 	}
 	return nil
+}
+
+// apiduoNum 把上限数字按「人和表单都认的样子」打出来。原先用 %g：字节数一过
+// 六位就变成 1.048576e+06 —— 而这条消息是运维在设置页直接看到的文案，
+// 得跟输入框里的 1 / 16 用同一种写法。1<<40 那条老上限也一直有同样的问题。
+func apiduoNum(n float64) string {
+	if n == math.Trunc(n) && math.Abs(n) < 1<<53 {
+		return strconv.FormatInt(int64(n), 10)
+	}
+	return strconv.FormatFloat(n, 'f', -1, 64)
 }
 
 type apiduoStorageTarget struct {
