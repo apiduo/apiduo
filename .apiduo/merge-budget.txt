@@ -9,7 +9,7 @@
 # 格式：<key>	<value>
 files	129
 blocks	383
-added	3733
+added	3735
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
@@ -142,3 +142,9 @@ deleted	186
 
 # 2026-11-12 02:4x 上调 added 3727 -> 3733（CI 口径 = worktree + 5）：
 # 自动播放不生效，改成 onLoadedMetadata 里手动静音 play。
+
+# 2026-11-12 03:0x 上调 added 3733 -> 3735（CI 报的 3735，本地 -cost 3736）：
+# playground 参考图编辑入口 `POST /pg/images/edits` 的两处挂接点 ——
+# PAT 声明（middleware/access_token_routes.go）与路由注册（router/relay-router.go）
+# 各 +1 行。两张表都是唯一落点，挪不进新文件；均落在既有 APIDUO 标记块内，
+# 所以 files/blocks 不变。
