@@ -180,11 +180,25 @@ func (c *imageCanonical) normalize() error {
 	if raw, exists := c.fields["n"]; exists {
 		c.fields["n"] = normaliseN(raw)
 	}
+	// response_format 的口径：**只要不是 b64_json 就优先要 url**。
+	// 缺席、非法值、显式的 "url" 一律归一到 "url"；只有客户端明确写
+	// b64_json 才给 base64。
+	//
+	// 这是一处**显式偏差**，登记在此以免出现两种读法：skill 技巧 5 说
+	// 「默认值不主动下发」，那是为了让上游的默认归上游。但图像响应的 base64
+	// 动辄几 MB，塞进 chat 的 content 或 images 的 data[] 里没有任何好处，
+	// 而客户端不写这个字段通常只是没想到 —— 于是这里选择主动要 url。
+	// 上游若只认 b64 会忽略这个字段，无害：响应侧照实回包，不做二次转存。
+	wantB64 := false
 	if raw, exists := c.fields["response_format"]; exists {
-		value, ok := raw.(string)
-		if !ok || (value != "url" && value != "b64_json") {
-			delete(c.fields, "response_format")
+		if value, ok := raw.(string); ok && value == "b64_json" {
+			wantB64 = true
 		}
+	}
+	if wantB64 {
+		c.fields["response_format"] = "b64_json"
+	} else {
+		c.fields["response_format"] = "url"
 	}
 
 	if raw, exists := c.fields["image"]; exists {

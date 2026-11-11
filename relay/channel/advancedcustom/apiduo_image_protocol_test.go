@@ -425,19 +425,37 @@ func TestEmptyArrayRoutesToTextToImage(t *testing.T) {
 	}
 }
 
-func TestCanonicalNormalisesNAndResponseFormat(t *testing.T) {
-	canonical := protocolCanonical(t,
-		`{"model":"m","prompt":"p","n":"abc","response_format":"png"}`)
+func TestCanonicalNormalisesN(t *testing.T) {
+	canonical := protocolCanonical(t, `{"model":"m","prompt":"p","n":"abc"}`)
 	if canonical.fields["n"] != 1 {
 		t.Fatalf("invalid n must fall back to 1, got %#v", canonical.fields["n"])
 	}
-	if _, exists := canonical.fields["response_format"]; exists {
-		t.Fatal("illegal response_format must be deleted, not forwarded")
-	}
-
 	absent := protocolCanonical(t, `{"model":"m","prompt":"p"}`)
 	if _, exists := absent.fields["n"]; exists {
 		t.Fatal("absent n must stay absent; defaults belong to the upstream")
+	}
+}
+
+// 口径：只要不是 b64_json 就优先要 url。缺席与非法值都归一到 url ——
+// 图像响应的 base64 动辄几 MB，客户端不写这个字段通常只是没想到。
+func TestCanonicalDefaultsResponseFormatToURL(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"m","prompt":"p"}`,                          // 缺席
+		`{"model":"m","prompt":"p","response_format":null}`,    // 空值
+		`{"model":"m","prompt":"p","response_format":""}`,      // 空串
+		`{"model":"m","prompt":"p","response_format":"png"}`,   // 非法值
+		`{"model":"m","prompt":"p","response_format":"url"}`,   // 显式 url
+	} {
+		canonical := protocolCanonical(t, body)
+		if got := canonical.fields["response_format"]; got != "url" {
+			t.Errorf("%s: response_format = %#v, want \"url\"", body, got)
+		}
+	}
+
+	canonical := protocolCanonical(t,
+		`{"model":"m","prompt":"p","response_format":"b64_json"}`)
+	if got := canonical.fields["response_format"]; got != "b64_json" {
+		t.Fatalf("explicit b64_json must survive, got %#v", got)
 	}
 }
 
@@ -737,14 +755,17 @@ func TestGPTImage2FormKeepsResponseFormat(t *testing.T) {
 		})
 	}
 
-	// 非法值在 canonical 归一化时删键，不该混进 form。
+	// 非法值在 canonical 归一化时变成 url，form 里必须是 url 而不是原值。
 	canonical := protocolCanonical(t,
 		`{"model":"m","prompt":"p","image":"`+protocolTestDataURI()+`","response_format":"png"}`)
 	plan, err := planImageRequest(canonical, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(plan.Body), `name="response_format"`) {
-		t.Fatal("illegal response_format must not reach the form")
+	if !strings.Contains(string(plan.Body), `name="response_format"`) {
+		t.Fatal("response_format must reach the form; the default is url now")
+	}
+	if strings.Contains(string(plan.Body), "\r\n\r\npng\r\n") {
+		t.Fatal("the illegal value must not reach the upstream verbatim")
 	}
 }
