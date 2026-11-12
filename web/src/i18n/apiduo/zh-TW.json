@@ -269,6 +269,8 @@
     "Convert": "轉換",
     "However many endpoints the upstream has, they all converge here; every downstream entry is converted from it.": "上游無論幾個端點，都收口到這裡；下游每個入口都由它轉換而來。",
     "Converted from the primary endpoint": "由主端點轉換而來",
-    "Turned into an image task, then converted from the primary endpoint": "先轉成出圖任務，再由主端點轉換"
+    "Turned into an image task, then converted from the primary endpoint": "先轉成出圖任務，再由主端點轉換",
+    "Off means forwarding only: chat entries no longer return a chat.completion, and every entry goes out on its own route with the body untouched.": "關閉後只做轉發：chat 入口不再回傳 chat.completion，各入口按自己的路由原樣發出，回包也原樣透傳。",
+    "Image protocol is off: the entries below forward on their own routes, unchanged.": "圖片協議未開啟：以下入口按各自路由原樣轉發，不做任何轉換。"
   }
 }

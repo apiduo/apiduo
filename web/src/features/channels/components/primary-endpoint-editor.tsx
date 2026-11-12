@@ -421,11 +421,19 @@ export function PrimaryEndpointEditor(props: {
                   </p>
                 ) : null}
 
+                {protocolOn ? null : (
+                  <p className='bg-muted/50 text-muted-foreground rounded-md border px-3 py-2 text-[11px] leading-relaxed'>
+                    {t(
+                      'Off means forwarding only: chat entries no longer return a chat.completion, and every entry goes out on its own route with the body untouched.'
+                    )}
+                  </p>
+                )}
+
                 {protocolOn ? (
                   <div className='space-y-3'>
-                    {/* 两个布局并排画成请求线，而不是一个只写名字的下拉：
-                        「单 / 双端点」本身不含信息，真正的差别只有一行——图生图
-                        走哪个路径、用什么编码。两卡同时可见才比得出来。 */}
+                    {/* 两张卡画的是「主端点在上游落成几条路」。
+                        不按「文生图 / 图生图」组织——那是下游视角，
+                        会把「上游几条路」和「客户端调了哪个接口」混成一层。 */}
                     <div className='space-y-1.5'>
                       <p className='text-xs'>
                         {t('How does the primary endpoint land upstream?')}
@@ -623,6 +631,13 @@ export function PrimaryEndpointEditor(props: {
           {/* 逐入口写明「这一条被怎么处理」。原来只有一句静态提示、且只提 responses，
               读的人没法回答「chat 走哪」——而 chat 恰恰是最容易想错的一条：
               它会被转成出图任务，带图时和图生图同路。 */}
+          {protocolOn ? null : (
+            <p className='text-muted-foreground border-t px-4 py-2 text-[11px] leading-relaxed'>
+              {t(
+                'Image protocol is off: the entries below forward on their own routes, unchanged.'
+              )}
+            </p>
+          )}
           {protocolOn ? (
             <div className='border-t px-4 py-2.5'>
               <p className='text-muted-foreground text-[11px]'>
