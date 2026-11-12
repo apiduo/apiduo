@@ -1,0 +1,47 @@
+<clickhouse>
+  <!-- 容器 mem_limit 10G，这里给 8G，留 2G 给页缓存与合并峰值 -->
+  <max_server_memory_usage>8589934592</max_server_memory_usage>
+  <max_concurrent_queries>400</max_concurrent_queries>
+  <background_pool_size>32</background_pool_size>
+  <mark_cache_size>1073741824</mark_cache_size>
+  <uncompressed_cache_size>0</uncompressed_cache_size>
+  <listen_host>0.0.0.0</listen_host>
+
+  <!-- ============================================================
+       系统日志表：级别与 TTL 的唯一真相来源。
+       🔴 必须写在这里而不是只 ALTER：CH 启动时会比对「表实际定义」与
+       config 里的定义，不一致就把旧表改名 x_0 再按 config 重建，
+       ALTER 上去的 TTL 直接丢。旧机 newapi-0to1 就因此累积了 60G trace_log。
+       默认 <text_log><level>trace</level> 会记录 merge 内部细节，实测 Debug+Trace
+       占 94%，先把级别降到 information 再谈 TTL。
+       ============================================================ -->
+  <trace_log>
+    <level>information</level>
+    <ttl>event_date + INTERVAL 7 DAY</ttl>
+  </trace_log>
+  <query_log>
+    <ttl>event_date + INTERVAL 30 DAY</ttl>
+  </query_log>
+  <query_thread_log>
+    <ttl>event_date + INTERVAL 7 DAY</ttl>
+  </query_thread_log>
+  <metric_log>
+    <ttl>event_date + INTERVAL 7 DAY</ttl>
+  </metric_log>
+  <asynchronous_metric_log>
+    <ttl>event_date + INTERVAL 7 DAY</ttl>
+  </asynchronous_metric_log>
+  <part_log>
+    <ttl>event_date + INTERVAL 7 DAY</ttl>
+  </part_log>
+  <text_log>
+    <level>information</level>
+    <ttl>event_date + INTERVAL 7 DAY</ttl>
+  </text_log>
+  <latency_log>
+    <ttl>event_date + INTERVAL 7 DAY</ttl>
+  </latency_log>
+  <error_log>
+    <ttl>event_date + INTERVAL 14 DAY</ttl>
+  </error_log>
+</clickhouse>

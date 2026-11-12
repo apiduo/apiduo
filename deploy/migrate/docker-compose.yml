@@ -1,0 +1,131 @@
+# apiduo 新环境部署（从 new-api 迁移）
+#
+# 与 deploy/prod/ 的差异：项目名/容器名独立（apiduo），去掉两个 external 网络，
+# 容量类参数按「独占机器」放大。调优依据见 README「性能参数」一节。
+#
+# 内存账（47G 机器）：MySQL 12G + CH 10G + 应用 4G = 26G，余 21G 给页缓存与系统。
+#
+# 🔴 前提：这台机器不要和别的业务混跑。旧机 103 个容器抢一块盘，写延迟 90ms，
+#    导致 COMMIT 卡 162 秒 —— 参数怎么调都救不回来。
+name: apiduo
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+services:
+  apiduo-clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    container_name: apiduo-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: apiduo_logs
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in /opt/apiduo/.env.db}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      TZ: Asia/Shanghai
+    mem_limit: 10g
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    volumes:
+      - ${DATA_ROOT:-/www/data/apiduo}/clickhouse:/var/lib/clickhouse
+      # 必须挂目录不能挂单文件：单文件绑 inode，宿主机 sed -i 换文件后容器里还是旧内容
+      - ${DATA_ROOT:-/www/data/apiduo}/clickhouse-config/users.d:/etc/clickhouse-server/users.d
+      - ${DATA_ROOT:-/www/data/apiduo}/clickhouse-config/config.d:/etc/clickhouse-server/config.d:ro
+    healthcheck:
+      # CH 密码必须用 $$VAR 转义，写单引号会让变量不展开 → 永远 unhealthy → 卡死 depends_on
+      test: ["CMD-SHELL", "clickhouse-client --password=$$CLICKHOUSE_PASSWORD -q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging: *default-logging
+
+  apiduo-mysql:
+    image: mysql:8.2
+    container_name: apiduo-mysql
+    mem_limit: 12g
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set in /opt/apiduo/.env.db}
+      MYSQL_DATABASE: apiduo
+      TZ: Asia/Shanghai
+    command:
+      # ---- 字符集 ----
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+      # ---- 容量（数据现 50MB，按两年增长留余量）----
+      - --innodb-buffer-pool-size=8G
+      - --innodb-buffer-pool-instances=4
+      - --innodb-redo-log-capacity=2G
+      - --max-connections=1000
+      - --table-open-cache=8000
+      - --thread-cache-size=64
+      - --tmp-table-size=64M
+      - --max-heap-table-size=64M
+      # ---- 写路径（这是性能关键）----
+      # =2 表示每秒刷一次 redo，不在每次 commit 都 fsync。丢最多 1 秒事务；
+      # 应用侧 BATCH_UPDATE_INTERVAL=5 本来就是 5 秒批量落额度，实时性没变。
+      # =0（连每秒都不保证）不给：计费系统不拿正确性换 IOPS。
+      - --innodb-flush-log-at-trx-commit=2
+      # binlog 只用于 PITR 与将来主从，交给 OS 刷盘。日常靠每日全量备份兜底
+      - --sync-binlog=0
+      - --innodb-log-buffer-size=64M
+      - --innodb-flush-method=O_DIRECT
+      - --innodb-io-capacity=4000
+      - --innodb-io-capacity-max=8000
+      - --innodb-read-io-threads=8
+      - --innodb-write-io-threads=8
+      - --innodb-purge-threads=4
+      - --binlog-expire-logs-seconds=259200
+      # ---- 观测 ----
+      - --slow-query-log=ON
+      - --long-query-time=1
+      - --slow-query-log-file=/var/lib/mysql/slow.log
+    volumes:
+      - ${DATA_ROOT:-/www/data/apiduo}/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *default-logging
+
+  apiduo:
+    depends_on:
+      apiduo-mysql:
+        condition: service_healthy
+      apiduo-clickhouse:
+        condition: service_healthy
+    # 回滚：/opt/apiduo/.env.db 里改 APIDUO_IMAGE_TAG=0.0.118 再 up -d
+    image: ghcr.io/apiduo/apiduo:${APIDUO_IMAGE_TAG:-latest}
+    container_name: apiduo
+    mem_limit: 4g
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    restart: unless-stopped
+    env_file:
+      - ${DATA_ROOT:-/www/data/apiduo}/.env
+    ports:
+      # 只绑回环：PAT 的 allow_ips 依赖 ClientIP()，裸绑 0.0.0.0 后同私网能伪造
+      # X-Forwarded-For 绕过白名单
+      - "127.0.0.1:${APP_PORT:-39047}:3000"
+    volumes:
+      - ${DATA_ROOT:-/www/data/apiduo}/data:/data
+    healthcheck:
+      # 看正文不看状态码：/api/status 恒 200，只有 success=true 才说明 DB 就绪
+      test:
+        - CMD-SHELL
+        - "wget -q -O - http://127.0.0.1:3000/api/status | grep -o '\"success\":[[:space:]]*true' || exit 1"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+    stop_grace_period: 90s

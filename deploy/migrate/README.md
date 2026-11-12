@@ -20,53 +20,29 @@
 
 ## 二、新机器上从零起
 
-### 1. 前置
+### 1. 系统初始化（一条命令）
 
 ```bash
-# 目录（和应用里的 bind mount 一一对应）
-mkdir -p /www/data/apiduo/data /www/data/apiduo/mysql /www/data/apiduo/clickhouse
-mkdir -p /www/data/apiduo/clickhouse-config/{users.d,config.d}
-mkdir -p /opt/apiduo
-
-# 网络：compose 里引用了两个 external 网络（langfuse / obs）。
-# 新机上没有就先把 compose 里这两行删掉，否则 up 会报 network not found。
+sudo bash deploy/migrate/init-host.sh            # 先 DRY_RUN=1 看一眼改什么
 ```
 
-### 2. 密钥（**必须一开始就固定，别让它走随机 uuid**）
+它做的事：内核参数（somaxconn / 端口范围 / file-max / swappiness）、Docker 的
+`default-ulimits`（nofile 提到 1048576 —— 旧机卡在 8192 是隐形天花板）、目录、
+以及**一次性生成** `.env.db` 与 `.env`（含 SESSION_SECRET/CRYPTO_SECRET）。
+
+跑完记得改 `.env` 里的 `SESSION_COOKIE_TRUSTED_URL` 为新域名。
 
 ```bash
-cd /opt/apiduo
-umask 077
-cat > .env.db <<'EOT'
-MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
-CLICKHOUSE_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
-EOT
-# 注意：上面这种写法不会展开 $( )。要么手动填，要么用 shell 赋值后写文件。
+cp deploy/migrate/docker-compose.yml /opt/apiduo/
+mkdir -p /www/data/apiduo/clickhouse-config/{config.d,users.d}
+cp deploy/migrate/clickhouse-config/config.d/99-apiduo.xml  /www/data/apiduo/clickhouse-config/config.d/
+cp deploy/migrate/clickhouse-config/users.d/99-apiduo.xml   /www/data/apiduo/clickhouse-config/users.d/
 ```
 
-`/www/data/apiduo/.env`（应用环境，600）至少要有：
+### 2. 密钥
 
-```ini
-SQL_DSN=root:<密码>@tcp(apiduo-mysql:3306)/apiduo?parseTime=true
-LOG_SQL_DSN=clickhouse://default:<密码>@apiduo-clickhouse:9000/apiduo_logs
-LOG_WRITER_ASYNC=true
-SESSION_SECRET=<openssl rand -hex 32>
-CRYPTO_SECRET=<openssl rand -hex 32>
-SESSION_COOKIE_SECURE=true
-SESSION_COOKIE_TRUSTED_URL=https://<新域名>
-TZ=Asia/Shanghai
-GIN_MODE=release
-NODE_NAME=apiduo-node-1
-BATCH_UPDATE_ENABLED=true
-MEMORY_CACHE_ENABLED=true
-ERROR_LOG_ENABLED=true
-GLOBAL_API_RATE_LIMIT=600000
-GLOBAL_API_RATE_LIMIT_DURATION=180
-CRITICAL_RATE_LIMIT=30
-CRITICAL_RATE_LIMIT_DURATION=1800
-```
-
-🔴 `SESSION_SECRET` / `CRYPTO_SECRET` 一旦定下就不能改，改了所有会话失效、已加密字段读不出来。
+`init-host.sh` 已经生成好了，不用手工写。要点只有一条：**生成一次之后不要再改**，
+`SESSION_SECRET`/`CRYPTO_SECRET` 变了会让所有会话失效、已加密字段读不出来。
 
 ### 3. 导数据（在**源机**上执行）
 
@@ -141,3 +117,67 @@ bash /opt/apiduo/preflight.sh     # 需按新环境改 APP/PORT/BACKUP_ROOT
 
 那条经验同样成立：**空库首次启动会建 root/123456，起来后必须立刻改密码**；
 迁移过来的库不存在这个问题（`root_init=false`）。
+
+
+## 六、性能参数：为什么这么定
+
+先说结论：**这台应用从来不慢，慢的是它脚下的磁盘。**
+
+旧机实测（apiduo-cn，0.0.119，同一份镜像）：
+
+| 指标 | 数值 |
+|---|---|
+| 吞吐 | **2471 QPS**，p50 23ms / p99 134ms，0 错误 |
+| 压测时 CPU | **1.04 核**（机器 64 核） |
+| 应用内存 | 29MB 空转 / 50MB 压测中（限额 2G） |
+| MySQL 慢查询 | 212 条，最慢的一条是 `COMMIT`，**162 秒** |
+| 同机最慢 `SELECT` | 70 秒，只扫了 149 行（每秒 2 行） |
+| 磁盘 `sda` 写延迟 | **86–90ms**（正常 SSD < 5ms），util 28–50% |
+| 同机容器数 | **103 个** |
+
+162 秒的 COMMIT 不是 MySQL 配置问题 —— 是同一块盘上 103 个容器在抢 IO。
+所以新机的第一优先级是**独占磁盘**，其次才是下面这张表。
+
+### 逐项依据
+
+| 参数 | 旧值 | 新值 | 理由 |
+|---|---|---|---|
+| `innodb_flush_log_at_trx_commit` | 1 | **2** | 每笔 commit 两次 fsync → 每秒一次。应用侧 `BATCH_UPDATE_INTERVAL=5` 本来就是 5 秒批量落额度，实时性没有变化 |
+| `sync_binlog` | 1 | **0** | binlog 交 OS 刷盘。前提是每日全量备份在跑 + binlog 保留 3 天（`binlog_expire_logs_seconds=259200`） |
+| `innodb_buffer_pool_size` | 4G | **8G** | 现在数据 50MB，但按两年增长留余量；8G 可覆盖千万级行 |
+| `innodb_log_buffer_size` | 默认 16M | **64M** | 批量更新一次提交上千行，大 buffer 少刷盘 |
+| `max_connections` | 300 | **1000** | 旧机峰值用到 131，多实例/备份/监控要留头 |
+| `innodb_io_capacity` | 2000 | **4000** | 按 NVMe 给；**如果是 SATA/机械盘要降回 200–800** |
+| `GOMAXPROCS` | 8 | **16** | 压测 1 核跑 2471 QPS，16 核有足够余量，同时避免 64 核全开的 GC 抖动 |
+| `GOMEMLIMIT` | 1536MiB | **3GiB** | 容器限额 4G，留 1G 给 runtime 与 off-heap |
+| `SQL_MAX_OPEN_CONNS` | 100 | **200** | MySQL 端 1000，200 不会打满 |
+| `LOG_WRITER_BATCH_SIZE` | 5000 | **2000** | 批越大失败重放代价越高；配合 1 秒间隔，延迟更低 |
+| `LOG_WRITER_QUEUE_SIZE` | 50000 | **100000** | 削峰，扛住 CH merge 时的短暂停顿 |
+| CH `max_server_memory_usage` | 4G | **8G** | 容器 10G，留 2G 给页缓存与合并峰值 |
+| CH `background_pool_size` | 16 | **32** | 64 核机器 |
+| CH 系统表 TTL | 部分靠 ALTER | **config.d 定死** | ALTER 的 TTL 会在 CH 重启重建表时丢失，旧机因此累积 60G `trace_log` |
+| nginx `worker_connections` | 51200（fd 8192） | **65535 + rlimit 1M** | 旧机配置写 51200 但 worker fd 只有 8192，实际永远达不到，容量估算被误导 |
+| `CRITICAL_RATE_LIMIT` | 30/1800s | **60/1800s** | 登录 / refresh / 2FA / agent 握手共用一个计数器，30 次/30 分钟对正常用户偏紧 |
+
+### 三条不能越的边界
+
+1. **`innodb_flush_log_at_trx_commit` 不给 0**。`=2` 最多丢 1 秒内提交的事务；`=0` 连
+   「每秒刷」都不保证，MySQL 进程崩溃就会丢，计费系统不拿这个换 IOPS。
+2. **`sync_binlog=0` 有前提**：每日全量备份必须在跑，且 `binlog_expire_logs_seconds`
+   不能设成 0（否则 binlog 无限涨，会把盘吃满）。PITR 就靠这两样。
+3. **端口必须绑 `127.0.0.1`**。裸绑 `0.0.0.0` 后同私网主机可伪造 `X-Forwarded-For`，
+   直接绕过令牌的 `allow_ips` 白名单。
+
+### 上线后盯这几个数
+
+```bash
+# MySQL：fsync 频率（=2 之后应该远低于 QPS）
+docker exec apiduo-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -B   -e "SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_data_fsyncs','Innodb_os_log_written','Threads_connected')"
+# 磁盘：写延迟应稳定在个位数 ms
+iostat -x 2 5 | grep -E "^sd|^nvme"
+# CH：合并是否堆积
+docker exec apiduo-clickhouse clickhouse-client --password="$CLICKHOUSE_PASSWORD"   -q "SELECT count() FROM system.merges; SELECT count() FROM system.parts WHERE active"
+```
+
+判断标准：`iostat` 的 `w_await` 若长期 > 20ms，说明新机也在被别的负载抢盘 ——
+那时该做的是换盘或迁走邻居，继续调 MySQL 参数没有意义。
