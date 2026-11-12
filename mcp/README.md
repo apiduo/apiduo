@@ -77,13 +77,62 @@ MCP 客户端 ──POST /mcp──▶ tools ──▶ /v1（回环自调）─�
 | GET | `/api/mcp/candidates` | 上游有、尚未声明的模型 |
 | GET/POST | `/api/mcp/profiles` | 列表 / 新建 |
 | GET/PUT/DELETE | `/api/mcp/profiles/:id` | 详情 / **部分更新（只写请求里出现的键）** / 删除 |
+| GET | `/api/mcp/profiles/by-model?model_id=` | 按业务键取一条（读不到 404 + `MCP_PROFILE_NOT_FOUND`） |
+| PUT | `/api/mcp/profiles/by-model?model_id=&expected_version=` | **按业务键幂等写入（agent 纳管）**，不存在则建、存在则 patch |
 | POST | `/api/mcp/profiles/:id/toggle` | 启停（不重传整份声明） |
 | GET | `/api/mcp/profiles/:id/observations?days=7` | 参数取值分布 |
 | GET | `/api/mcp/profiles/:id/audit?days=7` | 声明与观察的差异 |
 | GET | `/api/mcp/error-rules?model_id=` | 全局规则 + 模型覆盖 |
 | PUT | `/api/mcp/error-rules/:id` | 更新规则 |
 
-管理 API 全部挂 `middleware.AdminAuth()`。
+管理 API 全部挂 `middleware.AdminAuth()`（浏览器会话与 PAT 都收，PAT 需 `model:read` / `model:write`）。
+
+### 按业务键 upsert
+
+`PUT /api/mcp/profiles/by-model?model_id=openai/gpt-image-1`，body 与 `PUT /profiles/:id`
+一样是 patch。给 agent 用，一次调用完成纳管；面板仍走 `:id`，不需要知道版本。
+
+- **业务键放 query 不放路径**：模型 ID 常带斜杠（`openai/gpt-image-1`），
+  路径段会被 net/http 解码成两段，`PathEscape` 也救不回来。
+- **新建即启用**（`enabled=true`）：纳管通道的语义是「声明即上线」。
+  更新路径不碰 `enabled` —— 被人手动停用的模型，agent 重跑 upsert **不会**自动恢复，
+  要恢复得显式调 toggle。patch 里带 `enabled` 直接拒绝，不静默忽略：
+  agent 传 false 却拿到 true，它会以为自己停用了。
+- **乐观锁 `expected_version`**：省略 = 用读到的版本做栅栏；`0` = 要求不存在；
+  `N` = 要求 `version == N`。不匹配返回 **409** + `code=MCP_PROFILE_VERSION_CONFLICT`
+  + `data.current`（当前整条），调用方直接在 `current` 上重放 patch 即可。
+- **不自动重试**：乐观锁的价值是让冲突可见。静默重试会把「你的写入被覆盖了」
+  变成一次 200，agent 再也查不出来。
+- `version` 每次写库 +1（含 toggle），所以它比秒级 `updated_at` 可靠 ——
+  同一秒内的两次写入不会拿到同一个版本号。
+
+**审计**（`audit_logs`，category=operation）：
+
+| action | 何时 | params |
+|---|---|---|
+| `mcp.profile_create` | upsert 新建 | `model_id`、`after`、`via=upsert`、`version` |
+| `mcp.profile_update` | upsert 更新 | `model_id`、`changed`（只含真正变的键）、`via=upsert`、`version` |
+| `mcp.profile_conflict` | 409 拒绝 | `model_id`、`expected_version`、`current_version`、`exists`、`via=upsert` |
+
+冲突那条是 `status=409 / success=false`，所以审计页按「结果=失败」能直接筛出来；
+鉴权链路的 generic 兜底会被 `ContextKeyAuditLogged` 抑制，不会出现一条看不懂的重复记录。
+
+每条都带 `token_ref`（PAT 指纹，`audit_logs` 的一级列）。审计页的「Token scope」
+筛选因此能把某一把钥匙的全部写入捞出来；session 请求该列为空，表示没有令牌可归属。
+`agent` 字段只是 `X-Agent-Name` / User-Agent 的声明值，**不可信**，归属一律看 `token_ref`。
+
+指纹是 64 位十六进制，人读不了。`GET /api/audit` 返回时会把整页的 ref 批量还原成
+`token_label`（令牌名）与 `token_agent_key`（agent key 名），详情弹窗展示这两项；
+令牌已被删除时两者为空，只剩指纹 —— 「钥匙没了但记录还在」是正常形态。
+
+```bash
+# 首次纳管
+curl -sS --noproxy '*' -X PUT \
+  'https://apiduo.cn/api/mcp/profiles/by-model?model_id=openai/gpt-image-1&expected_version=0' \
+  -H "Authorization: Bearer pat-xxxx" -H 'Content-Type: application/json' \
+  -d '{"kind":"image","display_name":"GPT Image","max_ref_images":4}'
+# → {"success":true,"data":{"created":true,"profile":{...,"version":1}}}
+```
 
 ## 5. 几条不能破的约定
 
@@ -92,17 +141,22 @@ MCP 客户端 ──POST /mcp──▶ tools ──▶ /v1（回环自调）─�
 2. **更新不改 `model_id`**：它是与渠道对齐的业务键，改名等于换模型，应新建一条。
 3. **未匹配的错误默认不可重试**：重试的代价是计费。
 4. **只暴露已注册且启用的模型**：未注册的模型 agent 不知道参数约束，放出去只会靠猜。
-5. **MCP 层不认识厂商形状**：协议族只有 `openai_image` / `openai_video` 两套。
-   新增厂商差异应该落在 apiduo 的渠道或 JS 插件里，不要往协议表里加第三套。
+5. **协议族只描述「入口形状」**：图片 `openai_image` 打 `/v1/images/generations`
+   （方舟的图片接口本身就兼容这个形状），视频 `openai_video` 打
+   `/v1/contents/generations/tasks`（方舟任务形状）。两者上游都是方舟，厂商差异
+   由渠道与 JS 插件吸收 —— **不要往协议表里加第三套**。
 6. **观察只记结构性参数**：`size` / `duration` / `n` / 参考图张数。
    提示词内容与图片 URL 一个字都不落盘。
 7. **观察写入不阻塞调用**：队列满就丢样本。丢一条观察数据可以接受，卡住生成请求不行。
 
 ## 6. 已修的坑（别再踩）
 
-- **任务查询响应是包装形状**：`GET /v1/video/generations/:id` 回 `{code,message,data}`，
-  而生成端点回扁平结构。`unwrapTaskBody` 只解一层 —— `data.data` 是上游原始响应，
-  再解会让上游 `queued` 覆盖网关已落定的 `SUCCESS`。产物取 `data.result_url`，失败原因取 `fail_reason`。
+- **任务查询响应有两种形状**：方舟形状 `GET /v1/contents/generations/tasks/:id`
+  直接回任务对象 `{id,status,content:{video_url}}`；OpenAI 别名
+  `GET /v1/video/generations/:id` 回 `{code,message,data}`。`unwrapTaskBody` 只解带
+  `code:"success"` 的那层 —— `data.data` 是上游原始响应，再解会让上游 `queued`
+  覆盖网关已落定的 `SUCCESS`。产物依次取 `content.video_url` / `data.result_url` /
+  顶层 `video_url`，失败原因取 `fail_reason`。
 - **保存声明不改启停**：`SaveProfile` 更新时强制沿用库里的 `enabled`，启停只走 `SetProfileEnabled`。
   bool 零值是 false，漏传会把模型静默停用，而界面显示「保存成功」。
 - **模型 ID 不可改**：请求里带新 `model_id` 会被忽略，响应体回的也是库里那份。
