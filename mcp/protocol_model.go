@@ -55,7 +55,11 @@ func (m modelView) card() map[string]any {
 		exec["task"] = "async"
 	}
 	out := map[string]any{
-		"id":        m.ID,
+		"id": m.ID,
+		// 管理 API 的字段叫 model_id，这里补一份同义键：agent 从 models.list
+		// 拿到 id 之后去调 /profiles/by-model?model_id= 是最常见的接法，
+		// 两个接口用不同名字只会让人多踩一次 404。id 保留，不动既有契约。
+		"model_id":  m.ID,
 		"object":    "model",
 		"kind":      m.Kind,
 		"execution": exec,

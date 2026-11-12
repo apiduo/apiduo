@@ -50,55 +50,79 @@ func Observations(p ModelProfile, days int) ([]ParamStat, error) {
 	}
 	since := time.Now().AddDate(0, 0, -days).Unix()
 
-	out := make([]ParamStat, 0, 16)
+	names := make([]string, 0, 8)
 	for _, name := range ParamNames(p) {
-		if !paramNameRe.MatchString(name) {
-			continue
+		// 参数名要拼进 JSON 路径，来源不可信就必须校验。
+		if paramNameRe.MatchString(name) {
+			names = append(names, name)
 		}
-		stats, err := queryParam(model.LOG_DB, p.ModelId, name, since)
-		if err != nil {
-			return nil, fmt.Errorf("查询参数 %s 失败: %w", name, err)
-		}
-		out = append(out, stats...)
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	out, err := queryParams(model.LOG_DB, p.ModelId, names, since)
+	if err != nil {
+		return nil, err
 	}
 	sortStats(out)
 	return out, nil
 }
 
-// queryParam 按日志库方言取一个参数的取值分布。
+// queryParams 取出所有声明参数的取值分布。
 //
-// 两种方言的差异都在这一层消化，上层只认 []ParamStat：
-//   - ClickHouse 用 JSONExtractString，列存 + 分区裁剪，毫秒级
-//   - MySQL 用 JSON_EXTRACT，且必须先过 JSON_VALID，否则一行脏数据会让整条查询报错
-func queryParam(db *gorm.DB, modelId, name string, since int64) ([]ParamStat, error) {
-	// SQLite 没有 JSON_EXTRACT / JSON_UNQUOTE（标准构建不带 JSON1），
-	// 而 SQLite 恰恰是 apiduo 的默认库。这条分支让「本地跑起来」和
-	// 「线上 MySQL/CH」行为一致，而不是让观察功能在默认部署下直接报错。
-	if db.Dialector.Name() == "sqlite" {
-		return queryParamSQLite(db, modelId, name, since)
+// 每个参数一条 SQL 会把同一段日志扫 N 遍（N = 声明参数个数）。线上 ClickHouse
+// 用 ARRAY JOIN 一次展开全部键；SQLite 本来就在应用层解析，顺手一起计数；
+// MySQL 低版本没有 JSON_TABLE，只能按参数逐条查 —— 参数个数是个位数，可接受。
+func queryParams(db *gorm.DB, modelId string, names []string, since int64) ([]ParamStat, error) {
+	switch {
+	case db.Dialector.Name() == "sqlite":
+		return queryParamsSQLite(db, modelId, names, since)
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		return queryParamsClickHouse(db, modelId, names, since)
+	default:
+		return queryParamsMySQL(db, modelId, names, since)
 	}
+}
 
-	var sql string
-	// fail 的统计要排掉「错误里点名了别的参数」的行：本地校验拒绝 content 时，
-	// 同一次调用的 duration / reference_images 也会被算成失败，巡检就会得出
-	// 「声明 9 却 1 被拒」这种自相矛盾的结论。点名了谁，就只记到谁头上。
-	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
-		sql = fmt.Sprintf(`
-			SELECT JSONExtractString(other, 'admin_info', 'param_snapshot', '%s') AS value,
-			       countIf(type = ?) AS ok,
-			       countIf(type = ? AND NOT (
-			           position(JSONExtractString(other, 'admin_info', 'upstream_error'), '"content"') > 0
-			           OR position(JSONExtractString(other, 'admin_info', 'upstream_error'),
-			                       concat(char(39), 'content', char(39))) > 0
-			           OR (position(JSONExtractString(other, 'admin_info', 'upstream_error'), '未声明参数') > 0
-			               AND position(JSONExtractString(other, 'admin_info', 'upstream_error'),
-			                            concat('未声明参数 "', '%s', '"')) = 0)
-			       )) AS fail
-			FROM logs
-			WHERE model_name = ? AND created_at >= ?
-			GROUP BY value`, name, name)
-	} else {
-		sql = fmt.Sprintf(`
+// queryParamsClickHouse 用一条 SQL 展开全部参数。
+//
+// 分组口径与逐参数查询完全一致：2026-11-12 拿线上 flux-3-image 的 7 天数据
+// 逐行比对过，10 行结果一字不差。压缩的只是扫描次数，不是统计规则。
+func queryParamsClickHouse(db *gorm.DB, modelId string, names []string, since int64) ([]ParamStat, error) {
+	const sql = `
+		SELECT param,
+		       JSONExtractString(snap, param) AS value,
+		       countIf(type = ?) AS ok,
+		       countIf(type = ? AND NOT (
+		           position(err, '"content"') > 0
+		           OR position(err, concat(char(39), 'content', char(39))) > 0
+		           OR (position(err, '未声明参数') > 0
+		               AND position(err, concat('未声明参数 "', param, '"')) = 0)
+		       )) AS fail
+		FROM (
+		    SELECT type,
+		           JSONExtractString(other, 'admin_info', 'param_snapshot') AS snap,
+		           JSONExtractString(other, 'admin_info', 'upstream_error') AS err
+		    FROM logs
+		    WHERE model_name = ? AND created_at >= ?
+		)
+		ARRAY JOIN JSONExtractKeys(snap) AS param
+		GROUP BY param, value`
+	rows := make([]ParamStat, 0, 16)
+	if err := db.Raw(sql, logTypeConsume, logTypeError, modelId, since).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return cleanStats(rows, names), nil
+}
+
+// queryParamsMySQL 按参数逐条查。
+//
+// 一条 SQL 展开 JSON 键需要 JSON_TABLE（MySQL 8.0+），低版本没有；
+// 参数个数是个位数，多扫几次换兼容性，值得。
+func queryParamsMySQL(db *gorm.DB, modelId string, names []string, since int64) ([]ParamStat, error) {
+	out := make([]ParamStat, 0, 16)
+	for _, name := range names {
+		sql := fmt.Sprintf(`
 			SELECT JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.param_snapshot.%s')) AS value,
 			       SUM(type = ?) AS ok,
 			       SUM(type = ? AND NOT (
@@ -115,31 +139,21 @@ func queryParam(db *gorm.DB, modelId, name string, since int64) ([]ParamStat, er
 			WHERE model_name = ? AND created_at >= ?
 			  AND other IS NOT NULL AND other <> '' AND JSON_VALID(other)
 			GROUP BY value`, name, name)
-	}
-
-	rows := make([]ParamStat, 0, 8)
-	if err := db.Raw(sql, logTypeConsume, logTypeError, modelId, since).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	// 空值与字符串 "null" 都是「这次调用没传该参数」，不是一种取值。
-	clean := rows[:0]
-	for _, r := range rows {
-		v := strings.TrimSpace(r.Value)
-		if v == "" || v == "null" {
-			continue
+		rows := make([]ParamStat, 0, 8)
+		if err := db.Raw(sql, logTypeConsume, logTypeError, modelId, since).Scan(&rows).Error; err != nil {
+			return nil, fmt.Errorf("查询参数 %s 失败: %w", name, err)
 		}
-		r.Value = v
-		r.Param = name
-		clean = append(clean, r)
+		out = append(out, cleanStats(rows, []string{name})...)
 	}
-	return clean, nil
+	return out, nil
 }
 
-// queryParamSQLite 在应用层解析 other，绕开 SQLite 缺失的 JSON 函数。
+// queryParamsSQLite 在应用层解析 other，绕开 SQLite 缺失的 JSON 函数。
 //
 // 行数上限 20000 是刻意的：SQLite 只用于单机小规模部署，全量拉取会把内存打满。
 // 超出的部分按「最近优先」截断 —— 统计口径宁可少样本，也不要 OOM。
-func queryParamSQLite(db *gorm.DB, modelId, name string, since int64) ([]ParamStat, error) {
+// 解析一次 other 就把所有参数都算上，不再每个参数重扫一遍。
+func queryParamsSQLite(db *gorm.DB, modelId string, names []string, since int64) ([]ParamStat, error) {
 	var rows []struct {
 		Other string
 		Type  int
@@ -152,53 +166,94 @@ func queryParamSQLite(db *gorm.DB, modelId, name string, since int64) ([]ParamSt
 		return nil, err
 	}
 
-	counts := make(map[string]*ParamStat, 8)
+	counts := make(map[string]map[string]*ParamStat, len(names))
 	for _, r := range rows {
-		v := snapshotValue(r.Other, name)
-		if v == "" {
+		snap, errText := snapshotOf(r.Other)
+		if len(snap) == 0 {
 			continue
 		}
-		st := counts[v]
-		if st == nil {
-			st = &ParamStat{Param: name, Value: v}
-			counts[v] = st
-		}
-		switch r.Type {
-		case logTypeConsume:
-			st.OK++
-		case logTypeError:
-			if blamesParam(snapshotError(r.Other), name) {
-				st.Fail++
+		for _, name := range names {
+			v := snap[name]
+			if v == "" {
+				continue
+			}
+			per := counts[name]
+			if per == nil {
+				per = make(map[string]*ParamStat, 4)
+				counts[name] = per
+			}
+			st := per[v]
+			if st == nil {
+				st = &ParamStat{Param: name, Value: v}
+				per[v] = st
+			}
+			switch r.Type {
+			case logTypeConsume:
+				st.OK++
+			case logTypeError:
+				if blamesParam(errText, name) {
+					st.Fail++
+				}
 			}
 		}
 	}
 
-	out := make([]ParamStat, 0, len(counts))
-	for _, st := range counts {
-		out = append(out, *st)
+	out := make([]ParamStat, 0, 16)
+	for _, per := range counts {
+		for _, st := range per {
+			out = append(out, *st)
+		}
 	}
 	return out, nil
 }
 
-// snapshotValue 从 other JSON 里取 param_snapshot 的一个键。
-// 结构对不上就返回空串，调用方按「没传该参数」处理。
-func snapshotValue(other, name string) string {
+// cleanStats 只保留声明过的参数，并丢掉「这次没传」的空值。
+//
+// ClickHouse 那条 SQL 会把快照里出现的所有键都返回（包括没声明的），
+// 过滤放在 Go 里而不是 SQL 的 IN 列表：参数个数少，SQL 更短。
+func cleanStats(rows []ParamStat, names []string) []ParamStat {
+	allowed := make(map[string]bool, len(names))
+	for _, n := range names {
+		allowed[n] = true
+	}
+	out := rows[:0]
+	for _, r := range rows {
+		if !allowed[r.Param] {
+			continue
+		}
+		v := strings.TrimSpace(r.Value)
+		// 空值与字符串 "null" 都是「这次调用没传该参数」，不是一种取值。
+		if v == "" || v == "null" {
+			continue
+		}
+		r.Value = v
+		out = append(out, r)
+	}
+	return out
+}
+
+// snapshotOf 解析一次 other，同时给出参数快照与错误文案。
+//
+// SQLite 路径要按行遍历所有参数，逐参数再 Unmarshal 一遍纯属浪费；
+// 结构对不上就返回空，调用方按「这条日志没有快照」处理。
+func snapshotOf(other string) (map[string]string, string) {
 	if strings.TrimSpace(other) == "" {
-		return ""
+		return nil, ""
 	}
 	var doc struct {
 		AdminInfo struct {
 			ParamSnapshot map[string]any `json:"param_snapshot"`
+			UpstreamError string         `json:"upstream_error"`
 		} `json:"admin_info"`
 	}
 	if err := json.Unmarshal([]byte(other), &doc); err != nil {
-		return ""
+		return nil, ""
 	}
-	v, ok := doc.AdminInfo.ParamSnapshot[name]
-	if !ok {
-		return ""
+	vals := make(map[string]string, len(doc.AdminInfo.ParamSnapshot))
+	for k, v := range doc.AdminInfo.ParamSnapshot {
+		vals[k] = strings.TrimSpace(fmt.Sprint(v))
 	}
-	return strings.TrimSpace(fmt.Sprint(v))
+	return vals, doc.AdminInfo.UpstreamError
 }
 
 // blamesParam 判断一次失败该不该记在当前参数头上。

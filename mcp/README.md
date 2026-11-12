@@ -81,7 +81,8 @@ MCP 客户端 ──POST /mcp──▶ tools ──▶ /v1（回环自调）─�
 | PUT | `/api/mcp/profiles/by-model?model_id=&expected_version=` | **按业务键幂等写入（agent 纳管）**，不存在则建、存在则 patch |
 | POST | `/api/mcp/profiles/:id/toggle` | 启停（不重传整份声明） |
 | GET | `/api/mcp/profiles/:id/observations?days=7` | 参数取值分布 |
-| GET | `/api/mcp/profiles/:id/audit?days=7` | 声明与观察的差异 |
+| GET | `/api/mcp/profiles/:id/audit?days=7` | 声明与观察的差异；可落地的条目带 `suggestion`（数值给 `max`、字符串给 `enum`） |
+| POST | `/api/mcp/profiles/:id/adopt` | **采纳一条巡检建议**：只传 `param`，`max`/`enum` 由服务端按当前样本重算 |
 | GET | `/api/mcp/error-rules?model_id=` | 全局规则 + 模型覆盖 |
 | PUT | `/api/mcp/error-rules/:id` | 更新规则 |
 

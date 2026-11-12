@@ -29,27 +29,8 @@ func Register(engine *gin.Engine) {
 
 	api := engine.Group("/api/mcp")
 	api.Use(middleware.AdminAuth())
-	{
-		api.GET("/overview", apiOverview)
-		api.GET("/candidates", apiCandidates)
-
-		api.GET("/profiles", apiListProfiles)
-		api.POST("/profiles", apiCreateProfile)
-		api.GET("/profiles/:id", apiGetProfile)
-		api.PUT("/profiles/:id", apiUpdateProfile)
-		// 按业务键读写：agent 纳管只认 model_id，不该先拉列表换自增 id。
-		// 与上面的 :id 不冲突 —— gin 的静态段永远优先于参数段命中。
-		api.GET("/profiles/by-model", apiGetProfileByModelId)
-		api.PUT("/profiles/by-model", apiUpsertProfile)
-		api.DELETE("/profiles/:id", apiDeleteProfile)
-		api.POST("/profiles/:id/toggle", apiToggleProfile)
-		api.GET("/profiles/:id/observations", apiObservations)
-		api.GET("/profiles/:id/audit", apiAudit)
-		// 采纳巡检建议：把「观察到但没声明」的边界写回声明。
-		api.POST("/profiles/:id/adopt", apiAdoptSuggestion)
-
-		api.GET("/error-rules", apiListErrorRules)
-		api.PUT("/error-rules/:id", apiUpdateErrorRule)
+	for _, rt := range adminRoutes() {
+		api.Handle(rt.Method, rt.Path, rt.Handler)
 	}
 
 	// MCP 协议端点。TokenAuthReadOnly 只验令牌有效性，不在 MCP 层扣额度；
@@ -71,6 +52,43 @@ const mcpSettingsPath = "/system-settings/site/mcp"
 
 func redirectToSettings(c *gin.Context) {
 	c.Redirect(http.StatusMovedPermanently, mcpSettingsPath)
+}
+
+// adminRoute 是 /api/mcp 下的一条管理路由。
+//
+// 做成表而不是一排 api.GET，是因为 scope 声明按「方法 + 路径」字符串写：
+// 漏一条的后果是「浏览器点得通、PAT 一律 403」（adopt 上线时就这么翻的）。
+// 有了这张表，测试可以逐条断言都有 scope，不用靠人记。
+type adminRoute struct {
+	Method  string
+	Path    string
+	Handler gin.HandlerFunc
+}
+
+// adminRoutes 是管理面的唯一路由清单。
+func adminRoutes() []adminRoute {
+	return []adminRoute{
+		{http.MethodGet, "/overview", apiOverview},
+		{http.MethodGet, "/candidates", apiCandidates},
+
+		{http.MethodGet, "/profiles", apiListProfiles},
+		{http.MethodPost, "/profiles", apiCreateProfile},
+		{http.MethodGet, "/profiles/:id", apiGetProfile},
+		{http.MethodPut, "/profiles/:id", apiUpdateProfile},
+		// 按业务键读写：agent 纳管只认 model_id，不该先拉列表换自增 id。
+		// 静态段优先于参数段，两者可以并存。
+		{http.MethodGet, "/profiles/by-model", apiGetProfileByModelId},
+		{http.MethodPut, "/profiles/by-model", apiUpsertProfile},
+		{http.MethodDelete, "/profiles/:id", apiDeleteProfile},
+		{http.MethodPost, "/profiles/:id/toggle", apiToggleProfile},
+		{http.MethodGet, "/profiles/:id/observations", apiObservations},
+		{http.MethodGet, "/profiles/:id/audit", apiAudit},
+		// 采纳巡检建议：把「观察到但没声明」的边界写回声明。
+		{http.MethodPost, "/profiles/:id/adopt", apiAdoptSuggestion},
+
+		{http.MethodGet, "/error-rules", apiListErrorRules},
+		{http.MethodPut, "/error-rules/:id", apiUpdateErrorRule},
+	}
 }
 
 // captureCaller 把令牌归属搬进 request context，供协议层写日志时归属到人。
