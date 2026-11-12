@@ -79,23 +79,42 @@ func queryParam(db *gorm.DB, modelId, name string, since int64) ([]ParamStat, er
 	}
 
 	var sql string
+	// fail 的统计要排掉「错误里点名了别的参数」的行：本地校验拒绝 content 时，
+	// 同一次调用的 duration / reference_images 也会被算成失败，巡检就会得出
+	// 「声明 9 却 1 被拒」这种自相矛盾的结论。点名了谁，就只记到谁头上。
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		sql = fmt.Sprintf(`
 			SELECT JSONExtractString(other, 'admin_info', 'param_snapshot', '%s') AS value,
 			       countIf(type = ?) AS ok,
-			       countIf(type = ?) AS fail
+			       countIf(type = ? AND NOT (
+			           position(JSONExtractString(other, 'admin_info', 'upstream_error'), '"content"') > 0
+			           OR position(JSONExtractString(other, 'admin_info', 'upstream_error'),
+			                       concat(char(39), 'content', char(39))) > 0
+			           OR (position(JSONExtractString(other, 'admin_info', 'upstream_error'), '未声明参数') > 0
+			               AND position(JSONExtractString(other, 'admin_info', 'upstream_error'),
+			                            concat('未声明参数 "', '%s', '"')) = 0)
+			       )) AS fail
 			FROM logs
 			WHERE model_name = ? AND created_at >= ?
-			GROUP BY value`, name)
+			GROUP BY value`, name, name)
 	} else {
 		sql = fmt.Sprintf(`
 			SELECT JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.param_snapshot.%s')) AS value,
 			       SUM(type = ?) AS ok,
-			       SUM(type = ?) AS fail
+			       SUM(type = ? AND NOT (
+			           IFNULL(LOCATE('"content"',
+			               JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.upstream_error'))), 0) > 0
+			           OR IFNULL(LOCATE(CONCAT(CHAR(39), 'content', CHAR(39)),
+			               JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.upstream_error'))), 0) > 0
+			           OR (IFNULL(LOCATE('未声明参数',
+			               JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.upstream_error'))), 0) > 0
+			               AND IFNULL(LOCATE(CONCAT('未声明参数 "', '%s', '"'),
+			               JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.upstream_error'))), 0) = 0)
+			       )) AS fail
 			FROM logs
 			WHERE model_name = ? AND created_at >= ?
 			  AND other IS NOT NULL AND other <> '' AND JSON_VALID(other)
-			GROUP BY value`, name)
+			GROUP BY value`, name, name)
 	}
 
 	rows := make([]ParamStat, 0, 8)
@@ -148,7 +167,9 @@ func queryParamSQLite(db *gorm.DB, modelId, name string, since int64) ([]ParamSt
 		case logTypeConsume:
 			st.OK++
 		case logTypeError:
-			st.Fail++
+			if blamesParam(snapshotError(r.Other), name) {
+				st.Fail++
+			}
 		}
 	}
 
@@ -178,6 +199,47 @@ func snapshotValue(other, name string) string {
 		return ""
 	}
 	return strings.TrimSpace(fmt.Sprint(v))
+}
+
+// blamesParam 判断一次失败该不该记在当前参数头上。
+//
+// 本地参数校验失败时，错误文案会点名一个参数（模型 X 未声明参数 "content"）。
+// 这种失败只跟被点名的参数有关，不能算到同一次调用快照里的其它参数上 ——
+// 否则 agent 传真了 content，reference_images 会平白多一次「被拒」，
+// 巡检就会报出「声明 9 却 1 被拒」这种自相矛盾的结论。
+//
+// 没有点名任何参数的失败（上游 4xx/5xx）仍然算数：那才是「这个值可能不被接受」
+// 的证据，把它一起排掉就等于把巡检的输入掐了。
+func blamesParam(errText, name string) bool {
+	if strings.TrimSpace(errText) == "" {
+		return true
+	}
+	// 本地校验失败会点名一个参数：点名了谁就只记给谁。
+	if strings.Contains(errText, "未声明参数") {
+		return strings.Contains(errText, `未声明参数 "`+name+`"`)
+	}
+	// 上游的信封类错误（'content' 必须是非空数组）：content 是请求体结构，
+	// 不是快照里的可调参数，记到 duration / reference_images 头上就是冤枉。
+	if strings.Contains(errText, `"content"`) || strings.Contains(errText, `'content'`) {
+		return false
+	}
+	return true
+}
+
+// snapshotError 取日志里的 upstream_error 原文。
+func snapshotError(other string) string {
+	if strings.TrimSpace(other) == "" {
+		return ""
+	}
+	var doc struct {
+		AdminInfo struct {
+			UpstreamError string `json:"upstream_error"`
+		} `json:"admin_info"`
+	}
+	if err := json.Unmarshal([]byte(other), &doc); err != nil {
+		return ""
+	}
+	return doc.AdminInfo.UpstreamError
 }
 
 // 日志类型值与 model.LogTypeConsume / model.LogTypeError 对齐。
