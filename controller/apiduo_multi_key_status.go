@@ -1,9 +1,32 @@
 package controller
 
 import (
+	"strings"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
+
+// multiKeyPreview renders the console label for one key: a recognizable head
+// plus its tail.
+//
+// The head alone cannot separate two entries: every JWT starts with the same
+// `eyJhbGciOi…` header, so a "first 10 chars" preview shows the same text for
+// every key of a JWT-backed channel. Operators identify a bad key from the tail
+// — that is what upstream 401s quote, and what the previous investigation used
+// to tell tok1 from tok2. Six characters is enough to disambiguate a handful of
+// keys and far too little to reconstruct one.
+//
+// Keys short enough that head and tail would overlap return empty: showing the
+// whole secret is worse than showing nothing.
+func multiKeyPreview(key string) string {
+	const head, tail = 10, 6
+	trimmed := strings.TrimSpace(key)
+	if len(trimmed) <= head+tail {
+		return ""
+	}
+	return trimmed[:head] + "…" + trimmed[len(trimmed)-tail:]
+}
 
 // multiKeyKeyState is one key's disabled state, carried by identity rather than
 // by position so it can survive an edit of the key list.

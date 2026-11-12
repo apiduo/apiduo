@@ -121,3 +121,30 @@ func TestRemapMultiKeyStatusIgnoresSingleKeyChannels(t *testing.T) {
 		t.Fatalf("single-key channel must not gain a status list: %v", updated.ChannelInfo.MultiKeyStatusList)
 	}
 }
+
+func TestMultiKeyPreviewKeepsHeadAndTail(t *testing.T) {
+	// Two real JWT-shaped keys share the same header; only the tail differs.
+	got := multiKeyPreview("eyJhbGciOiJIUzI1NiJ9.payload.tfLQLNs")
+	if got != "eyJhbGciOi…fLQLNs" {
+		t.Fatalf("preview = %q", got)
+	}
+	other := multiKeyPreview("eyJhbGciOiJIUzI1NiJ9.payload.cS3g530")
+	if got == other {
+		t.Fatalf("two keys produced the same preview: %q", got)
+	}
+}
+
+func TestMultiKeyPreviewHidesShortKeys(t *testing.T) {
+	for _, key := range []string{"", "   ", "short", "0123456789abcdef"} {
+		if got := multiKeyPreview(key); got != "" {
+			t.Fatalf("short key %q must not be previewed, got %q", key, got)
+		}
+	}
+}
+
+func TestMultiKeyPreviewTrimsWhitespace(t *testing.T) {
+	got := multiKeyPreview("  eyJhbGciOiJIUzI1NiJ9.payload.tfLQLNs  ")
+	if got != "eyJhbGciOi…fLQLNs" {
+		t.Fatalf("preview = %q", got)
+	}
+}

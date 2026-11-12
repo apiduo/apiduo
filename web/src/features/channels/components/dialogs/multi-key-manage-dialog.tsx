@@ -396,11 +396,23 @@ export function MultiKeyManageDialog({
                 getRowKey={(key) => key.index}
                 columns={[
                   {
+                    // APIDUO:multi-key-preview-tail:BEGIN
+                    // 头部对所有 JWT 都一样，只有尾号能让人认出「要禁的是哪把」。
                     id: 'index',
                     header: t('Index'),
-                    className: 'w-20',
+                    className: 'w-40',
                     cellClassName: 'font-mono text-sm',
-                    cell: (key) => `#${key.index + 1}`,
+                    cell: (key) => (
+                      <div className='flex flex-col'>
+                        <span>#{key.index + 1}</span>
+                        {key.key_preview && (
+                          <span className='text-muted-foreground text-xs'>
+                            {key.key_preview}
+                          </span>
+                        )}
+                      </div>
+                    ),
+                    // APIDUO:multi-key-preview-tail:END
                   },
                   {
                     id: 'status',

@@ -3,9 +3,15 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	139
-blocks	413
-added	3976
-deleted	213
+blocks	416
+added	3999
+deleted	221
+# 2026-11-12 14:2x 上调 blocks 413->416、added 3976->3999、deleted 213->221
+# （files 139 不变）：多密钥面板的 key 预览从「前 10 位...」改成「前 10 位…后 6 位」。
+# JWT 的头部对所有条目都一样，运维在面板上根本分不出「要禁的是哪把」；尾号才是
+# 上游 401 会引用的那段。3 个块：KeyStatus 注释、keyPreview 赋值（controller/channel.go
+# 两处不相邻）、面板索引列（multi-key-manage-dialog.tsx）。生成逻辑与 3 个用例在新文件
+# controller/apiduo_multi_key_status.go(.test)，不占上游行数。数值取自干净 worktree。
 
 # 2026-11-12 13:4x 由 `-cost -update` 按当前实际重写（含并行会话未提交改动）。
 # 本轮：审计详情三件事 —— mcp 字段中文标签（本地表 + 7 语言 13 个 key）、

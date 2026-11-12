@@ -1700,7 +1700,10 @@ type KeyStatus struct {
 	Status       int    `json:"status"` // 1: enabled, 2: disabled
 	DisabledTime int64  `json:"disabled_time,omitempty"`
 	Reason       string `json:"reason,omitempty"`
-	KeyPreview   string `json:"key_preview"` // first 10 chars of key for identification
+	// APIDUO:multi-key-preview-tail:BEGIN
+	// 前 10 位…后 6 位，见 multiKeyPreview。
+	KeyPreview string `json:"key_preview"`
+	// APIDUO:multi-key-preview-tail:END
 }
 
 // ManageMultiKeys handles multi-key management operations
@@ -1791,11 +1794,11 @@ func ManageMultiKeys(c *gin.Context) {
 				}
 			}
 
-			// Create key preview (first 10 chars)
-			keyPreview := key
-			if len(key) > 10 {
-				keyPreview = key[:10] + "..."
-			}
+			// APIDUO:multi-key-preview-tail:BEGIN
+			// KeyPreview 现在是「前 10 位…后 6 位」：JWT 的头部所有条目都一样，
+			// 运维只能靠尾号认出「要禁的是哪一把」。
+			keyPreview := multiKeyPreview(key)
+			// APIDUO:multi-key-preview-tail:END
 
 			allKeyStatusList = append(allKeyStatusList, KeyStatus{
 				Index:        i,
