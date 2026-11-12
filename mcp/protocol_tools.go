@@ -208,11 +208,13 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 
 // buildPayload 把 MCP 入参翻译成 apiduo /v1 的通用请求体。
 //
-// 三条规则：
-//   - reference_images → image，统一发数组
-//   - response_format 固定 url，不暴露给调用方
-//   - 只有声明过的参数才接受，其余本地拒绝（越界值打到上游既浪费一次计费，
-//     又要在错误里反推是哪个参数不对）
+// 两种产物各有一套形状，不能混：
+//   - 图片 /images/generations：OpenAI 的 prompt + image[]，方舟图片接口兼容它
+//   - 视频 /contents/generations/tasks：方舟的 content[]，不认 prompt / image /
+//     response_format 这三个键，缺 content 直接 400
+//
+// 其余规则相同：reference_images 统一发数组；只有声明过的参数才接受，其余本地
+// 拒绝（越界值打到上游既浪费一次计费，又要在错误里反推是哪个参数不对）。
 func buildPayload(m modelView, in generateInput, refs []string) (map[string]any, error) {
 	// 声明了提示词上限就必须拦：声明只是给 agent 的事前提示，
 	// 不拦的话超长提示词会打到上游换一个 400 和一次计费。
@@ -223,11 +225,6 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		}
 	}
 
-	p := map[string]any{
-		"model":           m.ID,
-		"prompt":          in.Prompt,
-		"response_format": "url",
-	}
 	if len(refs) > 0 {
 		// 只有「已知上限」才拦截。未知就交给上游判定 ——
 		// 按 0 处理会误杀图生图能力。
@@ -239,19 +236,47 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 				return nil, fmt.Errorf("模型 %s 最多接受 %d 张参考图，收到 %d 张", m.ID, *m.MaxRefImages, len(refs))
 			}
 		}
-		p["image"] = refs
 	}
+
+	isVideo := m.Kind == "video"
+	p := map[string]any{"model": m.ID}
+	if isVideo {
+		content := make([]map[string]any, 0, len(refs)+1)
+		content = append(content, map[string]any{"type": "text", "text": in.Prompt})
+		for _, ref := range refs {
+			content = append(content, map[string]any{
+				"type":      "image_url",
+				"image_url": map[string]string{"url": ref},
+				// 参考图必须显式声明角色：happyhorse11 只做参考图，缺这个键
+				// 会被上游当成「首帧」而拒绝（它不支持首尾帧）。
+				"role": "reference_image",
+			})
+		}
+		p["content"] = content
+	} else {
+		p["prompt"] = in.Prompt
+		p["response_format"] = "url"
+		if len(refs) > 0 {
+			p["image"] = refs
+		}
+	}
+
+	// size / quality / n 是图片的批量与尺寸概念，视频一次一任务，不上送。
 	if in.Size != "" {
 		if err := checkEnum(m, "size", in.Size); err != nil {
 			return nil, err
 		}
-		p["size"] = in.Size
+		if !isVideo {
+			p["size"] = in.Size
+		}
 	}
 	if in.Quality != "" {
 		if err := checkEnum(m, "quality", in.Quality); err != nil {
 			return nil, err
 		}
-		p["quality"] = in.Quality
+		if !isVideo {
+			p["quality"] = in.Quality
+		}
 	}
 	if in.N != nil {
 		if *in.N < 1 {
@@ -265,7 +290,9 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 			// 一次 n=1000 就能把额度打光。「没配置」不该等价于「没有上限」。
 			return nil, fmt.Errorf("模型 %s 未声明 n 的上限，单次最多 %d；要更多请分多次调用", m.ID, maxBatchN)
 		}
-		p["n"] = *in.N
+		if !isVideo {
+			p["n"] = *in.N
+		}
 	}
 	for k, v := range in.Extra {
 		if _, ok := m.Params[k]; !ok && !standardParams[k] {

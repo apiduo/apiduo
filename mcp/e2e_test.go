@@ -355,8 +355,17 @@ func TestEndToEndProtocol(t *testing.T) {
 	}
 
 	vidPayload := rec.videoPayload()
-	if got := fmt.Sprint(vidPayload["prompt"]); got != "a dog" {
-		t.Errorf("video prompt = %v", got)
+	// 视频走方舟形状：提示词在 content 的 text part 里，不在顶层 prompt。
+	parts, ok := vidPayload["content"].([]any)
+	if !ok || len(parts) == 0 {
+		t.Fatalf("video content = %#v, want 方舟内容数组", vidPayload["content"])
+	}
+	text, _ := parts[0].(map[string]any)
+	if text["type"] != "text" || text["text"] != "a dog" {
+		t.Errorf("video text part = %#v", text)
+	}
+	if _, exists := vidPayload["prompt"]; exists {
+		t.Error("视频不该再带顶层 prompt")
 	}
 	if got := fmt.Sprint(vidPayload["duration"]); got != "5" {
 		t.Errorf("extra 里的 duration 应合并进请求体，实际 %v", got)
