@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -123,6 +125,12 @@ func (d *toolDeps) generateVideo(ctx context.Context, _ *mcpsdk.CallToolRequest,
 
 func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
 	key := apiKeyFrom(ctx)
+	caller := callerFrom(ctx)
+	// 一行入口日志。用户的「我明明调了，日志里没有」有一半是客户端根本没发出
+	// tools/call（握手 5ms，生图要几秒，两者在访问日志里长得完全不同）；有了这行，
+	// 「没到服务端」和「到了但记账失败」当场分得开。
+	common.SysLog(common.LogText("[mcp] %s.generate start: user=%d token=%d model=%q size=%q",
+		kind, caller.UserId, caller.TokenId, in.Model, in.Size))
 	if strings.TrimSpace(in.Prompt) == "" {
 		return nil, generateOutput{}, fmt.Errorf("prompt 不能为空")
 	}
