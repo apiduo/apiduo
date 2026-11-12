@@ -29,6 +29,9 @@ func init() {
 	accessTokenRouteRules["POST /api/mcp/profiles/:id/toggle"] = accessTokenScopeRule("model:write")
 	accessTokenRouteRules["GET /api/mcp/profiles/:id/observations"] = accessTokenScopeRule("model:read")
 	accessTokenRouteRules["GET /api/mcp/profiles/:id/audit"] = accessTokenScopeRule("model:read")
+	// 采纳会写回声明，按写权限算；漏了这一行，PAT 调它会拿到
+	// ACCESS_TOKEN_ROUTE_UNDECLARED，而浏览器会话却是通的。
+	accessTokenRouteRules["POST /api/mcp/profiles/:id/adopt"] = accessTokenScopeRule("model:write")
 
 	accessTokenRouteRules["GET /api/mcp/error-rules"] = accessTokenScopeRule("model:read")
 	accessTokenRouteRules["PUT /api/mcp/error-rules/:id"] = accessTokenScopeRule("model:write")
