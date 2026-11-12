@@ -2,11 +2,14 @@ package mcp
 
 // 协议族（transport）是「生成端点 + 查询端点」的绑定，三者必须同源。
 //
-// 只保留 apiduo 网关自有的两套形状 —— 这正是「两套协议兼容所有图片视频模型」
-// 的落点：各厂商的差异由 apiduo 的渠道与 JS 插件吸收，MCP 层不需要知道。
+// 两个端点都是 apiduo 自己的路由，上游统一是方舟：
 //
-// 不要在 MCP 层新增「某家厂商的形状」（例如方舟的 contents/generations/tasks）：
-// 那会让 MCP 依赖网关的内部实现，插件一换就断。
+//	图片  /v1/images/generations            方舟的图片接口本身就兼容这个形状
+//	视频  /v1/contents/generations/tasks    方舟任务形状，见 router/apiduo_ark_task_alias.go
+//
+// 视频为什么不用 /v1/video/generations：那是 OpenAI 形状的别名，和方舟形状共用
+// 同一套插件链路，但响应会把任务对象包进 {code,data}。协议既然对外叫 ark，
+// 就用 ark 的形状 —— 少一层解包，任务号与状态直接可读。
 type transport struct {
 	Name     string
 	Generate string // 相对 base_url
@@ -21,8 +24,8 @@ var transports = map[string]transport{
 	},
 	"openai_video": {
 		Name:     "openai_video",
-		Generate: "/video/generations",
-		Query:    "/video/generations/{id}",
+		Generate: "/contents/generations/tasks",
+		Query:    "/contents/generations/tasks/{id}",
 	},
 }
 

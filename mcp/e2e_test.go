@@ -92,7 +92,7 @@ func mockUpstream(t *testing.T) *upstreamRecorder {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"created":1,"data":[{"url":"https://example.test/a.png","mime_type":"image/png"}]}`)
 	})
-	mux.HandleFunc("/v1/video/generations", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/contents/generations/tasks", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		rec.mu.Lock()
@@ -101,7 +101,7 @@ func mockUpstream(t *testing.T) *upstreamRecorder {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"task_id":"upstream-task-1","status":"queued"}`)
 	})
-	mux.HandleFunc("/v1/video/generations/upstream-task-1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/contents/generations/tasks/upstream-task-1", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"task_id":"upstream-task-1","status":"succeeded","url":"https://example.test/v.mp4","format":"mp4"}`)
 	})
@@ -578,11 +578,11 @@ func TestTaskGetReadsWrappedGatewayResponse(t *testing.T) {
 	setupDB(t)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/video/generations/task-done", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/v1/contents/generations/tasks/task-done", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task-1","status":"SUCCESS","progress":"100%","result_url":"https://example.test/v.mp4","fail_reason":"","data":{"status":"queued"}}}`)
 	})
-	mux.HandleFunc("/v1/video/generations/task-bad", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/v1/contents/generations/tasks/task-bad", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"code":"success","data":{"task_id":"task-2","status":"FAILURE","fail_reason":"content blocked"}}`)
 	})

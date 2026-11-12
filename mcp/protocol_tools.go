@@ -480,6 +480,12 @@ func parseOutputs(resp map[string]any) []outputItem {
 	if u := str(resp, "result_url"); u != "" {
 		out = append(out, outputItem{URL: u})
 	}
+	// 方舟任务对象：产物在 content.video_url，比上面几个都深一层
+	if c, ok := resp["content"].(map[string]any); ok {
+		if u := str(c, "video_url"); u != "" {
+			out = append(out, outputItem{URL: u})
+		}
+	}
 	return out
 }
 
