@@ -269,6 +269,9 @@
     "Converted from the primary endpoint": "由主端点转换而来",
     "Turned into an image task, then converted from the primary endpoint": "先转成出图任务，再由主端点转换",
     "Off means forwarding only: chat entries no longer return a chat.completion, and every entry goes out on its own route with the body untouched.": "关闭后只做转发：chat 入口不再返回 chat.completion，各入口按自己的路由原样发出，回包也原样透传。",
-    "Image protocol is off: the entries below forward on their own routes, unchanged.": "图片协议未开启：以下入口按各自路由原样转发，不做任何转换。"
+    "Image protocol is off: the entries below forward on their own routes, unchanged.": "图片协议未开启：以下入口按各自路由原样转发，不做任何转换。",
+    "This channel only declares image models ({{models}}).": "这条渠道只声明了图片模型（{{models}}）。",
+    "Set up as an image channel": "按图片渠道配置",
+    "Fills in a primary endpoint and one upstream path; both stay editable.": "会填好主端点和「上游 1 条路」，之后都能改。"
   }
 }

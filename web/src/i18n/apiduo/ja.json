@@ -191,6 +191,9 @@
     "Converted from the primary endpoint": "Converted from the primary endpoint",
     "Turned into an image task, then converted from the primary endpoint": "Turned into an image task, then converted from the primary endpoint",
     "Off means forwarding only: chat entries no longer return a chat.completion, and every entry goes out on its own route with the body untouched.": "Off means forwarding only: chat entries no longer return a chat.completion, and every entry goes out on its own route with the body untouched.",
-    "Image protocol is off: the entries below forward on their own routes, unchanged.": "Image protocol is off: the entries below forward on their own routes, unchanged."
+    "Image protocol is off: the entries below forward on their own routes, unchanged.": "Image protocol is off: the entries below forward on their own routes, unchanged.",
+    "This channel only declares image models ({{models}}).": "This channel only declares image models ({{models}}).",
+    "Set up as an image channel": "Set up as an image channel",
+    "Fills in a primary endpoint and one upstream path; both stay editable.": "Fills in a primary endpoint and one upstream path; both stay editable."
   }
 }

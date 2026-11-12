@@ -52,6 +52,7 @@ import {
   seedPrimaryRoute,
 } from '@/features/channels/lib/primary-endpoint'
 import type { AdvancedCustomRoute } from '@/features/channels/types'
+import { isImageModelName } from '@/features/apiduo-playground/lib/model-kind'
 import { converterLabel } from '@/features/protocol-matrix/lib/mode-label'
 import { cn } from '@/lib/utils'
 
@@ -213,6 +214,16 @@ export function PrimaryEndpointEditor(props: {
       'This path does not end with generations, so image requests will not land where the protocol expects.'
     )
   }
+
+  // 只声明图片模型、且还没有任何主端点配置的渠道，是「图片渠道的默认值不顺手」那一类：
+  // 空着就是哑管道，用户得自己摸索出主端点 + 协议两件事。这里给一条可见的建议，
+  // 而不是在建渠道时静默写配置——静默写入会让「同时服务 chat 的渠道」被折叠掉。
+  const modelList = (props.models || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  const imageOnlyChannel =
+    modelList.length > 0 && modelList.every((name) => isImageModelName(name))
 
   const protocolSummary = protocolOn
     ? `${t('Image protocol on')} · ${t(upstreamLayoutLabel)}`
@@ -672,6 +683,29 @@ export function PrimaryEndpointEditor(props: {
               'Every entry keeps its own upstream in the route table and requests are forwarded unchanged — the same behaviour as new-api. Turn the switch on to declare one address for all of them.'
             )}
           </p>
+          {imageOnlyChannel ? (
+            <div className='mt-3 border-t border-dashed pt-3'>
+              <p className='text-xs'>
+                {t('This channel only declares image models ({{models}}).', {
+                  models: modelList.join(', '),
+                })}
+              </p>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                className='mt-2'
+                onClick={() => setEnabled(true)}
+              >
+                {t('Set up as an image channel')}
+              </Button>
+              <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
+                {t(
+                  'Fills in a primary endpoint and one upstream path; both stay editable.'
+                )}
+              </p>
+            </div>
+          ) : null}
         </section>
       )}
     </div>
