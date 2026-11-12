@@ -224,3 +224,37 @@ describe('after 全量快照', () => {
     expect(byKey.summary.text).toBe('有内容')
   })
 })
+
+// 反向：把改动还原成「未声明」时，after 被整个省掉，只剩 {before: 0}。
+// 只认 after 会让这条记录没有对比表、还留着一坨原始 JSON（复测时踩到）。
+describe('缺 after 键的差值对（还原为未声明）', () => {
+  it('buildAuditChanges 渲染成「值 → 未声明」', () => {
+    const changes = buildAuditChanges(
+      entryWith({ changed: { max_ref_videos: { before: 0 } } }),
+      t
+    )
+    expect(changes).toHaveLength(1)
+    expect(changes[0].key).toBe('max_ref_videos')
+    expect(changes[0].before?.text).toBe('0')
+    expect(changes[0].after.kind).toBe('null')
+    expect(changes[0].after.text).toBe('Not declared')
+  })
+
+  it('buildAuditDetails 同样摘掉 changed', () => {
+    const detail = buildAuditDetails(
+      entryWith({
+        model_id: 'flux-3-image',
+        changed: { max_ref_videos: { before: 0 } },
+      }),
+      t
+    )
+    expect(detail.fields.map((field) => field.label)).toEqual(['model_id'])
+  })
+
+  it('{before} 与 {after} 都算差值对，普通对象不算', () => {
+    expect(isAuditDiffPair({ before: 0 })).toBe(true)
+    expect(isAuditDiffPair({ after: 0 })).toBe(true)
+    expect(isAuditDiffPair({})).toBe(false)
+    expect(isAuditDiffPair({ before: 1, status: 2 })).toBe(false)
+  })
+})

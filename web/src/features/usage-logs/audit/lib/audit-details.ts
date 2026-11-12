@@ -588,10 +588,10 @@ export function buildAuditDetails(
   // 差值映射摘掉（交给表格）；布尔 changed 留着 —— 后端写 null 会省掉 before 键（线上实测）。
   const isDiffPair = (pair: unknown) => {
     if (!pair || typeof pair !== 'object' || Array.isArray(pair)) return false
-    const fields = pair as Record<string, unknown>
+    const keys = Object.keys(pair)
     return (
-      'after' in fields &&
-      Object.keys(fields).every((key) => key === 'before' || key === 'after')
+      keys.length > 0 &&
+      keys.every((key) => key === 'before' || key === 'after')
     )
   }
   const diffValue = params.changed

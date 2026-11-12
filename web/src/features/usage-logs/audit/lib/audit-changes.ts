@@ -24,22 +24,23 @@ import { auditFieldLabel } from './audit-details'
 /**
  * `changed` 里的一项是不是「旧值 → 新值」的差值对。
  *
- * 只要求有 after，不要求 before：后端 auditDiff 写 `before: null` 时这个键
- * 会被序列化省掉，于是「未声明 → 0」在库里只有 `{after: 0}`。
- * 用 `'before' in pair` 判定会把这类 diff 当成普通字段，详情里就会同时出现
- * 一份对比表和一坨原始 JSON（线上 0.0.100 实测踩到）。
+ * 不要求 before 或 after 必存在：后端 auditDiff 写 `null` 时这个键会被整个
+ * 省掉。于是「未声明 → 0」只剩 `{after: 0}`，把改动还原成未声明只剩
+ * `{before: 0}` —— 两个方向都在线上实测踩到过，只认一个方向会让另一方向的
+ * 记录既没有对比表、又留着一坨原始 JSON。
  *
- * 反过来要求「键只能是 before/after」，是为了不把 `{status: 2}` 这类普通对象
- * 误认成差值对 —— 它们没有 after，直接排除。
+ * 用「键只能是 before/after 且至少有一个」判定，`{status: 2}` 这类普通对象
+ * 会被排除，不会误判成 diff。
  */
 export function isAuditDiffPair(value: unknown): value is {
   before?: unknown
-  after: unknown
+  after?: unknown
 } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const pair = value as Record<string, unknown>
-  if (!('after' in pair)) return false
-  return Object.keys(pair).every((key) => key === 'before' || key === 'after')
+  const keys = Object.keys(value)
+  return (
+    keys.length > 0 && keys.every((key) => key === 'before' || key === 'after')
+  )
 }
 
 /** `params.changed` 是「字段 → 差值对」的映射（而不是 channel.status_update 那种布尔）。 */
