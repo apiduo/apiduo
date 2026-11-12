@@ -585,27 +585,27 @@ export function buildAuditDetails(
     delete params.total
   }
   // APIDUO:audit-changes:BEGIN
-  // changed 有两种形状：mcp.profile_update 之类写的是 {字段: {before, after}}，
-  // 而 channel.status_update 写的是布尔（"到底改没改"）。只摘前者 ——
-  // 后者是有效字段，删掉会丢一个 "No"，连带把「开关没动」这个结论也丢了。
-  // 判定条件与 buildAuditChanges 同源：每一项都是带 before/after 的对象。
-  const changedValue = params.changed
-  if (
-    changedValue &&
-    typeof changedValue === 'object' &&
-    !Array.isArray(changedValue) &&
-    Object.values(changedValue).length > 0 &&
-    Object.values(changedValue).every(
-      (pair) =>
-        !!pair &&
-        typeof pair === 'object' &&
-        !Array.isArray(pair) &&
-        'before' in pair &&
-        'after' in pair
+  // 差值映射摘掉（交给表格）；布尔 changed 留着 —— 后端写 null 会省掉 before 键（线上实测）。
+  const isDiffPair = (pair: unknown) => {
+    if (!pair || typeof pair !== 'object' || Array.isArray(pair)) return false
+    const fields = pair as Record<string, unknown>
+    return (
+      'after' in fields &&
+      Object.keys(fields).every((key) => key === 'before' || key === 'after')
     )
-  ) {
-    delete params.changed
   }
+  const diffValue = params.changed
+  const isDiffMap =
+    !!diffValue &&
+    typeof diffValue === 'object' &&
+    !Array.isArray(diffValue) &&
+    Object.values(diffValue).length > 0 &&
+    Object.values(diffValue).every(isDiffPair)
+  // 没有差值表时 after 是 create 的全量快照，已画成「初始值」表，别再渲染一遍。
+  const isPlainObject = (value: unknown) =>
+    !!value && typeof value === 'object' && !Array.isArray(value)
+  if (isDiffMap) delete params.changed
+  else if (isPlainObject(params.after)) delete params.after
   // APIDUO:audit-changes:END
   for (const [key, value] of Object.entries(params)) {
     fields.push({ label: auditFieldLabel(key, t), value })

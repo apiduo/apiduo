@@ -21,6 +21,36 @@ import type { TFunction } from 'i18next'
 import type { AuditLog } from '../api'
 import { auditFieldLabel } from './audit-details'
 
+/**
+ * `changed` 里的一项是不是「旧值 → 新值」的差值对。
+ *
+ * 只要求有 after，不要求 before：后端 auditDiff 写 `before: null` 时这个键
+ * 会被序列化省掉，于是「未声明 → 0」在库里只有 `{after: 0}`。
+ * 用 `'before' in pair` 判定会把这类 diff 当成普通字段，详情里就会同时出现
+ * 一份对比表和一坨原始 JSON（线上 0.0.100 实测踩到）。
+ *
+ * 反过来要求「键只能是 before/after」，是为了不把 `{status: 2}` 这类普通对象
+ * 误认成差值对 —— 它们没有 after，直接排除。
+ */
+export function isAuditDiffPair(value: unknown): value is {
+  before?: unknown
+  after: unknown
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const pair = value as Record<string, unknown>
+  if (!('after' in pair)) return false
+  return Object.keys(pair).every((key) => key === 'before' || key === 'after')
+}
+
+/** `params.changed` 是「字段 → 差值对」的映射（而不是 channel.status_update 那种布尔）。 */
+export function isAuditDiffMap(
+  value: unknown
+): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const entries = Object.values(value as Record<string, unknown>)
+  return entries.length > 0 && entries.every(isAuditDiffPair)
+}
+
 /** 一个值在审计里的呈现形态。kind 决定渲染成徽章还是等宽文本。 */
 export interface AuditChangeValue {
   kind: 'null' | 'boolean' | 'number' | 'string' | 'json'
@@ -100,6 +130,11 @@ function describeValue(
     }
   }
   if (typeof raw === 'string') {
+    // 空串在能力声明里就是「没声明」：display_name / parameters / tags 都这样。
+    // 留一个空单元格会让人以为是渲染失败（线上创建事件实测如此）。
+    if (raw.trim() === '') {
+      return { kind: 'null', text: t('Not declared') }
+    }
     return { kind: 'string', text: raw }
   }
   return { kind: 'json', text: JSON.stringify(raw) }
@@ -138,8 +173,8 @@ export function buildAuditChanges(entry: AuditLog, t: TFunction): AuditChange[] 
 
   const out: AuditChange[] = []
   for (const [key, pair] of Object.entries(changed as Record<string, unknown>)) {
-    if (!pair || typeof pair !== 'object' || Array.isArray(pair)) continue
-    const { before, after } = pair as { before?: unknown; after?: unknown }
+    if (!isAuditDiffPair(pair)) continue
+    const { before, after } = pair
     out.push({
       key,
       label: fieldLabel(key, t),

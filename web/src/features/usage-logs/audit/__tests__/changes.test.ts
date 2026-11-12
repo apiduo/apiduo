@@ -20,7 +20,13 @@ import type { TFunction } from 'i18next'
 import { describe, expect, it } from 'vitest'
 
 import type { AuditLog } from '../api'
-import { buildAuditChanges, readAuditConflict } from '../lib/audit-changes'
+import {
+  buildAuditChanges,
+  isAuditDiffMap,
+  isAuditDiffPair,
+  readAuditConflict,
+} from '../lib/audit-changes'
+import { buildAuditDetails } from '../lib/audit-details'
 
 // 只回显 key 就够了：这里断言的是「选对了哪个 key」，不是译文。
 const t = ((key: string) => key) as unknown as TFunction
@@ -150,5 +156,71 @@ describe('readAuditConflict', () => {
     expect(
       readAuditConflict({ ...entryWith({ name: 'x' }), success: false })
     ).toBeNull()
+  })
+})
+
+// 线上实测的形状：后端 auditDiff 写 before=null 时这个键被整个省掉，
+// 「未声明 → 0」在库里只有 {after: 0}。判定要求双键会让这类 diff
+// 既进表、又留在通用字段里，详情页渲染两遍。
+describe('缺 before 键的差值对（线上 0.0.100 的真实形状）', () => {
+  it('buildAuditChanges 仍按「未声明 → 值」渲染', () => {
+    const changes = buildAuditChanges(
+      entryWith({ changed: { max_ref_videos: { after: 0 } } }),
+      t
+    )
+    expect(changes).toHaveLength(1)
+    expect(changes[0].key).toBe('max_ref_videos')
+    // changed 分支里 describeValue 一定返回对象（undefined → kind=null），
+    // 只有 created 分支才是字面量 null；两者不要混。
+    expect(changes[0].before?.kind).toBe('null')
+    expect(changes[0].after.text).toBe('0')
+  })
+
+  it('buildAuditDetails 必须把整块 changed 摘掉，不留原始 JSON', () => {
+    const detail = buildAuditDetails(
+      entryWith({
+        model_id: 'flux-3-image',
+        changed: { max_ref_videos: { after: 0 } },
+      }),
+      t
+    )
+    expect(detail.fields.map((field) => field.label)).toEqual(['model_id'])
+    expect(detail.fields.some((field) => field.label === 'State changed')).toBe(
+      false
+    )
+  })
+
+  it('普通对象不会被误判成差值对', () => {
+    expect(isAuditDiffPair({ status: 2 })).toBe(false)
+    expect(isAuditDiffPair({ after: 0 })).toBe(true)
+    expect(isAuditDiffPair({ before: 1, after: 0 })).toBe(true)
+    expect(isAuditDiffMap({ changed: false })).toBe(false)
+    expect(isAuditDiffMap({})).toBe(false)
+  })
+})
+
+// 创建事件的 params 里 after 是全量快照，已经画成「初始值」单列表；
+// 通用字段若再渲染一棵 after 子树，同一份信息就出现两遍（线上实测）。
+describe('after 全量快照', () => {
+  it('create 事件把 after 摘掉，只留业务键', () => {
+    const detail = buildAuditDetails(
+      entryWith({
+        model_id: 'e2e-probe',
+        after: { kind: 'image', protocol: 'ark', enabled: true },
+      }),
+      t
+    )
+    expect(detail.fields.map((field) => field.label)).toEqual(['model_id'])
+  })
+
+  it('空串按未声明渲染，而不是空格子', () => {
+    const changes = buildAuditChanges(
+      entryWith({ after: { display_name: '', summary: '有内容' } }),
+      t
+    )
+    const byKey = Object.fromEntries(changes.map((c) => [c.key, c.after]))
+    expect(byKey.display_name.kind).toBe('null')
+    expect(byKey.display_name.text).toBe('Not declared')
+    expect(byKey.summary.text).toBe('有内容')
   })
 })
