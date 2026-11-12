@@ -181,7 +181,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 			IssuedAt: time.Now().Unix(),
 		})
 		return textResult("已提交，任务 " + signed + " 进行中"), generateOutput{
-			Status: "working", Model: m.ID, TaskID: signed, PollMS: 2000, Upstream: resp,
+			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfterMS, Upstream: resp,
 		}, nil
 	}
 
@@ -427,7 +427,7 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	case "completed":
 		out.Outputs = parseOutputs(resp)
 	case "working":
-		out.PollMS = 2000
+		out.PollMS = pollAfterMS
 	case "failed":
 		out.Error = firstNonEmpty(str(resp, "fail_reason"), str(resp, "error"), str(resp, "message"), "上游任务失败")
 	}
@@ -529,6 +529,12 @@ func unwrapTaskBody(resp map[string]any) map[string]any {
 	}
 	return inner
 }
+
+// pollAfterMS 是建议的两次 task.get 间隔。
+//
+// 视频任务动辄 3-4 分钟，2 秒一轮等于把同一个任务问 100 多次；5 秒够快
+// 让 agent 觉得有进展，又不至于把一个任务的等待放大成上百次请求。
+const pollAfterMS = 5000
 
 func usageOf(resp map[string]any) map[string]any {
 	if u, ok := resp["usage"].(map[string]any); ok {

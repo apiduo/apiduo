@@ -126,8 +126,8 @@ func TestSaveProfileRejectsModelIdChange(t *testing.T) {
 }
 
 // 旧的自带面板已下线：后台只保留前端「系统设置 → 扩展 → MCP」那一套。
-// 它重构后协议选项与库里的值对不上，留着就是会写坏数据的入口。
-func TestLegacyPanelIsGone(t *testing.T) {
+// 地址保留一条跳转，别让外部书签落到前端首页。
+func TestLegacyPanelRedirectsToSettings(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	Register(r)
@@ -135,8 +135,11 @@ func TestLegacyPanelIsGone(t *testing.T) {
 	for _, path := range []string{"/mcp/admin", "/mcp/admin/"} {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
-		if w.Code != http.StatusNotFound {
-			t.Fatalf("%s 应已下线，得到 %d", path, w.Code)
+		if w.Code != http.StatusMovedPermanently {
+			t.Fatalf("%s 应 301，得到 %d", path, w.Code)
+		}
+		if got := w.Header().Get("Location"); got != mcpSettingsPath {
+			t.Fatalf("%s 跳到 %q，want %q", path, got, mcpSettingsPath)
 		}
 	}
 }

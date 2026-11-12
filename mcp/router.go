@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"net/http"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -43,6 +45,8 @@ func Register(engine *gin.Engine) {
 		api.POST("/profiles/:id/toggle", apiToggleProfile)
 		api.GET("/profiles/:id/observations", apiObservations)
 		api.GET("/profiles/:id/audit", apiAudit)
+		// 采纳巡检建议：把「观察到但没声明」的边界写回声明。
+		api.POST("/profiles/:id/adopt", apiAdoptSuggestion)
 
 		api.GET("/error-rules", apiListErrorRules)
 		api.PUT("/error-rules/:id", apiUpdateErrorRule)
@@ -55,6 +59,18 @@ func Register(engine *gin.Engine) {
 	// 的回落路径 —— 那是公网部署最容易出事的地方。
 	proto := injectBearer(protocolHandler())
 	engine.Any("/mcp", middleware.TokenAuthReadOnly(), captureCaller(), gin.WrapH(proto))
+
+	// 旧版自带的静态面板已经删了，地址留一条跳转：外部书签和脚本直接打
+	// 这个地址时，落在「系统设置 → 扩展 → MCP」而不是前端首页。
+	engine.GET("/mcp/admin", redirectToSettings)
+	engine.GET("/mcp/admin/", redirectToSettings)
+}
+
+// mcpSettingsPath 是前端里 MCP 后台的唯一入口。
+const mcpSettingsPath = "/system-settings/site/mcp"
+
+func redirectToSettings(c *gin.Context) {
+	c.Redirect(http.StatusMovedPermanently, mcpSettingsPath)
 }
 
 // captureCaller 把令牌归属搬进 request context，供协议层写日志时归属到人。
