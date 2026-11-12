@@ -207,6 +207,17 @@ function candidateMark(
   )
 }
 
+/**
+ * 存储值是传输形状（openai_image / openai_video），面上要按上游厂商显示：
+ * 网关侧的图片视频模型都走方舟，写 openai_image 只会让人以为要 OpenAI 的 key。
+ * 只改标签、不动数据 —— 换存储值要迁移存量 profile，等后端把 protocol 改成
+ * 厂商维度时一起做。
+ */
+function protocolLabel(value: string): string {
+  if (value === 'openai_image' || value === 'openai_video') return 'ark'
+  return value
+}
+
 export function ProfilesPanel(props: ProfilesPanelProps) {
   const t = useMcpCopy()
   const queryClient = useQueryClient()
@@ -277,7 +288,7 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   // 草稿 = 「服务端那份 + 本次编辑」，两者用键绑在一起而不是用 effect 同步：
-  // 保存或启停让 updated_at 变了之后键就对不上，表单自动落回最新值 ——
+  // 保存或启停让版本号变了之后键就对不上，表单自动落回最新值 ——
   // 既不用手写同步，也不会出现「保存成功但表单还显示旧值」。
   const [override, setOverride] = useState<{
     key: string
@@ -295,7 +306,11 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
 
   let baseKey = 'none'
   if (creating) baseKey = 'new'
-  else if (selected) baseKey = `${selected.id}:${selected.updated_at}`
+  // 优先用 version：updated_at 是秒级，同一秒内的两次保存不会让它变，
+  // 草稿就卡在旧值上（「保存成功但表单没刷新」）。旧后端没有这个字段，
+  // 退回 updated_at 保证灰度期间行为不变。
+  else if (selected)
+    baseKey = `${selected.id}:${selected.version ?? selected.updated_at}`
 
   const draft = override && override.key === baseKey ? override.draft : base
 
@@ -816,15 +831,26 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
                       }
                     >
                       <SelectTrigger>
-                        <SelectValue>{draft.protocol}</SelectValue>
+                        <SelectValue>{protocolLabel(draft.protocol)}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value='openai_image'>
-                          openai_image
-                        </SelectItem>
-                        <SelectItem value='openai_video'>
-                          openai_video
-                        </SelectItem>
+                        {/* 协议跟着产物类型走：图/视频都是方舟，检索还没接端点，
+                            列出来但不可选，免得选完保存不了。 */}
+                        {draft.kind === 'search' ? (
+                          <SelectItem value='deepseek' disabled>
+                            deepseek（待接入）
+                          </SelectItem>
+                        ) : (
+                          <SelectItem
+                            value={
+                              draft.kind === 'video'
+                                ? 'openai_video'
+                                : 'openai_image'
+                            }
+                          >
+                            ark
+                          </SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

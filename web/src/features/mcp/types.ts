@@ -76,6 +76,8 @@ export type ModelProfile = {
   source: string
   created_at: number
   updated_at: number
+  /** 乐观锁版本号，每次写库 +1；旧后端没有这个字段，草稿键退回 updated_at。 */
+  version?: number
 }
 
 /** 表单里的草稿：新建时 id=0，其余字段与提交体一致。 */
@@ -93,6 +95,8 @@ export type ProfileDraft = {
   parameters: string
   summary: string
   tags: string
+  /** 乐观锁版本号，每次写库 +1；旧后端没有，草稿键退回 updated_at。 */
+  version?: number
 }
 
 export type Overview = {
