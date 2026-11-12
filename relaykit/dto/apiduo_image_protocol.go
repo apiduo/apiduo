@@ -21,6 +21,9 @@ const (
 	// 存储值就是协议名，不保留历史值（旧配置需迁移，见渠道编辑页）。
 	ImageUpstreamARK    = "ark"
 	ImageUpstreamOpenAI = "openai"
+
+	// DefaultImagePrimaryPath 渠道没有声明图片主端点时的兜底落点。
+	DefaultImagePrimaryPath = "/v1/images/generations"
 )
 
 type ImageProtocolConfig struct {
@@ -28,8 +31,13 @@ type ImageProtocolConfig struct {
 	Enabled bool `json:"enabled,omitempty"`
 	// Upstream: ark（单端点，image 字段 str|list<str>）/ openai（双端点）
 	Upstream string `json:"upstream,omitempty"`
-	// PrimaryPath 主端点（文生图）。空值默认 /v1/images/generations。
-	PrimaryPath string `json:"primary_path,omitempty"`
+	// channelPrimary 是请求期从渠道主端点解析出来的唯一落点，不落库。
+	//
+	// 以前这里还有一个持久化的 `primary_path`：它和 settings.primary_endpoint
+	// 各存一份，谁生效取决于读取顺序，于是出现「界面按 A 显示、请求按 B 发」。
+	// 现在只认渠道主端点，这个字段留空即回落到 DefaultImagePrimaryPath。
+	channelPrimary string `json:"-"`
+
 	// EditPath 从端点覆盖开关。空值由脚本按末段替换推导。
 	EditPath string `json:"edit_path,omitempty"`
 	// 注意：没有 allow_url_fetch 开关。上游只收 multipart 文件时，
@@ -72,8 +80,7 @@ func (c *ImageProtocolConfig) Validate() error {
 		)
 	}
 	for name, value := range map[string]string{
-		"primary_path": c.PrimaryPath,
-		"edit_path":    c.EditPath,
+		"edit_path": c.EditPath,
 	} {
 		trimmed := NormalizePrimaryEndpoint(value)
 		if trimmed == "" {
@@ -107,32 +114,36 @@ func (c *ImageProtocolConfig) ServesPath(path string) bool {
 	}
 }
 
-// WithPrimaryFallback 在没显式配 primary_path 时让图片协议跟随渠道主端点。
+// WithChannelPrimary 让渠道主端点成为图片协议的唯一契约。
 //
-// 只接受「看着像图片端点」的中心（路径里含 /images/）：
-// 渠道中心可能是 /v1/chat/completions，把它当图片主端点只会把图发错地方，
-// 这种情况保持原来的默认值，比猜更安全。
+// 主端点是「收敛契约」：上游几个端点都收口到它，所以只要它本身是一个图片路径，
+// 就以它为准——即便 image_protocol.primary_path 里还留着历史写入的值。
+// 两个字段并存时若各说各话，界面照 primary_endpoint 显示、请求按 primary_path 发，
+// 用户改完看不出没生效。
+//
+// 渠道主端点为空、或不是图片路径（比如 /v1/chat/completions）时退回 primary_path：
+// 把聊天路径当图片端点只会把图发错地方，这种情况沿用显式配置，比猜更安全。
 //
 // 返回副本，存储里的 image_protocol 不会被改写。
-func (c *ImageProtocolConfig) WithPrimaryFallback(primary string) *ImageProtocolConfig {
+func (c *ImageProtocolConfig) WithChannelPrimary(primary string) *ImageProtocolConfig {
 	if c == nil || !c.Enabled {
 		return c
 	}
-	if strings.TrimSpace(c.PrimaryPath) != "" {
+	center := NormalizePrimaryEndpoint(primary)
+	if center == "" || !strings.Contains(center, "/images/") {
 		return c
 	}
-	primary = NormalizePrimaryEndpoint(primary)
-	if primary == "" || !strings.Contains(primary, "/images/") {
+	if c.channelPrimary == center {
 		return c
 	}
 	next := *c
-	next.PrimaryPath = primary
+	next.channelPrimary = center
 	return &next
 }
 
 func (c *ImageProtocolConfig) Primary() string {
-	if c == nil || strings.TrimSpace(c.PrimaryPath) == "" {
-		return "/v1/images/generations"
+	if c == nil || strings.TrimSpace(c.channelPrimary) == "" {
+		return DefaultImagePrimaryPath
 	}
-	return strings.TrimSpace(c.PrimaryPath)
+	return strings.TrimSpace(c.channelPrimary)
 }

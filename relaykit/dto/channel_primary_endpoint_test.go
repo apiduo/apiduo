@@ -59,27 +59,22 @@ func TestChannelValidatePrimaryEndpointIsNilSafe(t *testing.T) {
 	}
 }
 
-func TestImageProtocolFollowsPrimaryOnlyForImageEndpoints(t *testing.T) {
+func TestImageProtocolFollowsChannelPrimary(t *testing.T) {
 	base := &ImageProtocolConfig{Enabled: true, Upstream: ImageUpstreamOpenAI}
 
-	if got := base.WithPrimaryFallback(" /v1/images/custom ").Primary(); got != "/v1/images/custom" {
+	if got := base.WithChannelPrimary(" /v1/images/custom ").Primary(); got != "/v1/images/custom" {
 		t.Fatalf("image primary must become the primary path, got %q", got)
 	}
-	if got := base.WithPrimaryFallback("/v1/chat/completions").Primary(); got != "/v1/images/generations" {
-		t.Fatalf("non-image primary must keep the default primary, got %q", got)
+	if got := base.WithChannelPrimary("/v1/chat/completions").Primary(); got != DefaultImagePrimaryPath {
+		t.Fatalf("non-image primary must fall back to the default, got %q", got)
 	}
-
-	explicit := &ImageProtocolConfig{
-		Enabled:     true,
-		Upstream:    ImageUpstreamOpenAI,
-		PrimaryPath: "/v1/images/explicit",
+	// 没有渠道主端点（老配置只写了 primary_path）时不留兼容：走默认落点。
+	if got := base.WithChannelPrimary("").Primary(); got != DefaultImagePrimaryPath {
+		t.Fatalf("missing channel primary must use the default, got %q", got)
 	}
-	if got := explicit.WithPrimaryFallback("/v1/images/other").Primary(); got != "/v1/images/explicit" {
-		t.Fatalf("explicit primary must win over the primary, got %q", got)
-	}
-
+	// 关闭时不吃主端点，保持默认。
 	disabled := &ImageProtocolConfig{Upstream: ImageUpstreamOpenAI}
-	if got := disabled.WithPrimaryFallback("/v1/images/custom").Primary(); got != "/v1/images/generations" {
+	if got := disabled.WithChannelPrimary("/v1/images/custom").Primary(); got != DefaultImagePrimaryPath {
 		t.Fatalf("disabled protocol must ignore the primary, got %q", got)
 	}
 }
@@ -137,8 +132,7 @@ func TestValidatePrimaryEndpointAcceptsTrailingSlash(t *testing.T) {
 func TestImageProtocolValidateMatchesPrimaryEndpointShape(t *testing.T) {
 	ok := []*ImageProtocolConfig{
 		{Enabled: true, Upstream: ImageUpstreamARK},
-		{Enabled: true, Upstream: ImageUpstreamOpenAI, PrimaryPath: "/v1/images/generations", EditPath: "/v1/images/edits"},
-		{Enabled: true, Upstream: ImageUpstreamARK, PrimaryPath: "/v1/images/generations/"},
+		{Enabled: true, Upstream: ImageUpstreamOpenAI, EditPath: "/v1/images/edits"},
 	}
 	for _, cfg := range ok {
 		if err := cfg.Validate(); err != nil {
@@ -147,8 +141,8 @@ func TestImageProtocolValidateMatchesPrimaryEndpointShape(t *testing.T) {
 	}
 	bad := []*ImageProtocolConfig{
 		{Enabled: true, Upstream: "bogus"},
-		{Enabled: true, Upstream: ImageUpstreamARK, PrimaryPath: "//evil.example/x"},
-		{Enabled: true, Upstream: ImageUpstreamARK, PrimaryPath: "/v1/ima ges/x"},
+		{Enabled: true, Upstream: ImageUpstreamARK, EditPath: "//evil.example/x"},
+		{Enabled: true, Upstream: ImageUpstreamARK, EditPath: "/v1/ima ges/x"},
 		{Enabled: true, Upstream: ImageUpstreamARK, EditPath: "/v1/images/edits?x=1"},
 		{Enabled: true, Upstream: ImageUpstreamARK, EditPath: "/api/advanced-custom/routes"},
 	}

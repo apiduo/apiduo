@@ -87,7 +87,6 @@ func TestPrepareImageProtocolFollowsChannelPrimary(t *testing.T) {
 
 	info := apiduoImageTestInfo()
 	info.RelayMode = relayconstant.RelayModeImagesGenerations
-	info.ChannelOtherSettings.ImageProtocol.PrimaryPath = ""
 	info.ChannelOtherSettings.PrimaryEndpoint = "/v1/images/custom-generations"
 
 	adaptor := &Adaptor{}

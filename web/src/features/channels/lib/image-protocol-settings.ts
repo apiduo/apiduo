@@ -9,7 +9,6 @@
 export type ImageProtocolSettings = {
   enabled?: boolean
   upstream?: string
-  primary_path?: string
   edit_path?: string
 }
 
@@ -79,7 +78,6 @@ export function readImageProtocol(
     upstream: normalizeImageUpstream(
       trimmed(config.upstream) || DEFAULT_UPSTREAM
     ),
-    primary_path: trimmed(config.primary_path),
     edit_path: trimmed(config.edit_path),
   }
 }
@@ -97,7 +95,9 @@ export function writeImageProtocol(
     enabled: true,
     upstream: trimmed(next.upstream) || DEFAULT_UPSTREAM,
   }
-  if (trimmed(next.primary_path)) config.primary_path = trimmed(next.primary_path)
+  // 主端点只有 settings.primary_endpoint 一处，协议里不再存 primary_path：
+  // 两个字段并存时谁生效取决于读取顺序，界面会照 A 显示、请求按 B 发。
+  // 这里不写它，老配置下次保存时自然被清掉。
   if (trimmed(next.edit_path)) config.edit_path = trimmed(next.edit_path)
   settings.image_protocol = config
   return JSON.stringify(settings)

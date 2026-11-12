@@ -213,6 +213,15 @@ func (t *Task) GetResultURL() string {
 	if t.PrivateData.ResultURL != "" {
 		return t.PrivateData.ResultURL
 	}
+	// APIDUO:async-result-url:BEGIN
+	// 轮询写 ResultURL 依赖 adaptor 的 result_url_path 命中。上游把地址放在
+	// 配置没覆盖的位置时（方舟任务对象是 content.video_url），任务仍是 SUCCESS
+	// 但前端拿不到地址，卡片只有一行「已成功」而没有播放器。终态回包就在
+	// Data 里，按常见形状兜底读一次。
+	if url := apiduoResultURLFromData(t.Data); url != "" {
+		return url
+	}
+	// APIDUO:async-result-url:END
 	return t.FailReason
 }
 

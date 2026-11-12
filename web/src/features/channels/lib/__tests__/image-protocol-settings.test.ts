@@ -25,21 +25,34 @@ describe('readImageProtocol', () => {
     expect(legacy('openai')).toBe('openai')
   })
 
-  it('读取启用态与路径，缺 upstream 时回落到默认布局', () => {
+  it('读取启用态与从端点，缺 upstream 时回落到默认布局', () => {
     const config = readImageProtocol(
       JSON.stringify({
         image_protocol: {
           enabled: true,
-          primary_path: ' /v1/images/custom ',
+          edit_path: ' /v1/images/custom-edits ',
         },
       })
     )
     expect(config).toEqual({
       enabled: true,
       upstream: 'ark',
-      primary_path: '/v1/images/custom',
-      edit_path: '',
+      edit_path: '/v1/images/custom-edits',
     })
+  })
+
+  // primary_path 不再是协议字段：主端点只有 settings.primary_endpoint 一处。
+  // 老配置里残留的值读的时候就丢掉，不能让它再影响界面。
+  it('忽略历史 primary_path', () => {
+    const config = readImageProtocol(
+      JSON.stringify({
+        image_protocol: { enabled: true, primary_path: '/v1/images/legacy' },
+      })
+    )
+    expect(config).not.toBeNull()
+    expect(config as unknown as Record<string, unknown>).not.toHaveProperty(
+      'primary_path'
+    )
   })
 })
 
@@ -51,7 +64,6 @@ describe('writeImageProtocol', () => {
         {
           enabled: true,
           upstream: 'openai',
-          primary_path: '  ',
           edit_path: '/v1/images/edits',
         }
       )

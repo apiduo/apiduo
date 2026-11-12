@@ -46,8 +46,8 @@ func (a *Adaptor) prepareImageProtocol(
 		return nil, true, err
 	}
 	// APIDUO:primary-endpoint:BEGIN
-	// 没显式配 primary_path 时跟随渠道主端点（仅当中心是图片端点）。
-	cfg = cfg.WithPrimaryFallback(info.ChannelOtherSettings.PrimaryEndpoint)
+	// 渠道主端点是收敛契约：是图片路径就以它为准，primary_path 只在它缺席时兜底。
+	cfg = cfg.WithChannelPrimary(info.ChannelOtherSettings.PrimaryEndpoint)
 	// APIDUO:primary-endpoint:END
 
 	var canonical *imageCanonical

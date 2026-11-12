@@ -117,7 +117,8 @@ def main():
     at = admin()
     api(at, "PUT", "/api/option/", json={"key": "performance_setting.monitor_disk_threshold", "value": "99"})
 
-    names = ["e2e-primary", "e2e-norm", "e2e-chatok", "e2e-chatprimary", "e2e-explicit"]
+    names = ["e2e-primary", "e2e-norm", "e2e-chatok", "e2e-chatprimary",
+             "e2e-explicit", "e2e-legacy-path"]
     drop(at, names)
 
     # ---------- C1：主端点 + 空 upstream 跟随 + 显式覆盖 ----------
@@ -233,7 +234,9 @@ def main():
     check("C3 图片请求仍走默认 generations（聊天端点不抢）",
           entry is not None and entry.get("path") == "/v1/images/generations", (entry or {}).get("path", "-"))
 
-    # ---------- C4：显式 primary_path 优先于主端点 ----------
+    # ---------- C4：主端点是收敛契约，压过历史 primary_path ----------
+    # 两个字段并存时若 primary_path 仍生效，界面按 primary_endpoint 显示、
+    # 请求却按 primary_path 发，用户改完看不出没生效。
     c4 = {"primary_endpoint": "/v1/images/primary-x",
           "image_protocol": {"enabled": True, "upstream": "ark", "primary_path": "/v1/images/explicit-y"},
           "advanced_custom": {"advanced_routes": [{"incoming_path": "/v1/images/generations"}]}}
@@ -243,8 +246,24 @@ def main():
     before = log_count()
     r = relay("POST", "/v1/images/generations", json={"model": "e2e-explicit", "prompt": "explicit"})
     entry = log_last() if log_count() > before else None
-    check("C4 协议 primary_path 覆盖主端点",
-          entry is not None and entry.get("path") == "/v1/images/explicit-y", (entry or {}).get("path", "-"))
+    check("C4 主端点压过历史 primary_path（走 primary-x，不是 explicit-y）",
+          entry is not None and entry.get("path") == "/v1/images/primary-x", (entry or {}).get("path", "-"))
+
+    # ---------- C4b：历史 primary_path 不再生效 ----------
+    # 主端点只剩 settings.primary_endpoint 一处；协议里的 primary_path 连读都不读。
+    # 路由故意指向 route-fallback，验证请求既不认 primary_path 也不认路由，落到默认值。
+    c4b = {"image_protocol": {"enabled": True, "upstream": "ark", "primary_path": "/v1/images/legacy-only"},
+           "advanced_custom": {"advanced_routes": [
+               {"incoming_path": "/v1/images/generations",
+                "upstream_path": "/v1/images/route-fallback"}]}}
+    r = create(at, "e2e-legacy-path", "e2e-legacy-path", c4b)
+    check("C4b 建渠道 200", r.status_code == 200, f"status={r.status_code}")
+    check("C4b 渠道生效", wait_visible(at, "e2e-legacy-path"))
+    before = log_count()
+    r = relay("POST", "/v1/images/generations", json={"model": "e2e-legacy-path", "prompt": "legacy"})
+    entry = log_last() if log_count() > before else None
+    check("C4b 历史 primary_path 被忽略（落到默认 generations）",
+          entry is not None and entry.get("path") == "/v1/images/generations", (entry or {}).get("path", "-"))
 
     # ---------- C5：非法主端点（管理面 / 完整 URL）被拒且不落库 ----------
     for label, bad in (

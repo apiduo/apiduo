@@ -477,7 +477,7 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 	// 解析不出来就是 500，协议根本没机会跑。真实 URL 由 prepareImageProtocol 的 plan 决定，
 	// 这里给的只是预检用的落点。
 	if protocol := info.ChannelOtherSettings.ImageProtocol; protocol.ServesPath(incomingPath) {
-		primary := protocol.WithPrimaryFallback(info.ChannelOtherSettings.PrimaryEndpoint).Primary()
+		primary := protocol.WithChannelPrimary(info.ChannelOtherSettings.PrimaryEndpoint).Primary()
 		if strings.TrimSpace(primary) != "" {
 			a.route = dto.AdvancedCustomRoute{
 				IncomingPath: incomingPath,

@@ -323,9 +323,8 @@ func apiduoImageTestInfo() *relaycommon.RelayInfo {
 		ChannelMeta: &relaycommon.ChannelMeta{
 			ChannelOtherSettings: dto.ChannelOtherSettings{
 				ImageProtocol: &dto.ImageProtocolConfig{
-					Enabled:     true,
-					Upstream:    dto.ImageUpstreamOpenAI,
-					PrimaryPath: "/v1/images/generations",
+					Enabled:  true,
+					Upstream: dto.ImageUpstreamOpenAI,
 				},
 			},
 		},
