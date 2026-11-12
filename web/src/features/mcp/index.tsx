@@ -36,8 +36,8 @@ import { RulesPanel } from './rules-panel'
  * 现在改成原生分区：控件与相邻分区同源（Card/Input/Select/Table），
  * 滚动只有一层，未保存状态直接用路由守卫，不再需要 postMessage 传令牌和主题。
  *
- * /mcp/admin 仍然保留：外部书签和脚本可能直接打那个地址，页面本身没有密钥，
- * 公开可读不影响安全。
+ * 那个独立地址已经删除。它重构后仍写着 openai_image / openai_video 两个旧选项，
+ * 与库里的 ark 对不上，从那里保存会把协议写坏 —— 留着比少一个入口更糟。
  */
 export function McpSection() {
   const t = useMcpCopy()

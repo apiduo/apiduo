@@ -1,27 +1,24 @@
 package mcp
 
 import (
-	"embed"
-	"net/http"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
 
-//go:embed panel
-var panelFS embed.FS
-
-// Register 挂载 MCP 的全部入口：管理 API、面板页面、协议端点。
+// Register 挂载 MCP 的全部入口：管理 API 与协议端点。
 //
 // 这是与 apiduo 唯一的接入点。router/main.go 里只需一行调用，
 // 并且用 // APIDUO:mcp BEGIN/END 包裹，sync upstream 时按标记重放。
 //
-// 三个入口刻意分开鉴权：
+// 两个入口刻意分开鉴权：
 //   - /api/mcp/*  管理 API，走 AdminAuth（session）
-//   - /mcp/admin  面板页面，公开但只有静态资源，不含任何密钥
 //   - /mcp        协议端点，走 TokenAuthReadOnly（用户 key）
+//
+// 后台界面只有前端「系统设置 → 扩展 → MCP」那一套。这里曾自带一份静态
+// 面板（/mcp/admin），重构后它的协议选项与库里的值对不上，留着就是会写坏
+// 数据的入口，已删除。
 func Register(engine *gin.Engine) {
 	// 建表失败不能让整个网关起不来：MCP 是增值能力，不是计费主链路。
 	if err := Migrate(); err != nil {
@@ -58,21 +55,6 @@ func Register(engine *gin.Engine) {
 	// 的回落路径 —— 那是公网部署最容易出事的地方。
 	proto := injectBearer(protocolHandler())
 	engine.Any("/mcp", middleware.TokenAuthReadOnly(), captureCaller(), gin.WrapH(proto))
-
-	// 面板页面。不进 web/ 目录 —— 那是 React 构建产物，动它会把
-	// 上游前端的每次更新都变成冲突。
-	engine.GET("/mcp/admin", servePanel)
-	engine.GET("/mcp/admin/", servePanel)
-}
-
-func servePanel(c *gin.Context) {
-	data, err := panelFS.ReadFile("panel/index.html")
-	if err != nil {
-		c.String(http.StatusInternalServerError, "panel not embedded: %v", err)
-		return
-	}
-	c.Header("Cache-Control", "no-store")
-	c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 }
 
 // captureCaller 把令牌归属搬进 request context，供协议层写日志时归属到人。

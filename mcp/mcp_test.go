@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
@@ -126,19 +125,19 @@ func TestSaveProfileRejectsModelIdChange(t *testing.T) {
 	}
 }
 
-// 面板是公开页面（不含密钥），但 API 必须被 AdminAuth 挡住。
-func TestPanelIsPublicButApiIsNot(t *testing.T) {
+// 旧的自带面板已下线：后台只保留前端「系统设置 → 扩展 → MCP」那一套。
+// 它重构后协议选项与库里的值对不上，留着就是会写坏数据的入口。
+func TestLegacyPanelIsGone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/mcp/admin", servePanel)
+	Register(r)
 
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/mcp/admin", nil))
-	if w.Code != http.StatusOK {
-		t.Fatalf("面板应可公开访问，得到 %d", w.Code)
-	}
-	if !strings.Contains(w.Body.String(), "MCP 能力注册") {
-		t.Fatal("面板内容没打进去（embed 路径可能不对）")
+	for _, path := range []string{"/mcp/admin", "/mcp/admin/"} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("%s 应已下线，得到 %d", path, w.Code)
+		}
 	}
 }
 

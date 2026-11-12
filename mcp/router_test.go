@@ -19,8 +19,6 @@ func TestRegisterExposesRoutes(t *testing.T) {
 	Register(r)
 
 	want := []string{
-		"GET /mcp/admin",
-		"GET /mcp/admin/",
 		"GET /api/mcp/overview",
 		"GET /api/mcp/candidates",
 		"GET /api/mcp/profiles",

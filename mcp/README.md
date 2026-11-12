@@ -11,14 +11,13 @@
 | `service.go` | 观察查询（读日志库）、巡检、ModelCard |
 | `api.go` | 管理 API handler |
 | `router.go` | `Register(engine)`：唯一的对外入口 |
-| `protocol.go` | 协议族表：`openai_image` / `openai_video`（生成端点 + 查询端点绑定） |
+| `protocol.go` | 端点表：按产物类型 `image` / `video` 绑定生成与查询端点（上游统一方舟形状） |
 | `protocol_taskid.go` | HMAC 自包含任务 ID（无状态，跨副本可解） |
 | `protocol_upstream.go` | apiduo `/v1` 客户端 + 错误脱敏 |
 | `protocol_model.go` | `ModelProfile` → 工具视图（替代旧版的 catalog 多级合并） |
 | `protocol_tools.go` | 4 个 MCP 工具：models.list / image.generate / video.generate / task.get |
 | `protocol_server.go` | Streamable HTTP 装配、令牌注入 |
 | `protocol_observe.go` | 观察埋点（异步队列，只记结构性参数） |
-| `panel/index.html` | 面板页面，`go:embed` 打进二进制 |
 
 ## 2. 与 upstream 的接缝（sync 时只查这两处）
 
@@ -72,7 +71,8 @@ MCP 客户端 ──POST /mcp──▶ tools ──▶ /v1（回环自调）─�
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | ANY | `/mcp` | MCP 协议端点（`TokenAuthReadOnly`，空令牌 401） |
-| GET | `/mcp/admin` | 面板页面（公开，不含密钥） |
+
+后台界面只有前端「系统设置 → 扩展 → MCP」一处；本包不再自带静态面板。
 | GET | `/api/mcp/overview` | 顶部摘要 |
 | GET | `/api/mcp/candidates` | 上游有、尚未声明的模型 |
 | GET/POST | `/api/mcp/profiles` | 列表 / 新建 |
