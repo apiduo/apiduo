@@ -259,4 +259,3 @@ func IsAdvancedCustomChannel(channelType int) bool {
 		return false
 	}
 }
-

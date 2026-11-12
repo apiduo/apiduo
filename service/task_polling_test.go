@@ -839,6 +839,7 @@ type scriptedPollingAdaptor struct {
 }
 
 func (a *scriptedPollingAdaptor) Init(*relaycommon.RelayInfo) {}
+
 // APIDUO:multi-key-polling:BEGIN
 func (a *scriptedPollingAdaptor) FetchTask(_ string, key string, _ *model.Task, _ string) (*http.Response, error) {
 	a.gotKeys = append(a.gotKeys, key)
