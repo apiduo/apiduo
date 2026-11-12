@@ -188,6 +188,9 @@ export function VideoWorkspace({
       (task) =>
         task.status !== 'succeeded' &&
         task.status !== 'failed' &&
+        // 提交还没回来时任务带着本地占位 id，拿它去查询必然 400。
+        // 等 createVideoTask 把真实 id 写回来再开始轮询。
+        !task.id.startsWith('vid-local-') &&
         Date.now() - task.createdAt < MAX_POLL_MS
     )
     if (active.length === 0) return
@@ -255,6 +258,8 @@ export function VideoWorkspace({
         durationSeconds: duration,
         resolution,
         frameCount: (frames.first ? 1 : 0) + (frames.last ? 1 : 0),
+        hasFirstFrame: Boolean(frames.first),
+        hasLastFrame: Boolean(frames.last),
       },
     ])
 
@@ -433,7 +438,8 @@ export function VideoWorkspace({
                         params: {
                           seconds: task.durationSeconds,
                           size: task.resolution,
-                          frames: task.frameCount ?? 0,
+                          firstFrame: task.hasFirstFrame ? 1 : 0,
+                          lastFrame: task.hasLastFrame ? 1 : 0,
                         },
                       })
                     }
@@ -444,7 +450,8 @@ export function VideoWorkspace({
                         params: {
                           seconds: task.durationSeconds,
                           size: task.resolution,
-                          frames: task.frameCount ?? 0,
+                          firstFrame: task.hasFirstFrame ? 1 : 0,
+                          lastFrame: task.hasLastFrame ? 1 : 0,
                         },
                       })
                     }

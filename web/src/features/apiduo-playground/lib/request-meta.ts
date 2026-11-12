@@ -93,29 +93,45 @@ ${files}`,
   }
 
   if (mode === 'video') {
+    /*
+     * 视频的对外形状是**方舟任务协议**，不是 OpenAI video：
+     * 渠道把上游路径钉在 /api/v3/contents/generations/tasks，送进去的 body
+     * 原样透传（openai 形状的 prompt/seconds/size 会被上游以「未知参数」拒绝）。
+     * 因此这里给出的也必须是方舟形状：文本与帧都在 content 数组中，
+     * 帧靠 role 区分，参数是 duration / ratio / resolution。
+     *
+     * 帧用占位 URL —— curl 不可能带着浏览器里的 data URL。
+     */
+    const size = String(meta?.params?.size ?? '1280x720')
+    const ratio = size === '720x1280' ? '9:16' : '16:9'
+    const content: Array<Record<string, unknown>> = [
+      { type: 'text', text: meta?.prompt || 'a cat walking' },
+    ]
+    if (Number(meta?.params?.firstFrame ?? 0) > 0) {
+      content.push({
+        type: 'image_url',
+        image_url: { url: 'https://your-host/first-frame.png' },
+        role: 'first_frame',
+      })
+    }
+    if (Number(meta?.params?.lastFrame ?? 0) > 0) {
+      content.push({
+        type: 'image_url',
+        image_url: { url: 'https://your-host/last-frame.png' },
+        role: 'last_frame',
+      })
+    }
     const payload: Record<string, unknown> = {
       model: meta?.model || modelName,
-      prompt: meta?.prompt || 'a cat walking',
-      seconds: String(meta?.params?.seconds ?? '5'),
-      size: String(meta?.params?.size ?? '1280x720'),
-    }
-    const frames = Number(meta?.params?.frames ?? 0)
-    if (frames > 0) {
-      // 公开形状里首尾帧是 metadata 的两个字段；这里用占位 URL，
-      // 因为 curl 不可能带着浏览器里的 data URL。
-      payload.metadata = {
-        ...(frames >= 1
-          ? { first_frame_image: 'https://your-host/first-frame.png' }
-          : {}),
-        ...(frames >= 2
-          ? { last_frame_image: 'https://your-host/last-frame.png' }
-          : {}),
-      }
+      content,
+      duration: Number(meta?.params?.seconds ?? 6),
+      ratio,
+      resolution: '768p',
     }
     return {
-      path: '/v1/video/generations',
+      path: '/v1/contents/generations/tasks',
       body: JSON.stringify(payload, null, 2),
-      curl: `curl ${origin}/v1/video/generations \\
+      curl: `curl ${origin}/v1/contents/generations/tasks \\
   -H "Authorization: Bearer ${TOKEN}" \\
   -H "Content-Type: application/json" \\
   -d '${JSON.stringify(payload)}'`,

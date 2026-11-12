@@ -59,4 +59,7 @@ export interface VideoTask {
   resolution: string
   /** 0 = 文生视频，1 = 图生视频，2 = 首尾帧。 */
   frameCount?: number
+  /** 这一笔是否带首帧 / 尾帧。复制 cURL 要据此还原 content 里的两个 role。 */
+  hasFirstFrame?: boolean
+  hasLastFrame?: boolean
 }
