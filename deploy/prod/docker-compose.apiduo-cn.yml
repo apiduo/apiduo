@@ -1,0 +1,131 @@
+# apiduo.cn 生产部署声明（入库版 · 灾难重建用）
+#
+# ⚠️ 这是「目标态」，不是服务器上正在跑的那份。线上原版把 MySQL/CH 密码写在
+#    compose 里，切换本文件需要重建两个有状态容器 —— 只值得在重建环境时做一次，
+#    不要为了「配置更干净」在业务时段动它。
+#
+# 与线上原版的差异：
+#   1. 明文密码改成 ${VAR:?} 强制插值，取自同目录 .env.db（600，见 .env.db.example）
+#   2. 镜像 tag 改为 ${APIDUO_IMAGE_TAG:-latest}，回滚只改一个变量
+#   3. 注释与实际对齐（原文件顶部还写着「钉版本不用 latest」，实际早已是 latest）
+#
+# 重建步骤见 deploy/prod/README.md。
+#
+# 🔴 三个必须记住的约束：
+#   - 项目名必须是 apiduo-cn。docker compose 以 project name 隔离资源，
+#     改名会被当成新项目，把所有容器重建一遍。
+#   - 端口只绑回环。PAT 的 allow_ips 白名单依赖 ClientIP()，裸绑 0.0.0.0
+#     后同私网主机可伪造 X-Forwarded-For 绕过白名单。
+#   - 不设 TRUSTED_PROXIES 是有意的。nginx 在宿主机，设成回环会让
+#     ClientIP 变成内网地址，令牌白名单直接失效。
+name: apiduo-cn
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+services:
+  apiduo-cn-clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    container_name: apiduo-cn-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: apiduo_cn_logs
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in /opt/apiduo-cn/.env.db}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      TZ: Asia/Shanghai
+    mem_limit: 6g
+    volumes:
+      - /www/data/apiduo-cn/clickhouse:/var/lib/clickhouse
+      # 挂目录而不是单文件：单文件 bind mount 绑的是 inode，宿主机用 sed -i / cp
+      # / git checkout 换掉文件后容器里仍是旧内容，且毫无报错 —— 调 TTL 时踩过。
+      # users.d 必须可写：entrypoint 会按 CLICKHOUSE_USER/PASSWORD 生成
+      # users.d/default-user.xml，只读目录会让容器反复重启。
+      - /www/data/apiduo-cn/clickhouse-config/users.d:/etc/clickhouse-server/users.d
+      - /www/data/apiduo-cn/clickhouse-config/config.d:/etc/clickhouse-server/config.d:ro
+    healthcheck:
+      # ⚠️ 密码必须用 $$VAR（compose 转义）或双引号；写成单引号会让变量不展开，
+      #    CH 永远 unhealthy，进而卡死 apiduo-cn 的 depends_on。
+      test: ["CMD-SHELL", "clickhouse-client --password=$$CLICKHOUSE_PASSWORD -q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging: *default-logging
+
+  apiduo-cn-mysql:
+    image: mysql:8.2
+    container_name: apiduo-cn-mysql
+    mem_limit: 6g
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set in /opt/apiduo-cn/.env.db}
+      MYSQL_DATABASE: apiduo_cn
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+      - --innodb-buffer-pool-size=4G
+      - --innodb-redo-log-capacity=2G
+      - --innodb-io-capacity=2000
+      - --innodb-io-capacity-max=4000
+      - --max-connections=300
+      - --slow-query-log=ON
+      - --long-query-time=1
+      - --slow-query-log-file=/var/lib/mysql/slow.log
+      - --binlog-expire-logs-seconds=604800
+    volumes:
+      - /www/data/apiduo-cn/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *default-logging
+
+  apiduo-cn:
+    depends_on:
+      apiduo-cn-mysql:
+        condition: service_healthy
+      apiduo-cn-clickhouse:
+        condition: service_healthy
+    # 回滚：在 /opt/apiduo-cn/.env 写 APIDUO_IMAGE_TAG=0.0.118 再 up -d。
+    # ⚠️ 这个 .env 是 compose 的变量插值文件，不是容器的 env_file，两者别混。
+    image: ghcr.io/apiduo/apiduo:${APIDUO_IMAGE_TAG:-latest}
+    container_name: apiduo-cn
+    mem_limit: 2g
+    restart: unless-stopped
+    env_file:
+      - /www/data/apiduo-cn/.env       # 真实密钥，权限 600，不入库
+    ports:
+      - "127.0.0.1:39047:3000"
+    volumes:
+      # /data 里是 SQLite、上传文件与 ./logs（镜像 WORKDIR=/data）
+      - /www/data/apiduo-cn/data:/data
+    healthcheck:
+      # 判据看正文不看状态码：/api/status 恒 200，只有 success=true 才说明
+      # DB 就绪、迁移跑完。只看 200 会在「进程活着但 DB 没连上」时给假绿灯。
+      test:
+        - CMD-SHELL
+        - "wget -q -O - http://127.0.0.1:3000/api/status | grep -o '\"success\":[[:space:]]*true' || exit 1"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+    stop_grace_period: 90s            # 有状态：给足优雅停机时间
+    networks:
+      - default
+      - apiduo-obs_default
+      - apiduo-langfuse_default
+
+networks:
+  apiduo-obs_default:
+    external: true
+  apiduo-langfuse_default:
+    external: true
