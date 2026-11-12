@@ -152,6 +152,24 @@ func StartLogWriter() error {
 		return err
 	}
 
+	// 写入走 native 客户端、查询走 GORM，两者对同一条 DSN 的库名解析并不一致：
+	// native 认 ?database= 查询参数，database/sql driver 只认路径段。同一条
+	// DSN 因此可以「写进 A 库、查 B 库」，表现就是日志页永远空白而磁盘上一直
+	// 有数据。启动时把两边实际落点都打出来，不一致直接报错 —— 这个故障不能
+	// 靠人去猜。
+	if inserter.database != "" {
+		var queryDB string
+		if err := LOG_DB.Raw("SELECT currentDatabase()").Scan(&queryDB).Error; err == nil && queryDB != "" {
+			if queryDB != inserter.database {
+				common.SysError(common.LogText(
+					"log database split: writer inserts into %q but queries read %q; rows will be invisible until LOG_SQL_DSN agrees with itself",
+					inserter.database, queryDB))
+			} else {
+				common.SysLog(common.LogText("log database verified: writer and queries both use %q", queryDB))
+			}
+		}
+	}
+
 	dir := common.GetEnvOrDefaultString("LOG_WRITER_SPOOL_DIR", "data/log_spool")
 	spool, err := newLogSpool(dir, int64(common.GetEnvOrDefault("LOG_WRITER_SPOOL_MAX_MB", 64))<<20)
 	if err != nil {
@@ -570,7 +588,8 @@ func (w *logWriter) heartbeat() {
 // whole batches, and letting the server buffer them again would add a second
 // wait whose length is set by the DSN.
 type clickHouseLogInserter struct {
-	conn clickhouse.Conn
+	conn     clickhouse.Conn
+	database string
 }
 
 func newClickHouseLogInserter(dsn string) (*clickHouseLogInserter, error) {
@@ -602,7 +621,7 @@ func newClickHouseLogInserter(dsn string) (*clickHouseLogInserter, error) {
 		_ = conn.Close()
 		return nil, err
 	}
-	return &clickHouseLogInserter{conn: conn}, nil
+	return &clickHouseLogInserter{conn: conn, database: opts.Auth.Database}, nil
 }
 
 func (i *clickHouseLogInserter) Insert(ctx context.Context, rows []*Log) error {
