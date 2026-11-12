@@ -39,7 +39,6 @@ const (
 	logWriterDefaultQueue    = 100000
 	logWriterMaxBatch        = 50000
 	logWriterMaxInterval     = 60 * time.Second
-	logWriterFlushTimeout    = 60 * time.Second
 	// How long a caller waits for queue space before falling back to the
 	// synchronous insert path.
 	logWriterDefaultEnqueueWait = 1000 // milliseconds
@@ -48,6 +47,24 @@ const (
 		"id, user_id, created_at, type, content, username, token_name, model_name, " +
 		"quota, prompt_tokens, completion_tokens, use_time, is_stream, channel_id, token_id, " +
 		"`group`, ip, request_id, upstream_request_id, other)"
+)
+
+// These are variables rather than constants so the stall and heartbeat paths can
+// be exercised in seconds instead of minutes.
+var (
+	// logWriterFlushTimeout bounds one insert handoff. A batch that is not
+	// acknowledged inside this budget is abandoned to the spool and retried,
+	// instead of holding the flush loop.
+	logWriterFlushTimeout = 60 * time.Second
+	// logWriterStallRounds is how many consecutive rounds must fail before the
+	// connection is treated as dead and rebuilt. At the default two second
+	// interval this is single-digit seconds: long enough to ride out one slow
+	// insert, short enough that a wedged connection never parks the queue.
+	logWriterStallRounds = 3
+	// logWriterHeartbeatInterval is how often the writer prints its counters.
+	// A quiet site still needs proof that the writer is alive: without it,
+	// "nothing to log" and "writer stopped" look identical from outside.
+	logWriterHeartbeatInterval = 5 * time.Minute
 )
 
 // logInserter stores a batch of rows. It exists so the writer can be exercised
@@ -62,7 +79,27 @@ type logWriter struct {
 	interval time.Duration
 	batchMax int
 	spool    *logSpool
-	inserter logInserter
+	dsn      string
+
+	// inserterMu guards inserter: the flush loop reads it while a stall
+	// recovery may swap in a new connection.
+	inserterMu sync.Mutex
+	inserter   logInserter
+
+	// busy is the "one insert in flight" token. Insert can block for a long
+	// time on a half-open connection, so a blocking wait here would wedge the
+	// flush loop instead of just the current batch. Losing the race means this
+	// round is skipped and its rows stay in pending; it never means starting a
+	// second insert goroutine.
+	busy atomic.Bool
+	// gen invalidates an insert that was already in flight when the connection
+	// was rebuilt: it must not clear the token its successor now holds.
+	gen atomic.Int64
+
+	// stalled counts consecutive rounds that could not hand a batch over.
+	stalled int
+
+	lastBeat time.Time
 
 	stop chan struct{}
 	done chan struct{}
@@ -140,6 +177,7 @@ func StartLogWriter() error {
 		interval: time.Duration(intervalMs) * time.Millisecond,
 		batchMax: batchMax,
 		spool:    spool,
+		dsn:      os.Getenv("LOG_SQL_DSN"),
 		inserter: inserter,
 		stop:     make(chan struct{}),
 		done:     make(chan struct{}),
@@ -258,11 +296,15 @@ func (w *logWriter) run() {
 
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
+	beat := time.NewTicker(logWriterHeartbeatInterval)
+	defer beat.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
 			w.flush(false)
+		case <-beat.C:
+			w.heartbeat()
 		case <-w.stop:
 			// Drain what is already queued so a rolling restart keeps every row
 			// that reached the writer.
@@ -336,17 +378,60 @@ func (w *logWriter) flush(final bool) {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), logWriterFlushTimeout)
-	defer cancel()
-	if err := w.inserter.Insert(ctx, rows); err != nil {
+	// The insert runs on its own goroutine behind a hard deadline. Insert
+	// accepts a context, but the native batch only honours it around
+	// PrepareBatch, so a wedged connection used to block this loop forever. The
+	// visible symptom was not a crash: the queue filled up, every later row fell
+	// back to a synchronous insert, and the log page went quiet for the rows
+	// that only the writer would have stored.
+	if !w.busy.CompareAndSwap(false, true) {
+		// The previous batch has still not come back. Hold these rows and retry
+		// next round rather than starting a second insert.
 		w.failed.Add(1)
 		w.pending = rows
-		// The spool still holds these rows; dropping the in-memory retry buffer
-		// only bounds memory and lets the next start replay them.
-		if len(w.pending) > w.batchMax*10 {
-			common.SysError(common.LogText("log writer dropping %d buffered rows; they remain in the spool for replay", len(w.pending)))
-			w.pending = nil
+		w.stalled++
+		if w.stalled >= logWriterStallRounds {
+			common.SysError(common.LogText("log writer insert stalled for %d rounds; rebuilding the log database connection", w.stalled))
+			w.resetInserter()
 		}
+		w.trimPending()
+		return
+	}
+	w.stalled = 0
+
+	ctx, cancel := context.WithTimeout(context.Background(), logWriterFlushTimeout)
+	defer cancel()
+
+	gen := w.gen.Load()
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if w.gen.Load() == gen {
+				w.busy.Store(false)
+			}
+		}()
+		done <- w.currentInserter().Insert(ctx, rows)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			w.failed.Add(1)
+			w.pending = rows
+			w.trimPending()
+			return
+		}
+	case <-ctx.Done():
+		// Stop waiting. The batch is already in the spool, so a restart replays
+		// it; what matters here is that the flush loop keeps draining the queue.
+		w.failed.Add(1)
+		w.pending = rows
+		w.stalled++
+		if w.stalled >= logWriterStallRounds {
+			common.SysError(common.LogText("log writer insert timed out %d times; rebuilding the log database connection", w.stalled))
+			w.resetInserter()
+		}
+		w.trimPending()
 		return
 	}
 
@@ -424,6 +509,62 @@ func encodeLogBatch(batch []*Log) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// trimPending caps the in-memory retry buffer. The rows are also on disk in
+// the spool, so dropping them here bounds memory without losing data.
+func (w *logWriter) trimPending() {
+	if len(w.pending) <= w.batchMax*10 {
+		return
+	}
+	common.SysError(common.LogText("log writer dropping %d buffered rows; they remain in the spool for replay", len(w.pending)))
+	w.pending = nil
+}
+
+func (w *logWriter) currentInserter() logInserter {
+	w.inserterMu.Lock()
+	defer w.inserterMu.Unlock()
+	return w.inserter
+}
+
+// resetInserter abandons the current connection and opens a new one.
+//
+// Closing a wedged connection can itself take time, so the work runs off the
+// flush goroutine: the whole point of the reset is that the flush loop keeps
+// moving. gen is bumped first so the insert still parked on the old connection
+// cannot clear the token the next round takes.
+func (w *logWriter) resetInserter() {
+	w.stalled = 0
+	w.gen.Add(1)
+	w.busy.Store(false)
+
+	old := w.currentInserter()
+	go func() {
+		if old != nil {
+			_ = old.Close()
+		}
+		if w.dsn == "" {
+			return
+		}
+		next, err := newClickHouseLogInserter(w.dsn)
+		if err != nil {
+			common.SysError(common.LogText("log writer reconnect failed: %s", err.Error()))
+			return
+		}
+		w.inserterMu.Lock()
+		w.inserter = next
+		w.inserterMu.Unlock()
+		common.SysLog(common.LogText("log writer reconnected to the log database"))
+	}()
+}
+
+// heartbeat prints the writer counters on a fixed cadence even when nothing is
+// flowing, so "idle" and "broken" stop looking the same in the container log.
+func (w *logWriter) heartbeat() {
+	stats := w.stats()
+	common.SysLog(common.LogText(
+		"log writer alive: queued=%d pending=%d written=%d replayed=%d failed=%d fallback=%d",
+		len(w.ch), len(w.pending), stats.Written, stats.Replayed, stats.Failed, stats.Dropped))
+}
+
 // clickHouseLogInserter writes a batch with the native ClickHouse protocol.
 // async_insert is turned off for these writes: the application already sends
 // whole batches, and letting the server buffer them again would add a second
@@ -440,6 +581,11 @@ func newClickHouseLogInserter(dsn string) (*clickHouseLogInserter, error) {
 	opts.MaxOpenConns = 2
 	opts.MaxIdleConns = 2
 	opts.ConnMaxLifetime = 30 * time.Minute
+	// ReadTimeout defaults to five minutes. A batch that cannot be acknowledged
+	// inside the flush budget is better abandoned - the spool still holds it -
+	// than held open, because the writer cannot tell "slow" from "wedged".
+	opts.ReadTimeout = logWriterFlushTimeout
+	opts.DialTimeout = 10 * time.Second
 	if opts.Settings == nil {
 		opts.Settings = clickhouse.Settings{}
 	}
@@ -449,6 +595,7 @@ func newClickHouseLogInserter(dsn string) (*clickHouseLogInserter, error) {
 	if err != nil {
 		return nil, err
 	}
+	common.SysLog(common.LogText("log writer target: %s database=%s table=logs", opts.Addr, opts.Auth.Database))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := conn.Ping(ctx); err != nil {

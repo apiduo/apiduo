@@ -27,12 +27,14 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
 		Name: "image.generate",
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
+			"model 留空会用已启用图片模型里的第一个，量产站上那通常不是你想要的那个——要指定就显式传 model。" +
 			"size/n/quality 留空即交给上游默认；从提示词推断时只能取 models.list 里声明的 enum 值，不要臆造。",
 	}, d.generateImage)
 
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
 		Name: "video.generate",
 		Description: "生成视频。语义与 image.generate 相同，产物是视频；传 reference_images 可做图生视频。" +
+			"model 留空会用已启用视频模型里的第一个，要指定就显式传。" +
 			"多数视频模型是异步的，会立即返回 task_id，用 task.get 查询结果。" +
 			"duration/resolution 留空即交给上游默认；从提示词推断时只能取 models.list 里声明的值。",
 	}, d.generateVideo)
@@ -180,7 +182,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 			Kind:     m.Kind, // 查询端点必须与生成端点同源
 			IssuedAt: time.Now().Unix(),
 		})
-		return textResult("已提交，任务 " + signed + " 进行中"), generateOutput{
+		return textResult("已提交（模型 " + m.ID + "），任务 " + signed + " 进行中"), generateOutput{
 			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfterMS, Upstream: resp,
 		}, nil
 	}
@@ -196,7 +198,14 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 			inline++
 		}
 	}
-	summary := fmt.Sprintf("生成完成，共 %d 个产物", len(out))
+	summary := fmt.Sprintf("生成完成（模型 %s），共 %d 个产物", m.ID, len(out))
+	if strings.TrimSpace(in.Model) == "" {
+		// The panel and the log page are searched by model name. Silently
+		// defaulting to the first enabled model produced a real support case:
+		// the caller asked for "flux", the log recorded flux-3, and the query
+		// for flux-3-image came back empty. Say which model ran.
+		summary = fmt.Sprintf("未指定 model，已用默认模型 %s。", m.ID) + summary
+	}
 	if inline > 0 {
 		// 明确告诉调用方「图在 b64_json 里」，否则它会去找 url 找不到。
 		summary += fmt.Sprintf("（其中 %d 个以 base64 内联返回，字段 b64_json）", inline)
