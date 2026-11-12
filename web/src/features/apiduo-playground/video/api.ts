@@ -116,8 +116,12 @@ function normalizeStatus(raw: string): VideoTaskStatus {
 /**
  * 异步任务的响应格式在各家渠道之间没有统一，这里只认几个稳定字段：
  * id/task_id、status、progress、url。任一缺失都不影响其余字段的解析。
+ *
+ * `result_url` 是网关自己的任务 DTO（`dto.TaskDto`）用的键名；`video_url` / `url`
+ * 是上游（方舟等）的键名。三处都要认：漏掉 `result_url` 时任务状态是「已成功」，
+ * 卡片却因为拿不到地址而没有播放器，看起来像任务没出片。
  */
-function parseTask(raw: unknown, fallbackId = ''): VideoTaskSnapshot {
+export function parseTask(raw: unknown, fallbackId = ''): VideoTaskSnapshot {
   const root = (raw && typeof raw === 'object' ? raw : {}) as Record<
     string,
     unknown
@@ -132,18 +136,18 @@ function parseTask(raw: unknown, fallbackId = ''): VideoTaskSnapshot {
     pickString(root, ['status', 'state']) || pickString(dataNode, ['status', 'state'])
   )
 
-  let url = pickString(root, ['video_url', 'url']) || pickString(dataNode, ['video_url', 'url'])
+  const urlKeys = ['video_url', 'url', 'result_url']
+  let url = pickString(root, urlKeys) || pickString(dataNode, urlKeys)
   if (!url) {
     const list = Array.isArray(root.data) ? root.data : []
     const first = list[0]
     if (first && typeof first === 'object') {
-      url = pickString(first as Record<string, unknown>, ['url', 'video_url'])
+      url = pickString(first as Record<string, unknown>, urlKeys)
     }
   }
-  if (!url) {
-    const content = root.content
-    if (content && typeof content === 'object') {
-      url = pickString(content as Record<string, unknown>, ['video_url', 'url'])
+  for (const node of [root.content, dataNode.content]) {
+    if (!url && node && typeof node === 'object') {
+      url = pickString(node as Record<string, unknown>, urlKeys)
     }
   }
 
