@@ -285,6 +285,11 @@ func TestEndToEndProtocol(t *testing.T) {
 	if first["kind"] != "image" || first["id"] != "mock-image" {
 		t.Fatalf("第一条应是 mock-image/image，实际 %v", first)
 	}
+	// 管理 API 用 model_id，这里给同义键；agent 会拿它去调 /profiles/by-model，
+	// 两个名字对不上就会 404。
+	if first["model_id"] != first["id"] {
+		t.Fatalf("model_id 应与 id 同值，实际 id=%v model_id=%v", first["id"], first["model_id"])
+	}
 	// 声明了 max_reference_images=2 就必须出现在 input 里
 	input, _ := first["input"].(map[string]any)
 	if fmt.Sprint(input["max_reference_images"]) != "2" {
