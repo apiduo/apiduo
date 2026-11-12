@@ -1,0 +1,61 @@
+{
+  "_comment": [
+    "qwen2api (https://qwen2api.1task.cn) 接入 apiduo.cn 的三条渠道。",
+    "文本/图片走 type=1（OpenAI 兼容），视频照线上 #18 hailuo-video 的 type=8001 高级异步。",
+    "base_url 不带 /v1：openai adaptor 是裸拼 base_url + /v1/chat/completions。"
+  ],
+  "channels": [
+    {
+      "mode": "single",
+      "channel": {
+        "name": "qwen2api-text",
+        "type": 1,
+        "key": "sk-qwen-457c70e527b0982036bc709105e94346",
+        "base_url": "https://qwen2api.1task.cn",
+        "models": "qwen3.7-plus,qwen4.0-max-preview,qwen3.8-max,qwen3.8-omni-flash,qwen3.7-max,qwen3.6-plus,qwen3.5-plus,qwen3.5-omni-plus,qwen3.8-max-agent,qwen3.8-flash-agent",
+        "group": "default",
+        "status": 1,
+        "priority": 0,
+        "weight": 1,
+        "auto_ban": 1,
+        "test_model": "qwen3.7-plus",
+        "remark": "chat.qwen.ai 号池 · 10 个文本模型（含 2 个 agent 通路）"
+      }
+    },
+    {
+      "mode": "single",
+      "channel": {
+        "name": "qwen2api-image",
+        "type": 1,
+        "key": "sk-qwen-457c70e527b0982036bc709105e94346",
+        "base_url": "https://qwen2api.1task.cn",
+        "models": "qwen-image-3.0",
+        "group": "default",
+        "status": 1,
+        "priority": 0,
+        "weight": 1,
+        "auto_ban": 1,
+        "test_model": "qwen-image-3.0",
+        "remark": "Qwen-Image 3.0 /v1/images/generations · 按张计费(1张=1积分) · 产物链接当天有效"
+      }
+    },
+    {
+      "mode": "single",
+      "channel": {
+        "name": "qwen2api-video",
+        "type": 8001,
+        "key": "sk-qwen-457c70e527b0982036bc709105e94346",
+        "base_url": "https://qwen2api.1task.cn",
+        "models": "happyhorse11,happyhorse1.1",
+        "model_mapping": "{\"happyhorse1.1\":\"happyhorse11\"}",
+        "group": "default",
+        "status": 1,
+        "priority": 0,
+        "weight": 1,
+        "auto_ban": 1,
+        "remark": "HappyHorse 1.1 · 方舟原生协议 · 配置照 #18 hailuo-video · 别名 happyhorse1.1",
+        "settings": "{\"advanced_async\":{\"protocol\":\"ark\",\"incoming_paths\":[\"/v1/contents/generations/tasks\",\"/contents/generations/tasks\",\"/api/v3/contents/generations/tasks\"],\"submit\":{\"upstream_path\":\"/api/v3/contents/generations/tasks\"},\"query\":{\"upstream_path\":\"/api/v3/contents/generations/tasks/{task_id}\",\"task_id_location\":\"path\"},\"fields\":{\"task_id_path\":[\"id\"],\"status_path\":[\"status\"],\"result_url_path\":[\"content\",\"video_url\"]},\"billing\":{\"mode\":\"per_second\",\"default_seconds\":5}}}"
+      }
+    }
+  ]
+}

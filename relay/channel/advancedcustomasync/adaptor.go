@@ -147,17 +147,38 @@ func advancedAsyncAction(body []byte) string {
 }
 
 func (a *Adaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
-	if a.config == nil || a.config.Billing.ModeFor(apiduoBillingModelName(info)) != kitdto.AdvancedAsyncBillingPerSecond {
+	if a.config == nil {
 		return nil
 	}
-	seconds := a.requestedSeconds()
-	if seconds <= 0 {
-		seconds = a.config.Billing.DefaultSeconds
+	ratios := make(map[string]float64, 2)
+	if a.config.Billing.ModeFor(apiduoBillingModelName(info)) == kitdto.AdvancedAsyncBillingPerSecond {
+		seconds := a.requestedSeconds()
+		if seconds <= 0 {
+			seconds = a.config.Billing.DefaultSeconds
+		}
+		if seconds > 0 {
+			ratios["seconds"] = seconds
+		}
 	}
-	if seconds <= 0 {
+	// APIDUO:billing-factors:BEGIN A factor carries a price dimension the mode
+	// cannot express. Its multiplier joins the same ratio map, so an unmatched
+	// or absent value stays at one and never blocks the task.
+	if factors := a.config.Billing.Factors; len(factors) > 0 && len(a.submitBody) > 0 {
+		var decoded any
+		if err := common.Unmarshal(a.submitBody, &decoded); err == nil {
+			for _, factor := range factors {
+				multiplier, _, _ := factor.MultiplierOf(decoded)
+				if multiplier != 1 {
+					ratios[factor.Key] = multiplier
+				}
+			}
+		}
+	}
+	// APIDUO:billing-factors:END
+	if len(ratios) == 0 {
 		return nil
 	}
-	return map[string]float64{"seconds": seconds}
+	return ratios
 }
 
 // apiduoBillingModelName is the model name a per-model billing override is

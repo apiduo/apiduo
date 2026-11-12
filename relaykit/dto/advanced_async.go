@@ -114,6 +114,12 @@ type AdvancedAsyncBilling struct {
 	// reports no token counts, so the task never stays at the ratio estimate.
 	// Zero keeps the reservation untouched.
 	TokenFallbackPrice float64 `json:"token_fallback_price,omitempty"`
+	// APIDUO:billing-factors:BEGIN
+	// Factors multiply the price by values carried in the client request, which
+	// covers dimensions the modes above cannot express — a vendor charging 720P
+	// and 1080P at different rates. See AdvancedAsyncBillingFactor.
+	Factors []AdvancedAsyncBillingFactor `json:"factors,omitempty"`
+	// APIDUO:billing-factors:END
 }
 
 // ModeFor returns the billing mode that applies to this model, falling back to
@@ -379,6 +385,11 @@ func (c *AdvancedAsyncConfig) Validate() error {
 			return fmt.Errorf("advanced_async.billing.models[%s] is not supported: %s", name, mode)
 		}
 	}
+	// APIDUO:billing-factors:BEGIN
+	if err := ValidateAdvancedAsyncBillingFactors(c.Billing.Factors); err != nil {
+		return err
+	}
+	// APIDUO:billing-factors:END
 	return nil
 }
 
