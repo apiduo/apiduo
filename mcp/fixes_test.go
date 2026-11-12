@@ -56,12 +56,12 @@ func TestPickViewPrefersExplicitModel(t *testing.T) {
 func TestDuplicateProfileHasReadableMessage(t *testing.T) {
 	setupDB(t)
 
-	p := ModelProfile{ModelId: "dup-model", Kind: "image", Protocol: "openai_image", Enabled: true}
+	p := ModelProfile{ModelId: "dup-model", Kind: "image", Protocol: "ark", Enabled: true}
 	if err := SaveProfile(&p); err != nil {
 		t.Fatalf("第一次创建失败: %v", err)
 	}
 
-	again := ModelProfile{ModelId: "dup-model", Kind: "image", Protocol: "openai_image"}
+	again := ModelProfile{ModelId: "dup-model", Kind: "image", Protocol: "ark"}
 	err := SaveProfile(&again)
 	if !errors.Is(err, ErrProfileDuplicate) {
 		t.Fatalf("应当返回 ErrProfileDuplicate，实际 %v", err)
@@ -117,7 +117,7 @@ func TestLocalRejectLeavesObservationSample(t *testing.T) {
 
 	limit := 1
 	p := ModelProfile{
-		ModelId: "reject-obs", Kind: "image", Protocol: "openai_image",
+		ModelId: "reject-obs", Kind: "image", Protocol: "ark",
 		Enabled: true, MaxPromptChars: &limit,
 		Parameters: `{"size":{"enum":["1K","2K"]}}`,
 	}
@@ -229,15 +229,23 @@ func TestAuditKnowsReferenceImagesLimit(t *testing.T) {
 func TestValidateProfileShapeRejectsUnknownProtocol(t *testing.T) {
 	p := ModelProfile{ModelId: "m", Kind: "image", Protocol: "grpc"}
 	err := validateProfileShape(&p)
-	if err == nil || !strings.Contains(err.Error(), "传输协议") {
+	if err == nil || !strings.Contains(err.Error(), "协议只能是") {
 		t.Fatalf("未知协议必须在写入时拒掉，实际 %v", err)
 	}
 
-	for _, ok := range []string{"openai_image", "openai_video"} {
-		p := ModelProfile{ModelId: "m", Kind: "image", Protocol: ok}
+	for _, tc := range []struct{ kind, protocol string }{
+		{"image", "ark"},
+		{"video", "ark"},
+	} {
+		p := ModelProfile{ModelId: "m", Kind: tc.kind, Protocol: tc.protocol}
 		if err := validateProfileShape(&p); err != nil {
-			t.Errorf("%s 应当合法，实际 %v", ok, err)
+			t.Errorf("%s + %s 应当合法，实际 %v", tc.kind, tc.protocol, err)
 		}
+	}
+
+	// 图片视频只认方舟：deepseek 留给还没实现的检索。
+	if err := validateProfileShape(&ModelProfile{ModelId: "m", Kind: "image", Protocol: "deepseek"}); err == nil {
+		t.Error("图片不该接受 deepseek")
 	}
 }
 
@@ -249,9 +257,9 @@ func TestValidateProfileShapeRejectsNegativeLimits(t *testing.T) {
 		name string
 		p    ModelProfile
 	}{
-		{"参考图", ModelProfile{ModelId: "m", Protocol: "openai_image", MaxRefImages: &neg}},
-		{"参考视频", ModelProfile{ModelId: "m", Protocol: "openai_video", MaxRefVideos: &neg}},
-		{"提示词", ModelProfile{ModelId: "m", Protocol: "openai_image", MaxPromptChars: &neg}},
+		{"参考图", ModelProfile{ModelId: "m", Kind: "image", Protocol: "ark", MaxRefImages: &neg}},
+		{"参考视频", ModelProfile{ModelId: "m", Kind: "image", Protocol: "ark", MaxRefVideos: &neg}},
+		{"提示词", ModelProfile{ModelId: "m", Kind: "image", Protocol: "ark", MaxPromptChars: &neg}},
 	} {
 		if err := validateProfileShape(&tc.p); err == nil || !strings.Contains(err.Error(), "不能为负数") {
 			t.Errorf("%s上限为负应被拒，实际 %v", tc.name, err)
@@ -259,10 +267,10 @@ func TestValidateProfileShapeRejectsNegativeLimits(t *testing.T) {
 	}
 
 	zero := 0
-	if err := validateProfileShape(&ModelProfile{ModelId: "m", Protocol: "openai_image", MaxRefImages: &zero}); err != nil {
+	if err := validateProfileShape(&ModelProfile{ModelId: "m", Kind: "image", Protocol: "ark", MaxRefImages: &zero}); err != nil {
 		t.Errorf("0 是「明确不支持」，必须仍然合法，实际 %v", err)
 	}
-	if err := validateProfileShape(&ModelProfile{ModelId: "m", Protocol: "openai_image"}); err != nil {
+	if err := validateProfileShape(&ModelProfile{ModelId: "m", Protocol: "ark"}); err != nil {
 		t.Errorf("留空是「未声明」，必须仍然合法，实际 %v", err)
 	}
 }
@@ -271,7 +279,7 @@ func TestValidateProfileShapeRejectsNegativeLimits(t *testing.T) {
 func TestValidateProfileShapeRejectsOverlongText(t *testing.T) {
 	p := ModelProfile{
 		ModelId:     "m",
-		Protocol:    "openai_image",
+		Protocol:    "ark",
 		DisplayName: strings.Repeat("长", 192),
 	}
 	err := validateProfileShape(&p)

@@ -29,7 +29,7 @@ func viewFromProfile(p ModelProfile) modelView {
 	v := modelView{
 		ID:             p.ModelId,
 		Kind:           p.Kind,
-		Transport:      p.Protocol,
+		Transport:      p.Kind,
 		Async:          p.Async,
 		MaxRefImages:   p.MaxRefImages,
 		MaxRefVideos:   p.MaxRefVideos,

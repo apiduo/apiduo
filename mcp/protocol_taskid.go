@@ -21,9 +21,6 @@ type taskPayload struct {
 	Upstream string `json:"u"`
 	Kind     string `json:"k"`
 	IssuedAt int64  `json:"t"`
-	// Transport 必须随任务一起传递：查询端点要与生成端点同源。
-	// 查询时再猜或再查一次模型列表都不行 —— 模型可能已下架，任务却还在跑。
-	Transport string `json:"p,omitempty"`
 }
 
 var errTaskIDMalformed = errors.New("task_id 不合法")
@@ -64,8 +61,8 @@ func parseTaskID(apiKey, token string) (taskPayload, error) {
 	if p.Model == "" || p.Upstream == "" {
 		return taskPayload{}, errTaskIDMalformed
 	}
-	if p.Transport == "" {
-		p.Transport = "openai_image"
+	if p.Kind == "" {
+		p.Kind = "image"
 	}
 	return p, nil
 }

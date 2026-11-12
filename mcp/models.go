@@ -51,6 +51,12 @@ type ModelProfile struct {
 	Source    string `json:"source" gorm:"size:16"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
+
+	// Version 是乐观锁版本号，每次写库 +1。
+	//
+	// 不拿 updated_at 当栅栏：它是秒级时间戳，同一秒内的两次写入会拿到
+	// 同一个值，栅栏形同虚设 —— 而 agent 恰恰是高频并发写的那一方。
+	Version int64 `json:"version" gorm:"not null;default:0"`
 }
 
 func (ModelProfile) TableName() string { return "mcp_model_profiles" }
@@ -84,6 +90,12 @@ var ErrProfileNotFound = errors.New("模型声明不存在")
 // 原样回给前端，等于把表结构和索引名贴到面板上，管理员还看不懂要做什么。
 var ErrProfileDuplicate = errors.New("该模型已有能力声明，直接编辑它即可，不要重复新建")
 
+// ErrProfileConflict 表示乐观锁没抢到：库里的 version 已经不是调用方手上的那份。
+//
+// 单独一个哨兵是因为接口层要回 409 + 当前值，让 agent 能「重读、合并、再写」，
+// 而不是把「你慢了」混进「保存失败」里让调用方无脑重试 —— 无脑重试会覆盖别人的改动。
+var ErrProfileConflict = errors.New("该模型声明已被其他写入者修改，请读取当前版本后重试")
+
 // userErr 标记「可以原样展示给用户」的错误。
 //
 // 与数据库/内部错误的区别必须显式标出来：错误文案会出现在面板红条里，
@@ -114,6 +126,12 @@ func Migrate() error {
 		return errors.New("主库未初始化")
 	}
 	if err := model.DB.AutoMigrate(&ModelProfile{}, &ErrorRule{}); err != nil {
+		return err
+	}
+	// 升级前的行 version 是 0，而 upsert 里 0 表示「要求这条不存在」。
+	// 不把它们抬到 1，agent 读到 version=0 再带 0 写就会被误判成冲突 ——
+	// 一次全表 UPDATE 换掉这个歧义，表只有几十行，每次启动跑也不心疼。
+	if err := model.DB.Model(&ModelProfile{}).Where("version = 0").Update("version", 1).Error; err != nil {
 		return err
 	}
 	return seedGlobalErrorRules()
@@ -206,9 +224,11 @@ func createProfile(p *ModelProfile) error {
 	return nil
 }
 
-// SaveProfile 新建或更新。更新时不允许改 ModelId —— 它是与渠道对齐的业务键，
-// 改名等于换一个模型，应该新建一条而不是原地改。
-func SaveProfile(p *ModelProfile) error {
+// normalizeAndValidateProfile 是「保存声明」唯一的规范化与校验入口。
+//
+// 新建与更新共用同一条：一个直连 API 的 kind=audio 在新建时被拒、
+// 在更新时被放过，等于没拦。
+func normalizeAndValidateProfile(p *ModelProfile) error {
 	p.ModelId = strings.TrimSpace(p.ModelId)
 	if p.ModelId == "" {
 		return userErrf("模型 ID 不能为空")
@@ -225,7 +245,54 @@ func SaveProfile(p *ModelProfile) error {
 	if p.Parameters != "" && !json.Valid([]byte(p.Parameters)) {
 		return userErrf("参数约束不是合法 JSON")
 	}
-	if err := validateProfileShape(p); err != nil {
+	return validateProfileShape(p)
+}
+
+// writeProfileColumns 写回一份已合并好的声明，并把 version 当作栅栏。
+//
+// 用 map 而不是 struct + Select：GORM 的 struct 更新会跳过零值，
+// 而 async=false 与 max_ref_images=0 是「明确的零」，必须写得进去。
+//
+// version 每次 +1 还有一个副作用：它让「所有值都没变」的写入也产生一行受影响，
+// 于是 RowsAffected==0 只可能是条件没命中，不会被 MySQL 的
+// 「值相同则 affected=0」误判成并发冲突。
+func writeProfileColumns(p *ModelProfile, expectedVersion *int64) error {
+	values := map[string]any{
+		"display_name":     p.DisplayName,
+		"kind":             p.Kind,
+		"protocol":         p.Protocol,
+		"async":            p.Async,
+		"max_ref_images":   p.MaxRefImages,
+		"max_ref_videos":   p.MaxRefVideos,
+		"max_prompt_chars": p.MaxPromptChars,
+		"parameters":       p.Parameters,
+		"summary":          p.Summary,
+		"tags":             p.Tags,
+		"source":           p.Source,
+		"updated_at":       p.UpdatedAt,
+		"version":          gorm.Expr("version + 1"),
+	}
+	q := model.DB.Model(&ModelProfile{}).Where("id = ?", p.Id)
+	if expectedVersion != nil {
+		q = q.Where("version = ?", *expectedVersion)
+	}
+	res := q.Updates(values)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		if expectedVersion != nil {
+			return ErrProfileConflict
+		}
+		return ErrProfileNotFound
+	}
+	return nil
+}
+
+// SaveProfile 新建或更新。更新时不允许改 ModelId —— 它是与渠道对齐的业务键，
+// 改名等于换一个模型，应该新建一条而不是原地改。
+func SaveProfile(p *ModelProfile) error {
+	if err := normalizeAndValidateProfile(p); err != nil {
 		return err
 	}
 	now := common.GetTimestamp()
@@ -233,6 +300,7 @@ func SaveProfile(p *ModelProfile) error {
 
 	if p.Id == 0 {
 		p.CreatedAt = now
+		p.Version = 1
 		return createProfile(p)
 	}
 	var existing ModelProfile
@@ -252,11 +320,7 @@ func SaveProfile(p *ModelProfile) error {
 	// 只改显示名的脚本）都会在保存时把模型静默停用 —— agent 那边直接看不到它，
 	// 而界面显示的是「保存成功」。
 	p.Enabled = existing.Enabled
-	return model.DB.Model(&ModelProfile{}).Where("id = ?", p.Id).Select(
-		"display_name", "kind", "protocol", "async",
-		"max_ref_images", "max_ref_videos", "max_prompt_chars",
-		"parameters", "summary", "tags", "source", "updated_at",
-	).Updates(p).Error
+	return writeProfileColumns(p, nil)
 }
 
 // validateProfileShape 校验声明的形状与长度。
@@ -272,8 +336,25 @@ func SaveProfile(p *ModelProfile) error {
 // 长度上限对齐 GORM 的 size（191/512/255）：SQLite 不强制，MySQL 会报 1406，
 // 那条错误对管理员没有意义；这里提前拒掉，文案能直接照着改。
 func validateProfileShape(p *ModelProfile) error {
-	if _, ok := transports[p.Protocol]; !ok {
-		return userErrf("传输协议只能是 openai_image / openai_video，收到 %q", p.Protocol)
+	// 空值一律当「未声明」：UpdateProfile 只写请求里出现的键，形状校验不能把
+	// 没改的字段当成错。真正落库前 SaveProfile 会补上默认 kind 与 protocol。
+	if p.Kind != "" {
+		switch p.Kind {
+		case "image", "video", "search", "files":
+			// 合法声明。search / files 的端点还没接，声明能存，
+			// 真调用会在 getTransport 处明确报「未知产物类型」。
+		default:
+			return userErrf("产物类型只能是 image / video / search，收到 %q", p.Kind)
+		}
+	}
+	if p.Protocol != "" {
+		if !knownProtocol(p.Protocol) {
+			return userErrf("协议只能是 ark / deepseek / openai，收到 %q", p.Protocol)
+		}
+		// 图片和视频只有方舟：deepseek 与 openai 留给还没实现的检索 / 文件。
+		if p.Kind != "" && p.Kind != "search" && p.Kind != "files" && p.Protocol != "ark" {
+			return userErrf("%s 只能走 ark，收到 %q", p.Kind, p.Protocol)
+		}
 	}
 	for _, f := range []struct {
 		name  string
@@ -321,15 +402,11 @@ var profilePatchKeys = []string{
 	"parameters", "summary", "tags", "source",
 }
 
-// UpdateProfile 以库里的行做底稿，只覆盖请求里出现的字段。
-func UpdateProfile(id int64, patch map[string]json.RawMessage) (ModelProfile, error) {
-	if len(patch) == 0 {
-		return ModelProfile{}, userErrf("请求体没有任何字段")
-	}
-	merged, err := GetProfile(id)
-	if err != nil {
-		return ModelProfile{}, err
-	}
+// applyProfilePatch 以 base 为底稿，只覆盖 patch 里出现的键。
+//
+// 抽出来的唯一理由：按 id 更新与按 model_id upsert 必须是同一套合并规则。
+// 两份实现只要有一处不一致，同一次调用换个入口就会得到不同结果。
+func applyProfilePatch(base ModelProfile, patch map[string]json.RawMessage) (ModelProfile, error) {
 	var incoming ModelProfile
 	raw, err := json.Marshal(patch)
 	if err != nil {
@@ -344,28 +421,44 @@ func UpdateProfile(id int64, patch map[string]json.RawMessage) (ModelProfile, er
 		}
 		switch key {
 		case "display_name":
-			merged.DisplayName = incoming.DisplayName
+			base.DisplayName = incoming.DisplayName
 		case "kind":
-			merged.Kind = incoming.Kind
+			base.Kind = incoming.Kind
 		case "protocol":
-			merged.Protocol = incoming.Protocol
+			base.Protocol = incoming.Protocol
 		case "async":
-			merged.Async = incoming.Async
+			base.Async = incoming.Async
 		case "max_ref_images":
-			merged.MaxRefImages = incoming.MaxRefImages
+			base.MaxRefImages = incoming.MaxRefImages
 		case "max_ref_videos":
-			merged.MaxRefVideos = incoming.MaxRefVideos
+			base.MaxRefVideos = incoming.MaxRefVideos
 		case "max_prompt_chars":
-			merged.MaxPromptChars = incoming.MaxPromptChars
+			base.MaxPromptChars = incoming.MaxPromptChars
 		case "parameters":
-			merged.Parameters = incoming.Parameters
+			base.Parameters = incoming.Parameters
 		case "summary":
-			merged.Summary = incoming.Summary
+			base.Summary = incoming.Summary
 		case "tags":
-			merged.Tags = incoming.Tags
+			base.Tags = incoming.Tags
 		case "source":
-			merged.Source = incoming.Source
+			base.Source = incoming.Source
 		}
+	}
+	return base, nil
+}
+
+// UpdateProfile 以库里的行做底稿，只覆盖请求里出现的字段。
+func UpdateProfile(id int64, patch map[string]json.RawMessage) (ModelProfile, error) {
+	if len(patch) == 0 {
+		return ModelProfile{}, userErrf("请求体没有任何字段")
+	}
+	base, err := GetProfile(id)
+	if err != nil {
+		return ModelProfile{}, err
+	}
+	merged, err := applyProfilePatch(base, patch)
+	if err != nil {
+		return ModelProfile{}, err
 	}
 	if err := SaveProfile(&merged); err != nil {
 		return ModelProfile{}, err
@@ -375,11 +468,92 @@ func UpdateProfile(id int64, patch map[string]json.RawMessage) (ModelProfile, er
 	return GetProfile(id)
 }
 
-func defaultProtocol(kind string) string {
-	if kind == "video" {
-		return "openai_video"
+// UpsertProfileByModelId 以 model_id 为业务键做幂等写入，返回最终行与「是否新建」。
+//
+// 为什么不写成 PUT /profiles/{model_id}：模型 ID 常带斜杠（openai/gpt-image-1），
+// 而路径段在 net/http 里会被解码成两段 —— 调不调 PathEscape 都一样，
+// 带斜杠的业务键不能安全地塞进路径。所以业务键走 query，路径只留静态段。
+//
+// 新建时 enabled=true：这是一条「声明即启用」的纳管通道，agent 一次调用就能让
+// 模型出现在能力列表里。要停用走 toggle，与「启停是独立动作」的既有约定一致；
+// 更新路径不碰 enabled（patch 白名单里没有它）。
+//
+// expectedVersion 的语义：
+//   - nil  不指定版本，但仍用「读到的版本」做栅栏，防止读完之后被别人改掉
+//   - 0    要求这条不存在；已存在返回 ErrProfileConflict
+//   - N>0  要求当前 version == N
+//
+// 冲突一律原样返回，不自动重试。乐观锁的价值就是让冲突可见：静默重试会把
+// 「你的写入被别人的覆盖了」变成一次成功的 200，agent 再也查不出来。
+func UpsertProfileByModelId(modelId string, patch map[string]json.RawMessage, expectedVersion *int64) (ModelProfile, bool, error) {
+	modelId = strings.TrimSpace(modelId)
+	if modelId == "" {
+		return ModelProfile{}, false, userErrf("模型 ID 不能为空")
 	}
-	return "openai_image"
+	if len(patch) == 0 {
+		return ModelProfile{}, false, userErrf("请求体没有任何字段")
+	}
+
+	base, found := GetProfileByModelId(modelId)
+	if !found {
+		if expectedVersion != nil && *expectedVersion != 0 {
+			// 调用方认为这条存在，库里却没有：多半是刚被删掉，不能当成新建。
+			return ModelProfile{}, false, ErrProfileConflict
+		}
+		fresh, err := applyProfilePatch(ModelProfile{ModelId: modelId, Enabled: true}, patch)
+		if err != nil {
+			return ModelProfile{}, false, err
+		}
+		saveErr := SaveProfile(&fresh)
+		if saveErr == nil {
+			saved, err := GetProfile(fresh.Id)
+			return saved, true, err
+		}
+		if !errors.Is(saveErr, ErrProfileDuplicate) {
+			return ModelProfile{}, false, saveErr
+		}
+		// 并发：查完到落库之间，另一个写入者建好了这一条，落回更新路径。
+		base, found = GetProfileByModelId(modelId)
+		if !found {
+			return ModelProfile{}, false, saveErr
+		}
+		if expectedVersion != nil && *expectedVersion == 0 {
+			return base, false, ErrProfileConflict
+		}
+	}
+
+	if expectedVersion != nil && *expectedVersion != base.Version {
+		return base, false, ErrProfileConflict
+	}
+	merged, err := applyProfilePatch(base, patch)
+	if err != nil {
+		return ModelProfile{}, false, err
+	}
+	if err := normalizeAndValidateProfile(&merged); err != nil {
+		return ModelProfile{}, false, err
+	}
+	merged.UpdatedAt = common.GetTimestamp()
+	// 栅栏取刚读到的版本：调用方没给 expected_version 时，这一步仍然挡住
+	// 「读完之后被别人改掉」的丢失更新。
+	if err := writeProfileColumns(&merged, &base.Version); err != nil {
+		return ModelProfile{}, false, err
+	}
+	saved, err := GetProfile(base.Id)
+	return saved, false, err
+}
+
+// knownProtocol 是协议白名单。图片视频都走方舟；deepseek 与 openai 先占位，
+// 对应的产物类型（检索 / 文件）还没有端点。
+func knownProtocol(name string) bool {
+	switch name {
+	case "ark", "deepseek", "openai":
+		return true
+	}
+	return false
+}
+
+func defaultProtocol(kind string) string {
+	return "ark"
 }
 
 // SetProfileEnabled 单独翻转启停。
@@ -390,6 +564,9 @@ func SetProfileEnabled(id int64, enabled bool) error {
 	res := model.DB.Model(&ModelProfile{}).Where("id = ?", id).Updates(map[string]any{
 		"enabled":    enabled,
 		"updated_at": common.GetTimestamp(),
+		// 启停也是写：不递增版本，一个拿着旧版本的 agent 会在声明未变的情况下
+		// 通过版本校验，把刚被停用的模型又写活。
+		"version": gorm.Expr("version + 1"),
 	})
 	if res.Error != nil {
 		return res.Error

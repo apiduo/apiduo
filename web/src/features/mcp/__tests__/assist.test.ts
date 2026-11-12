@@ -28,7 +28,7 @@ import {
 const FACTS: AssistFacts = {
   modelId: 'doubao-seedream-5-0-flash',
   kind: 'image',
-  protocol: 'openai_image',
+  protocol: 'ark',
   async: false,
   displayName: '',
 }
@@ -178,7 +178,7 @@ describe('ruleAssist', () => {
       ...FACTS,
       modelId: 'doubao-seedance-1-0-pro',
       kind: 'video',
-      protocol: 'openai_video',
+      protocol: 'ark',
       async: true,
     })
     expect(out.patch.summary).toContain('视频')
@@ -199,7 +199,7 @@ describe('buildAssistMessages', () => {
     const user = messages[1].content
     expect(user).toContain('doubao-seedream-5-0-flash')
     expect(user).toContain('图像')
-    expect(user).toContain('openai_image')
+    expect(user).toContain('ark')
     expect(user).toContain('Doubao')
     expect(user).toContain('ark.cn-beijing.volces.com')
     expect(messages[0].content).toContain('严禁猜测具体数值')

@@ -18,7 +18,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 export type McpKind = 'image' | 'video' | 'search'
-export type McpProtocol = 'openai_image' | 'openai_video'
+/**
+ * 协议按上游厂商命名。图片和视频都走方舟 —— 网关只对这两种产物开门，
+ * 厂商差异由渠道和 JS 插件吸收；deepseek / openai 是留给检索与文件的，
+ * 那两个端点还没接。
+ */
+export type McpProtocol = 'ark' | 'deepseek' | 'openai'
+
+/** 每种产物类型能选哪些协议。 */
+export const PROTOCOLS_BY_KIND: Record<McpKind, McpProtocol[]> = {
+  image: ['ark'],
+  video: ['ark'],
+  search: ['deepseek'],
+}
 
 /**
  * 服务端（mcp/suggest.go）对候选模型的协议建议。
@@ -152,7 +164,7 @@ export const EMPTY_DRAFT: ProfileDraft = {
   model_id: '',
   display_name: '',
   kind: 'image',
-  protocol: 'openai_image',
+  protocol: 'ark',
   async: false,
   enabled: true,
   max_ref_images: null,

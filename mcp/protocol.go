@@ -16,14 +16,16 @@ type transport struct {
 	Query    string // {id} 为占位；空表示该协议没有任务查询
 }
 
+// transports 按产物类型索引：端点由 kind 决定，与上游厂商无关 —— 图片和视频
+// 都走方舟，只是方舟自己给这两种产物开了两套接口。
 var transports = map[string]transport{
-	"openai_image": {
-		Name:     "openai_image",
+	"image": {
+		Name:     "image",
 		Generate: "/images/generations",
 		// 图片接口在 apiduo 上同步返回完整结果，没有任务可查。
 	},
-	"openai_video": {
-		Name:     "openai_video",
+	"video": {
+		Name:     "video",
 		Generate: "/contents/generations/tasks",
 		Query:    "/contents/generations/tasks/{id}",
 	},
@@ -33,7 +35,7 @@ var transports = map[string]transport{
 type ErrUnknownTransport struct{ Name string }
 
 func (e *ErrUnknownTransport) Error() string {
-	return "未知协议: " + e.Name + "（可用: openai_image, openai_video）"
+	return "未知产物类型: " + e.Name + "（可用: image, video）"
 }
 
 func getTransport(name string) (transport, error) {

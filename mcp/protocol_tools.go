@@ -150,7 +150,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 		return nil, generateOutput{}, err
 	}
 
-	t, err := getTransport(m.Transport)
+	t, err := getTransport(m.Kind)
 	if err != nil {
 		return nil, generateOutput{}, err
 	}
@@ -177,8 +177,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 		signed := signTaskID(key, taskPayload{
 			Model:     m.ID,
 			Upstream:  tid,
-			Kind:      m.Kind,
-			Transport: m.Transport, // 查询端点必须与生成端点同源
+			Kind:      m.Kind, // 查询端点必须与生成端点同源
 			IssuedAt:  time.Now().Unix(),
 		})
 		return textResult("已提交，任务 " + signed + " 进行中"), generateOutput{
@@ -382,7 +381,7 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	if err != nil {
 		return nil, taskOutput{}, fmt.Errorf("task_id 无效或已过期（换过 api_key？）")
 	}
-	t, err := getTransport(p.Transport)
+	t, err := getTransport(p.Kind)
 	if err != nil {
 		return nil, taskOutput{}, err
 	}

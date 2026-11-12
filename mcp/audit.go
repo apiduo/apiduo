@@ -34,7 +34,10 @@ const (
 	auditActionProfileUpdate = "mcp.profile_update"
 	auditActionProfileDelete = "mcp.profile_delete"
 	auditActionProfileToggle = "mcp.profile_toggle"
-	auditActionErrorRule     = "mcp.error_rule_update"
+	// 冲突不是「保存失败」，是「有人想覆盖别人的改动」——安全审计里这是唯一证据，
+	// 必须单独一个 action，否则会淹没在参数校验失败里。
+	auditActionProfileConflict = "mcp.profile_conflict"
+	auditActionErrorRule       = "mcp.error_rule_update"
 )
 
 // auditHintLimit 限制 hint 在审计里保留的长度。
@@ -43,7 +46,13 @@ const (
 const auditHintLimit = 200
 
 // recordControlAudit 记一条控制面审计，并抑制鉴权链路的 generic 兜底。
-func recordControlAudit(c *gin.Context, action, content string, params map[string]any) {
+//
+// token_ref 不在这里填：RecordAuditLog 已经统一从鉴权上下文回填，
+// 操作审计与 access_token 审计共用一条归属链路。此处只管业务字段。
+//
+// status 省略时按成功记。拒绝路径（如版本冲突）必须显式给出：handler 是在
+// 写响应之前调用的，c.Writer.Status() 此刻还是 200，照抄会把 409 记成成功。
+func recordControlAudit(c *gin.Context, action, content string, params map[string]any, status ...int) {
 	if params == nil {
 		params = map[string]any{}
 	}
@@ -63,7 +72,19 @@ func recordControlAudit(c *gin.Context, action, content string, params map[strin
 		Agent:       agent.Label,
 		AgentSource: agent.Source,
 	}
-	model.RecordOperationAuditLog(operatorId, operatorRole, content, c.ClientIP(), action, params, adminInfo, nil, c)
+	// 只有被拒绝的写入才带 request 详情：成功路径的 method/route/status
+	// 与列表列重复，塞进去只会让详情多一屏噪音。
+	var auditInfo *model.AuditRequestInfo
+	if len(status) > 0 {
+		auditInfo = &model.AuditRequestInfo{
+			Method:  c.Request.Method,
+			Route:   c.FullPath(),
+			Path:    c.Request.URL.Path,
+			Status:  status[0],
+			Success: status[0] < 400,
+		}
+	}
+	model.RecordOperationAuditLog(operatorId, operatorRole, content, c.ClientIP(), action, params, adminInfo, auditInfo, c)
 	common.SetContextKey(c, constant.ContextKeyAuditLogged, true)
 }
 

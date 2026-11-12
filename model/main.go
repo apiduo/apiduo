@@ -338,6 +338,18 @@ func migrateDB() error {
 	if err := migrateOptionPrimaryKey(DB); err != nil {
 		common.SysError(common.LogText("failed to migrate options primary key: %s", err.Error()))
 	}
+	/* APIDUO:mcp-protocol:BEGIN */
+	// MCP 的 protocol 从传输形状改成厂商维度：图片和视频都归到 ark。
+	// 旧值 openai_image / openai_video 不兼容，启动时一次性改掉；幂等。
+	if DB.Migrator().HasTable("mcp_model_profiles") {
+		if err := DB.Exec(
+			"UPDATE mcp_model_profiles SET protocol = ? WHERE protocol IN (?, ?)",
+			"ark", "openai_image", "openai_video",
+		).Error; err != nil {
+			common.SysError(common.LogText("failed to migrate mcp protocols: %s", err.Error()))
+		}
+	}
+	/* APIDUO:mcp-protocol:END */
 
 	err := DB.AutoMigrate(
 		&Channel{},

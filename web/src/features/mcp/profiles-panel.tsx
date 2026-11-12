@@ -54,6 +54,7 @@ import {
   type ModelProfile,
   type ProtocolHint,
   type ProfileDraft,
+  PROTOCOLS_BY_KIND,
 } from './types'
 
 type ProfilesPanelProps = {
@@ -205,17 +206,6 @@ function candidateMark(
       {short}
     </span>
   )
-}
-
-/**
- * 存储值是传输形状（openai_image / openai_video），面上要按上游厂商显示：
- * 网关侧的图片视频模型都走方舟，写 openai_image 只会让人以为要 OpenAI 的 key。
- * 只改标签、不动数据 —— 换存储值要迁移存量 profile，等后端把 protocol 改成
- * 厂商维度时一起做。
- */
-function protocolLabel(value: string): string {
-  if (value === 'openai_image' || value === 'openai_video') return 'ark'
-  return value
 }
 
 export function ProfilesPanel(props: ProfilesPanelProps) {
@@ -797,15 +787,11 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
                       value={draft.kind}
                       onValueChange={(v) => {
                         const kind = (v ?? 'image') as McpKind
-                        // 换产物类型就换协议：视频只认 openai_video，
-                        // 留一个对不上的协议只会在调用时失败。
-                        // 两个字段必须一次改 —— 连续 setField 会互相覆盖，
-                        // 结果是 kind=image 配 openai_video 这种错配。
+                        // 换产物类型就换协议：两者必须一次改 —— 连续 setField
+                        // 会互相覆盖，结果是 kind=image 配 deepseek 这种错配。
                         setFields({
                           kind,
-                          protocol: (kind === 'video'
-                            ? 'openai_video'
-                            : 'openai_image') as McpProtocol,
+                          protocol: PROTOCOLS_BY_KIND[kind][0],
                         })
                       }}
                     >
@@ -826,31 +812,27 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
                       onValueChange={(v) =>
                         setField(
                           'protocol',
-                          (v ?? 'openai_image') as McpProtocol
+                          (v ?? 'ark') as McpProtocol
                         )
                       }
                     >
                       <SelectTrigger>
-                        <SelectValue>{protocolLabel(draft.protocol)}</SelectValue>
+                        <SelectValue>{draft.protocol}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {/* 协议跟着产物类型走：图/视频都是方舟，检索还没接端点，
                             列出来但不可选，免得选完保存不了。 */}
-                        {draft.kind === 'search' ? (
-                          <SelectItem value='deepseek' disabled>
-                            deepseek（待接入）
-                          </SelectItem>
-                        ) : (
+                        {PROTOCOLS_BY_KIND[draft.kind].map((protocol) => (
                           <SelectItem
-                            value={
-                              draft.kind === 'video'
-                                ? 'openai_video'
-                                : 'openai_image'
-                            }
+                            key={protocol}
+                            value={protocol}
+                            disabled={draft.kind === 'search'}
                           >
-                            ark
+                            {protocol === 'deepseek'
+                              ? 'deepseek（待接入）'
+                              : protocol}
                           </SelectItem>
-                        )}
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

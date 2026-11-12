@@ -234,7 +234,7 @@ func TestUpdateProfileOnlyWritesGivenKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	refs := 2
-	p := ModelProfile{ModelId: "patch-me", Kind: "video", Protocol: "openai_video",
+	p := ModelProfile{ModelId: "patch-me", Kind: "video", Protocol: "ark",
 		Async: true, Enabled: true, MaxRefImages: &refs, Summary: "旧摘要"}
 	if err := SaveProfile(&p); err != nil {
 		t.Fatal(err)
@@ -259,7 +259,7 @@ func TestUpdateProfileOnlyWritesGivenKeys(t *testing.T) {
 	if got.Summary != "旧摘要" {
 		t.Fatalf("未提供的 summary 被覆盖了：%q", got.Summary)
 	}
-	if got.ModelId != "patch-me" || got.Kind != "video" || got.Protocol != "openai_video" {
+	if got.ModelId != "patch-me" || got.Kind != "video" || got.Protocol != "ark" {
 		t.Fatalf("业务键被改动：%+v", got)
 	}
 }

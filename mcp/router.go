@@ -38,6 +38,10 @@ func Register(engine *gin.Engine) {
 		api.POST("/profiles", apiCreateProfile)
 		api.GET("/profiles/:id", apiGetProfile)
 		api.PUT("/profiles/:id", apiUpdateProfile)
+		// 按业务键读写：agent 纳管只认 model_id，不该先拉列表换自增 id。
+		// 与上面的 :id 不冲突 —— gin 的静态段永远优先于参数段命中。
+		api.GET("/profiles/by-model", apiGetProfileByModelId)
+		api.PUT("/profiles/by-model", apiUpsertProfile)
 		api.DELETE("/profiles/:id", apiDeleteProfile)
 		api.POST("/profiles/:id/toggle", apiToggleProfile)
 		api.GET("/profiles/:id/observations", apiObservations)

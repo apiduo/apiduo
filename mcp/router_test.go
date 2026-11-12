@@ -27,6 +27,8 @@ func TestRegisterExposesRoutes(t *testing.T) {
 		"POST /api/mcp/profiles",
 		"GET /api/mcp/profiles/:id",
 		"PUT /api/mcp/profiles/:id",
+		"GET /api/mcp/profiles/by-model",
+		"PUT /api/mcp/profiles/by-model",
 		"DELETE /api/mcp/profiles/:id",
 		"POST /api/mcp/profiles/:id/toggle",
 		"GET /api/mcp/profiles/:id/observations",
