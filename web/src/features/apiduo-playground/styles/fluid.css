@@ -108,7 +108,9 @@ For commercial licensing, please contact support@quantumnous.com
 
   /* The shot column. One number decides the composer, the shelf and the
      widest a picture may get, so the three cannot drift apart at a breakpoint. */
-  --col: 700px;
+  /* 内容列与输入卡同宽：原型里灵感推荐的三张卡正好压在 composer 的左右
+     边界上，700 比 768 窄出来的 68px 会让上下两块看着没对齐。 */
+  --col: 768px;
   /* Wider than the canvas on purpose: the canvas is a reading column, the
      composer is a control panel with six controls on one line. */
   --col-bar: 768px;

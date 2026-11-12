@@ -24,10 +24,20 @@ const VIDEO_ENDPOINT = '/pg/video/generations'
 export const VIDEO_DURATIONS = [5, 10] as const
 
 /**
- * 必须用「宽×高」而不是 720p/1080p：任务插件按 usageSchema 校验 size 枚举，
- * 传档位名会被判成 plugin_usage_invalid。横竖屏各给一个，覆盖常见比例。
+ * 面板按横/竖屏给两个入口，但上游（方舟任务协议）要的是**档位名 + 比例**：
+ * `resolution: "768p"` + `ratio: "16:9"`。换算放在下面的预设里，用户不需要
+ * 知道上游怎么拼。
+ *
+ * 1080p 暂不放出来：hailuo 2.3 支持，但多一档会让参数行在窄屏上折行。
  */
 export const VIDEO_RESOLUTIONS = ['1280x720', '720x1280'] as const
+
+type ResolutionPreset = { ratio: string; resolution: string }
+
+const RESOLUTION_PRESETS: Record<string, ResolutionPreset> = {
+  '1280x720': { ratio: '16:9', resolution: '768p' },
+  '720x1280': { ratio: '9:16', resolution: '768p' },
+}
 
 export interface VideoRequestOptions {
   model: string
