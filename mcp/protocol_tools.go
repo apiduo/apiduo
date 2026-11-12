@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -27,16 +29,20 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 	}, d.listModels)
 
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
-		Name: "image.generate",
+		Name:        "image.generate",
+		InputSchema: generateInputSchema(),
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
 			"model 留空会用已启用图片模型里的第一个，量产站上那通常不是你想要的那个——要指定就显式传 model。" +
+			"models.list 里该模型声明的 parameters（aspect_ratio / resolution 等）直接平铺传即可。" +
 			"size/n/quality 留空即交给上游默认；从提示词推断时只能取 models.list 里声明的 enum 值，不要臆造。",
 	}, d.generateImage)
 
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
-		Name: "video.generate",
+		Name:        "video.generate",
+		InputSchema: generateInputSchema(),
 		Description: "生成视频。语义与 image.generate 相同，产物是视频；传 reference_images 可做图生视频。" +
 			"model 留空会用已启用视频模型里的第一个，要指定就显式传。" +
+			"models.list 里该模型声明的 parameters（duration / resolution 等）直接平铺传即可。" +
 			"多数视频模型是异步的，会立即返回 task_id，用 task.get 查询结果。" +
 			"duration/resolution 留空即交给上游默认；从提示词推断时只能取 models.list 里声明的值。",
 	}, d.generateVideo)
@@ -82,6 +88,52 @@ func (d *toolDeps) listModels(ctx context.Context, _ *mcpsdk.CallToolRequest, in
 	return textResult(fmt.Sprintf("共 %d 个模型", len(out))), res, nil
 }
 
+// generateInputSchema 放宽「额外属性」。
+//
+// 能力注册里声明的 parameters 是平铺的（aspect_ratio / resolution / duration…），
+// 而工具入参结构体只有固定几个字段。SDK 默认给 struct 生成
+// additionalProperties: false，于是 agent 照着 models.list 平铺传参时，会被
+// schema 直接打回 —— 它通常换个措辞重试，用户看到的是「调用了却没有日志」。
+// 放开之后由 absorbUndeclaredParams 收进 Extra，buildPayload 再决定哪些真正生效。
+func generateInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.ForType(reflect.TypeFor[generateInput](), &jsonschema.ForOptions{})
+	if err != nil || schema == nil {
+		return nil // nil 让 SDK 回落到反射生成，宁可严格也不让工具注册失败
+	}
+	schema.AdditionalProperties = &jsonschema.Schema{}
+	return schema
+}
+
+// absorbUndeclaredParams 把 schema 放行、结构体却没有对应字段的顶层参数收进 Extra。
+//
+// 丢掉它们的后果不是报错，而是模型按默认值跑：用户传了 aspect_ratio，日志里
+// 记的却是默认尺寸，看起来「参数没生效」——这比直接失败更难查。
+func absorbUndeclaredParams(req *mcpsdk.CallToolRequest, in *generateInput) {
+	if req == nil || len(req.Params.Arguments) == 0 {
+		return
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(req.Params.Arguments, &raw); err != nil {
+		return
+	}
+	// 结构体已声明的键由 SDK 解好，这里不能重复写入，否则 Extra 会覆盖显式字段。
+	declared := map[string]bool{
+		"prompt": true, "model": true, "reference_images": true,
+		"size": true, "n": true, "quality": true, "extra": true,
+	}
+	for key, value := range raw {
+		if declared[key] {
+			continue
+		}
+		if in.Extra == nil {
+			in.Extra = make(map[string]any, len(raw))
+		}
+		if _, exists := in.Extra[key]; !exists {
+			in.Extra[key] = value
+		}
+	}
+}
+
 // ── 生成 ────────────────────────────────────────────────────────────────
 
 type generateInput struct {
@@ -115,16 +167,17 @@ type generateOutput struct {
 	Upstream map[string]any `json:"upstream,omitempty"`
 }
 
-func (d *toolDeps) generateImage(ctx context.Context, _ *mcpsdk.CallToolRequest, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
-	return d.generate(ctx, "image", in)
+func (d *toolDeps) generateImage(ctx context.Context, req *mcpsdk.CallToolRequest, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
+	return d.generate(ctx, "image", in, req)
 }
 
-func (d *toolDeps) generateVideo(ctx context.Context, _ *mcpsdk.CallToolRequest, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
-	return d.generate(ctx, "video", in)
+func (d *toolDeps) generateVideo(ctx context.Context, req *mcpsdk.CallToolRequest, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
+	return d.generate(ctx, "video", in, req)
 }
 
-func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
+func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, generateOutput, error) {
 	key := apiKeyFrom(ctx)
+	absorbUndeclaredParams(req, &in)
 	caller := callerFrom(ctx)
 	// 一行入口日志。用户的「我明明调了，日志里没有」有一半是客户端根本没发出
 	// tools/call（握手 5ms，生图要几秒，两者在访问日志里长得完全不同）；有了这行，
