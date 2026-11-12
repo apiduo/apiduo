@@ -303,6 +303,20 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		}
 		p[k] = v
 	}
+
+	// 声明里的 default 必须真的生效：models.list 写着 duration 默认 5，agent
+	// 不传就该是 5。只透传显式入参会让 default 沦为装饰 —— 上游收到的是缺省，
+	// 而方舟把「没给时长」当成 -1（模型自选）直接拒单，理由是时长决定积分。
+	// 显式传过的键优先，这里只补缺口。
+	for name, spec := range m.Params {
+		if spec.Default == nil {
+			continue
+		}
+		if _, present := p[name]; present {
+			continue
+		}
+		p[name] = spec.Default
+	}
 	return p, nil
 }
 

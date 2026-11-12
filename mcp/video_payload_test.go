@@ -149,3 +149,30 @@ func TestNormalizeStatusTreatsEveryTerminalAsTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildPayloadFillsDeclaredDefaults(t *testing.T) {
+	// models.list 告诉 agent「duration 默认 5」，那不传就得是 5。
+	// 方舟把缺省时长当成 -1（模型自选）直接拒单。
+	p, err := buildPayload(videoModel(), generateInput{Prompt: "日落"}, nil)
+	if err != nil {
+		t.Fatalf("buildPayload: %v", err)
+	}
+	for name, want := range map[string]any{"resolution": "720P", "duration": 5, "ratio": "16:9"} {
+		if got := p[name]; got != want {
+			t.Errorf("默认值 %s = %#v, want %#v", name, got, want)
+		}
+	}
+}
+
+func TestBuildPayloadExplicitValueBeatsDefault(t *testing.T) {
+	p, err := buildPayload(videoModel(), generateInput{
+		Prompt: "日落",
+		Extra:  map[string]any{"duration": 10, "resolution": "720P"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("buildPayload: %v", err)
+	}
+	if p["duration"] != 10 {
+		t.Errorf("显式 duration 应覆盖默认值，得到 %#v", p["duration"])
+	}
+}
