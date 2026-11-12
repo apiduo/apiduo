@@ -175,10 +175,10 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput) 
 
 	if tid, ok := firstString(resp, "task_id", "id"); ok && m.Async {
 		signed := signTaskID(key, taskPayload{
-			Model:     m.ID,
-			Upstream:  tid,
-			Kind:      m.Kind, // 查询端点必须与生成端点同源
-			IssuedAt:  time.Now().Unix(),
+			Model:    m.ID,
+			Upstream: tid,
+			Kind:     m.Kind, // 查询端点必须与生成端点同源
+			IssuedAt: time.Now().Unix(),
 		})
 		return textResult("已提交，任务 " + signed + " 进行中"), generateOutput{
 			Status: "working", Model: m.ID, TaskID: signed, PollMS: 2000, Upstream: resp,
@@ -541,7 +541,9 @@ func normalizeStatus(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "completed", "succeeded", "success", "done", "finished":
 		return "completed"
-	case "failed", "error", "cancelled", "canceled", "failure":
+	// expired 是上游的终态之一（本地超时、不再查上游），漏掉它会掉进
+	// default 被当成 working，agent 就会一直轮询一个再也不会变的任务。
+	case "failed", "error", "cancelled", "canceled", "failure", "expired":
 		return "failed"
 	default:
 		return "working"

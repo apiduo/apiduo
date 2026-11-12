@@ -125,3 +125,27 @@ func TestBuildPayloadImageKeepsOpenAIShape(t *testing.T) {
 		t.Fatalf("图片不该走 content: %v", p)
 	}
 }
+
+func TestNormalizeStatusTreatsEveryTerminalAsTerminal(t *testing.T) {
+	// 上游（qwen2api / 方舟任务协议）的终态是四个：succeeded / failed /
+	// expired / cancelled。任何一个掉进 working，agent 都会死等。
+	terminal := map[string]string{
+		"succeeded": "completed",
+		"success":   "completed",
+		"SUCCEEDED": "completed",
+		"failed":    "failed",
+		"cancelled": "failed",
+		"canceled":  "failed",
+		"expired":   "failed",
+	}
+	for upstream, want := range terminal {
+		if got := normalizeStatus(upstream); got != want {
+			t.Errorf("normalizeStatus(%q) = %q, want %q", upstream, got, want)
+		}
+	}
+	for _, pending := range []string{"queued", "running", "", "not_start"} {
+		if got := normalizeStatus(pending); got != "working" {
+			t.Errorf("normalizeStatus(%q) = %q, want working", pending, got)
+		}
+	}
+}
