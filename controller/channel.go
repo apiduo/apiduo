@@ -1285,6 +1285,10 @@ func UpdateChannel(c *gin.Context) {
 			// 覆盖模式：直接使用新密钥（默认行为，不需要特殊处理）
 		}
 	}
+	// APIDUO:multi-key-status-remap:BEGIN
+	// Runs after the append/replace branches so it sees the final key list.
+	remapMultiKeyStatusAfterKeyEdit(originChannel, &channel.Channel)
+	// APIDUO:multi-key-status-remap:END
 	err = channel.Update()
 	if err != nil {
 		common.ApiError(c, err)

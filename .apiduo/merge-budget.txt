@@ -17,8 +17,16 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	131
-blocks	391
-added	3778
+blocks	392
+added	3782
+# 2026-11-12 12:5x 上调 blocks 391->392 / added 3778->3782（files/deleted 不变）：
+# 多 key 渠道编辑 key 列表后，禁用标记改为跟随 key 而不是位置 —— 洗牌/插入/
+# 删除时不再把「已禁用」错挂到相邻 key，也不再让真正坏掉的 key 继续服务。
+# 挂接点只有一个：UpdateChannel 的 append/replace 分支之后、channel.Update()
+# 之前，此处 originChannel 与请求体才同时可见，挪不进新文件。
+# 逻辑本体 + 7 个用例在新文件 controller/apiduo_multi_key_status.go(.test)，
+# 不占上游行数。数值取自 `git worktree` 干净树实测（本地工作树被并行会话
+# 未提交改动撑高，不可用）。
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
