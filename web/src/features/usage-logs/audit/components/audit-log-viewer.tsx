@@ -28,6 +28,9 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getAuditLogs, type AuditFilters, type AuditLog } from '../api'
+/* APIDUO:audit-token-options:BEGIN */
+import { useAuditTokenOptions } from '../token-options'
+/* APIDUO:audit-token-options:END */
 import { useAuditLogColumns } from './audit-log-columns'
 import { AuditLogFilterBar } from './audit-log-filter-bar'
 
@@ -67,6 +70,10 @@ export function AuditLogViewer(props: {
     enabled: canQuery && !invalidRange,
     retry: false,
   })
+  // APIDUO:audit-token-options:BEGIN
+  // accessOnly 视图里筛栏没有令牌这一项，不必白拉一次。
+  const tokenOptions = useAuditTokenOptions(!props.accessOnly)
+  // APIDUO:audit-token-options:END
   const accessDenied =
     props.scope === 'all' &&
     isAxiosError(query.error) &&
@@ -134,6 +141,9 @@ export function AuditLogViewer(props: {
               accessOnly={props.accessOnly}
               tokenScope={tokenScope}
               defaultTokenScope={defaultTokenScope}
+              // APIDUO:audit-token-options:BEGIN
+              tokenOptions={tokenOptions}
+              // APIDUO:audit-token-options:END
               currentTokenRef={props.currentTokenRef}
               onTokenScopeChange={(value) => {
                 setTokenScope(value)

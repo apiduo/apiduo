@@ -28,6 +28,9 @@ import {
   LogsFilterToolbar,
 } from '../../components/logs-filter-toolbar'
 import type { AuditFilters, AuditLog } from '../api'
+/* APIDUO:audit-token-options:BEGIN */
+import type { AuditTokenOption } from '../token-options'
+/* APIDUO:audit-token-options:END */
 
 function AuditFilterSelect(props: {
   label: string
@@ -58,6 +61,11 @@ export function AuditLogFilterBar(props: {
   accessOnly?: boolean
   tokenScope: string
   defaultTokenScope: string
+  // APIDUO:audit-token-options:BEGIN
+  // 由 viewer 取好传进来：这个组件保持纯展示，不自己发请求 ——
+  // 否则筛选栏的每个单元测试都要连一套 API mock。
+  tokenOptions: AuditTokenOption[]
+  // APIDUO:audit-token-options:END
   currentTokenRef?: string
   onTokenScopeChange: (value: string) => void
   isFetching: boolean
@@ -146,14 +154,27 @@ export function AuditLogFilterBar(props: {
         {!props.accessOnly && (
           <>
             <LogsFilterField>
-              <LogsFilterInput
-                aria-label={t('Token identifier')}
-                placeholder={t('Token identifier')}
+              {/* APIDUO:audit-token-options:BEGIN
+                  指纹 64 位十六进制没法手输。下拉按名字选，同时保留
+                  allowCustomValue —— 列表有 limit，粘完整指纹仍然能精确筛。 */}
+              <Combobox
+                options={props.tokenOptions.map((token) => ({
+                  value: token.ref,
+                  label: token.agent_key
+                    ? `${token.agent_key} · ${token.name}`
+                    : token.name,
+                  description: `@${token.username}`,
+                }))}
                 value={props.filters.token_ref ?? ''}
-                onChange={(event) =>
-                  props.onChange({ token_ref: event.target.value || undefined })
+                onValueChange={(value) =>
+                  props.onChange({ token_ref: value || undefined })
                 }
+                placeholder={t('Token')}
+                aria-label={t('Token')}
+                allowCustomValue
+                className='w-full'
               />
+              {/* APIDUO:audit-token-options:END */}
             </LogsFilterField>
             <LogsFilterField>
               <LogsFilterInput

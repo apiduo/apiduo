@@ -89,6 +89,15 @@ func RecordAuditLog(c *gin.Context, entry AuditLog) {
 				entry.AuthMethod = "access_token"
 			}
 		}
+		// APIDUO:audit-tokenref:BEGIN
+		// 操作审计（category=operation）此前只有 user_id，token_ref 永远是空：
+		// 一个账号签了多把 PAT 时，「是哪把钥匙改的」查不出来，只能靠时间猜。
+		// token_ref 是一级列（审计页按它筛选），所以在这里补，而不是塞进 other。
+		// 鉴权链路已显式赋值时不覆盖 —— access_token 类别审计就是这么进来的。
+		if entry.TokenRef == "" {
+			entry.TokenRef = c.GetString("access_token_ref")
+		}
+		// APIDUO:audit-tokenref:END
 	}
 	if entry.CreatedAt == 0 {
 		entry.CreatedAt = common.GetTimestamp()

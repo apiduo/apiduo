@@ -908,7 +908,16 @@ func verifyAPITokenAudit(t *testing.T) {
 			expectedRoute := strings.NewReplacer("$id", ":id", "$other", ":id", "999999", ":id").Replace(strings.Split(tc.path, "?")[0])
 			assert.Equal(t, "/api/token"+expectedRoute, operation.Route)
 			assert.NotEmpty(t, operation.RequestId)
-			assert.Empty(t, operation.TokenRef)
+			// APIDUO:audit-tokenref:BEGIN
+			// 操作审计现在也带令牌指纹：PAT 请求必须能归属到具体那把钥匙，
+			// session 请求没有钥匙可归属，保持为空。断言指纹不等于明文 ——
+			// 下面那段「encoded 里不含任何 secret」才是防泄露的主检查。
+			if tc.usePAT {
+				assert.Equal(t, model.AccessTokenFingerprint(pat), operation.TokenRef)
+			} else {
+				assert.Empty(t, operation.TokenRef)
+			}
+			// APIDUO:audit-tokenref:END
 			assert.Nil(t, operation.Other.AdminInfo)
 			authMethod := "session"
 			if tc.usePAT {

@@ -8009,6 +8009,19 @@
     "Image tools": "Image tools",
     "Open full size": "Open full size",
     "Use this prompt again": "Use this prompt again",
-    "{{count}} requested": "{{count}} requested"
+    "{{count}} requested": "{{count}} requested",
+    "Changes": "Changes",
+    "Explicitly unsupported": "Explicitly unsupported",
+    "Initial value": "Initial value",
+    "Initial values": "Initial values",
+    "Model ID": "Model ID",
+    "Max reference images": "Max reference images",
+    "Max reference videos": "Max reference videos",
+    "Max prompt characters": "Max prompt characters",
+    "Parameter constraints": "Parameter constraints",
+    "Source channel": "Source channel",
+    "Expected version": "Expected version",
+    "The record was modified by another writer. Read it again and resubmit.": "The record was modified by another writer. Read it again and resubmit.",
+    "Version conflict: you submitted version {{expected}}, current is {{current}}.": "Version conflict: you submitted version {{expected}}, current is {{current}}."
   }
 }

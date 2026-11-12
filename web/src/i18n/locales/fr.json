@@ -8009,6 +8009,19 @@
     "Image tools": "Outils d’image",
     "Open full size": "Ouvrir en taille réelle",
     "Use this prompt again": "Réutiliser ce prompt",
-    "{{count}} requested": "{{count}} demandées"
+    "{{count}} requested": "{{count}} demandées",
+    "Changes": "Modifications",
+    "Explicitly unsupported": "Explicitement non pris en charge",
+    "Initial value": "Valeur initiale",
+    "Initial values": "Valeurs initiales",
+    "Model ID": "ID du modèle",
+    "Max reference images": "Images de référence max",
+    "Max reference videos": "Vidéos de référence max",
+    "Max prompt characters": "Caractères de prompt max",
+    "Parameter constraints": "Contraintes des paramètres",
+    "Source channel": "Canal source",
+    "Expected version": "Version attendue",
+    "The record was modified by another writer. Read it again and resubmit.": "L'enregistrement a été modifié par un autre auteur. Rechargez-le puis soumettez à nouveau.",
+    "Version conflict: you submitted version {{expected}}, current is {{current}}.": "Conflit de version : vous avez soumis la version {{expected}}, la version actuelle est {{current}}."
   }
 }

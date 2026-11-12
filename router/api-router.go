@@ -395,6 +395,11 @@ func SetApiRouter(router *gin.Engine) {
 		}
 		handlePermissionRoute(apiRouter.Group("", middleware.DisableCache(), middleware.AdminAuth()), http.MethodGet, "/audit", authz.AuditRead, controller.GetAuditLogs)
 		apiRouter.GET("/audit/self", middleware.DisableCache(), middleware.UserAuth(), controller.GetAuditLogs)
+		// APIDUO:audit-token-options:BEGIN
+		// 审计筛选下拉的候选令牌。用 UserAuth：普通用户在 /audit/self 也要筛自己的；
+		// 管理员范围由 handler 内部按 role 收窄，不是在这里分两条路由。
+		apiRouter.GET("/audit/token-options", middleware.DisableCache(), middleware.UserAuth(), controller.GetAuditTokenOptions)
+		// APIDUO:audit-token-options:END
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)

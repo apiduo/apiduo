@@ -8009,6 +8009,19 @@
     "Image tools": "Công cụ ảnh",
     "Open full size": "Mở ảnh gốc",
     "Use this prompt again": "Dùng lại câu lệnh này",
-    "{{count}} requested": "đã yêu cầu {{count}}"
+    "{{count}} requested": "đã yêu cầu {{count}}",
+    "Changes": "Thay đổi",
+    "Explicitly unsupported": "Không hỗ trợ rõ ràng",
+    "Initial value": "Giá trị ban đầu",
+    "Initial values": "Giá trị ban đầu",
+    "Model ID": "ID mô hình",
+    "Max reference images": "Số ảnh tham chiếu tối đa",
+    "Max reference videos": "Số video tham chiếu tối đa",
+    "Max prompt characters": "Số ký tự prompt tối đa",
+    "Parameter constraints": "Ràng buộc tham số",
+    "Source channel": "Kênh nguồn",
+    "Expected version": "Phiên bản mong đợi",
+    "The record was modified by another writer. Read it again and resubmit.": "Bản ghi đã bị người ghi khác sửa. Hãy đọc lại rồi gửi lại.",
+    "Version conflict: you submitted version {{expected}}, current is {{current}}.": "Xung đột phiên bản: bạn đã gửi phiên bản {{expected}}, hiện tại là {{current}}."
   }
 }

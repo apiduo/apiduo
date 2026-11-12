@@ -257,6 +257,10 @@ it('uses the shared log toolbar and opens details in a keyboard-accessible dialo
             other: {},
             request_id: 'audit-request-42',
             token_ref: 'a'.repeat(64),
+            // APIDUO:audit-token-column:BEGIN
+            token_label: 'ci-runner',
+            token_agent_key: 'deploy-bot',
+            // APIDUO:audit-token-column:END
             user_agent: 'Browser client with a long version description',
             method: 'GET',
             route: '/api/user/self',
@@ -276,10 +280,13 @@ it('uses the shared log toolbar and opens details in a keyboard-accessible dialo
   ).toBeDisabled()
   const trigger = await screen.findByRole('button', { name: 'Details' })
   const row = screen.getByRole('row', { name: /127.0.0.1/ })
-  const clientCell = within(row).getByRole('cell', {
-    name: 'Browser client with a long version description',
+  // APIDUO:audit-token-column:BEGIN
+  // 列表里的 Client 列换成了 Token 列：UA 在详情里仍在，列表只留能追责的字段。
+  const tokenCell = within(row).getByRole('cell', {
+    name: 'deploy-bot · ci-runner',
   })
-  expect(clientCell.querySelector('.truncate')).toBeInTheDocument()
+  expect(tokenCell.querySelector('.truncate')).toBeInTheDocument()
+  // APIDUO:audit-token-column:END
   expect(row.querySelector('details')).not.toBeInTheDocument()
   trigger.focus()
   await userEvent.keyboard('{Enter}')

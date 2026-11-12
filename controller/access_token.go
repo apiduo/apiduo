@@ -453,7 +453,11 @@ func GetAuditLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	page.SetItems(logs)
+	// APIDUO:audit-token-label:BEGIN
+	// 审计只存指纹，列表里直接给 64 位十六进制没人看得懂。整页批量还原一次
+	// （一次 IN 查询），查不到就按指纹展示 —— 令牌被删了不代表记录该消失。
+	page.SetItems(attachAuditTokenLabels(logs))
+	// APIDUO:audit-token-label:END
 	page.SetTotal(int(total))
 	common.ApiSuccess(c, page)
 }

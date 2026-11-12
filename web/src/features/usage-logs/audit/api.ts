@@ -31,6 +31,12 @@ export interface AuditLog {
   category: string
   action: string
   token_ref: string
+  // APIDUO:audit-token-label:BEGIN
+  // 后端按指纹还原出来的可读身份。令牌已被删除时两者都为空 ——
+  // 那时只剩 token_ref 可显示，这是「钥匙没了但记录还在」的正常形态。
+  token_label?: string
+  token_agent_key?: string
+  // APIDUO:audit-token-label:END
   auth_method?: string
   ip: string
   user_agent: string

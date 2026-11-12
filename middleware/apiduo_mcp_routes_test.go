@@ -22,6 +22,8 @@ func TestMCPRoutesDeclareScopes(t *testing.T) {
 		"POST /api/mcp/profiles":                 "model:write",
 		"GET /api/mcp/profiles/:id":              "model:read",
 		"PUT /api/mcp/profiles/:id":              "model:write",
+		"GET /api/mcp/profiles/by-model":         "model:read",
+		"PUT /api/mcp/profiles/by-model":         "model:write",
 		"DELETE /api/mcp/profiles/:id":           "model:write",
 		"POST /api/mcp/profiles/:id/toggle":      "model:write",
 		"GET /api/mcp/profiles/:id/observations": "model:read",

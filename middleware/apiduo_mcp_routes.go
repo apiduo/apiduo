@@ -21,6 +21,10 @@ func init() {
 	accessTokenRouteRules["POST /api/mcp/profiles"] = accessTokenScopeRule("model:write")
 	accessTokenRouteRules["GET /api/mcp/profiles/:id"] = accessTokenScopeRule("model:read")
 	accessTokenRouteRules["PUT /api/mcp/profiles/:id"] = accessTokenScopeRule("model:write")
+	// 按 model_id 读写的入口。路由是静态段，不带 :id，路径必须完全照抄，
+	// 写成 "/profiles/:model_id" 会让真实请求落进「未声明」分支被 403。
+	accessTokenRouteRules["GET /api/mcp/profiles/by-model"] = accessTokenScopeRule("model:read")
+	accessTokenRouteRules["PUT /api/mcp/profiles/by-model"] = accessTokenScopeRule("model:write")
 	accessTokenRouteRules["DELETE /api/mcp/profiles/:id"] = accessTokenScopeRule("model:write")
 	accessTokenRouteRules["POST /api/mcp/profiles/:id/toggle"] = accessTokenScopeRule("model:write")
 	accessTokenRouteRules["GET /api/mcp/profiles/:id/observations"] = accessTokenScopeRule("model:read")

@@ -115,15 +115,44 @@ export function useAuditLogColumns(
         meta: { label: 'IP' },
       },
       {
-        accessorKey: 'user_agent',
-        header: t('Client'),
-        size: 180,
-        cell: ({ row }) => (
-          <TruncatedCell className='max-w-48'>
-            {row.original.user_agent || '—'}
-          </TruncatedCell>
-        ),
-        meta: { label: t('Client'), mobileHidden: true },
+        // APIDUO:audit-token-column:BEGIN
+        // 列里放令牌名而不是指纹：64 位十六进制在这个宽度读不出信息，
+        // 追责要的是「哪把钥匙」。指纹留在 tooltip 与详情，需要精确定位时再取。
+        //
+        // 这一列占的是原来 Client（User-Agent）的位置 —— UA 几乎每条都一样，
+        // 信息密度最低，而且详情里没丢。横向空间只够放一个。
+        id: 'token',
+        header: t('Token'),
+        size: 160,
+        accessorFn: (entry) =>
+          [entry.token_agent_key, entry.token_label].filter(Boolean).join(' · ') ||
+          entry.token_ref ||
+          '',
+        cell: ({ row }) => {
+          const entry = row.original
+          const label = [entry.token_agent_key, entry.token_label]
+            .filter(Boolean)
+            .join(' · ')
+          if (!label) {
+            // 令牌被删（或 session 请求本就没有令牌）。保留指纹前 8 位而不是留空：
+            // 空白会让人读成「这条没有令牌」，而事实可能是「有，只是钥匙已回收」。
+            return (
+              <span className='text-muted-foreground font-mono'>
+                {entry.token_ref ? `${entry.token_ref.slice(0, 8)}…` : '—'}
+              </span>
+            )
+          }
+          return (
+            <TruncatedCell
+              className='max-w-40'
+              tooltipContent={entry.token_ref || undefined}
+            >
+              {label}
+            </TruncatedCell>
+          )
+        },
+        meta: { label: t('Token') },
+        // APIDUO:audit-token-column:END
       },
       {
         accessorKey: 'method',

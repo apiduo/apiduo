@@ -22,6 +22,9 @@ import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
+/* APIDUO:audit-changes:BEGIN */
+import { Alert, AlertDescription } from '@/components/ui/alert'
+/* APIDUO:audit-changes:END */
 import { Button } from '@/components/ui/button'
 import { getAccessTokenScopes } from '@/features/security/api'
 import dayjs from '@/lib/dayjs'
@@ -31,6 +34,10 @@ import {
   DetailSection,
 } from '../../components/dialogs/log-detail-layout'
 import type { AuditLog } from '../api'
+/* APIDUO:audit-changes:BEGIN */
+import { buildAuditChanges, readAuditConflict } from '../lib/audit-changes'
+import { AuditChangesTable } from './audit-changes-table'
+/* APIDUO:audit-changes:END */
 import { auditFieldLabel, buildAuditDetails } from '../lib/audit-details'
 import { AuditDetailFields } from './audit-detail-fields'
 import { AuditDetailValue } from './audit-detail-value'
@@ -50,9 +57,22 @@ export function AuditLogDetailsDialog(props: { entry: AuditLog }) {
   const detail = buildAuditDetails(props.entry, t, {
     scopeResources: scopes.data?.resources,
   })
+  // APIDUO:audit-token-label:BEGIN
+  // 指纹是 64 位十六进制，人看不懂。agent key 名比令牌名稳定（令牌名是每次
+  // 握手现起的，可能带任务号），所以把它排前面；两个都没有就只留指纹。
+  const tokenIdentity = [props.entry.token_agent_key, props.entry.token_label]
+    .filter(Boolean)
+    .join(' · ')
+  /* APIDUO:audit-changes:BEGIN */
+  // 变更表是这一页最重要的信息，排在摘要之后、其余分组之前。
+  const changes = buildAuditChanges(props.entry, t)
+  const conflict = readAuditConflict(props.entry)
+  /* APIDUO:audit-changes:END */
   const identifiers = [
     { label: t('Route'), value: props.entry.route },
     { label: t('Request ID'), value: props.entry.request_id },
+    { label: t('Token'), value: tokenIdentity },
+    // APIDUO:audit-token-label:END
     { label: t('Token identifier'), value: props.entry.token_ref },
   ].filter((field) => !!field.value)
   const hasOperation =
@@ -107,6 +127,26 @@ export function AuditLogDetailsDialog(props: { entry: AuditLog }) {
           )}
         </div>
       </div>
+      {/* APIDUO:audit-changes:BEGIN */}
+      {/* 冲突横幅排在变更表前面：它是「这次为什么没成」的答案，
+          比「本来想改成什么」更急。没有 expected 的那半句是刻意分开的 ——
+          客户端没带版本号时，说「你提交的是第 N 版」是编造。 */}
+      {conflict && (
+        <Alert variant='destructive'>
+          <AlertDescription>
+            {conflict.expected === undefined
+              ? t(
+                  'The record was modified by another writer. Read it again and resubmit.'
+                )
+              : t(
+                  'Version conflict: you submitted version {{expected}}, current is {{current}}.',
+                  { expected: conflict.expected, current: conflict.current }
+                )}
+          </AlertDescription>
+        </Alert>
+      )}
+      {changes.length > 0 && <AuditChangesTable changes={changes} />}
+      {/* APIDUO:audit-changes:END */}
       {detail.operation && (
         <DetailSection
           label={

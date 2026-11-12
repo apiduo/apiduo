@@ -8036,6 +8036,19 @@
     "Image tools": "圖片工具",
     "Open full size": "開啟原圖",
     "Use this prompt again": "重複使用提示詞",
-    "{{count}} requested": "請求 {{count}} 張"
+    "{{count}} requested": "請求 {{count}} 張",
+    "Changes": "變更",
+    "Explicitly unsupported": "明確不支援",
+    "Initial value": "初始值",
+    "Initial values": "初始值",
+    "Model ID": "模型 ID",
+    "Max reference images": "參考圖上限",
+    "Max reference videos": "參考影片上限",
+    "Max prompt characters": "提示詞上限",
+    "Parameter constraints": "參數約束",
+    "Source channel": "來源通道",
+    "Expected version": "期望版本",
+    "The record was modified by another writer. Read it again and resubmit.": "這條記錄已被其他寫入者修改，請重新讀取後再提交。",
+    "Version conflict: you submitted version {{expected}}, current is {{current}}.": "版本衝突：你提交的是第 {{expected}} 版，目前是第 {{current}} 版。"
   }
 }

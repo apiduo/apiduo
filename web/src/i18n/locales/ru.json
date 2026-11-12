@@ -8009,6 +8009,19 @@
     "Image tools": "Инструменты изображения",
     "Open full size": "Открыть в полном размере",
     "Use this prompt again": "Использовать промпт снова",
-    "{{count}} requested": "запрошено {{count}}"
+    "{{count}} requested": "запрошено {{count}}",
+    "Changes": "Изменения",
+    "Explicitly unsupported": "Явно не поддерживается",
+    "Initial value": "Начальное значение",
+    "Initial values": "Начальные значения",
+    "Model ID": "ID модели",
+    "Max reference images": "Макс. референсных изображений",
+    "Max reference videos": "Макс. референсных видео",
+    "Max prompt characters": "Макс. символов промпта",
+    "Parameter constraints": "Ограничения параметров",
+    "Source channel": "Канал источника",
+    "Expected version": "Ожидаемая версия",
+    "The record was modified by another writer. Read it again and resubmit.": "Запись изменена другим автором. Загрузите её заново и отправьте снова.",
+    "Version conflict: you submitted version {{expected}}, current is {{current}}.": "Конфликт версий: отправлена версия {{expected}}, текущая — {{current}}."
   }
 }

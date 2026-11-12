@@ -584,6 +584,29 @@ export function buildAuditDetails(
     delete params.count
     delete params.total
   }
+  // APIDUO:audit-changes:BEGIN
+  // changed 有两种形状：mcp.profile_update 之类写的是 {字段: {before, after}}，
+  // 而 channel.status_update 写的是布尔（"到底改没改"）。只摘前者 ——
+  // 后者是有效字段，删掉会丢一个 "No"，连带把「开关没动」这个结论也丢了。
+  // 判定条件与 buildAuditChanges 同源：每一项都是带 before/after 的对象。
+  const changedValue = params.changed
+  if (
+    changedValue &&
+    typeof changedValue === 'object' &&
+    !Array.isArray(changedValue) &&
+    Object.values(changedValue).length > 0 &&
+    Object.values(changedValue).every(
+      (pair) =>
+        !!pair &&
+        typeof pair === 'object' &&
+        !Array.isArray(pair) &&
+        'before' in pair &&
+        'after' in pair
+    )
+  ) {
+    delete params.changed
+  }
+  // APIDUO:audit-changes:END
   for (const [key, value] of Object.entries(params)) {
     fields.push({ label: auditFieldLabel(key, t), value })
   }

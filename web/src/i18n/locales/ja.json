@@ -8009,6 +8009,19 @@
     "Image tools": "画像ツール",
     "Open full size": "原寸で開く",
     "Use this prompt again": "このプロンプトを再利用",
-    "{{count}} requested": "{{count}} 枚をリクエスト"
+    "{{count}} requested": "{{count}} 枚をリクエスト",
+    "Changes": "変更",
+    "Explicitly unsupported": "明示的に非対応",
+    "Initial value": "初期値",
+    "Initial values": "初期値",
+    "Model ID": "モデル ID",
+    "Max reference images": "参照画像の上限",
+    "Max reference videos": "参照動画の上限",
+    "Max prompt characters": "プロンプト文字数上限",
+    "Parameter constraints": "パラメータ制約",
+    "Source channel": "ソース経路",
+    "Expected version": "期待バージョン",
+    "The record was modified by another writer. Read it again and resubmit.": "このレコードは別の書き込み者によって変更されました。再読み込みしてから再送信してください。",
+    "Version conflict: you submitted version {{expected}}, current is {{current}}.": "バージョン競合: 送信したのはバージョン {{expected}}、現在は {{current}} です。"
   }
 }
