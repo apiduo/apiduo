@@ -152,21 +152,39 @@ function parseTask(raw: unknown, fallbackId = ''): VideoTaskSnapshot {
 export async function createVideoTask(
   options: VideoRequestOptions
 ): Promise<{ snapshot: VideoTaskSnapshot | null; error?: string }> {
-  /* 首尾帧走 metadata：方舟/海螺插件读的就是 `first_frame_image` /
-     `last_frame_image`（`plugins/tasks/hailuo/plugin.js` 的 v1 与 H3 两条路径都认）。 */
-  const metadata: Record<string, string> = {}
-  if (options.firstFrame) metadata.first_frame_image = options.firstFrame
-  if (options.lastFrame) metadata.last_frame_image = options.lastFrame
+  /* 视频走**方舟任务协议**（渠道 18 的 advanced_async.protocol = "ark"）：
+     文本与首尾帧都在 `content` 数组里，帧靠 role 区分，参数是 duration /
+     ratio / resolution 三个顶层标量。任务回显同样是方舟形状
+     （`{id, status, content:{video_url}}`），parseTask 已经认。
+     首帧/尾帧传 data URL：链路接受 Base64，不需要先上传。 */
+  const content: Array<Record<string, unknown>> = [
+    { type: 'text', text: options.prompt },
+  ]
+  if (options.firstFrame) {
+    content.push({
+      type: 'image_url',
+      image_url: { url: options.firstFrame },
+      role: 'first_frame',
+    })
+  }
+  if (options.lastFrame) {
+    content.push({
+      type: 'image_url',
+      image_url: { url: options.lastFrame },
+      role: 'last_frame',
+    })
+  }
 
+  const preset =
+    RESOLUTION_PRESETS[options.resolution] ?? RESOLUTION_PRESETS['1280x720']
   const { data, requestId, error } = await postJson<Record<string, unknown>>(
     VIDEO_ENDPOINT,
     {
       model: options.model,
-      prompt: options.prompt,
-      // 对齐 OpenAI video 规范：seconds 是字符串，size 是「宽x高」枚举
-      seconds: String(options.duration),
-      size: options.resolution,
-      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      content,
+      duration: options.duration,
+      ratio: preset.ratio,
+      resolution: preset.resolution,
     }
   )
 

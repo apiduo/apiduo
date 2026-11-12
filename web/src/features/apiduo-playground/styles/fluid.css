@@ -970,7 +970,9 @@ For commercial licensing, please contact support@quantumnous.com
 .apg-prompt {
   display: block;
   width: 100%;
-  min-height: 78px;
+  /* 78px 只够两行提示词，写长一点的描述时要边打字边被挤着滚动。
+     112px 是「三行正文 + 一行留白」，仍然在滚动前容纳多数提示词。 */
+  min-height: 112px;
   max-height: 190px;
   padding: 14px 16px 4px;
   border: 0;
@@ -1222,6 +1224,10 @@ For commercial licensing, please contact support@quantumnous.com
   align-items: center;
   gap: 6px;
   height: 28px;
+  /* 参数行本来就是 flex-wrap：挤不下时换到下一行，而不是把 chip 内部的
+     说明文字压成两行（「上下文 / 8k」那种）。 */
+  flex: 0 0 auto;
+  white-space: nowrap;
   max-width: 230px;
   padding: 0 8px 0 9px;
   border: 1px solid var(--apg-line);
