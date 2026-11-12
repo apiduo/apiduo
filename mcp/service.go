@@ -232,12 +232,23 @@ const (
 	AuditOK       AuditLevel = "ok"
 )
 
+// AuditSuggestion 是一条可以直接写回能力声明的建议。
+//
+// 只在「观察到了明确边界」时给出：数值参数给 max，字符串参数给 enum。
+// 其余情况一律 nil —— 巡检是让人裁决，不是替人猜；猜错会把本来能用的值挡掉。
+type AuditSuggestion struct {
+	Param string   `json:"param"`
+	Max   *float64 `json:"max,omitempty"`
+	Enum  []string `json:"enum,omitempty"`
+}
+
 // AuditIssue 是一条巡检结论。
 type AuditIssue struct {
-	Level  AuditLevel `json:"level"`
-	Title  string     `json:"title"`
-	Object string     `json:"object"`
-	Detail string     `json:"detail"`
+	Level      AuditLevel       `json:"level"`
+	Title      string           `json:"title"`
+	Object     string           `json:"object"`
+	Detail     string           `json:"detail"`
+	Suggestion *AuditSuggestion `json:"suggestion,omitempty"`
 }
 
 // Audit 对比「声明」与「观察」，产出需要人裁决的条目。
@@ -343,10 +354,11 @@ func Audit(p ModelProfile, stats []ParamStat) []AuditIssue {
 			}
 			if len(rejected) > 0 {
 				issues = append(issues, AuditIssue{
-					Level:  AuditPending,
-					Title:  "观察到未声明的边界",
-					Object: p.ModelId + " · " + name,
-					Detail: fmt.Sprintf("%s 被拒，建议定为上限 %s", strings.Join(rejected, " / "), suggestMax(rows)),
+					Level:      AuditPending,
+					Title:      "观察到未声明的边界",
+					Object:     p.ModelId + " · " + name,
+					Detail:     fmt.Sprintf("%s 被拒，建议定为上限 %s", strings.Join(rejected, " / "), suggestMax(rows)),
+					Suggestion: suggestForParam(name, rows, rejected),
 				})
 			}
 		}
@@ -381,6 +393,40 @@ func describeMaxOK(rows []ParamStat) string {
 		return "无"
 	}
 	return strconv.FormatFloat(best, 'f', -1, 64)
+}
+
+// suggestForParam 把「被拒过的取值」翻译成一条可写回的约束。
+//
+// 数值参数：最小被拒值减一当上限。字符串参数：成功过的取值收成枚举 ——
+// 只留成功值等于「把已知会被拒的值排除掉」，比拍一个上限更贴近事实。
+// 两者都拿不到（例如所有样本都被拒）就返回 nil：信息不足以定约束，
+// 硬写一条只会把还没试过的合法值一起挡掉。
+func suggestForParam(name string, rows []ParamStat, rejected []string) *AuditSuggestion {
+	minRejected, numeric := 0.0, true
+	for _, v := range rejected {
+		f, ok := asFloat(v)
+		if !ok {
+			numeric = false
+			break
+		}
+		if minRejected == 0 || f < minRejected {
+			minRejected = f
+		}
+	}
+	if numeric && minRejected > 0 {
+		max := minRejected - 1
+		return &AuditSuggestion{Param: name, Max: &max}
+	}
+	okValues := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if r.OK > 0 {
+			okValues = append(okValues, r.Value)
+		}
+	}
+	if len(okValues) > 0 {
+		return &AuditSuggestion{Param: name, Enum: okValues}
+	}
+	return nil
 }
 
 // suggestMax 用「最小被拒值减一」推建议上限。这是保守估计：

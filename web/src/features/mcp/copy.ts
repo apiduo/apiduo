@@ -30,6 +30,8 @@ const FALLBACK: Record<string, string> = {
   'Error rules': '错误规则',
   Observations: '观察记录',
   Inspection: '巡检',
+  Adopt: '采纳',
+  Adopted: '已采纳',
   Refresh: '刷新',
   'New model': '新建模型',
   Save: '保存',

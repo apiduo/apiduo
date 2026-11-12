@@ -499,3 +499,129 @@ func parseID(c *gin.Context) (int64, bool) {
 	}
 	return id, true
 }
+
+// apiAdoptSuggestion 把巡检里的一条建议写回能力声明。
+//
+// 只接受 param：max / enum 一律由服务端拿当前观察数据重算，客户端报上来的
+// 数值一概不信 —— 否则「采纳」就成了绕过校验直接改约束的后门。
+//
+// 重算还有一个附带好处：页面上的建议可能是几分钟前拉的，采纳时按此刻的
+// 样本重新判定，已经被别人改过的、或样本已经滑走的建议会当场落空并报错，
+// 不会把过期的结论写进库里。
+func apiAdoptSuggestion(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		Param string `json:"param"`
+		Days  int    `json:"days"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		common.ApiErrorMsg(c, "请求体不是合法 JSON: "+err.Error())
+		return
+	}
+	param := strings.TrimSpace(body.Param)
+	if param == "" {
+		common.ApiErrorMsg(c, "缺少 param")
+		return
+	}
+	p, err := GetProfile(id)
+	if err != nil {
+		apiWriteErr(c, "读取能力声明", err)
+		return
+	}
+	days := body.Days
+	if days <= 0 || days > 90 {
+		days = 7
+	}
+	stats, err := Observations(p, days)
+	if err != nil {
+		apiWriteErr(c, "查询观察数据", err)
+		return
+	}
+	var picked *AuditSuggestion
+	for _, issue := range Audit(p, stats) {
+		if issue.Suggestion != nil && issue.Suggestion.Param == param {
+			picked = issue.Suggestion
+			break
+		}
+	}
+	if picked == nil {
+		apiWriteErr(c, "采纳建议", userErrf("没有可采纳的建议：%s", param))
+		return
+	}
+
+	before := profileAuditSnapshot(p)
+	applied, err := applySuggestion(&p, *picked)
+	if err != nil {
+		apiWriteErr(c, "采纳建议", err)
+		return
+	}
+	if err := SaveProfile(&p); err != nil {
+		apiWriteErr(c, "保存能力声明", err)
+		return
+	}
+	recordControlAudit(c, auditActionProfileAdopt,
+		"Adopted MCP audit suggestion for "+p.ModelId+" · "+param,
+		map[string]any{
+			"model_id": p.ModelId,
+			"param":    param,
+			"applied":  applied,
+			"before":   before,
+			"after":    profileAuditSnapshot(p),
+		})
+
+	fresh, err := GetProfile(id)
+	if err != nil {
+		apiWriteErr(c, "读取能力声明", err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"profile": toView(fresh, true), "applied": applied})
+}
+
+// applySuggestion 把建议合进声明，返回实际写入的内容。
+//
+// reference_images 是唯一一个不在 parameters 里的参数：它是
+// ModelProfile.MaxRefImages 这个强类型字段，写进 parameters 会被当成未知参数。
+func applySuggestion(p *ModelProfile, s AuditSuggestion) (map[string]any, error) {
+	applied := map[string]any{"param": s.Param}
+	if s.Param == "reference_images" && s.Max != nil {
+		n := int(*s.Max)
+		p.MaxRefImages = &n
+		applied["max_ref_images"] = n
+		return applied, nil
+	}
+
+	params := map[string]json.RawMessage{}
+	if strings.TrimSpace(p.Parameters) != "" {
+		if err := json.Unmarshal([]byte(p.Parameters), &params); err != nil {
+			return nil, userErrf("现有参数约束不是合法 JSON，先修好再采纳: %v", err)
+		}
+	}
+	// 用 map[string]any 而不是 ParamSpec 承载：声明里可能有本版本还不认识的键，
+	// 按结构体重排会静默丢掉它们。
+	spec := map[string]any{}
+	if cur, ok := params[s.Param]; ok && len(cur) > 0 {
+		_ = json.Unmarshal(cur, &spec)
+	}
+	if s.Max != nil {
+		spec["max"] = *s.Max
+		applied["max"] = *s.Max
+	}
+	if len(s.Enum) > 0 {
+		spec["enum"] = s.Enum
+		applied["enum"] = s.Enum
+	}
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		return nil, err
+	}
+	params[s.Param] = raw
+	out, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+	p.Parameters = string(out)
+	return applied, nil
+}

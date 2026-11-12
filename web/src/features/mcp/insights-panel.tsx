@@ -16,17 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
 import { mcpApi, mcpKeys } from './api'
 import { useMcpCopy } from './copy'
-import type { AuditLevel, ObservationRow } from './types'
+import type { AuditLevel, AuditSuggestion, ObservationRow } from './types'
 
 type PanelProps = { profileId: number | null; modelId: string | null }
 
@@ -156,9 +158,43 @@ function levelLabel(level: AuditLevel, t: (key: string) => string): string {
   }
 }
 
+/**
+ * 按采纳后会写成什么，拼一句悬浮说明。
+ *
+ * 按钮本身只能写「采纳」两个字 —— 写的是 max 还是枚举，决定了这次点击是
+ * 「放宽到 8」还是「只留 1:1」，差别很大，必须让人点之前就看得到。
+ */
+function suggestionHint(suggestion: AuditSuggestion, label: string): string {
+  if (suggestion.max !== undefined) {
+    return `${label} · max=${suggestion.max}`
+  }
+  return `${label} · enum=${(suggestion.enum ?? []).join(' / ')}`
+}
+
 /** 巡检：声明与观察到的实际取值是否一致。 */
 export function AuditPanel(props: PanelProps) {
   const t = useMcpCopy()
+  const queryClient = useQueryClient()
+  // 采纳：只把 param 发给后端，max / enum 由后端按当前样本重算。
+  // 这样页面上展示的建议和真正写进库的值永远同源，不会出现「看到 8、写进 9」。
+  const adopt = useMutation({
+    mutationFn: (param: string) =>
+      mcpApi.adopt(props.profileId as number, param),
+    onSuccess: (res) => {
+      const { param, max, enum: values } = res.applied
+      const what = max !== undefined ? `max=${max}` : (values ?? []).join(' / ')
+      toast.success(`${t('Adopted')} ${param}${what ? ` · ${what}` : ''}`)
+      void queryClient.invalidateQueries({
+        queryKey: mcpKeys.audit(props.profileId as number),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: mcpKeys.observations(props.profileId as number),
+      })
+      void queryClient.invalidateQueries({ queryKey: mcpKeys.profiles() })
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : String(error)),
+  })
   const query = useQuery({
     queryKey: mcpKeys.audit(props.profileId ?? 0),
     queryFn: () => mcpApi.audit(props.profileId as number),
@@ -197,16 +233,32 @@ export function AuditPanel(props: PanelProps) {
             {issue.detail}
           </div>
         </div>
-        <Badge
-          variant={issue.level === 'conflict' ? 'destructive' : 'secondary'}
-          className={cn(
-            'shrink-0',
-            issue.level === 'ok' &&
-              'border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+        <div className='flex shrink-0 flex-col items-end gap-1.5'>
+          <Badge
+            variant={issue.level === 'conflict' ? 'destructive' : 'secondary'}
+            className={cn(
+              'shrink-0',
+              issue.level === 'ok' &&
+                'border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+            )}
+          >
+            {levelLabel(issue.level, t)}
+          </Badge>
+          {/* 只有后端给出结构化建议时才给按钮：没建议的条目需要人判断，
+              放个灰按钮只会让人反复点。 */}
+          {issue.suggestion && (
+            <Button
+              size='sm'
+              variant='outline'
+              className='h-6 px-2 text-[11px]'
+              disabled={adopt.isPending}
+              onClick={() => adopt.mutate(issue.suggestion!.param)}
+              title={suggestionHint(issue.suggestion, t('Adopt'))}
+            >
+              {t('Adopt')}
+            </Button>
           )}
-        >
-          {levelLabel(issue.level, t)}
-        </Badge>
+        </div>
       </div>
     ))
   }

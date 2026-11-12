@@ -146,17 +146,36 @@ export type Observations = {
 
 export type AuditLevel = 'conflict' | 'pending' | 'unprobed' | 'ok'
 
+/**
+ * 可以直接写回声明的建议。
+ *
+ * 数值参数给 max，字符串参数给 enum；两者都没有时后端不下发建议 ——
+ * 那说明样本不足以定约束。
+ */
+export type AuditSuggestion = {
+  param: string
+  max?: number
+  enum?: string[]
+}
+
 export type AuditIssue = {
   level: AuditLevel
   title: string
   object: string
   detail: string
+  suggestion?: AuditSuggestion
 }
 
 export type AuditResult = {
   days: number
   counts: Record<string, number>
   issues: AuditIssue[]
+}
+
+/** 采纳建议的响应：写回后的声明 + 实际写入的内容（max 或 enum）。 */
+export type AdoptResult = {
+  profile: ModelProfile
+  applied: AuditSuggestion
 }
 
 export const EMPTY_DRAFT: ProfileDraft = {

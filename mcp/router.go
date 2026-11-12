@@ -45,6 +45,8 @@ func Register(engine *gin.Engine) {
 		api.POST("/profiles/:id/toggle", apiToggleProfile)
 		api.GET("/profiles/:id/observations", apiObservations)
 		api.GET("/profiles/:id/audit", apiAudit)
+		// 采纳巡检建议：把「观察到但没声明」的边界写回声明。
+		api.POST("/profiles/:id/adopt", apiAdoptSuggestion)
 
 		api.GET("/error-rules", apiListErrorRules)
 		api.PUT("/error-rules/:id", apiUpdateErrorRule)

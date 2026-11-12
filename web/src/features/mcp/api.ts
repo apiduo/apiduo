@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import type {
+  AdoptResult,
   AuditResult,
   ErrorRule,
   ModelProfile,
@@ -86,6 +87,12 @@ export const mcpApi = {
   audit: (id: number, days = 7) =>
     unwrap<AuditResult>(
       api.get(`/api/mcp/profiles/${id}/audit`, { params: { days } })
+    ),
+
+  // 只传 param：max / enum 由服务端按当前样本重算，前端不参与决定写什么。
+  adopt: (id: number, param: string, days = 7) =>
+    unwrap<AdoptResult>(
+      api.post(`/api/mcp/profiles/${id}/adopt`, { param, days })
     ),
 }
 

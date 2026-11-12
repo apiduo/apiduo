@@ -38,6 +38,9 @@ const (
 	// 必须单独一个 action，否则会淹没在参数校验失败里。
 	auditActionProfileConflict = "mcp.profile_conflict"
 	auditActionErrorRule       = "mcp.error_rule_update"
+	// 采纳巡检建议是一次真实的声明变更，必须和手工改参数区分开：
+	// 事后追「这个上限是谁定的」时，答案可能是「巡检建议 + 人点了采纳」。
+	auditActionProfileAdopt = "mcp.profile_adopt"
 )
 
 // auditHintLimit 限制 hint 在审计里保留的长度。
