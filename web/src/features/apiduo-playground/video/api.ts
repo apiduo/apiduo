@@ -21,7 +21,12 @@ import type { VideoTaskStatus } from '../types'
 
 const VIDEO_ENDPOINT = '/pg/video/generations'
 
-export const VIDEO_DURATIONS = [5, 10] as const
+/**
+ * hailuo 2.3 只接受 6 秒和 10 秒（`plugins/tasks/hailuo/plugin.js` 的 usage
+ * schema 与上游一致）。传 5 会被上游判 `code=2400050` 并让任务失败 ——
+ * 而受理是成功的，所以前端只看到一条「upstream reported failure」。
+ */
+export const VIDEO_DURATIONS = [6, 10] as const
 
 /**
  * 面板按横/竖屏给两个入口，但上游（方舟任务协议）要的是**档位名 + 比例**：
