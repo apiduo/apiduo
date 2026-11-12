@@ -654,11 +654,14 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		info.RelayMode = c.GetInt("relay_mode")
 	}
 
-	if strings.HasPrefix(c.Request.URL.Path, "/pg") {
+	// APIDUO:playground-path-alias:BEGIN
+	// Playground 的路径已被中间件归一化成 /v1（见 middleware.PlaygroundPathAlias），
+	// 所以 RequestURLPath 天然就是对外形状，这里只需要记住「这次用的是会话凭据」——
+	// 计费与配额对这种请求有单独的分支。
+	if clientPath, _ := c.Request.Context().Value(constant.ApiduoClientPathKey{}).(string); strings.HasPrefix(clientPath, "/pg") {
 		info.IsPlayground = true
-		info.RequestURLPath = strings.TrimPrefix(info.RequestURLPath, "/pg")
-		info.RequestURLPath = "/v1" + info.RequestURLPath
 	}
+	// APIDUO:playground-path-alias:END
 
 	userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting)
 	if ok {

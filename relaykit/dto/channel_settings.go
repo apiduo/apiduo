@@ -286,17 +286,6 @@ func (c *AdvancedCustomConfig) MatchPathForModel(requestPath string, model strin
 	if c == nil {
 		return AdvancedCustomRoute{}, false
 	}
-	// APIDUO:playground-path-alias:BEGIN
-	// Playground 的 /pg 前缀只是用浏览器会话替代 sk 令牌，语义与 /v1 完全一致：
-	// /pg/chat/completions 就是一次标准的 chat completion。但下面按 IncomingPath
-	// 做严格相等匹配，而渠道路由表里写的是 /v1/...。不归一化的话 Playground 请求
-	// 会把所有 AdvancedCustom 渠道排除在外——distributor 报「无可用渠道」，即便
-	// 侥幸选中，advancedcustom adaptor 也找不到路由。放在这个匹配原语里改，
-	// 选择器（SupportsPathForModel）与转发（adaptor / relay_info）两侧同时生效。
-	if strings.HasPrefix(requestPath, "/pg/") {
-		requestPath = "/v1/" + strings.TrimPrefix(requestPath, "/pg/")
-	}
-	// APIDUO:playground-path-alias:END
 	model = strings.TrimSpace(model)
 	for _, route := range c.Routes {
 		if matchAdvancedCustomIncomingPath(strings.TrimSpace(route.IncomingPath), requestPath) &&

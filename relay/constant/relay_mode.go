@@ -55,19 +55,6 @@ const (
 )
 
 func Path2RelayMode(path string) int {
-	// APIDUO:playground-modality:BEGIN
-	// /pg/images/* 是 playground 自有入口，不在 /v1 前缀下。这里必须给出真实
-	// 模式：GetAndValidOpenAIImageRequest 按模式选解析分支，模式未知会落到
-	// 「把表单值原样转 JSON」的默认分支——表单里的 n 恒为字符串，写进 *uint
-	// 直接报 "cannot unmarshal string into Go struct field Alias.n"。
-	// 编辑入口走 multipart，就只有该分支会按整数解析 n / stream。
-	if strings.HasPrefix(path, "/pg/images/edits") {
-		return RelayModeImagesEdits
-	}
-	if strings.HasPrefix(path, "/pg/images/generations") {
-		return RelayModeImagesGenerations
-	}
-	// APIDUO:playground-modality:END
 	relayMode := RelayModeUnknown
 	if strings.HasPrefix(path, "/v1/chat/completions") || strings.HasPrefix(path, "/pg/chat/completions") {
 		relayMode = RelayModeChatCompletions

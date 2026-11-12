@@ -64,7 +64,11 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter := router.Group("/pg")
 	playgroundRouter.Use(middleware.RouteTag("relay"))
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
-	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
+	// APIDUO:playground-path-alias:BEGIN
+	// 会话鉴权之后把 /pg/<rest> 归一化成 /v1/<rest>：下游的模式判定、渠道路径
+	// 过滤、路由表匹配一律按 /v1 走，不必在每个判定点各写一份兼容分支。
+	playgroundRouter.Use(middleware.UserAuth(), middleware.PlaygroundPathAlias(), middleware.Distribute())
+	// APIDUO:playground-path-alias:END
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 		// APIDUO:playground-modality:BEGIN
@@ -81,7 +85,8 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundFetchRouter := router.Group("/pg")
 	playgroundFetchRouter.Use(middleware.RouteTag("relay"))
 	playgroundFetchRouter.Use(middleware.SystemPerformanceCheck())
-	playgroundFetchRouter.Use(middleware.UserAuth())
+	// 同上面：查询入口同样归一化，`/pg` 与 `/v1` 只差凭据。
+	playgroundFetchRouter.Use(middleware.UserAuth(), middleware.PlaygroundPathAlias())
 	playgroundFetchRouter.GET("/video/generations/:task_id", controller.PlaygroundVideoFetch)
 	// APIDUO:playground-modality:END
 	// APIDUO:file-relay:BEGIN

@@ -79,7 +79,9 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 				// check path is /pg/chat/completions
-				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
+				// APIDUO:playground-path-alias:BEGIN
+				if isPlaygroundChatRequest(c) {
+					// APIDUO:playground-path-alias:END
 					usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 					playgroundRequest := &dto.PlayGroundRequest{}
 					err = common.UnmarshalBodyReusable(c, playgroundRequest)
@@ -512,17 +514,6 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			}
 		}
 	}
-	// APIDUO:playground-modality:BEGIN
-	// 游乐场的编辑入口与对外 /v1/images/edits 同构：multipart 里的 model 不点名，
-	// 分发器会拿着空模型直接 400。本地 mock 不走中间件，只有线上会暴露。
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/images/edits") {
-		if slices.Contains([]string{gin.MIMEPOSTForm, gin.MIMEMultipartPOSTForm}, c.ContentType()) {
-			if req, err := getModelFromRequest(c); err == nil && req.Model != "" {
-				modelRequest.Model = req.Model
-			}
-		}
-	}
-	// APIDUO:playground-modality:END
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/audio") {
 		relayMode := relayconstant.RelayModeAudioSpeech
 		if strings.HasPrefix(c.Request.URL.Path, "/v1/audio/speech") {
@@ -545,7 +536,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
+	// APIDUO:playground-path-alias:BEGIN
+	if isPlaygroundChatRequest(c) {
+		// APIDUO:playground-path-alias:END
 		// playground chat completions
 		req, err := getModelFromRequest(c)
 		if err != nil {

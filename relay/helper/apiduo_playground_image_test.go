@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
@@ -15,11 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// playground 的图片编辑入口是 /pg/images/edits，不在 /v1 前缀下。
-// 回归锁：Path2RelayMode 必须认出它，否则 GetAndValidOpenAIImageRequest
-// 会落到「表单值原样转 JSON」的默认分支，n 作为字符串写进 *uint 直接失败，
-// 线上表现是 400 `cannot unmarshal string into Go struct field Alias.n`。
-func TestGetAndValidateRequestPlaygroundImageEditMultipart(t *testing.T) {
+// playground 的 /pg 前缀在进入分发器之前就被 middle.PlaygroundPathAlias
+// 归一化成 /v1（playground 只是另一种凭据），所以这里锁的是**改写之后**的形状：
+// 一条标准的 multipart 图片编辑请求，n 必须按整数解析。
+//
+// 回归背景：`n` 在表单里恒为字符串，一旦走成「表单值原样转 JSON」的默认分支，
+// 就会写进 *uint 报 `cannot unmarshal string into Go struct field Alias.n`。
+// 而模式判定只认 /v1 前缀 —— 这也是把归一化放在入口、而不是散在判定点的原因。
+func TestGetAndValidateRequestImageEditMultipart(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newContext := func(t *testing.T, nValue string) *gin.Context {
@@ -37,7 +39,7 @@ func TestGetAndValidateRequestPlaygroundImageEditMultipart(t *testing.T) {
 		require.NoError(t, writer.Close())
 
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest(http.MethodPost, "/pg/images/edits", bytes.NewReader(body.Bytes()))
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body.Bytes()))
 		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
 		return c
 	}
@@ -58,9 +60,5 @@ func TestGetAndValidateRequestPlaygroundImageEditMultipart(t *testing.T) {
 	t.Run("non-numeric n is a client error", func(t *testing.T) {
 		_, err := GetAndValidateRequest(newContext(t, "abc"), types.RelayFormatOpenAIImage)
 		require.Error(t, err)
-	})
-
-	t.Run("path maps to the edit relay mode", func(t *testing.T) {
-		assert.Equal(t, relayconstant.RelayModeImagesEdits, relayconstant.Path2RelayMode("/pg/images/edits"))
 	})
 }
