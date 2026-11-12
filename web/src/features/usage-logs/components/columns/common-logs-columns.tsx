@@ -279,7 +279,12 @@ function buildTypeDetailSegments(
     const isPerCall = isPerCallBilling(modelPrice)
     if (isPerCall && modelPrice != null) {
       segments.push({
-        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(modelPrice, priceOpts)}`,
+        // APIDUO:billing-units:BEGIN billed_seconds 存在说明这条按秒算，
+        // 单价是「每秒」而不是「每次」。
+        text: other.billed_seconds
+          ? `${t('Per-second')} · ${formatBillingCurrencyFromUSD(modelPrice, priceOpts)}/s × ${other.billed_seconds}s`
+          : `${t('Per-call')} · ${formatBillingCurrencyFromUSD(modelPrice, priceOpts)}`,
+        // APIDUO:billing-units:END
       })
     } else if (other.model_ratio != null) {
       const inputPriceUSD = other.model_ratio * 2.0

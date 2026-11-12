@@ -187,6 +187,13 @@ test.each([
     other: { model_price: 0.25 },
     expected: 'Per-call · $0.25',
   },
+  // APIDUO:billing-units:BEGIN 按秒任务不能读成 per-call
+  {
+    name: 'per-second',
+    other: { model_price: 0.05, billed_seconds: 5 },
+    expected: 'Per-second · $0.05/s × 5s',
+  },
+  // APIDUO:billing-units:END
   {
     name: 'standard',
     other: { model_ratio: 1, completion_ratio: 2 },

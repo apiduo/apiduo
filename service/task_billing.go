@@ -58,6 +58,25 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		other.SetPublic("task_sync", true)
 	}
 	other.SetPublic("model_price", info.PriceData.ModelPrice)
+	// APIDUO:billing-units:BEGIN
+	// 按秒计费的任务把口径写进日志：列表页据此显示「按秒 · $x/秒 × Ns」，
+	// 而不是把 model_price 一律读成「每次调用」。billed_seconds 就是预扣
+	// 时算进 quota 的那个乘数，billing_factors 是其余乘数（分辨率等）。
+	if ratios := info.PriceData.OtherRatios(); len(ratios) > 0 {
+		if seconds, ok := ratios["seconds"]; ok && seconds > 0 {
+			other.SetPublic("billed_seconds", seconds)
+			factors := make(map[string]float64, len(ratios))
+			for key, value := range ratios {
+				if key != "seconds" && value != 1 {
+					factors[key] = value
+				}
+			}
+			if len(factors) > 0 {
+				other.SetPublic("billing_factors", factors)
+			}
+		}
+	}
+	// APIDUO:billing-units:END
 	if info.PriceData.ModelRatio > 0 {
 		other.SetPublic("model_ratio", info.PriceData.ModelRatio)
 	}

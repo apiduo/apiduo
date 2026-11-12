@@ -3,17 +3,26 @@
 # 标记块，Marker coverage 红灯卡住 0.0.58 发版（其中含 mcp 页面的 fill-mode
 # 修复）。本文件由 markercheck -update 按当前实际重写，把这部分欠账记入
 # 基线；历史变更注释被该操作清空，此处只留本轮说明。
+# 2026-11-12 11:4x 上调 files 129->131 / blocks 386->391 / added 3723->3778 /
+# deleted 191->194（任务按秒计费的日志口径，5 个标记块）：
+# - 后端 service/task_billing.go：other 里补 billed_seconds / billing_factors，
+#   前端才能区分「每秒单价」与「每次单价」。挂接点只有这一个 —— 任务消费日志
+#   的 other 是唯一出口，别处造不出来。
+# - 前端 4 处各 1 块：types（字段类型）、columns（列表文案）、details-dialog
+#   （详情摊开单价×秒数×系数）、detail-preview.test（按秒用例）。files +2 是
+#   columns 与 detail-preview.test 首次有块。
+# - deleted +3：details-dialog 的 per-call 分支原有 3 行被条件化改写。
 # 上游合并面预算：上游文件里我方插入的行、标记块、以及删除的上游行。
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	129
-blocks	386
-added	3723
+files	131
+blocks	391
+added	3778
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
-deleted	191
+deleted	194
 # 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
 # blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
 # `alignImageCarriers` 与它在那两个标记块里的行。

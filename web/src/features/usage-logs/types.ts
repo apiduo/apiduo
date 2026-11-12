@@ -239,6 +239,10 @@ export interface LogOtherData {
   // settlement run.
   billing_mode?: string
   billing_unit?: 'token' | 'request'
+  // APIDUO:billing-units:BEGIN 任务按秒计费时的乘数（其余乘数在 billing_factors）
+  billed_seconds?: number
+  billing_factors?: Record<string, number>
+  // APIDUO:billing-units:END
   fixed_price?: number
   image_count?: number
   expr_b64?: string

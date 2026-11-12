@@ -212,13 +212,31 @@ function BillingBreakdown(props: {
       })
     }
   } else if (isPerCall) {
-    rows.push({ label: t('Billing Mode'), value: t('Per-call') })
+    // APIDUO:billing-units:BEGIN 按秒任务要把「单价 × 秒数 × 系数」摊开，
+    // 否则详情里也只有一个单价，看不出实际是怎么乘出来的。
+    const billedSeconds = other.billed_seconds
+    rows.push({
+      label: t('Billing Mode'),
+      value: billedSeconds ? t('Per-second') : t('Per-call'),
+    })
     if (other.model_price != null) {
       rows.push({
         label: t('Model Price'),
-        value: fmtPrice(other.model_price),
+        value: billedSeconds
+          ? `${fmtPrice(other.model_price)}/s`
+          : fmtPrice(other.model_price),
       })
     }
+    if (billedSeconds) {
+      rows.push({ label: t('Billed Seconds'), value: `${billedSeconds}s` })
+      for (const [key, value] of Object.entries(other.billing_factors || {})) {
+        rows.push({
+          label: `${t('Billing Factor')} · ${key}`,
+          value: `× ${value.toFixed(2)}`,
+        })
+      }
+    }
+    // APIDUO:billing-units:END
   } else {
     rows.push({ label: t('Billing Mode'), value: t('Per-token') })
     if (other.model_ratio != null) {
