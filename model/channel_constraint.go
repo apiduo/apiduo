@@ -2,6 +2,9 @@ package model
 
 import (
 	"slices"
+	// APIDUO:playground-path-alias:BEGIN
+	"strings"
+	// APIDUO:playground-path-alias:END
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
@@ -94,6 +97,17 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		if filter.RequestPath == "" {
 			return true
 		}
+		// APIDUO:playground-path-alias:BEGIN
+		// Playground 的 /pg 前缀只是拿浏览器会话替代 sk 令牌，语义与 /v1 一致；
+		// 而渠道路由表、图片协议、高级自定义路由表里写的都是 /v1。不归一化时
+		// 这条过滤器会把「路由表只声明了 /v1」的渠道整条排除，distributor 于是
+		// 回 503「无可用渠道」—— 现象看起来像插件或渠道挂了，实际只是前缀不同。
+		// 放在这里归一化一次，下游四个判定点全部受益。
+		requestPath := filter.RequestPath
+		if strings.HasPrefix(requestPath, "/pg/") {
+			requestPath = "/v1/" + strings.TrimPrefix(requestPath, "/pg/")
+		}
+		// APIDUO:playground-path-alias:END
 		// APIDUO:advanced-async:BEGIN The task-only type has no sync route table,
 		// so it must not take the "not an advanced custom channel" pass.
 		if !constant.IsAdvancedCustomChannel(ch.Type) && ch.Type != constant.ChannelTypeAdvancedAsync {
@@ -104,14 +118,15 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		// APIDUO:advanced-async:BEGIN
 		if ch.Type == constant.ChannelTypeAdvancedAsync {
 			asyncConfig := ch.GetOtherSettings().AdvancedAsync
-			if asyncConfig.SupportsIncomingPath(filter.RequestPath) {
+			if asyncConfig.SupportsIncomingPath(requestPath) {
 				return true
 			}
 			// 自定义入站端点会在分发之前被改写成任务中继路径，此时过滤器看到的
 			// 已经是中继路径。中继路径是网关内部约定，不该要求运营在每条渠道的
 			// 入站列表里再声明一遍 —— 漏写的结果是重入之后选不到渠道（503），
-			// 比不接管更糟。
-			if filter.RequestPath == constant.ApiduoTaskRelayPath {
+			// 比不接管更糟。比较用归一化后的路径：/pg/video/generations 归一化
+			// 就是中继路径本身，playground 的视频提交与它语义完全一致。
+			if requestPath == constant.ApiduoTaskRelayPath {
 				return true
 			}
 		}
@@ -120,11 +135,14 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		// 图片协议自己接管 generations / edits：这两个入口的语义在协议层定死，
 		// 不看转发路由表。否则「启用了协议但没写路由」的渠道会被选择器过滤掉，
 		// 客户端拿到 503 而协议层其实完全能处理。
-		if ch.GetOtherSettings().ImageProtocol.ServesPath(filter.RequestPath) {
+		if ch.GetOtherSettings().ImageProtocol.ServesPath(requestPath) {
 			return true
 		}
 		// APIDUO:primary-endpoint:END
-		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
+		// APIDUO:playground-path-alias:BEGIN
+		// 收尾这一行原本用的是原始 filter.RequestPath，归一化后改用上面的值。
+		return config != nil && config.SupportsPathForModel(requestPath, modelName)
+		// APIDUO:playground-path-alias:END
 	case dto.FilterTaskPluginIdentity:
 		if filter.TaskPluginKey == "" {
 			return ch.Type != constant.ChannelTypeTaskPlugin

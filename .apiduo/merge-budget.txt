@@ -8,12 +8,12 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 files	130
-blocks	385
-added	3760
+blocks	388
+added	3779
 # 2026-11-11 22:35 上调 deleted 158 -> 160（+2）：
 # `alignImageCarriers` 要兑现双向 response_format，`task_polling_test.go` 里
 # 那个漏改的 UNKNOWN 用例被重写 —— 删掉旧断言 2 行（name 与 wantFailures）。
-deleted	185
+deleted	186
 # 2026-11-11 22:40 再上调 blocks 365->366、added 3521->3528：
 # blocks +1 是 task_poll_test 里那个漏改用例的标记块；added +7 是
 # `alignImageCarriers` 与它在那两个标记块里的行。
@@ -171,3 +171,25 @@ deleted	185
 #
 # 数值取自 /tmp/mk-pgrelay 干净 worktree（HEAD 35477e37 + 本次三文件）实测
 # 3759；按以往「CI 比本地 -cost 多 1 行」的经验记 3760 卡上界。
+
+# 2026-11-12 09:2x 上调 blocks 385->386、added 3760->3774、deleted 185->186：
+# playground 视频提交 503「无可用渠道」，根因是分发器给每个请求挂的
+# FilterRequestPath 把高级异步渠道（8001）整条排除了。
+#
+# 渠道路由表、图片协议、高级自定义路由表里写的都是 /v1，而 playground 走 /pg。
+# `channelMatchesFilter` 的 FilterRequestPath 分支里没有前缀归一化，于是
+# asyncConfig.SupportsIncomingPath("/pg/video/generations") 恒 false，
+# 中继路径兜底又只认 /v1/video/generations 的原始值 ⇒ 渠道被过滤 ⇒ 503。
+# 现象极具误导性：任务插件、渠道状态、abilities 全部正常。
+#
+# 修法是在该分支开头归一化一次 /pg -> /v1，四个下游判定点同时受益；
+# 中继路径比较也改用归一化后的值（/pg/video/generations 归一化后正是中继路径）。
+# blocks +1 / added +14 就是这一块；deleted +1 是中继路径比较那一行被替换。
+# 单测在新文件 model/apiduo_playground_path_filter_test.go，不占上游文件数。
+#
+# 数值取自 /tmp/mk-pgfilter 干净 worktree（HEAD d3bbd50c + 本次两文件）实测
+# 3773；按以往 CI 比本地多 1 行的经验记 3774。
+#
+# 补记：import 里新增的 `"strings"` 也必须包标记块（先例见 model/option.go）；
+# 末尾那行 `SupportsPathForModel(requestPath, …)` 是替换行，也要落在块内，
+# 于是再多 1 块 + 3 行。最终 blocks 记 388、added 记 3779（实测 3778 + 1 行 CI 余量）。
