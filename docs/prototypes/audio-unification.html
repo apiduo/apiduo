@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-mode="unified">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>apiduo · 语音统一层原型</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Segoe UI",Roboto,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+
+  :root{
+    --bg: oklch(0.986 0.003 255);
+    --surface: oklch(1 0 0);
+    --surface-2: oklch(0.972 0.004 255);
+    --surface-3: oklch(0.955 0.005 255);
+    --line: oklch(0.910 0.006 255);
+    --line-soft: oklch(0.946 0.005 255);
+    --ink: oklch(0.215 0.012 258);
+    --ink-2: oklch(0.455 0.012 258);
+    --ink-3: oklch(0.590 0.012 258);
+    --primary: oklch(0.600 0.185 258);
+    --primary-ink: oklch(0.450 0.190 258);
+    --primary-wash: oklch(0.962 0.024 258);
+    --ok: oklch(0.545 0.125 156);
+    --ok-wash: oklch(0.965 0.022 156);
+    --warn: oklch(0.640 0.140 74);
+    --warn-wash: oklch(0.972 0.028 74);
+    --danger: oklch(0.560 0.190 25);
+    --danger-wash: oklch(0.965 0.020 25);
+    --code-bg: oklch(0.975 0.004 258);
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / .055);
+    --shadow-lg: 0 20px 54px -30px oklch(0.25 0.04 258 / .38), 0 1px 2px oklch(0 0 0 / .05);
+    --r-xl: 18px;
+    --r-lg: 14px;
+    --r-md: 10px;
+    --r-sm: 7px;
+    /* 弹簧而非时长：按压、面板展开都只改目标值，不排队互相打架 */
+    --sp-quick: linear(0, .0197, .0685, .1347, .2097, .2877, .3649, .4386, .5074, .5705, .6275, .6784, .7235, .7631, .7977, .8277, .8536, .876, .8951, .9115, .9254, .9373, .9473, .9558, .963, .9691, .9741, .9784, .982, .985, .9875, .9896, .9914, .9928, .9941, .9951, .9959, .9966, .9972, .9977, 1);
+    --sp-tap: linear(0, .0155, .0567, .1164, .1884, .2677, .3504, .4331, .5134, .5894, .66, .7242, .7816, .8322, .8759, .9132, .9443, .9699, .9904, 1.0064, 1.0185, 1.0272, 1.0331, 1.0366, 1.0382, 1.0383, 1.0372, 1.0353, 1.0328, 1.0299, 1.0268, 1.0236, 1.0204, 1.0174, 1.0146, 1.012, 1.0096, 1.0075, 1.0057, 1.0041, 1);
+    --sp-move: linear(0, .0202, .0702, .1377, .2141, .2932, .3713, .4457, .5149, .5781, .635, .6858, .7305, .7698, .804, .8335, .859, .8809, .8995, .9155, .929, .9404, .9501, .9583, .9652, .971, .9758, .9799, .9833, .9861, .9885, .9904, .9921, .9934, .9946, .9955, .9963, .9969, .9975, .9979, 1);
+    --d-quick: .2s;
+    --d-tap: .3s;
+    --d-move: .42s;
+  }
+
+  [data-theme="dark"]{
+    --bg: oklch(0.172 0.008 258);
+    --surface: oklch(0.213 0.010 258);
+    --surface-2: oklch(0.243 0.011 258);
+    --surface-3: oklch(0.272 0.012 258);
+    --line: oklch(0.322 0.013 258);
+    --line-soft: oklch(0.282 0.012 258);
+    --ink: oklch(0.945 0.005 258);
+    --ink-2: oklch(0.755 0.010 258);
+    --ink-3: oklch(0.615 0.010 258);
+    --primary: oklch(0.705 0.150 258);
+    --primary-ink: oklch(0.800 0.115 258);
+    --primary-wash: oklch(0.290 0.045 258);
+    --ok: oklch(0.760 0.130 156);
+    --ok-wash: oklch(0.290 0.040 156);
+    --warn: oklch(0.800 0.130 74);
+    --warn-wash: oklch(0.310 0.045 74);
+    --danger: oklch(0.700 0.160 25);
+    --danger-wash: oklch(0.300 0.055 25);
+    --code-bg: oklch(0.190 0.009 258);
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / .30);
+    --shadow-lg: 0 20px 54px -30px oklch(0 0 0 / .60), 0 1px 2px oklch(0 0 0 / .30);
+  }
+
+  .app{display:flex;flex-direction:column;height:100%}
+
+  header.bar{
+    display:flex;align-items:center;gap:14px;
+    height:54px;padding:0 20px;
+    border-bottom:1px solid var(--line);
+    background:var(--surface);
+    flex:none;
+  }
+  .brand{display:flex;align-items:baseline;gap:8px;margin-right:auto}
+  .brand b{font-size:14px;font-weight:500;letter-spacing:-.01em}
+  .brand span{font-size:12px;color:var(--ink-3)}
+
+  .seg{display:flex;background:var(--surface-2);border-radius:var(--r-md);padding:2px;gap:2px}
+  .seg button{
+    appearance:none;border:0;background:transparent;color:var(--ink-2);
+    font:inherit;font-size:12.5px;padding:5px 12px;border-radius:8px;cursor:pointer;
+    transition:color .14s ease;
+  }
+  .seg button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm)}
+  .seg button:active{transform:scale(.97)}
+  .seg button:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+
+  .icon-btn{
+    appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+    width:32px;height:32px;border-radius:9px;display:grid;place-items:center;cursor:pointer;
+  }
+  .icon-btn:hover{background:var(--surface-2)}
+  .icon-btn:active{transform:scale(.94)}
+  .icon-btn svg{width:15px;height:15px}
+
+  main{flex:1;min-height:0;display:flex;flex-direction:column}
+
+  .panel{flex:1;min-height:0;display:none;flex-direction:column;overflow-y:auto}
+  .panel.on{display:flex}
+
+  /* ── 客户端请求条 ─────────────────────────────── */
+  .request{
+    margin:14px 20px 0;padding:14px 16px;
+    background:var(--primary-wash);
+    border:1px solid color-mix(in oklch, var(--primary) 20%, transparent);
+    border-radius:var(--r-lg);
+    flex:none;
+  }
+  .req-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .req-tag{
+    font-size:11px;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--primary-ink);font-weight:500;
+  }
+  .req-hint{font-size:12px;color:var(--ink-3);margin-left:auto}
+  .req-fields{display:flex;flex-wrap:wrap;gap:8px}
+  .field{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:5px 9px}
+  .field > label{font-size:11.5px;color:var(--ink-3)}
+  .field select,.field input{
+    appearance:none;border:0;background:transparent;color:var(--ink);
+    font:inherit;font-size:12.5px;padding:1px 0;min-width:0;
+  }
+  .field select{cursor:pointer;padding-right:14px;background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);background-position:calc(100% - 6px) 8px,calc(100% - 2px) 8px;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
+  .field input{width:300px}
+  .field input:focus,.field select:focus{outline:none}
+  .field:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in oklch, var(--primary) 12%, transparent)}
+
+  /* ── 四列 ─────────────────────────────────────── */
+  .grid{
+    flex:none;
+    display:grid;grid-template-columns:repeat(4,minmax(240px,1fr));
+    gap:12px;padding:14px 20px 16px;
+    align-content:start;
+  }
+  .col{
+    background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--r-lg);padding:13px;
+    display:flex;flex-direction:column;gap:10px;
+    min-width:0;
+  }
+  .col-hd{display:flex;align-items:flex-start;gap:9px}
+  .col-dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);margin-top:5px;flex:none}
+  .col-hd h2{margin:0;font-size:13.5px;font-weight:500;letter-spacing:-.01em}
+  .col-meta{font-size:11px;color:var(--ink-3);margin-top:2px;font-variant-numeric:tabular-nums}
+  .st{margin-left:auto;font-size:10.5px;padding:2px 7px;border-radius:20px;white-space:nowrap;font-weight:500}
+  .st.ok{background:var(--ok-wash);color:var(--ok)}
+  .st.warn{background:var(--warn-wash);color:var(--warn)}
+  .st.bad{background:var(--danger-wash);color:var(--danger)}
+
+  .step{border-top:1px solid var(--line-soft);padding-top:9px}
+  .step:first-of-type{border-top:0;padding-top:0}
+  .step-hd{font-size:10.5px;color:var(--ink-3);letter-spacing:.03em;margin-bottom:5px}
+  .kv{font-size:12px;line-height:1.7;color:var(--ink-2);word-break:break-word}
+  .kv code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+    background:var(--surface-2);padding:1px 5px;border-radius:5px;color:var(--ink);
+  }
+  .kv.arrow-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .arrow{color:var(--ink-3)}
+
+  pre.code{
+    margin:0;background:var(--code-bg);border:1px solid var(--line-soft);
+    border-radius:var(--r-sm);padding:8px 9px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;line-height:1.62;color:var(--ink-2);
+    white-space:pre-wrap;word-break:break-word;
+    overflow:auto;
+  }
+  pre.code .k{color:var(--primary-ink)}
+  pre.code .s{color:var(--ok)}
+  pre.code .n{color:var(--warn)}
+
+  .out{border-top:1px solid var(--line-soft);padding-top:9px;margin-top:auto}
+  .out-line{display:flex;align-items:center;gap:7px;font-size:12px}
+  .out-line .tag{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--ink)}
+  .out-line.dim{color:var(--ink-3)}
+  .notice{
+    margin-top:8px;padding:7px 9px;border-radius:var(--r-sm);
+    font-size:11.5px;line-height:1.55;
+    background:var(--ok-wash);color:var(--ok);
+  }
+  .notice.warn{background:var(--warn-wash);color:var(--warn)}
+  .notice.bad{background:var(--danger-wash);color:var(--danger)}
+
+  /* ── 配置视图 ─────────────────────────────────── */
+  .config{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,420px) 1fr;gap:14px;padding:14px 20px 20px;overflow:auto;align-items:start}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px;min-width:0;display:flex;flex-direction:column}
+  .card h3{margin:0 0 4px;font-size:13.5px;font-weight:500}
+  .card p.sub{margin:0 0 14px;font-size:11.5px;color:var(--ink-3);line-height:1.6}
+
+  .cf{margin-bottom:12px}
+  .cf > label{display:block;font-size:11px;color:var(--ink-3);margin-bottom:5px;letter-spacing:.02em}
+  .cf input[type=text],.cf select{
+    width:100%;appearance:none;border:1px solid var(--line);background:var(--surface-2);
+    border-radius:var(--r-sm);padding:7px 9px;font:inherit;font-size:12.5px;color:var(--ink);
+  }
+  .cf select{background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);background-position:calc(100% - 13px) 13px,calc(100% - 9px) 13px;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
+  .cf input:focus,.cf select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in oklch, var(--primary) 12%, transparent)}
+
+  .map{display:grid;grid-template-columns:78px 1fr;gap:7px 9px;align-items:center}
+  .map .mkey{font-size:11.5px;color:var(--ink-3);font-family:ui-monospace,Menlo,monospace}
+  .map input{
+    width:100%;border:1px solid var(--line);background:var(--surface-2);border-radius:6px;
+    padding:5px 8px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--ink);
+  }
+  .map input:focus{outline:none;border-color:var(--primary)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+  .chip{font-size:11px;padding:3px 8px;border-radius:20px;background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line-soft);cursor:pointer}
+  .chip[aria-pressed="true"]{background:var(--primary-wash);border-color:color-mix(in oklch, var(--primary) 30%, transparent);color:var(--primary-ink)}
+  .chip:active{transform:scale(.96)}
+
+  .foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--line-soft);display:flex;gap:8px}
+  .btn{
+    appearance:none;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+    font:inherit;font-size:12.5px;padding:7px 14px;border-radius:9px;cursor:pointer;
+  }
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:oklch(0.99 0 0)}
+  .btn:active{transform:scale(.975)}
+  .btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+  .legend{display:flex;gap:16px;padding:0 20px 4px;font-size:11px;color:var(--ink-3);flex:none}
+
+  /* ── 能力矩阵 ─────────────────────────────────── */
+  .matrix{margin:0 20px 20px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);overflow:hidden;flex:none}
+  .mx-hd{display:flex;align-items:baseline;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line-soft)}
+  .mx-hd h3{margin:0;font-size:12.5px;font-weight:500}
+  .mx-hd span{font-size:11px;color:var(--ink-3)}
+  table.mx{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.mx th{
+    text-align:left;font-weight:400;font-size:10.5px;letter-spacing:.03em;
+    color:var(--ink-3);padding:8px 14px;background:var(--surface-2);
+    border-bottom:1px solid var(--line-soft);white-space:nowrap;
+  }
+  table.mx td{padding:9px 14px;border-bottom:1px solid var(--line-soft);color:var(--ink-2);vertical-align:top}
+  table.mx tr:last-child td{border-bottom:0}
+  table.mx td:first-child{color:var(--ink);font-weight:500;white-space:nowrap}
+  table.mx code{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  .pill{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:20px;margin-right:4px;line-height:1.6}
+  .pill.y{background:var(--ok-wash);color:var(--ok)}
+  .pill.n{background:var(--danger-wash);color:var(--danger)}
+  .pill.w{background:var(--warn-wash);color:var(--warn)}
+  .legend i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px}
+
+  @media (max-width:1180px){
+    .grid{grid-template-columns:repeat(2,minmax(260px,1fr))}
+    .config{grid-template-columns:1fr}
+  }
+  @media (max-width:700px){
+    .grid{grid-template-columns:1fr}
+    .request{margin:10px 12px 0}
+    .grid{padding:10px 12px 16px}
+    .field{flex:1 1 100%;flex-direction:column;align-items:stretch;gap:3px;padding:7px 10px}
+    .field input{width:100%}
+    .field select{width:100%;margin-left:0;text-align:left}
+    header.bar{padding:0 12px;gap:6px}
+    .brand b{font-size:13px}
+    .brand span{display:none}
+    .seg button{padding:5px 9px;font-size:12px}
+    .matrix{margin:0 12px 16px;overflow-x:auto}
+    .req-hint{display:none}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;animation:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="bar">
+    <div class="brand">
+      <b>语音统一层</b>
+      <span>一条请求 · 四家上游 · 一种输出</span>
+    </div>
+    <div class="seg" role="tablist" aria-label="视图">
+      <button role="tab" data-tab="flow" aria-selected="true">链路</button>
+      <button role="tab" data-tab="cfg" aria-selected="false">配置</button>
+    </div>
+    <div class="seg" role="tablist" aria-label="行为">
+      <button role="tab" data-mode="legacy" aria-selected="false">现状</button>
+      <button role="tab" data-mode="unified" aria-selected="true">统一后</button>
+    </div>
+    <button class="icon-btn" id="theme" aria-label="切换主题">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </header>
+
+  <!-- ══════════ 链路视图 ══════════ -->
+  <main>
+    <div class="panel on" id="panel-flow">
+      <section class="request">
+        <div class="req-top">
+          <span class="req-tag">客户端请求</span>
+          <code style="font-size:11.5px;color:var(--primary-ink)">POST /v1/audio/speech</code>
+          <span class="req-hint">只描述要什么，不描述怎么实现</span>
+        </div>
+        <div class="req-fields">
+          <div class="field">
+            <label for="q-text">input</label>
+            <input id="q-text" value="把这段话念出来：欢迎使用 apiduo 语音网关。" />
+          </div>
+          <div class="field">
+            <label for="q-voice">voice</label>
+            <select id="q-voice">
+              <option value="female-warm">female-warm</option>
+              <option value="male-deep">male-deep</option>
+              <option value="narrator">narrator</option>
+              <option value="alloy">alloy</option>
+              <option value="unknown-x">unknown-x</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="q-format">response_format</label>
+            <select id="q-format">
+              <option value="mp3">mp3</option>
+              <option value="wav">wav</option>
+              <option value="flac" selected>flac</option>
+              <option value="opus">opus</option>
+              <option value="pcm">pcm</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="q-speed">speed</label>
+            <select id="q-speed">
+              <option value="1">1.0</option>
+              <option value="1.5">1.5</option>
+              <option value="2.5">2.5</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <div class="legend">
+        <span><i style="background:var(--ok)"></i>归一成功</span>
+        <span><i style="background:var(--warn)"></i>降级或被改写</span>
+        <span><i style="background:var(--danger)"></i>契约被破坏</span>
+      </div>
+
+      <div class="grid" id="grid"></div>
+
+      <section class="matrix">
+        <div class="mx-hd">
+          <h3>能力声明</h3>
+          <span>不在这张表里的，请求期就拦住 —— 不到上游、不静默换格式</span>
+        </div>
+        <table class="mx">
+          <thead>
+            <tr><th>渠道</th><th>response_format</th><th>speed</th><th>音色来源</th><th>上游应答</th><th>计费口径</th></tr>
+          </thead>
+          <tbody id="mx-body"></tbody>
+        </table>
+      </section>
+    </div>
+
+    <!-- ══════════ 配置视图 ══════════ -->
+    <div class="panel" id="panel-cfg">
+      <div class="config">
+        <div class="card">
+          <h3>接一家新上游</h3>
+          <p class="sub">填这张表，不写 Go 代码。只有签名类（AWS）、长连接（火山 ws）、非 JSON 体（Azure SSML）才需要真 adaptor。</p>
+
+          <div class="cf">
+            <label for="c-preset">协议预设</label>
+            <select id="c-preset">
+              <option>通用 REST（custom）</option>
+              <option>MiniMax t2a_v2</option>
+              <option>火山 单向 HTTP</option>
+              <option>ElevenLabs</option>
+              <option>Azure OpenAI</option>
+            </select>
+          </div>
+
+          <div class="cf">
+            <label for="c-path">合成端点</label>
+            <input type="text" id="c-path" value="/v1/text-to-speech/{voice}" />
+          </div>
+
+          <div class="cf">
+            <label for="c-auth">鉴权</label>
+            <select id="c-auth">
+              <option>Bearer {api_key}</option>
+              <option>Header xi-api-key: {api_key}</option>
+              <option>Bearer;{api_key}（火山）</option>
+            </select>
+          </div>
+
+          <div class="cf">
+            <label>字段映射 · canonical → 上游路径</label>
+            <div class="map">
+              <span class="mkey">input</span><input value="text" />
+              <span class="mkey">voice</span><input value="（走 URL）" />
+              <span class="mkey">speed</span><input value="voice_settings.speed" />
+              <span class="mkey">format</span><input value="?output_format" />
+            </div>
+          </div>
+
+          <div class="cf">
+            <label>响应提取</label>
+            <div class="map">
+              <span class="mkey">音频</span><input value="（binary）" />
+              <span class="mkey">用量</span><input value="（无）" />
+            </div>
+          </div>
+
+          <div class="cf">
+            <label>能力声明</label>
+            <div class="chips">
+              <span class="chip" aria-pressed="true">mp3</span>
+              <span class="chip" aria-pressed="true">wav</span>
+              <span class="chip" aria-pressed="false">flac</span>
+              <span class="chip" aria-pressed="false">aac</span>
+              <span class="chip" aria-pressed="true">pcm</span>
+            </div>
+          </div>
+
+          <div class="foot">
+            <button class="btn primary">保存并测试</button>
+            <button class="btn">仅保存</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>生成的上游请求</h3>
+          <p class="sub">同一份配置，六个占位符：<code style="font-family:ui-monospace,Menlo,monospace;font-size:11px">{model} {voice} {format} {speed} {text} {api_key}</code></p>
+          <pre class="code" id="cfg-code"></pre>
+
+          <h3 style="margin-top:18px">落库位置</h3>
+          <p class="sub">不新建渠道类型，挂在渠道的 <code style="font-family:ui-monospace,Menlo,monospace;font-size:11px">settings.audio</code> 上；不配就整条协议层不介入，行为与上游一字不差。</p>
+          <pre class="code" id="cfg-store"></pre>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const CH = [
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    meta: 'gpt-4o-mini-tts · 渠道 7',
+    voices: { 'female-warm': 'nova', 'male-deep': 'onyx', 'narrator': 'fable' },
+    formats: ['mp3','opus','aac','flac','wav','pcm'],
+    speed: [0.25, 4],
+    build: (q, v) => ({
+      url: '/v1/audio/speech',
+      body: { model:'gpt-4o-mini-tts', input:q.text, voice:v, response_format:q.format, speed:Number(q.speed) }
+    }),
+    resp: '流式二进制',
+    usage: (q) => Math.round(q.text.length * 1.4) + ' audio tokens'
+  },
+  {
+    id: 'minimax',
+    name: 'MiniMax',
+    meta: 'speech-2.6-hd · 渠道 12',
+    voices: { 'female-warm': 'female-shaonv', 'male-deep': 'male-qn-jingying', 'narrator': 'male-qn-qingse' },
+    formats: ['mp3','wav','flac','aac','pcm'],
+    speed: [0.5, 2],
+    build: (q, v) => ({
+      url: '/v1/t2a_v2',
+      body: { model:'speech-2.6-hd', text:q.text, voice_setting:{ voice_id:v, speed:Number(q.speed) }, audio_setting:{ format:q.format, sample_rate:32000 }, output_format:'hex' }
+    }),
+    resp: 'JSON · data.audio 是 hex',
+    usage: (q) => q.text.length + ' 字符'
+  },
+  {
+    id: 'volc',
+    name: '火山引擎',
+    meta: 'doubao-tts · 渠道 18',
+    voices: { 'female-warm': 'zh_female_tianmei_mars_bigtts', 'male-deep': 'zh_male_zhibei_mars_bigtts', 'narrator': 'zh_male_wenhao_mars_bigtts' },
+    formats: ['mp3','wav','pcm'],
+    speed: [0.2, 3],
+    build: (q, v) => ({
+      url: '/v1/audio/speech',
+      body: {
+        app:{ appid:'…', token:'…', cluster:'volcano_tts' },
+        user:{ uid:'apiduo' },
+        audio:{ voice_type:v, encoding:q.format, speed_ratio:Number(q.speed), rate:24000 },
+        request:{ reqid:'a7f3', text:q.text, operation:'query' }
+      }
+    }),
+    resp: 'JSON · data 是 base64',
+    usage: (q) => Math.round(q.text.length * 0.06) + ' 秒'
+  },
+  {
+    id: 'el',
+    name: 'ElevenLabs',
+    meta: 'eleven_multilingual_v2 · 渠道 21',
+    voices: { 'female-warm': '21m00Tcm4TlvDq8ikWAM', 'male-deep': 'pNInz6obpgDQGcFmaJgB', 'narrator': 'AZnzlk1XvdvUeBnXmlld' },
+    formats: ['mp3','opus','pcm'],
+    speed: [0.7, 1.2],
+    build: (q, v) => ({
+      url: '/v1/text-to-speech/' + v + '?output_format=' + (q.format === 'mp3' ? 'mp3_44100_128' : q.format === 'opus' ? 'opus_48000_128' : q.format === 'pcm' ? 'pcm_24000' : 'flac_44100'),
+      body: { text:q.text, model_id:'eleven_multilingual_v2', voice_settings:{ stability:0.5, similarity_boost:0.75 } }
+    }),
+    resp: '流式二进制',
+    usage: (q) => q.text.length + ' 字符'
+  }
+];
+
+const el = (id) => document.getElementById(id);
+const mode = () => document.documentElement.dataset.mode;
+
+function hl(obj){
+  return JSON.stringify(obj, null, 2)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>')
+    .replace(/: (\d+(?:\.\d+)?)(,?)$/gm, ': <span class="n">$1</span>$2');
+}
+
+function evalChannel(ch, q, unified){
+  const mapped = ch.voices[q.voice];
+  const voiceId = mapped || q.voice;
+  const out = { voiceId, mapped: !!mapped };
+
+  const fmtOk = ch.formats.includes(q.format);
+  const speedOk = Number(q.speed) >= ch.speed[0] && Number(q.speed) <= ch.speed[1];
+
+  if (unified) {
+    if (!fmtOk) { out.state = 'reject'; out.reason = `本地 400：不支持 ${q.format}`; return out; }
+    if (!speedOk) { out.state = 'reject'; out.reason = `本地 400：speed 需在 ${ch.speed[0]}–${ch.speed[1]}`; return out; }
+    out.state = (!mapped) ? 'warn' : 'ok';
+    return out;
+  }
+
+  if (ch.id === 'minimax' && !mapped) { out.state = 'reject'; out.reason = '上游 400：voice_id 不存在（透传了 OpenAI 音色名）'; return out; }
+  if (ch.id === 'volc' && !fmtOk) { out.state = 'warn'; out.reason = `静默换成 mp3（请求的是 ${q.format}）`; out.silent = 'mp3'; return out; }
+  if (ch.id === 'minimax' && q.format === 'opus') { out.state = 'reject'; out.reason = '上游 400：不支持的格式 opus'; return out; }
+  if (ch.id === 'el' && !fmtOk) { out.state = 'reject'; out.reason = `上游 400：unknown output_format ${q.format}`; return out; }
+  if (ch.id === 'el' && !speedOk) { out.state = 'warn'; out.reason = 'speed 被上游忽略，按 1.0 合成'; return out; }
+  out.state = (!mapped) ? 'warn' : 'ok';
+  if (!mapped) out.reason = '未映射，原样透传';
+  return out;
+}
+
+function render(){
+  const q = { text: el('q-text').value, voice: el('q-voice').value, format: el('q-format').value, speed: el('q-speed').value };
+  const unified = mode() === 'unified';
+  const grid = el('grid');
+  grid.innerHTML = '';
+
+  CH.forEach(ch => {
+    const r = evalChannel(ch, q, unified);
+    const built = ch.build(q, r.voiceId);
+
+    const badge = r.state === 'ok' ? `<span class="st ok">${unified ? '归一' : '原样'}</span>`
+      : r.state === 'warn' ? `<span class="st warn">${unified ? '降级' : '改写'}</span>`
+      : `<span class="st bad">${unified ? '中断' : '上游报错'}</span>`;
+
+    let outHtml = '';
+    if (r.state === 'reject') {
+      outHtml = `<div class="notice bad">${r.reason}</div>`;
+    } else {
+      const tag = built.url.includes('output_format') ? (q.format === 'mp3' ? 'audio/mpeg' : q.format === 'opus' ? 'audio/ogg' : 'audio/pcm') : 'audio/mpeg';
+      const sec = Math.max(1, q.text.length / 4.5);
+      const size = Math.round(sec * 4) + ' KB';
+      outHtml = `<div class="out-line ok"><span class="tag">${tag}</span><span style="color:var(--ink-3)">·</span><span>${size}</span><span style="color:var(--ink-3)">·</span><span style="color:var(--ink-3)">${ch.usage(q)}</span></div>`;
+      if (r.reason) outHtml += `<div class="notice ${r.state === 'warn' ? 'warn' : ''}">${r.reason}</div>`;
+      if (!unified && ch.id === 'minimax') outHtml += `<div class="notice bad">302 跳上游临时链接：会过期、露上游域名、不跟随 302 的客户端拿空</div>`;
+    }
+
+    let respNote = ch.resp;
+    if (!unified && ch.id === 'minimax' && r.state !== 'reject') respNote = '302 → 上游临时 URL（会过期）';
+    if (!unified && ch.id === 'volc' && r.silent) respNote = 'JSON · 内容是 mp3';
+
+    const card = document.createElement('article');
+    card.className = 'col';
+    card.innerHTML = `
+      <div class="col-hd">
+        <span class="col-dot"></span>
+        <div><h2>${ch.name}</h2><div class="col-meta">${ch.meta}</div></div>
+        ${badge}
+      </div>
+      <div class="step">
+        <div class="step-hd">① 音色解析</div>
+        <div class="kv arrow-row"><code>${q.voice}</code><span class="arrow">→</span><code>${r.voiceId}</code></div>
+      </div>
+      <div class="step">
+        <div class="step-hd">② 上游请求</div>
+        <pre class="code">${hl(built.body)}</pre>
+      </div>
+      <div class="step">
+        <div class="step-hd">③ 上游应答</div>
+        <div class="kv">${respNote}</div>
+      </div>
+      <div class="out">
+        <div class="step-hd">④ 交给客户端</div>
+        ${outHtml}
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+/* 能力矩阵：这张表就是「统一」的判据来源 —— 请求期校验读它，前端下拉也读它 */
+const MX = [
+  { name:'OpenAI', all:['mp3','opus','aac','flac','wav','pcm'], none:[], speed:'0.25 – 4.0', voice:'内置 11 个', resp:'二进制流', bill:'output token' },
+  { name:'MiniMax', all:['mp3','wav','flac','aac','pcm'], none:['opus'], speed:'0.5 – 2.0', voice:'voice_id · 需映射', resp:'JSON · hex', bill:'字符' },
+  { name:'火山引擎', all:['mp3','wav','pcm'], none:['aac','flac'], speed:'0.2 – 3.0', voice:'voice_type · 需映射', resp:'JSON · base64', bill:'秒' },
+  { name:'ElevenLabs', all:['mp3','opus','pcm'], none:['wav','flac','aac'], speed:'0.7 – 1.2', voice:'voice_id · 需映射', resp:'二进制流', bill:'字符' }
+];
+
+function renderMatrix(){
+  el('mx-body').innerHTML = MX.map(r => `
+    <tr>
+      <td>${r.name}</td>
+      <td>${r.all.map(f => `<span class="pill y">${f}</span>`).join('')}${r.none.map(f => `<span class="pill n">${f}</span>`).join('')}</td>
+      <td>${r.speed}</td>
+      <td>${r.voice}</td>
+      <td>${r.resp}</td>
+      <td>${r.bill}</td>
+    </tr>`).join('');
+}
+
+/* 配置视图的示意输出 */
+function renderCfg(){
+  const body = {
+    text: '把这段话念出来：欢迎使用 apiduo 语音网关。',
+    model_id: 'eleven_multilingual_v2',
+    voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+  };
+  el('cfg-code').innerHTML = hl({
+    method: 'POST',
+    url: 'https://api.elevenlabs.io/v1/text-to-speech/{voice}?output_format=mp3_44100_128',
+    headers: { 'xi-api-key': '{api_key}' },
+    body
+  });
+  el('cfg-store').innerHTML = hl({
+    settings: {
+      audio: {
+        protocol: 'generic',
+        synthesize: { path: '/v1/text-to-speech/{voice}', content_type: 'json' },
+        mapping: { text: ['text'], voice: [], speed: ['voice_settings','speed'], format: [] },
+        response: { kind: 'binary' },
+        limits: { formats: ['mp3','wav','pcm'], speed_min: 0.7, speed_max: 1.2 }
+      }
+    }
+  });
+}
+
+function openTab(name){
+  document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  el('panel-' + (name === 'flow' ? 'flow' : 'cfg')).classList.add('on');
+}
+
+document.querySelectorAll('[role="tab"][data-tab]').forEach(btn => {
+  btn.addEventListener('click', () => openTab(btn.dataset.tab));
+});
+
+document.querySelectorAll('[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-selected', String(b === btn)));
+    document.documentElement.dataset.mode = btn.dataset.mode;
+    render();
+  });
+});
+
+['q-text','q-voice','q-format','q-speed'].forEach(id => {
+  el(id).addEventListener('input', render);
+  el(id).addEventListener('change', render);
+});
+
+el('theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+});
+
+render();
+renderMatrix();
+renderCfg();
+if (location.hash === '#cfg') openTab('cfg');
+if (location.hash === '#legacy') { document.documentElement.dataset.mode = 'legacy'; render(); }
+</script>
+</body>
+</html>
