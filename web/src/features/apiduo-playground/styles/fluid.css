@@ -107,13 +107,16 @@ For commercial licensing, please contact support@quantumnous.com
     0 24px 64px -32px oklch(0 0 0 / 0.45), 0 1px 2px oklch(0 0 0 / 0.05);
 
   /* The shot column. One number decides the composer, the shelf and the
-     widest a picture may get, so the three cannot drift apart at a breakpoint. */
-  /* 内容列与输入卡同宽：原型里灵感推荐的三张卡正好压在 composer 的左右
-     边界上，700 比 768 窄出来的 68px 会让上下两块看着没对齐。 */
-  --col: 768px;
-  /* Wider than the canvas on purpose: the canvas is a reading column, the
-     composer is a control panel with six controls on one line. */
-  --col-bar: 768px;
+     widest a picture may get, so the three cannot drift apart at a breakpoint.
+     --
+     内容列与输入卡同宽：原型里灵感推荐的三张卡正好压在 composer 的左右边界上，
+     两块不同宽会看着没对齐。
+     --
+     768 是 1440 屏上合适的宽度，但在 2560 的屏上只占三成，两侧各空 880px，
+     输入框像浮在一个空房间中间。用 vw 让它随窗口长，1280 以前锁死在 768
+     （再窄就该换行而不是继续挤），宽屏封顶 1024（再宽一行字就难读了）。 */
+  --col: clamp(768px, 52vw, 1024px);
+  --col-bar: var(--col);
   /* The canvas has to leave room for the app header and the composer under it:
      a 68vh picture plus a 25px meta row overflows a 900px window, and the meta
      then sits clipped at the top of the scroller. Budget the chrome instead of
