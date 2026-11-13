@@ -105,16 +105,16 @@ export function EffectivePricePanel({
       aria-label='生效检查'
       className='border-border/60 bg-muted/30 overflow-hidden rounded-lg border'
     >
-      <div className='flex items-center justify-between gap-2 px-2.5 py-1.5'>
-        <span className='text-[11px] font-medium'>生效检查</span>
-        <span className='text-muted-foreground font-mono text-[10px] tabular-nums'>
+      <div className='flex items-center justify-between gap-2 px-3 py-2'>
+        <span className='text-[12px] font-medium'>生效检查</span>
+        <span className='text-muted-foreground font-mono text-[10.5px] tabular-nums'>
           {hitCount > 0 ? `${hitCount} 条命中` : '无命中'}
         </span>
       </div>
 
       <div
         aria-label='预览分组'
-        className='flex gap-1 overflow-x-auto px-2 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+        className='flex gap-1 overflow-x-auto px-2.5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
         role='tablist'
       >
         {groupList.map((group) => {
@@ -124,7 +124,7 @@ export function EffectivePricePanel({
               key={group}
               aria-selected={active}
               className={cn(
-                'relative flex h-6 shrink-0 items-center gap-1 rounded-full px-2 font-mono text-[11px] transition-colors',
+                'relative flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 font-mono text-[11.5px] transition-colors',
                 active
                   ? 'text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
@@ -155,7 +155,7 @@ export function EffectivePricePanel({
 
       <div
         aria-label={activeGroup}
-        className='border-border/50 bg-background/70 border-t px-2.5 py-2'
+        className='border-border/50 bg-background/70 border-t px-3 py-2.5'
         role='tabpanel'
       >
         {segments.map((segment, index) => {
@@ -186,14 +186,14 @@ export function EffectivePricePanel({
             <div
               key={isRule ? `rule-${segment.index}` : 'base'}
               className={cn(
-                'flex items-start gap-2 py-1.5 first:pt-0 last:pb-0',
+                'flex items-start gap-2 py-2 first:pt-0 last:pb-0',
                 index > 0 && 'border-border/40 border-t',
                 !isRule && 'border-dashed'
               )}
             >
               <span
                 className={cn(
-                  'w-11 shrink-0 font-mono text-[12px] leading-5 font-semibold tabular-nums',
+                  'w-12 shrink-0 font-mono text-[13px] leading-5 font-semibold tabular-nums',
                   isRule ? 'text-primary' : 'text-muted-foreground'
                 )}
               >
@@ -204,12 +204,12 @@ export function EffectivePricePanel({
                 <div className='flex items-center gap-1.5 leading-5'>
                   {isRule ? (
                     <>
-                      <span className='bg-primary/10 text-primary rounded px-1 font-mono text-[10px]'>
+                      <span className='bg-primary/10 text-primary rounded px-1.5 py-0.5 font-mono text-[10.5px]'>
                         第 {segment.index + 1} 行
                       </span>
                       {segment.until > 0 && (
                         <span
-                          className='text-muted-foreground font-mono text-[10px] tabular-nums'
+                          className='text-muted-foreground font-mono text-[10.5px] tabular-nums'
                           title={`${untilToDateValue(segment.until)} 到期`}
                         >
                           至{' '}
@@ -221,7 +221,7 @@ export function EffectivePricePanel({
                       {showsDelta && (
                         <span
                           className={cn(
-                            'shrink-0 font-mono text-[10px] tabular-nums',
+                            'shrink-0 font-mono text-[10.5px] tabular-nums',
                             delta < 0 ? 'text-destructive' : 'text-muted-foreground'
                           )}
                           title='相对该分组倍率的实际变化'
@@ -232,18 +232,18 @@ export function EffectivePricePanel({
                       )}
                     </>
                   ) : (
-                    <span className='bg-muted text-muted-foreground rounded px-1 font-mono text-[10px]'>
+                    <span className='bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-[10.5px]'>
                       组价
                     </span>
                   )}
-                  <span className='text-muted-foreground ml-auto shrink-0 text-[10px] tabular-nums'>
+                  <span className='text-muted-foreground ml-auto shrink-0 text-[10.5px] tabular-nums'>
                     {coverage}
                   </span>
                 </div>
 
                 {isRule && segment.models.length > 0 && (
                   <div
-                    className='text-muted-foreground mt-0.5 truncate font-mono text-[10px]'
+                    className='text-muted-foreground mt-0.5 truncate font-mono text-[10.5px]'
                     title={segment.models.join(', ')}
                   >
                     {segment.models.slice(0, 3).join(' · ')}
@@ -253,7 +253,7 @@ export function EffectivePricePanel({
                 )}
 
                 {!isRule && rules.length === 0 && (
-                  <div className='text-muted-foreground/80 mt-0.5 text-[10px]'>
+                  <div className='text-muted-foreground/80 mt-0.5 text-[10.5px]'>
                     未配置规则，按分组倍率计费
                   </div>
                 )}
@@ -262,11 +262,11 @@ export function EffectivePricePanel({
           )
         })}
 
-        <div className='border-border/40 mt-2 flex items-center gap-1.5 border-t pt-2'>
+        <div className='border-border/40 mt-2.5 flex items-center gap-1.5 border-t pt-2.5'>
           <Search aria-hidden className='text-muted-foreground/70 size-3 shrink-0' />
           <Input
             aria-label='试算模型'
-            className='h-5 flex-1 border-0 bg-transparent px-0 font-mono text-[11px] shadow-none focus-visible:ring-0 dark:bg-transparent'
+            className='h-5 flex-1 border-0 bg-transparent px-0 font-mono text-[11.5px] shadow-none focus-visible:ring-0 dark:bg-transparent'
             list={MODEL_LIST_ID}
             onChange={(event) => setTrialModel(event.target.value)}
             placeholder='试算该分组下的任意模型'
@@ -275,7 +275,7 @@ export function EffectivePricePanel({
           {trialModel.trim() && (
             <output
               aria-label='试算结果'
-              className='flex shrink-0 items-baseline gap-1 font-mono text-[11px] tabular-nums'
+              className='flex shrink-0 items-baseline gap-1 font-mono text-[11.5px] tabular-nums'
             >
               <b
                 className={cn(
@@ -285,7 +285,7 @@ export function EffectivePricePanel({
               >
                 ×{(trial?.rate ?? baseRate).toFixed(2)}
               </b>
-              <span className='text-muted-foreground text-[10px]'>
+              <span className='text-muted-foreground text-[10.5px]'>
                 {trial ? `第 ${trial.index + 1} 行` : '组价'}
               </span>
             </output>

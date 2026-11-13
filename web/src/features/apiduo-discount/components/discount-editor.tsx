@@ -155,7 +155,7 @@ export function DiscountEditor({
   return (
     <div
       data-apiduo={apiduoBlockMark('user:model-discounts')}
-      className='space-y-3'
+      className='space-y-4'
     >
       <datalist id={GROUP_LIST_ID}>
         {groups.map((group) => (
@@ -172,25 +172,25 @@ export function DiscountEditor({
 
       <div className='flex items-start justify-between gap-3'>
         <div className='min-w-0'>
-          <div className='text-sm font-medium'>模型折扣</div>
-          <p className='text-muted-foreground mt-0.5 text-xs leading-relaxed'>
+          <div className='text-[13.5px] font-medium'>模型折扣</div>
+          <p className='text-muted-foreground mt-1 text-[12px] leading-relaxed'>
             从上往下第一条命中即停，不相乘。分组和模型都可写多个（逗号分隔），
             <code className='mx-0.5 font-mono'>*</code>
             表示全部，到期留空表示永久。
           </p>
         </div>
-        <span className='text-muted-foreground shrink-0 font-mono text-[11px] tabular-nums'>
+        <span className='text-muted-foreground shrink-0 font-mono text-[11.5px] tabular-nums'>
           {rules.length}/{MAX_DISCOUNT_RULES}
         </span>
       </div>
 
-      <div className='text-muted-foreground text-[11px]'>
+      <div className='text-muted-foreground text-[11.5px]'>
         分组 {groups.length} 个 · 该用户可用 {usableGroups.length} 个
         {models.length > 0 && ` · 模型候选 ${models.length} 个`}
         {models.length === 0 && ' · 暂无模型（未配置渠道）'}
       </div>
 
-      <div className='hidden grid-cols-[18px_84px_minmax(0,1fr)_52px_100px_52px] items-center gap-1.5 border-b pb-1 text-[11px] text-muted-foreground sm:grid'>
+      <div className='hidden grid-cols-[18px_84px_minmax(0,1fr)_52px_100px_52px] items-center gap-2 border-b pb-1.5 text-[11.5px] text-muted-foreground sm:grid'>
         <span />
         <span>分组</span>
         <span>模型</span>
@@ -217,7 +217,7 @@ export function DiscountEditor({
               key={index}
               className={cn(
                 'grid grid-cols-2 gap-x-2 gap-y-1.5 rounded-lg border p-2',
-                'sm:grid-cols-[18px_84px_minmax(0,1fr)_52px_100px_52px] sm:items-center sm:gap-1.5 sm:rounded-none sm:border-0 sm:border-b sm:border-border/60 sm:p-0 sm:py-1.5',
+                'sm:grid-cols-[18px_84px_minmax(0,1fr)_52px_100px_52px] sm:items-center sm:gap-2 sm:rounded-none sm:border-0 sm:border-b sm:border-border/60 sm:p-0 sm:py-2',
                 (expired || isDead) && 'opacity-50'
               )}
             >
@@ -226,12 +226,12 @@ export function DiscountEditor({
               </span>
 
               <div className='col-span-1 min-w-0'>
-                <span className='text-muted-foreground mb-0.5 block text-[10px] sm:hidden'>
+                <span className='text-muted-foreground mb-1 block text-[10.5px] sm:hidden'>
                   分组
                 </span>
                 <Input
                   aria-label={`第 ${index + 1} 行分组`}
-                  className='h-7 px-1.5 font-mono text-[11px]'
+                  className='h-8 px-2 font-mono text-[12px]'
                   disabled={disabled}
                   list={GROUP_LIST_ID}
                   value={rule.groups}
@@ -242,13 +242,13 @@ export function DiscountEditor({
               </div>
 
               <div className='col-span-1 min-w-0'>
-                <span className='text-muted-foreground mb-0.5 block text-[10px] sm:hidden'>
+                <span className='text-muted-foreground mb-1 block text-[10.5px] sm:hidden'>
                   模型
                 </span>
                 <MultiSelect
                   allowCreate
                   ariaLabel={`第 ${index + 1} 行模型`}
-                  className='min-h-7 px-1 py-0.5 font-mono text-[11px]'
+                  className='min-h-8 px-1.5 py-0.5 font-mono text-[12px]'
                   createLabel='使用「{{value}}」'
                   disabled={disabled}
                   onChange={(values) =>
@@ -267,14 +267,14 @@ export function DiscountEditor({
               </div>
 
               <div className='col-span-1 min-w-0'>
-                <span className='text-muted-foreground mb-0.5 block text-[10px] sm:hidden'>
+                <span className='text-muted-foreground mb-1 block text-[10.5px] sm:hidden'>
                   折扣
                 </span>
                 <div className='relative'>
                   <Input
                     aria-label={`第 ${index + 1} 行折扣，单位折`}
                     className={cn(
-                      'h-7 px-1.5 pr-4 text-[11px] tabular-nums',
+                      'h-8 px-2 pr-4 text-[12px] tabular-nums',
                       diagnosis.errors.rate && 'border-destructive'
                     )}
                     disabled={disabled}
@@ -303,14 +303,14 @@ export function DiscountEditor({
               </div>
 
               <div className='col-span-1 min-w-0'>
-                <span className='text-muted-foreground mb-0.5 block text-[10px] sm:hidden'>
+                <span className='text-muted-foreground mb-1 block text-[10.5px] sm:hidden'>
                   到期
                 </span>
                 <div className='group relative'>
                   <Input
                     aria-label={`第 ${index + 1} 行到期日`}
                     className={cn(
-                      'h-7 px-1 text-[11px] [color-scheme:light] dark:[color-scheme:dark]',
+                      'h-8 px-1.5 text-[12px] [color-scheme:light] dark:[color-scheme:dark]',
                       // 未设到期时把 Chrome 自带的「年/月/日」占位藏掉，
                       // 换成「永久」；聚焦后再露出来，不影响选日期。
                       rule.until === 0 && 'text-transparent focus:text-current'
@@ -369,7 +369,7 @@ export function DiscountEditor({
               </div>
 
               {(rowMessages.length > 0 || expired || isDead) && (
-                <div className='col-span-2 flex flex-wrap gap-x-2 gap-y-0.5 text-[10.5px] leading-tight sm:col-span-6 sm:col-start-2'>
+                <div className='col-span-2 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-tight sm:col-span-6 sm:col-start-2'>
                   {rowMessages.map((message) => (
                     <span
                       key={message}
@@ -401,7 +401,7 @@ export function DiscountEditor({
 
       <div className='flex flex-wrap items-center gap-2'>
         <Button
-          className='h-7 gap-1 px-2 text-[11px]'
+          className='h-8 gap-1 px-2.5 text-[12px]'
           disabled={disabled || rules.length >= MAX_DISCOUNT_RULES}
           onClick={add}
           size='sm'
@@ -412,12 +412,12 @@ export function DiscountEditor({
           添加一行
         </Button>
         {blockingCount > 0 && (
-          <span className='text-destructive text-[11px]'>
+          <span className='text-destructive text-[11.5px]'>
             {blockingCount} 行填写有误，保存会被拒绝
           </span>
         )}
         {rules.length === 0 && (
-          <span className='text-muted-foreground text-[11px]'>
+          <span className='text-muted-foreground text-[11.5px]'>
             没有规则时按分组倍率原价计费
           </span>
         )}
