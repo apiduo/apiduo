@@ -246,6 +246,7 @@ export function DiscountEditor({
                   模型
                 </span>
                 <MultiSelect
+                  allowCreate
                   ariaLabel={`第 ${index + 1} 行模型`}
                   className='min-h-7 px-1 py-0.5 font-mono text-[11px]'
                   createLabel='使用「{{value}}」'

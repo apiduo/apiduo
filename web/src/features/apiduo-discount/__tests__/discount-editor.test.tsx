@@ -87,6 +87,15 @@ describe('DiscountEditor', () => {
     expect(screen.getByText('1/20')).toBeInTheDocument()
   })
 
+  it('允许录入目录里还没有的模型名', async () => {
+    render(<Harness />)
+    const input = screen.getByLabelText('第 1 行模型')
+    await userEvent.type(input, 'zz-not-in-catalog')
+
+    // 没有 allowCreate 时这里只会显示「没有匹配项」，运营无法先配规则后上渠道
+    expect(await screen.findByText(/zz-not-in-catalog/)).toBeInTheDocument()
+  })
+
   it('折扣输入即时换算成倍率', async () => {
     const onChange = vi.fn()
     render(<Harness onChange={onChange} />)
