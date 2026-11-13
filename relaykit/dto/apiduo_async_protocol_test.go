@@ -82,6 +82,11 @@ func TestAdvancedAsyncNormalizedProtocol(t *testing.T) {
 	if (&AdvancedAsyncConfig{Protocol: AdvancedAsyncProtocolImages}).IsImageProtocol() != true {
 		t.Fatal("IsImageProtocol must be true for images")
 	}
+	// 渠道没配 advanced_async 时是 nil：受理回包那条分支会直接调它，
+	// 不能在这里炸掉整个提交。
+	if (*AdvancedAsyncConfig)(nil).IsImageProtocol() != false {
+		t.Fatal("IsImageProtocol must be false on a nil config")
+	}
 }
 
 // 入站路径可以按业务分段：/jimeng/v1/images/generations 与

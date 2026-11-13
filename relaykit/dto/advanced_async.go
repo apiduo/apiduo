@@ -236,7 +236,7 @@ func (c *AdvancedAsyncConfig) NormalizedProtocol() string {
 
 // IsImageProtocol reports whether the channel speaks the built-in Images shape.
 func (c *AdvancedAsyncConfig) IsImageProtocol() bool {
-	return c.NormalizedProtocol() == AdvancedAsyncProtocolImages
+	return c != nil && c.NormalizedProtocol() == AdvancedAsyncProtocolImages
 }
 
 // IsEnabled reports whether the channel carries an async configuration.

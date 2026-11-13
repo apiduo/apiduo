@@ -27,6 +27,9 @@ describe('task log mobile layout', () => {
       TASK_MOBILE_SUMMARY_FIELDS.map((field) => field.id),
       [
         'submit_time',
+        // APIDUO:task-filters:BEGIN
+        'model',
+        // APIDUO:task-filters:END
         'user',
         'plugin',
         'channel_id',

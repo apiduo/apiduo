@@ -265,7 +265,7 @@ func (a *Adaptor) imageProtocolURL(info *relaycommon.RelayInfo) (string, bool, e
 	}
 	route := a.route
 	route.UpstreamPath = a.imageUpstreamPath
-	target, err := buildRouteURL(route, a.converter, info)
+	target, err := buildRouteURL(route, a.converter, info, "", "")
 	if err != nil {
 		return "", true, err
 	}

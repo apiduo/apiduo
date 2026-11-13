@@ -73,29 +73,37 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		})
 	}
 
-	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
-		userId := c.GetInt("id")
-		tokenName := c.GetString("token_name")
-		modelName := c.GetString("original_model")
-		tokenId := c.GetInt("token_id")
-		userGroup := c.GetString("group")
-		other := model.NewLogOther()
-		// APIDUO:client-path:BEGIN
-		// 错误日志同样要回显客户端路径：别名入口已经把 URL.Path 改写成
-		// 内部中继路径，直接读它会显示一个客户端从未用过的地址。
-		appendRequestPath(c, relayInfo, other)
-		// APIDUO:client-path:END
-		other.SetPublic("error_type", err.GetErrorType())
-		other.SetPublic("error_code", err.GetErrorCode())
-		other.SetPublic("status_code", err.StatusCode)
-		AppendRelayLogAdminInfo(c, relayInfo, other)
-		AppendResponseModelLogInfo(relayInfo, other)
-		AppendTaskPluginContextAuditInfo(c, other)
-		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
-		if startTime.IsZero() {
-			startTime = time.Now()
-		}
-		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(upstreamURLs...), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+	RecordRelayErrorLog(c, channelError.ChannelId, err, relayInfo)
+}
+
+// RecordRelayErrorLog writes the error log of a failed relay request when
+// error logs are on. channelId is 0 for a request that reached no channel.
+func RecordRelayErrorLog(c *gin.Context, channelId int, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
+	if !constant.ErrorLogEnabled || !types.IsRecordErrorLog(err) {
+		return
 	}
+	userId := c.GetInt("id")
+	tokenName := c.GetString("token_name")
+	modelName := c.GetString("original_model")
+	tokenId := c.GetInt("token_id")
+	userGroup := c.GetString("group")
+	other := model.NewLogOther()
+	// APIDUO:client-path:BEGIN
+	// 错误日志同样要回显客户端路径：别名入口已经把 URL.Path 改写成
+	// 内部中继路径，直接读它会显示一个客户端从未用过的地址。
+	appendRequestPath(c, relayInfo, other)
+	// APIDUO:client-path:END
+	other.SetPublic("error_type", err.GetErrorType())
+	other.SetPublic("error_code", err.GetErrorCode())
+	other.SetPublic("status_code", err.StatusCode)
+	AppendRelayLogAdminInfo(c, relayInfo, other)
+	appendRequestPluginRecord(relayInfo, other)
+	AppendResponseModelLogInfo(relayInfo, other)
+	AppendTaskPluginContextAuditInfo(c, other)
+	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+	useTimeSeconds := int(time.Since(startTime).Seconds())
+	model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(common.UpstreamAddresses(c)...), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 }
