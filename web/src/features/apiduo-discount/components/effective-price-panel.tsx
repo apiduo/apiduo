@@ -65,6 +65,7 @@ export function EffectivePricePanel({
   const pillLayoutId = useId()
   const [pickedGroup, setPickedGroup] = useState('')
   const [trialModel, setTrialModel] = useState('')
+  const [trialOpen, setTrialOpen] = useState(false)
 
   const groupList = usableGroups.length > 0 ? usableGroups : groups
   const activeGroup = groupList.includes(pickedGroup)
@@ -262,35 +263,49 @@ export function EffectivePricePanel({
           )
         })}
 
-        <div className='border-border/40 mt-2.5 flex items-center gap-1.5 border-t pt-2.5'>
-          <Search aria-hidden className='text-muted-foreground/70 size-3 shrink-0' />
-          <Input
-            aria-label='试算模型'
-            className='h-5 flex-1 border-0 bg-transparent px-0 font-mono text-[11.5px] shadow-none focus-visible:ring-0 dark:bg-transparent'
-            list={MODEL_LIST_ID}
-            onChange={(event) => setTrialModel(event.target.value)}
-            placeholder='试算该分组下的任意模型'
-            value={trialModel}
-          />
-          {trialModel.trim() && (
-            <output
-              aria-label='试算结果'
-              className='flex shrink-0 items-baseline gap-1 font-mono text-[11.5px] tabular-nums'
-            >
-              <b
-                className={cn(
-                  'font-semibold',
-                  trial ? 'text-primary' : 'text-muted-foreground'
-                )}
+        {trialOpen || trialModel ? (
+          <div className='border-border/40 mt-2.5 flex items-center gap-1.5 border-t pt-2.5'>
+            <Search aria-hidden className='text-muted-foreground/70 size-3 shrink-0' />
+            <Input
+              aria-label='试算模型'
+              autoFocus={trialOpen}
+              className='h-5 flex-1 border-0 bg-transparent px-0 font-mono text-[11.5px] shadow-none focus-visible:ring-0 dark:bg-transparent'
+              list={MODEL_LIST_ID}
+              onChange={(event) => setTrialModel(event.target.value)}
+              placeholder='试算该分组下的任意模型'
+              value={trialModel}
+            />
+            {trialModel.trim() && (
+              <output
+                aria-label='试算结果'
+                className='flex shrink-0 items-baseline gap-1 font-mono text-[11.5px] tabular-nums'
               >
-                ×{(trial?.rate ?? baseRate).toFixed(2)}
-              </b>
-              <span className='text-muted-foreground text-[10.5px]'>
-                {trial ? `第 ${trial.index + 1} 行` : '组价'}
-              </span>
-            </output>
-          )}
-        </div>
+                <b
+                  className={cn(
+                    'font-semibold',
+                    trial ? 'text-primary' : 'text-muted-foreground'
+                  )}
+                >
+                  ×{(trial?.rate ?? baseRate).toFixed(2)}
+                </b>
+                <span className='text-muted-foreground text-[10.5px]'>
+                  {trial ? `第 ${trial.index + 1} 行` : '组价'}
+                </span>
+              </output>
+            )}
+          </div>
+        ) : (
+          <div className='border-border/40 mt-2.5 border-t pt-2.5'>
+            <button
+              className='text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-[11px] transition-colors'
+              onClick={() => setTrialOpen(true)}
+              type='button'
+            >
+              <Search aria-hidden className='size-3' />
+              试算某个模型
+            </button>
+          </div>
+        )}
       </div>
     </section>
   )

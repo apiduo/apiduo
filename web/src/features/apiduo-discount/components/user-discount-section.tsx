@@ -65,7 +65,7 @@ export const UserDiscountSection = forwardRef<
   const [loading, setLoading] = useState(false)
   const loaded = useRef<DiscountRule[]>([])
 
-  const { models, groupRatio } = usePricingData(enabled)
+  const { models, groupRatio, isLoading } = usePricingData(enabled)
   const modelNames = models.map((model) => model.model_name)
 
   useEffect(() => {
@@ -129,6 +129,7 @@ export const UserDiscountSection = forwardRef<
       usableGroups={usableGroups}
       groupRatios={groupRatio}
       models={modelNames}
+      modelsLoading={enabled && isLoading}
     />
   )
 })

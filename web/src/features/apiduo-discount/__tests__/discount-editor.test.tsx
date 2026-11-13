@@ -40,10 +40,12 @@ function Harness({
   onChange,
   modelNames = models,
   initial = initialRules,
+  modelsLoading,
 }: {
   onChange?: (rules: DiscountRule[]) => void
   modelNames?: string[]
   initial?: DiscountRule[]
+  modelsLoading?: boolean
 }) {
   const [rules, setRules] = useState<DiscountRule[]>(initial)
   return (
@@ -57,6 +59,7 @@ function Harness({
       usableGroups={usableGroups}
       groupRatios={groupRatios}
       models={modelNames}
+      modelsLoading={modelsLoading}
     />
   )
 }
@@ -225,9 +228,24 @@ describe('DiscountEditor', () => {
     expect(screen.getByText(/不在目录里，确认没拼错/)).toBeInTheDocument()
   })
 
+  it('试算默认收起，点开才出现输入框', async () => {
+    render(<Harness />)
+    expect(screen.queryByLabelText('试算模型')).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: '试算某个模型' }))
+    expect(screen.getByLabelText('试算模型')).toBeInTheDocument()
+  })
+
+  it('模型候选还在拉取时不谎报「未配置渠道」', () => {
+    render(<Harness modelsLoading />)
+    expect(screen.getByText(/模型候选加载中/)).toBeInTheDocument()
+    expect(screen.queryByText(/暂无模型/)).toBeNull()
+  })
+
   it('试算只针对当前分组，命中即停', async () => {
     render(<Harness />)
     await userEvent.click(screen.getByRole('tab', { name: 'vip' }))
+    await userEvent.click(screen.getByRole('button', { name: '试算某个模型' }))
     await userEvent.type(screen.getByLabelText('试算模型'), 'gpt-4o')
 
     const result = screen.getByRole('status', { name: '试算结果' })

@@ -55,6 +55,8 @@ export type DiscountEditorProps = {
   groupRatios: Record<string, number>
   /** 模型名候选 */
   models: string[]
+  /** 定价还在拉取：此时不能断言「暂无模型」 */
+  modelsLoading?: boolean
   disabled?: boolean
 }
 
@@ -69,6 +71,7 @@ export function DiscountEditor({
   usableGroups,
   groupRatios,
   models,
+  modelsLoading = false,
   disabled = false,
 }: DiscountEditorProps) {
   // 「折」的输入草稿：受控 input 直接回写数字会吃掉用户正在输入的 "7."。
@@ -118,6 +121,10 @@ export function DiscountEditor({
   )
 
   const blockingCount = diagnoses.filter(hasBlockingError).length
+
+  let modelHint = ' · 暂无模型（未配置渠道）'
+  if (modelsLoading) modelHint = ' · 模型候选加载中…'
+  else if (models.length > 0) modelHint = ` · 模型候选 ${models.length} 个`
 
   const modelOptions = useMemo(
     () => [
@@ -186,8 +193,7 @@ export function DiscountEditor({
 
       <div className='text-muted-foreground text-[11.5px]'>
         分组 {groups.length} 个 · 该用户可用 {usableGroups.length} 个
-        {models.length > 0 && ` · 模型候选 ${models.length} 个`}
-        {models.length === 0 && ' · 暂无模型（未配置渠道）'}
+        {modelHint}
       </div>
 
       <div className='hidden grid-cols-[18px_84px_minmax(0,1fr)_52px_96px_64px] items-center gap-2 border-b pb-1.5 text-[11.5px] text-muted-foreground sm:grid'>
