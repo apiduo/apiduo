@@ -36,8 +36,16 @@ const initialRules: DiscountRule[] = [
 ]
 
 /** 受控组件的测试宿主：让 onChange 真的回写，才能验证排序/删除后的渲染。 */
-function Harness({ onChange }: { onChange?: (rules: DiscountRule[]) => void }) {
-  const [rules, setRules] = useState<DiscountRule[]>(initialRules)
+function Harness({
+  onChange,
+  modelNames = models,
+  initial = initialRules,
+}: {
+  onChange?: (rules: DiscountRule[]) => void
+  modelNames?: string[]
+  initial?: DiscountRule[]
+}) {
+  const [rules, setRules] = useState<DiscountRule[]>(initial)
   return (
     <DiscountEditor
       rules={rules}
@@ -48,7 +56,7 @@ function Harness({ onChange }: { onChange?: (rules: DiscountRule[]) => void }) {
       groups={groups}
       usableGroups={usableGroups}
       groupRatios={groupRatios}
-      models={models}
+      models={modelNames}
     />
   )
 }
@@ -59,8 +67,24 @@ describe('DiscountEditor', () => {
     expect(screen.getByText('模型折扣')).toBeInTheDocument()
     expect(screen.getByText('3/20')).toBeInTheDocument()
     expect(screen.getByLabelText('第 1 行分组')).toHaveValue('vip')
-    expect(screen.getByLabelText('第 1 行模型')).toHaveValue('gpt-4o')
+    // 模型列是搜索式多选：一个值时直接显示名字，多值时显示首个 + 计数
+    expect(screen.getByText('gpt-4o')).toBeInTheDocument()
+    expect(screen.getAllByText('全部模型').length).toBeGreaterThan(0)
     expect(screen.getByLabelText('第 1 行折扣，单位折')).toHaveValue('7')
+  })
+
+  it('模型列用一行摘要代替逗号串', () => {
+    render(
+      <Harness
+        initial={[
+          { groups: 'vip', models: 'gpt-4o, claude-3.7', rate: 0.7, until: 0 },
+        ]}
+      />
+    )
+
+    expect(screen.getByText('gpt-4o +1')).toBeInTheDocument()
+    expect(screen.queryByText('gpt-4o, claude-3.7')).toBeNull()
+    expect(screen.getByText('1/20')).toBeInTheDocument()
   })
 
   it('折扣输入即时换算成倍率', async () => {
@@ -116,46 +140,102 @@ describe('DiscountEditor', () => {
     expect(screen.queryByText(/保存会被拒绝/)).toBeNull()
   })
 
-  it('兜底行被移到最前面后，其余行标记为永不命中', async () => {
-    render(<Harness />)
-    // 真实规则：把一条 */* 顶到最前面
-    const groupInput = screen.getByLabelText('第 1 行分组')
-    await userEvent.clear(groupInput)
-    await userEvent.type(groupInput, '*')
-    const modelInput = screen.getByLabelText('第 1 行模型')
-    await userEvent.clear(modelInput)
-    await userEvent.type(modelInput, '*')
+  it('兜底行被顶到最前面时，后面两行都标记为永不命中', () => {
+    render(
+      <Harness
+        initial={[
+          { groups: '*', models: '*', rate: 0.95, until: 0 },
+          { groups: 'vip', models: 'gpt-4o', rate: 0.7, until: 0 },
+          { groups: 'vip', models: '*', rate: 0.8, until: 0 },
+          { groups: 'svip', models: '*', rate: 0.9, until: 0 },
+        ]}
+      />
+    )
 
-    // 第 1 行现在覆盖一切：第 2 行（vip）被截断，标记为死行。
-    // 第 3 行是 svip，该用户本来就用不到，走的是「用不到」警告——
+    // 第 1 行覆盖一切：点名 gpt-4o 的行和 vip 兜底行都轮不到。
+    // 第 4 行是 svip，该用户本来就用不到，走的是「用不到」警告——
     // 两种失效原因分开提示，运营才知道该调顺序还是该换组。
-    expect(screen.getAllByText('被前面的行完全盖住，永不命中')).toHaveLength(1)
+    expect(screen.getAllByText('被前面的行完全盖住，永不命中')).toHaveLength(2)
     expect(
       screen.getByText('该用户用不到「svip」，这条永不命中')
     ).toBeInTheDocument()
   })
 
-  it('预览显示命中的行号，未命中显示组价', () => {
+  it('默认组没有规则命中时，生效检查只报一段组价', () => {
     render(<Harness />)
-    const preview = screen.getByText(/实际生效/).parentElement as HTMLElement
+    const panel = screen.getByRole('region', { name: '生效检查' })
 
-    // vip/gpt-4o 命中第 1 行
-    expect(within(preview).getAllByText('第 1 行').length).toBeGreaterThan(0)
-    // svip 组价 0.80（组倍率），且该用户用不到 svip 时仍展示基线
-    expect(within(preview).getAllByText('0.80').length).toBeGreaterThan(0)
+    expect(within(panel).getByText('组价')).toBeInTheDocument()
+    expect(within(panel).getByText('×1.00')).toBeInTheDocument()
+    expect(within(panel).getByText('全部 3 个模型')).toBeInTheDocument()
+    expect(within(panel).queryByText('第 1 行')).toBeNull()
   })
 
-  it('试算器对任意组合给出结果', async () => {
+  it('切到某个分组后，按「点名模型 + 兜底」分段', async () => {
     render(<Harness />)
-    const groupInput = screen.getByLabelText('试算分组')
-    const modelInput = screen.getByLabelText('试算模型')
+    await userEvent.click(screen.getByRole('tab', { name: 'vip' }))
 
-    await userEvent.type(groupInput, 'vip')
-    await userEvent.type(modelInput, 'gpt-4o')
+    const panel = screen.getByRole('region', { name: '生效检查' })
+    // 第 1 行点名 gpt-4o，第 2 行 * 收走其余全部，因此没有组价段
+    expect(within(panel).getByText('第 1 行')).toBeInTheDocument()
+    expect(within(panel).getByText('×0.70')).toBeInTheDocument()
+    expect(within(panel).getByText('第 2 行')).toBeInTheDocument()
+    expect(within(panel).getByText('×0.80')).toBeInTheDocument()
+    expect(within(panel).queryByText('组价')).toBeNull()
+    // vip 组价 0.90：7 折实际是 -22.2%，不是名义上的 -30%
+    expect(within(panel).getByText('较组价 -22.2%')).toBeInTheDocument()
+    expect(within(panel).getByText('较组价 -11.1%')).toBeInTheDocument()
+  })
 
-    // vip/gpt-4o → 第 1 行 0.70（预览区也会出现同样的值与行号）
-    expect(screen.getAllByText('第 1 行').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('0.70').length).toBeGreaterThan(0)
+  it('规则折后仍高于组价时，标出涨价幅度', async () => {
+    render(
+      <Harness initial={[{ groups: 'vip', models: '*', rate: 0.95, until: 0 }]} />
+    )
+    await userEvent.click(screen.getByRole('tab', { name: 'vip' }))
+
+    const panel = screen.getByRole('region', { name: '生效检查' })
+    // 名义上「9.5 折」，对组价 0.90 的用户其实是涨价 5.6%
+    expect(within(panel).getByText('较组价 +5.6%')).toBeInTheDocument()
+  })
+
+  it('涨价的行内提示与面板数字一致', () => {
+    render(
+      <Harness initial={[{ groups: 'vip', models: '*', rate: 0.95, until: 0 }]} />
+    )
+    expect(
+      screen.getByText('「vip」组价 0.90，这条 0.95 是涨价 5.6%')
+    ).toBeInTheDocument()
+  })
+
+  it('模型名拼错时提示不在目录里', () => {
+    render(
+      <Harness
+        initial={[{ groups: 'vip', models: 'gpt-4o-mini2', rate: 0.8, until: 0 }]}
+      />
+    )
+    expect(screen.getByText(/不在目录里，确认没拼错/)).toBeInTheDocument()
+  })
+
+  it('试算只针对当前分组，命中即停', async () => {
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('tab', { name: 'vip' }))
+    await userEvent.type(screen.getByLabelText('试算模型'), 'gpt-4o')
+
+    const result = screen.getByRole('status', { name: '试算结果' })
+    expect(within(result).getByText('×0.70')).toBeInTheDocument()
+    expect(within(result).getByText('第 1 行')).toBeInTheDocument()
+  })
+
+  it('1000 个模型时预览仍只按规则分段，不逐模型铺开', () => {
+    const many = Array.from({ length: 1000 }, (_, index) => `model-${index}`)
+    render(<Harness modelNames={many} />)
+
+    const panel = screen.getByRole('region', { name: '生效检查' })
+    expect(within(panel).getByText('全部 1000 个模型')).toBeInTheDocument()
+    // 候选模型全部进 datalist，不再被 slice(0, 200) 静默截断
+    expect(
+      document.querySelectorAll('#apiduo-discount-models option').length
+    ).toBe(1001)
   })
 
   it('行容器带 apiduo 标识', () => {

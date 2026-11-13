@@ -2,10 +2,17 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	141
-blocks	422
-added	4032
-deleted	219
+files	142
+blocks	426
+added	4054
+deleted	221
+
+# 2026-11-13 20:2x 用户折扣「生效检查」改造：files 141->142、blocks 422->426、
+# added 4032->4054、deleted 219->221。全部来自 web/src/components/multi-select.tsx：
+# 新增 ariaLabel / popupClassName 两个可选 props，并让 chips input 的 aria-label 与
+# 下拉容器各引用一次。这是既有共享组件的 API 面，无法挪进新文件（复制一份 480 行的
+# 组件维护成本更高），所以按约定显式上调一次预算，其余改动都在 apiduo-discount/
+# 自建文件里，不计入合并面。
 
 # 2026-11-13 18:2x 合并上游 c9c6da27（v1.0.0-rc.51，2 个提交）后复核：
 # 141/422/4032/219 与 b20e0566 时完全一致，未跑 -update 改动数字。

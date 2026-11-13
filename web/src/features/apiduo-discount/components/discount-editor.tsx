@@ -19,29 +19,30 @@ For commercial licensing, please contact support@quantumnous.com
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
 import { cn } from '@/lib/utils'
 
+import { GROUP_LIST_ID, MODEL_LIST_ID } from '../lib/dom-ids'
 import {
-  collectProbeModels,
   dateValueToUntil,
   diagnoseRule,
   findDeadRows,
   hasBlockingError,
   isExpired,
-  OTHER_MODEL,
   rateToZhe,
-  resolveDiscount,
   splitList,
   untilToDateValue,
   zheToRate,
 } from '../lib/match'
+import {
+  mergeModelSelection,
+  selectionSummary,
+} from '../lib/model-selection'
 import { MAX_DISCOUNT_RULES, type DiscountRule } from '../types'
-
-const GROUP_LIST_ID = 'apiduo-discount-groups'
-const MODEL_LIST_ID = 'apiduo-discount-models'
+import { EffectivePricePanel } from './effective-price-panel'
 
 export type DiscountEditorProps = {
   rules: DiscountRule[]
@@ -61,10 +62,6 @@ function newRule(defaultGroup: string): DiscountRule {
   return { groups: defaultGroup || '*', models: '*', rate: 0.8, until: 0 }
 }
 
-function modelLabel(model: string): string {
-  return model === OTHER_MODEL ? '其他模型' : model
-}
-
 export function DiscountEditor({
   rules,
   onChange,
@@ -76,58 +73,59 @@ export function DiscountEditor({
 }: DiscountEditorProps) {
   // 「折」的输入草稿：受控 input 直接回写数字会吃掉用户正在输入的 "7."。
   const [rateDrafts, setRateDrafts] = useState<Record<number, string>>({})
-  const [trialGroup, setTrialGroup] = useState('')
-  const [trialModel, setTrialModel] = useState('')
 
   const nowSeconds = Math.floor(Date.now() / 1000)
-  const probes = useMemo(
-    () => collectProbeModels(rules, models),
-    [rules, models]
-  )
+  const modelSet = useMemo(() => new Set(models), [models])
 
   const deadRows = useMemo(
-    () => findDeadRows(rules, usableGroups, probes, nowSeconds),
-    // probes 由 rules 派生，只需跟 rules/usableGroups 走
+    () => findDeadRows(rules, usableGroups, nowSeconds),
+    // nowSeconds 只是时间基线，随渲染变化没有意义；按规则与可用分组重算即可
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rules, usableGroups, models]
+    [rules, usableGroups]
   )
 
   const diagnoses = useMemo(
     () =>
-      rules.map((rule) =>
+      rules.map((rule, index) =>
         diagnoseRule(rule, {
           knownGroups: groups,
           usableGroups,
+          knownModels: modelSet,
+          groupRatios,
+          nowSeconds,
+          dead: deadRows[index] === true,
           messages: {
             groupsRequired: '填分组，或 * 表示全部',
             modelsRequired: '填模型，或 * 表示全部',
             rateRange: '折扣要在 1–10 折之间',
             groupUnknown: (group) => `分组「${group}」不存在`,
             groupUnusable: (group) => `该用户用不到「${group}」，这条永不命中`,
+            modelUnknown: (list) =>
+              `模型「${list.slice(0, 2).join('、')}」${
+                list.length > 2 ? ` 等 ${list.length} 个` : ''
+              }不在目录里，确认没拼错`,
+            priceIncrease: (group, baseRatio, rate) =>
+              `「${group}」组价 ${baseRatio.toFixed(2)}，这条 ${rate.toFixed(
+                2
+              )} 是涨价 ${((rate / baseRatio - 1) * 100).toFixed(1)}%`,
+            globalScope: '对全部分组、全部模型生效，含以后新增的模型',
           },
         })
       ),
-    [rules, groups, usableGroups]
+    // nowSeconds 只是时间基线，随渲染变化没有意义；按规则与可用分组重算即可
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rules, groups, usableGroups, modelSet, groupRatios, deadRows]
   )
 
   const blockingCount = diagnoses.filter(hasBlockingError).length
 
-  const previewGroups = useMemo(() => {
-    const base = usableGroups.length > 0 ? usableGroups : groups
-    const named = rules.flatMap((rule) =>
-      splitList(rule.groups).filter((group) => group !== '*')
-    )
-    const merged = [...new Set([...named, ...base])]
-    return merged.slice(0, 4)
-  }, [rules, usableGroups, groups])
-
-  const fallbackTrialGroup = previewGroups[0] ?? ''
-  const activeTrialGroup = trialGroup || fallbackTrialGroup
-  const activeTrialModel = trialModel || probes[0] || ''
-  const trialHit = activeTrialGroup
-    ? resolveDiscount(rules, activeTrialGroup, activeTrialModel, nowSeconds)
-    : null
-  const trialBase = groupRatios[activeTrialGroup] ?? 1
+  const modelOptions = useMemo(
+    () => [
+      { label: '全部模型（*）', value: '*' },
+      ...models.map((model) => ({ label: model, value: model })),
+    ],
+    [models]
+  )
 
   const update = (index: number, patch: Partial<DiscountRule>) => {
     onChange(rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)))
@@ -166,7 +164,7 @@ export function DiscountEditor({
         <option value='*' />
       </datalist>
       <datalist id={MODEL_LIST_ID}>
-        {models.slice(0, 200).map((model) => (
+        {models.map((model) => (
           <option key={model} value={model} />
         ))}
         <option value='*' />
@@ -206,6 +204,7 @@ export function DiscountEditor({
           const diagnosis = diagnoses[index]
           const expired = isExpired(rule, nowSeconds)
           const isDead = deadRows[index] && !hasBlockingError(diagnosis)
+          const selectedModels = splitList(rule.models)
           const rowMessages = [
             ...(diagnosis.errors.groups ? [diagnosis.errors.groups] : []),
             ...(diagnosis.errors.models ? [diagnosis.errors.models] : []),
@@ -246,15 +245,23 @@ export function DiscountEditor({
                 <span className='text-muted-foreground mb-0.5 block text-[10px] sm:hidden'>
                   模型
                 </span>
-                <Input
-                  aria-label={`第 ${index + 1} 行模型`}
-                  className='h-7 px-1.5 font-mono text-[11px]'
+                <MultiSelect
+                  ariaLabel={`第 ${index + 1} 行模型`}
+                  className='min-h-7 px-1 py-0.5 font-mono text-[11px]'
+                  createLabel='使用「{{value}}」'
                   disabled={disabled}
-                  list={MODEL_LIST_ID}
-                  value={rule.models}
-                  onChange={(event) =>
-                    update(index, { models: event.target.value })
+                  onChange={(values) =>
+                    update(index, {
+                      models: mergeModelSelection(rule.models, values),
+                    })
                   }
+                  options={modelOptions}
+                  placeholder='模型或 * 表示全部'
+                  popupClassName='w-[min(22rem,calc(100vw-2rem))]'
+                  renderSelectedSummary={
+                    selectedModels.length > 0 ? selectionSummary : undefined
+                  }
+                  selected={selectedModels}
                 />
               </div>
 
@@ -415,90 +422,14 @@ export function DiscountEditor({
         )}
       </div>
 
-      {previewGroups.length > 0 && (
-        <div className='bg-muted/40 space-y-1.5 rounded-lg p-2.5'>
-          <div className='text-muted-foreground text-[11px]'>
-            实际生效（按该用户可用分组，自动算，防止配错）
-          </div>
-          {previewGroups.map((group) => {
-            const base = groupRatios[group] ?? 1
-            return (
-              <div key={group} className='flex flex-wrap items-center gap-1.5'>
-                <span className='w-16 shrink-0 truncate font-mono text-[11px]'>
-                  {group}
-                </span>
-                {probes.map((model) => {
-                  const hit = resolveDiscount(rules, group, model, nowSeconds)
-                  return (
-                    <span
-                      key={model}
-                      className='bg-background inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10.5px]'
-                    >
-                      <span className='text-muted-foreground max-w-24 truncate font-mono'>
-                        {modelLabel(model)}
-                      </span>
-                      <b
-                        className={cn(
-                          'font-mono tabular-nums',
-                          hit ? 'text-primary' : 'text-muted-foreground'
-                        )}
-                      >
-                        {hit ? hit.rate.toFixed(2) : base.toFixed(2)}
-                      </b>
-                      {hit ? (
-                        <span className='text-muted-foreground'>
-                          第 {hit.index + 1} 行
-                        </span>
-                      ) : (
-                        <span className='text-muted-foreground'>组价</span>
-                      )}
-                    </span>
-                  )
-                })}
-              </div>
-            )
-          })}
-          <div className='border-t pt-1.5'>
-            <div className='text-muted-foreground mb-1 text-[11px]'>
-              试算任意组合
-            </div>
-            <div className='flex flex-wrap items-center gap-1.5'>
-              <Input
-                aria-label='试算分组'
-                className='h-6 w-24 px-1.5 font-mono text-[11px]'
-                list={GROUP_LIST_ID}
-                placeholder={fallbackTrialGroup || '分组'}
-                value={trialGroup}
-                onChange={(event) => setTrialGroup(event.target.value)}
-              />
-              <Input
-                aria-label='试算模型'
-                className='h-6 min-w-32 flex-1 px-1.5 font-mono text-[11px]'
-                list={MODEL_LIST_ID}
-                placeholder={
-                  activeTrialModel === OTHER_MODEL ? '其他模型' : activeTrialModel
-                }
-                value={trialModel}
-                onChange={(event) => setTrialModel(event.target.value)}
-              />
-              <span className='text-[11px]'>
-                →{' '}
-                <b
-                  className={cn(
-                    'font-mono tabular-nums',
-                    trialHit ? 'text-primary' : 'text-muted-foreground'
-                  )}
-                >
-                  {trialHit ? trialHit.rate.toFixed(2) : trialBase.toFixed(2)}
-                </b>{' '}
-                <span className='text-muted-foreground'>
-                  {trialHit ? `第 ${trialHit.index + 1} 行` : '组价'}
-                </span>
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      <EffectivePricePanel
+        groupRatios={groupRatios}
+        groups={groups}
+        models={models}
+        nowSeconds={nowSeconds}
+        rules={rules}
+        usableGroups={usableGroups}
+      />
     </div>
   )
 }

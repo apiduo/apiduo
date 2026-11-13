@@ -69,8 +69,24 @@ interface MultiSelectProps {
   createLabel?: string
   /** Empty state text. Defaults to "No matching items". */
   emptyText?: string
+  /* APIDUO:multi-select:BEGIN */
+  /**
+   * Extra classes for the dropdown popup. Needed when the trigger sits in a
+   * narrow cell: the default popup tracks the anchor width, which truncates
+   * long option labels.
+   */
+  popupClassName?: string
+  /* APIDUO:multi-select:END */
   /** Optional `id` to wire labels/aria-describedby to the input. */
   id?: string
+  /* APIDUO:multi-select:BEGIN */
+  /**
+   * Accessible name for the search input. Falls back to the placeholder, which
+   * is wrong when the placeholder is a hint rather than a label (e.g. inside a
+   * table row that needs "row 3 models").
+   */
+  ariaLabel?: string
+  /* APIDUO:multi-select:END */
   /** Disable the entire control. */
   disabled?: boolean
   /**
@@ -403,6 +419,7 @@ export function MultiSelect(props: MultiSelectProps) {
             )
           }}
         </ComboboxValue>
+        {/* APIDUO:multi-select:BEGIN */}
         <ComboboxChipsInput
           id={props.id}
           placeholder={
@@ -412,11 +429,13 @@ export function MultiSelect(props: MultiSelectProps) {
           }
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          aria-label={placeholder}
+          aria-label={props.ariaLabel ?? placeholder}
         />
+        {/* APIDUO:multi-select:END */}
       </ComboboxChips>
 
-      <ComboboxContent anchor={chipsAnchorRef}>
+      {/* APIDUO:multi-select:BEGIN */}
+      <ComboboxContent anchor={chipsAnchorRef} className={props.popupClassName}>
         <ComboboxList>
           <ComboboxCollection>
             {(item: string) => {
@@ -475,6 +494,7 @@ export function MultiSelect(props: MultiSelectProps) {
           {props.emptyText ?? t('No matching items')}
         </ComboboxEmpty>
       </ComboboxContent>
+      {/* APIDUO:multi-select:END */}
     </Combobox>
   )
 }
