@@ -253,7 +253,14 @@ func TraceIDForLog(c *gin.Context, requestID string) string {
 		}
 		return col.traceID
 	}
+	// No collector means nothing will ever emit this span — tracing is off,
+	// the host is unset, or the request bypassed Relay. Handing out an id in
+	// that window writes a link the console can never resolve; the
+	// pre-export rows on the production gateway carried exactly such dead ids.
 	conf := current()
+	if !conf.Enabled || conf.Host == "" {
+		return ""
+	}
 	rates, excluded := conf.Policy.Resolve("", nowIn(conf))
 	if excluded || !sampleByTrace(TraceID(requestID), "meta", rates.Metadata) {
 		return ""

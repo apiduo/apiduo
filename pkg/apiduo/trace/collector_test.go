@@ -378,3 +378,38 @@ func TestLiftInlineImagesCapsAtTheUploadLimit(t *testing.T) {
 		t.Error("overflow marker missing — the extra pictures vanished silently")
 	}
 }
+
+// A trace id written into the usage log is a promise the console renders a
+// link against. When the exporter is off there is no span to link to, so the
+// fallback must stay silent — otherwise every row written before LANGFUSE_*
+// was configured keeps a dead id forever.
+func TestTraceIDForLogStaysEmptyWhenExporterIsOff(t *testing.T) {
+	disabled := testConfig("http://collector.test")
+	disabled.Enabled = false
+	noHost := testConfig("")
+	for _, tc := range []struct {
+		name string
+		conf *Config
+	}{
+		{name: "disabled", conf: disabled},
+		{name: "no host", conf: noHost},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setConfig(tc.conf)
+			t.Cleanup(func() { setConfig(testConfig("http://collector.test")) })
+			if got := TraceIDForLog(newTestContext(t), "req-1"); got != "" {
+				t.Fatalf("trace id handed out while exporter is off: %q", got)
+			}
+		})
+	}
+}
+
+// With the exporter on, the collector-less fallback (RecordConsume paths that
+// never entered Relay) still reports the same id the span will carry.
+func TestTraceIDForLogKeepsIDWhenExporterIsOn(t *testing.T) {
+	setConfig(testConfig("http://collector.test"))
+	t.Cleanup(func() { setConfig(testConfig("http://collector.test")) })
+	if got, want := TraceIDForLog(newTestContext(t), "req-1"), TraceID("req-1"); got != want {
+		t.Fatalf("fallback id: got %q want %q", got, want)
+	}
+}
