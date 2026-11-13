@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>用户并发治理 · 产品原型与方案评估</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --surface:#ffffff; --surface-2:#fafbfd; --border:#e2e6ed;
+    --text:#1b2431; --text-2:#5d6b7f; --text-3:#8a97a8;
+    --primary:#2563eb; --primary-soft:#eaf1ff; --teal:#0f766e; --teal-soft:#e6f4f2;
+    --amber:#b45309; --amber-soft:#fdf3e3; --red:#b91c1c; --red-soft:#fdecec;
+    --green:#15803d; --green-soft:#e9f6ed;
+    --grid:#e9edf3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1480px;margin:0 auto;padding:22px 26px 48px}
+  .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+  h1{font-size:21px;margin:0 0 4px;letter-spacing:-.3px;font-weight:650}
+  .sub{color:var(--text-2);font-size:12.5px}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:600}
+  .badge.proto{background:var(--amber-soft);color:var(--amber);border:1px solid #f0dcbb}
+  .route-tabs{display:flex;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px}
+  .route-tab{border:0;background:transparent;color:var(--text-2);padding:7px 13px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:600;white-space:nowrap}
+  .route-tab.active{background:var(--primary);color:#fff}
+  .route-tab:hover:not(.active){background:var(--primary-soft);color:var(--primary)}
+  .conclusion{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--primary);
+    border-radius:10px;padding:13px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:flex-start}
+  .conclusion .k{font-weight:700;color:var(--primary);white-space:nowrap;font-size:12.5px}
+  .conclusion .v{color:var(--text);font-size:12.8px}
+  .conclusion .v strong{font-weight:650}
+  .conclusion .warn{color:var(--amber);font-weight:600}
+  .grid{display:grid;grid-template-columns:290px minmax(480px,1fr) 310px;gap:14px;align-items:start}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .card-h{padding:12px 15px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .card-h h2{font-size:13.5px;margin:0;font-weight:650}
+  .card-h .hint{font-size:11px;color:var(--text-3);font-weight:400}
+  .card-b{padding:14px 15px}
+  .field{margin-bottom:13px}
+  .field:last-child{margin-bottom:0}
+  label.fl{display:block;font-size:11.5px;color:var(--text-2);font-weight:600;margin-bottom:5px}
+  .seg{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:3px}
+  .seg button{flex:1;border:0;background:transparent;color:var(--text-2);padding:6px 4px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:600}
+  .seg button.active{background:var(--surface);color:var(--primary);box-shadow:0 1px 3px rgba(27,36,49,.10)}
+  input[type=number],select{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:7px;
+    background:var(--surface);color:var(--text);font-size:12.5px;font-family:inherit;outline:none}
+  input[type=number]:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .unit{font-size:10.5px;color:var(--text-3);margin-top:4px;line-height:1.45}
+  .chk{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-2);margin:6px 0}
+  .chk input{accent-color:var(--primary)}
+  .note{background:var(--surface-2);border:1px dashed var(--border);border-radius:8px;padding:9px 10px;font-size:11px;color:var(--text-2);line-height:1.55}
+  .note.warn{background:var(--amber-soft);border-color:#f0dcbb;color:var(--amber)}
+  /* chart */
+  .chart-wrap{padding:8px 12px 0}
+  svg{display:block;width:100%;height:auto}
+  .slider-box{padding:10px 15px 4px}
+  .slider-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .slider-top span{font-size:11.5px;color:var(--text-2);font-weight:600}
+  .slider-top b{font-size:17px;color:var(--primary);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--primary);cursor:pointer}
+  .ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);margin-top:2px}
+  .result{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;padding:12px 15px}
+  .res-item{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:9px 10px}
+  .res-item .lab{font-size:10.5px;color:var(--text-3);margin-bottom:3px}
+  .res-item .val{font-size:19px;font-weight:680;font-variant-numeric:tabular-nums;line-height:1.25}
+  .res-item .val.blue{color:var(--primary)} .res-item .val.teal{color:var(--teal)}
+  .res-item .val.amber{color:var(--amber)} .res-item .val.green{color:var(--green)}
+  .res-item .foot{font-size:10px;color:var(--text-3);margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;color:var(--text-3);font-weight:600;font-size:10.5px;padding:6px 7px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:7px;border-bottom:1px solid #eef1f5;font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:0}
+  .pill{display:inline-block;padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:600}
+  .pill.auto{background:var(--primary-soft);color:var(--primary)}
+  .pill.manual{background:var(--amber-soft);color:var(--amber)}
+  .pill.off{background:#eef1f5;color:var(--text-2)}
+  .pill.ok{background:var(--green-soft);color:var(--green)}
+  .mini-sel{padding:3px 5px;font-size:10.5px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);max-width:104px}
+  pre{background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:10.5px;
+    line-height:1.55;overflow:auto;margin:0;color:#314054;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .kv{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #eef1f5;font-size:11.5px}
+  .kv:last-child{border-bottom:0}
+  .kv span{color:var(--text-2)} .kv b{font-weight:650;font-variant-numeric:tabular-nums}
+  .bottom{margin-top:14px}
+  .matrix td:first-child{font-weight:600;color:var(--text-2)}
+  .score{display:inline-block;min-width:26px;text-align:center;padding:2px 6px;border-radius:5px;font-weight:700;font-size:11px}
+  .s1{background:var(--green-soft);color:var(--green)} .s2{background:var(--teal-soft);color:var(--teal)}
+  .s3{background:var(--amber-soft);color:var(--amber)} .s4,.s5{background:var(--red-soft);color:var(--red)}
+  .rec{background:var(--primary-soft)}
+  .foot-note{margin-top:14px;color:var(--text-3);font-size:11px;line-height:1.7}
+  .foot-note strong{color:var(--text-2)}
+  .sec-title{font-size:12px;font-weight:650;color:var(--text-2);margin:0 0 8px}
+  .divider{height:1px;background:var(--border);margin:14px 0}
+  @media(max-width:1180px){.grid{grid-template-columns:1fr 1fr}.grid>.card:first-child{grid-column:1/-1}}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}.result{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>用户并发治理 · 产品原型与方案评估</h1>
+      <div class="sub">手动 &gt; 自动 · 额度自适应 · 三条路线改造难度对比 &nbsp;|&nbsp; 设计评审稿 v1 · 2026-11-11</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="badge proto">静态原型稿 · 不接入后端 · 非业务代码</span>
+      <div class="route-tabs" id="routeTabs">
+        <button class="route-tab active" data-route="C">C 混合（推荐）</button>
+        <button class="route-tab" data-route="B">B OpenRouter 式</button>
+        <button class="route-tab" data-route="A">A 并发闸门</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="conclusion">
+    <div class="k">评估结论</div>
+    <div class="v" id="conclusionText">
+      <strong>更简单的是 B（OpenRouter 式）</strong>，难度 1.5/5，约为 A（4.0/5）的 1/3；原因是它复用仓库已有的速率限流与额度预扣机制，<strong>不引入在途请求计数</strong>。
+      <span class="warn">但速率限制不约束瞬时并发</span>，若必须硬性限制并行条数，只能走 A 或 C 二期。推荐 C：一期上 B 骨架，把额度曲线以档位表落地，二期按监控数据决定是否加闸门。
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- 左：策略配置 -->
+    <div class="card">
+      <div class="card-h"><h2>① 并发策略设置</h2><span class="hint">系统设置 / 新增分区</span></div>
+      <div class="card-b">
+        <div class="field">
+          <label class="fl">策略模式</label>
+          <div class="seg" id="modeSeg">
+            <button class="active" data-mode="auto">自动</button>
+            <button data-mode="manual">手动</button>
+            <button data-mode="off">关闭</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="fl">额度输入口径</label>
+          <select id="basis">
+            <option value="lifetime">历史累计充值额（单调不回退）</option>
+            <option value="settled">结算后稳定余额（自适应）</option>
+          </select>
+          <div class="unit">禁止使用含预扣的实时余额：并发↑ → 余额虚低 → 上限↓ 会形成自激。</div>
+        </div>
+        <div class="row2 field">
+          <div><label class="fl">低额阈值 B₀</label><input type="number" id="b0" value="10" min="1" step="1"></div>
+          <div><label class="fl">解除阈值 B₁</label><input type="number" id="b1" value="1000" min="10" step="10"></div>
+        </div>
+        <div class="unit" style="margin-top:-8px;margin-bottom:13px">单位 USD / credit。内部按 QuotaPerUnit（默认 500000 quota = $1）换算，UI 展示为美元。</div>
+        <div class="row2 field">
+          <div><label class="fl">曲线形态</label>
+            <select id="curve"><option value="log">对数插值（推荐）</option><option value="pow">幂律（保守）</option><option value="step">阶梯档位（最简）</option></select>
+          </div>
+          <div><label class="fl">全局软上限 L</label><input type="number" id="L" value="64" min="8" max="256" step="1"></div>
+        </div>
+        <div class="row2 field">
+          <div><label class="fl">非文本比例</label>
+            <select id="ratio"><option value="3">1 / 3（文本:其他 = 3:1）</option><option value="2">1 / 2</option><option value="4">1 / 4</option></select>
+          </div>
+          <div><label class="fl">降级滞回（分钟）</label><input type="number" id="hyst" value="10" min="0" step="1"></div>
+        </div>
+        <div class="field">
+          <label class="fl">低额档固定值（B &lt; B₀）</label>
+          <div class="row2">
+            <div><input type="number" id="lowText" value="3" min="1"><div class="unit">文本并发</div></div>
+            <div><input type="number" id="lowOther" value="1" min="1"><div class="unit">其他并发</div></div>
+          </div>
+        </div>
+        <div class="field">
+          <label class="fl">纳管范围</label>
+          <label class="chk"><input type="checkbox" checked disabled> /v1 HTTP relay（含 chat / images / embeddings / audio）</label>
+          <label class="chk"><input type="checkbox" id="scopeWs"> WebSocket（/v1/responses、/v1/realtime）</label>
+          <label class="chk"><input type="checkbox" id="scopeMj"> /mj 与插件任务路由</label>
+        </div>
+        <div class="note warn" id="scopeNote">WebSocket / MJ / 插件路由为独立链路，A 路线需逐条接入；B 路线不涉及在途计数，可用速率/额度 hold 覆盖。</div>
+      </div>
+    </div>
+
+    <!-- 中：曲线 + 试算 -->
+    <div class="card">
+      <div class="card-h"><h2>② 额度 → 并发曲线与实时试算</h2><span class="hint" id="curveLabel">对数插值 · L=64</span></div>
+      <div class="slider-box">
+        <div class="slider-top"><span>当前有效额度 B</span><b><span id="balText">20.00</span> USD</b></div>
+        <input type="range" id="bal" min="0" max="3301" value="1301">
+        <div class="ticks"><span>$1</span><span>$10</span><span>$100</span><span>$1000</span><span>$2000</span></div>
+      </div>
+      <div class="chart-wrap"><svg id="chart" viewBox="0 0 620 250" role="img" aria-label="额度与并发上限曲线"></svg></div>
+      <div class="result" id="result"></div>
+      <div class="card-b" style="border-top:1px solid var(--border);padding-top:12px">
+        <div class="sec-title">关键节点查表（曲线离线生成档位表，运行时只查表）</div>
+        <table id="keyTable"><thead><tr><th>额度 B (USD)</th><th>区间</th><th>文本并发</th><th>其他并发</th><th>生效来源</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- 右：手动覆盖 + 契约 -->
+    <div class="card">
+      <div class="card-h"><h2>③ 手动 &gt; 自动 覆盖</h2><span class="hint">用户级 · option JSON 存储</span></div>
+      <div class="card-b" style="padding-bottom:8px">
+        <table id="userTable">
+          <thead><tr><th>用户 / 额度</th><th>自动值</th><th>手动覆盖</th><th>生效值</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="unit" style="margin-top:8px">-1 = 跟随自动 &nbsp;·&nbsp; 0 = 不限 &nbsp;·&nbsp; n ≥ 1 = 固定并发（文本 / 其他各一组）。手动值不随额度变化。</div>
+      </div>
+      <div class="divider"></div>
+      <div class="card-b" style="padding-top:0">
+        <div class="sec-title">生效值查询契约</div>
+        <pre>{
+  "effective": { "text": 12, "other": 4 },
+  "source": "auto",
+  "auto_value": { "text": 12, "other": 4 },
+  "manual_value": { "text": -1, "other": -1 },
+  "basis": { "balance_usd": 20,
+             "tier": "10-50",
+             "hysteresis": "stable" }
+}</pre>
+      </div>
+      <div class="divider"></div>
+      <div class="card-b" style="padding-top:0">
+        <div class="sec-title">429 拒绝契约（码分离）</div>
+        <pre>HTTP 429  concurrency_limit_exceeded
+X-RateLimit-Limit: 12
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1762…
+Retry-After: 2
+
+402  limit_source: in_flight_budget
+     reason: in_flight_budget_exhausted
+402  reason: weight_exceeds_budget
+     （重试无意义，需降 max_tokens / 充值）</pre>
+        <div class="unit">流式已开始后触发限流 → SSE <code>finish_reason: "error"</code>，不再是 HTTP 429。</div>
+      </div>
+      <div class="divider"></div>
+      <div class="card-b" style="padding-top:0">
+        <div class="sec-title">待确认（阻塞实现，不阻塞原型）</div>
+        <div class="kv"><span>10 / 1000 单位</span><b>USD？quota？</b></div>
+        <div class="kv"><span>曲线输入</span><b>累计充值 / 结算余额</b></div>
+        <div class="kv"><span>硬限瞬时并发</span><b>是 → A/C；否 → B</b></div>
+        <div class="kv"><span>纳管长连接</span><b>待定</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部：难度矩阵 -->
+  <div class="card bottom">
+    <div class="card-h"><h2>④ 改造难度矩阵与推荐</h2><span class="hint">基于本仓库实际文件核查 · 1 = 最轻，5 = 最重</span></div>
+    <div class="card-b" style="overflow-x:auto">
+      <table class="matrix">
+        <thead><tr><th style="width:210px">维度</th><th>A 原需求：并发闸门</th><th>B OpenRouter 式</th><th class="rec">C 混合（推荐）</th></tr></thead>
+        <tbody>
+          <tr><td>新增运行时状态</td><td><span class="score s5">5</span> 分布式在途计数 + 崩溃兜底</td><td><span class="score s1">1</span> 复用已有计数器 / 额度 hold</td><td class="rec"><span class="score s2">2</span></td></tr>
+          <tr><td>可复用既有件</td><td><span class="score s1">1</span> 仅配置注册</td><td><span class="score s4">4</span> 速率限流 / 窗口计数 / 预扣退还 / option API</td><td class="rec"><span class="score s4">4</span></td></tr>
+          <tr><td>改动文件数量级</td><td>约 15～22 个</td><td>约 6～9 个</td><td class="rec">一期 6～9，二期 +8～12</td></tr>
+          <tr><td>数据库迁移</td><td><span class="score s3">3</span> 用户级覆盖字段</td><td><span class="score s1">1</span> 无需改 schema</td><td class="rec"><span class="score s1">1</span></td></tr>
+          <tr><td>多节点一致性</td><td><span class="score s5">5</span> Redis 原子 + 租约 + 释放幂等</td><td><span class="score s2">2</span> 沿用共享 Redis</td><td class="rec"><span class="score s2">2</span></td></tr>
+          <tr><td>流式 / 断连 / WebSocket</td><td><span class="score s5">5</span> 全部是硬骨头</td><td><span class="score s1">1</span> 无生命周期挂钩</td><td class="rec"><span class="score s2">2</span></td></tr>
+          <tr><td>灰度与回滚</td><td><span class="score s4">4</span> 计数泄漏影响线上用户</td><td><span class="score s1">1</span> 配置开关即关</td><td class="rec"><span class="score s1">1</span></td></tr>
+          <tr><td>与「瞬时并发」语义等价</td><td><span class="pill ok">是</span></td><td><span class="pill manual">否 · 不等价</span></td><td class="rec">二期才是</td></tr>
+          <tr><td><strong>综合难度</strong></td><td><strong><span class="score s4">4.0 / 5</span></strong></td><td><strong><span class="score s2">1.5 / 5</span></strong> 最简单</td><td class="rec"><strong>一期 1.5 · 整体 2.5 / 5</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card-b" style="border-top:1px solid var(--border);background:var(--surface-2)">
+      <div class="sec-title">第一性原理：成本不在函数，在计量层</div>
+      <div style="font-size:12px;color:var(--text-2);line-height:1.8">
+        决策层（额度 → 上限）是纯函数，两条路线都简单；拒绝层（429 + 响应头 + i18n）可复用既有范式。
+        <strong>全部差异在计量层</strong>：速率计数只需 <code>+1</code> 与窗口过期，在途金额挂在已有预扣链路，二者都不需要知道请求何时结束；而<strong>在途请求条数</strong>必须严格配对每个请求的开始与结束，需覆盖正常返回、SSE 末帧、客户端断连、上游超时重试、进程崩溃五种形态，任一处漏释放都会把用户永久限死。
+        这正是 OpenRouter 选择「金额 hold」而非「条数计数」的工程原因。
+      </div>
+    </div>
+  </div>
+
+  <div class="foot-note">
+    <strong>原型边界</strong>：本页为静态设计评审稿，所有数值由浏览器本地计算，不调用任何后端接口，不构成产品实现。
+    曲线默认 B₀=10 / B₁=1000 / L=64，低额档文本 3、其他 1，非文本 = max(1, ⌊文本/3⌋)，B ≥ B₁ 为「解除用户级上限」且仍受全局软上限约束。
+    <br><strong>事实前提</strong>：OpenRouter 官方并无「按额度映射并发数」机制；其 402/403/429 三类限制、累计购买额分档、在途消费预算与 SSE 错误语义见 <em>docs/concurrency-policy-design.md</em>。
+    当前工作区为裁剪快照（无 go.mod、缺 controller/relay.go 与 i18n locales），难度评估按完整工程给出，本快照无法编译验证。
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const S = {
+    route:'C', mode:'auto', basis:'lifetime', b0:10, b1:1000, curve:'log', L:64,
+    ratio:3, hyst:10, lowText:3, lowOther:1, balance:20,
+    users:[
+      {name:'u_1024 新用户', b:5,   ov:-1},
+      {name:'u_2048 试用',   b:80,  ov:20},
+      {name:'u_4096 大客户', b:1500,ov:0}
+    ]
+  };
+
+  const conclusions = {
+    C:'<strong>推荐 C（混合 / 分两期）</strong>：一期落地 OpenRouter 骨架（难度 1.5/5、可灰度可回滚），同时把额度曲线以档位表落地；二期按监控数据决定是否新增并发闸门。<span class="warn">A 的 80% 成本在计数生命周期，不在函数</span>。',
+    B:'<strong>B（OpenRouter 式）最简单，1.5/5</strong>：复用仓库已有速率限流、按用户窗口计数、额度预扣—退还三套机制，无需改 schema、无需挂钩请求结束时机。<span class="warn">代价：速率限制不约束瞬时并发</span>，20 RPM 的用户仍可同一秒发出 200 个并行请求。',
+    A:'<strong>A（原需求）难度 4.0/5</strong>：必须新增分布式在途计数与严格配对的释放逻辑，覆盖 SSE 末帧、客户端断连、上游重试、进程崩溃；无统一 defer 收口点。<span class="warn">只有 A 能保证「单用户同时最多 N 个请求」这个不变量</span>。'
+  };
+
+  function clampInt(v, lo, hi, dflt){
+    const n = parseInt(v,10); return Number.isFinite(n) ? Math.min(hi,Math.max(lo,n)) : dflt;
+  }
+  function powK(){ return Math.log(S.L/3)/Math.log(S.b1/S.b0); }
+  function compute(B){
+    if(B < S.b0) return {text:S.lowText, other:S.lowOther, tier:'低额档', unlimited:false};
+    if(B >= S.b1) return {text:S.L, other:Math.max(1,Math.floor(S.L/S.ratio)), tier:'解除用户级上限', unlimited:true};
+    let t;
+    if(S.curve==='log') t = 3 + Math.floor((S.L-3)*Math.log10(B/S.b0)/2);
+    else if(S.curve==='pow') t = Math.floor(3*Math.pow(B/S.b0, powK()));
+    else { t = B<50 ? 4 : (B<200 ? 8 : 16); }
+    t = Math.min(S.L, Math.max(S.lowText, t));
+    const stepTier = B<50 ? '10–50' : (B<200 ? '50–200' : '200–1000');
+    return {text:t, other:Math.max(1,Math.floor(t/S.ratio)), tier:stepTier, unlimited:false};
+  }
+  function effective(B, ov){
+    if(S.mode==='off') return {text:'—', other:'—', src:'off', auto:compute(B)};
+    if(S.mode==='manual') return {text:S.L, other:Math.max(1,Math.floor(S.L/S.ratio)), src:'manual', auto:compute(B)};
+    const a = compute(B);
+    if(ov===0) return {text:'不限', other:'不限', src:'manual', auto:a};
+    if(ov>0) return {text:ov, other:Math.max(1,Math.floor(ov/S.ratio)), src:'manual', auto:a};
+    return {text:a.text, other:a.other, src:'auto', auto:a};
+  }
+  function srcPill(s){ return s==='auto' ? '<span class="pill auto">自动</span>' : s==='manual' ? '<span class="pill manual">手动</span>' : '<span class="pill off">关闭</span>'; }
+
+  // ---------- chart ----------
+  function drawChart(){
+    const W=620,H=250, ml=46,mr=14,mt=16,mb=32;
+    const pw=W-ml-mr, ph=H-mt-mb;
+    const bMin=1,bMax=2000;
+    const x = B => ml + (Math.log10(B)-Math.log10(bMin))/(Math.log10(bMax)-Math.log10(bMin))*pw;
+    const y = v => mt + ph - (v/S.L)*ph;
+    let s='';
+    // grid
+    for(let i=0;i<=4;i++){
+      const v=S.L*i/4, yy=y(v);
+      s+='<line x1="'+ml+'" y1="'+yy+'" x2="'+(W-mr)+'" y2="'+yy+'" stroke="#e9edf3" stroke-width="1"/>';
+      s+='<text x="'+(ml-8)+'" y="'+(yy+4)+'" text-anchor="end" font-size="10" fill="#8a97a8">'+Math.round(v)+'</text>';
+    }
+    [1,10,100,1000,2000].forEach(function(b){
+      const xx=x(b);
+      s+='<line x1="'+xx+'" y1="'+mt+'" x2="'+xx+'" y2="'+(mt+ph)+'" stroke="#eef1f5" stroke-width="1"/>';
+      s+='<text x="'+xx+'" y="'+(H-12)+'" text-anchor="middle" font-size="10" fill="#8a97a8">$'+b+'</text>';
+    });
+    // thresholds
+    [S.b0,S.b1].forEach(function(b,i){
+      if(b<=bMin||b>=bMax) return;
+      const xx=x(b);
+      s+='<line x1="'+xx+'" y1="'+mt+'" x2="'+xx+'" y2="'+(mt+ph)+'" stroke="'+(i?'#0f766e':'#b45309')+'" stroke-width="1.2" stroke-dasharray="4 4" opacity=".7"/>';
+      s+='<text x="'+(xx+4)+'" y="'+(mt+12)+'" font-size="10" fill="'+(i?'#0f766e':'#b45309')+'" font-weight="600">B'+(i?'₁':'₀')+'=$'+b+'</text>';
+    });
+    // curve
+    const pts=[];
+    const N=260;
+    for(let i=0;i<=N;i++){
+      const B=Math.pow(10, Math.log10(bMin)+(Math.log10(bMax)-Math.log10(bMin))*i/N);
+      pts.push([x(B), y(compute(B).text)]);
+    }
+    let d='M'+pts[0][0].toFixed(1)+','+pts[0][1].toFixed(1);
+    pts.slice(1).forEach(p=> d+=' L'+p[0].toFixed(1)+','+p[1].toFixed(1));
+    s+='<path d="'+d+'" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linejoin="round"/>';
+    // area
+    s+='<path d="'+d+' L'+pts[N][0].toFixed(1)+','+y(0)+' L'+pts[0][0].toFixed(1)+','+y(0)+' Z" fill="#2563eb" opacity=".06"/>';
+    // soft ceiling after B1
+    const xb1 = x(Math.min(S.b1,bMax));
+    s+='<line x1="'+xb1+'" y1="'+y(S.L)+'" x2="'+(W-mr)+'" y2="'+y(S.L)+'" stroke="#0f766e" stroke-width="1.8" stroke-dasharray="6 4"/>';
+    s+='<text x="'+(W-mr-4)+'" y="'+(y(S.L)-7)+'" text-anchor="end" font-size="10" fill="#0f766e" font-weight="600">解除用户级上限 · 全局软顶 L='+S.L+'</text>';
+    // current point
+    const B=Math.min(bMax,Math.max(bMin,S.balance));
+    const cur=compute(B), px=x(B), py=y(cur.text);
+    s+='<line x1="'+px+'" y1="'+mt+'" x2="'+px+'" y2="'+(mt+ph)+'" stroke="#2563eb" stroke-width="1" stroke-dasharray="3 3" opacity=".55"/>';
+    s+='<circle cx="'+px+'" cy="'+py+'" r="6" fill="#2563eb" stroke="#fff" stroke-width="2.5"/>';
+    s+='<text x="'+Math.min(W-mr-4,Math.max(ml+40,px+10))+'" y="'+Math.max(mt+12,py-10)+'" font-size="11" fill="#2563eb" font-weight="700">文本 '+cur.text+' / 其他 '+cur.other+'</text>';
+    // axes
+    s+='<line x1="'+ml+'" y1="'+mt+'" x2="'+ml+'" y2="'+(mt+ph)+'" stroke="#cbd3de" stroke-width="1"/>';
+    s+='<line x1="'+ml+'" y1="'+(mt+ph)+'" x2="'+(W-mr)+'" y2="'+(mt+ph)+'" stroke="#cbd3de" stroke-width="1"/>';
+    s+='<text x="12" y="'+(mt+ph/2)+'" font-size="10" fill="#8a97a8" transform="rotate(-90 12 '+(mt+ph/2)+')" text-anchor="middle">并发上限</text>';
+    $('chart').innerHTML=s;
+    $('curveLabel').textContent = ({log:'对数插值',pow:'幂律',step:'阶梯档位'})[S.curve]+' · L='+S.L;
+  }
+
+  function renderResult(){
+    const B=S.balance, r=effective(B,-1), a=compute(B);
+    const items=[
+      {lab:'当前额度', val:'$'+B.toFixed(B<10?2:0), cls:'blue', foot:(S.basis==='lifetime'?'累计充值额':'结算后余额')},
+      {lab:'文本并发', val:r.text, cls:'teal', foot:r.unlimited?'解除用户级上限':r.tier},
+      {lab:'其他并发', val:r.other, cls:'amber', foot:'图像 / 音频 / 嵌入 / 重排'},
+      {lab:'生效来源', val:(r.src==='auto'?'自动':r.src==='manual'?'手动':'关闭'), cls:r.src==='auto'?'green':'blue', foot:'自动值 '+a.text+' / '+a.other}
+    ];
+    $('result').innerHTML=items.map(i=>'<div class="res-item"><div class="lab">'+i.lab+'</div><div class="val '+i.cls+'">'+i.val+'</div><div class="foot">'+i.foot+'</div></div>').join('');
+    const rows=[1,5,9.99,10,20,50,100,200,500,1000,1500].map(function(b){
+      const c=compute(b), e=effective(b,-1);
+      return '<tr'+(Math.abs(Math.log10(Math.max(b,1))-Math.log10(Math.max(B,1)))<0.06?' style="background:#eaf1ff"':'')+'><td>$'+b+'</td><td>'+c.tier+'</td><td><b>'+e.text+'</b></td><td>'+e.other+'</td><td>'+srcPill(e.src)+'</td></tr>';
+    });
+    $('keyTable').querySelector('tbody').innerHTML=rows.join('');
+  }
+
+  function renderUsers(){
+    $('userTable').querySelector('tbody').innerHTML=S.users.map(function(u,i){
+      const a=compute(u.b), e=effective(u.b,u.ov);
+      const opt=[['-1','跟随自动'],['0','不限'],['6','固定 6'],['20','固定 20'],['64','固定 64']].map(function(o){
+        return '<option value="'+o[0]+'"'+(String(u.ov)===o[0]?' selected':'')+'>'+o[1]+'</option>';
+      }).join('');
+      return '<tr><td><b>'+u.name+'</b><br><span style="color:#8a97a8;font-size:10.5px">$'+u.b+'</span></td>'+
+        '<td>'+a.text+' / '+a.other+'</td>'+
+        '<td><select class="mini-sel" data-user="'+i+'">'+opt+'</select></td>'+
+        '<td><b>'+e.text+' / '+e.other+'</b><br>'+srcPill(e.src)+'</td></tr>';
+    }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('select[data-user]'),function(sel){
+      sel.onchange=function(){ S.users[+sel.dataset.user].ov=+sel.value; renderUsers(); };
+    });
+  }
+
+  function renderScope(){
+    const ws=$('scopeWs').checked, mj=$('scopeMj').checked;
+    $('scopeNote').textContent = (ws||mj)
+      ? '已勾选长连接/独立路由：A 路线需为每条链路单独实现计数与释放，且 WebSocket 生命周期不等于单次 HTTP 请求，风险显著上升。'
+      : 'WebSocket / MJ / 插件路由为独立链路，A 路线需逐条接入；B 路线不涉及在途计数，可用速率/额度 hold 覆盖。';
+  }
+
+  function render(){ drawChart(); renderResult(); renderUsers(); renderScope(); }
+
+  // ---------- events ----------
+  $('routeTabs').onclick=function(ev){
+    const b=ev.target.closest('.route-tab'); if(!b) return;
+    S.route=b.dataset.route;
+    Array.prototype.forEach.call(this.querySelectorAll('.route-tab'),x=>x.classList.toggle('active',x===b));
+    $('conclusionText').innerHTML=conclusions[S.route];
+  };
+  $('modeSeg').onclick=function(ev){
+    const b=ev.target.closest('button'); if(!b) return;
+    S.mode=b.dataset.mode;
+    Array.prototype.forEach.call(this.querySelectorAll('button'),x=>x.classList.toggle('active',x===b));
+    render();
+  };
+  ['b0','b1','L','hyst','lowText','lowOther'].forEach(function(id){
+    $(id).onchange=function(){
+      const lim={b0:[1,999,10],b1:[10,100000,1000],L:[8,256,64],hyst:[0,120,10],lowText:[1,256,3],lowOther:[1,256,1]}[id];
+      S[id]=clampInt(this.value,lim[0],lim[1],lim[2]); this.value=S[id];
+      if(S.b1<=S.b0){ S.b1=S.b0*10; $('b1').value=S.b1; }
+      render();
+    };
+  });
+  ['curve','ratio','basis'].forEach(function(id){
+    $(id).onchange=function(){ S[id]= id==='ratio' ? +this.value : this.value; render(); };
+  });
+  $('bal').oninput=function(){
+    S.balance=Math.pow(10, +this.value/1000);
+    if(S.balance>2000) S.balance=2000;
+    $('balText').textContent=S.balance<10?S.balance.toFixed(2):(S.balance<100?S.balance.toFixed(1):S.balance.toFixed(0));
+    render();
+  };
+  $('scopeWs').onchange=renderScope; $('scopeMj').onchange=renderScope;
+  render();
+})();
+</script>
+</body>
+</html>
