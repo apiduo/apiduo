@@ -2,18 +2,14 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	139
-blocks	416
-added	3999
-deleted	221
-# 2026-11-12 14:2x 上调 blocks 413->416、added 3976->3999、deleted 213->221
-# （files 139 不变）：多密钥面板的 key 预览从「前 10 位...」改成「前 10 位…后 6 位」。
-# JWT 的头部对所有条目都一样，运维在面板上根本分不出「要禁的是哪把」；尾号才是
-# 上游 401 会引用的那段。3 个块：KeyStatus 注释、keyPreview 赋值（controller/channel.go
-# 两处不相邻）、面板索引列（multi-key-manage-dialog.tsx）。生成逻辑与 3 个用例在新文件
-# controller/apiduo_multi_key_status.go(.test)，不占上游行数。数值取自干净 worktree。
+files	141
+blocks	422
+added	4032
+deleted	219
 
-# 2026-11-12 13:4x 由 `-cost -update` 按当前实际重写（含并行会话未提交改动）。
-# 本轮：审计详情三件事 —— mcp 字段中文标签（本地表 + 7 语言 13 个 key）、
-# create 事件单列「初始值」、409 冲突横幅（Alert）。
-# dialog 多加 1 块是 Alert 的 import；解析/渲染仍在自有文件里。
+# 2026-11-13 16:5x 合并上游 b20e0566 后由 `-cost -update` 重写：
+# files 139->141、blocks 416->422、added 3999->4032、deleted 221->219。
+# 上涨不是新功能，而是上游这 11 个提交把我们已经自建的文件纳入了上游树
+# （combobox-input.tsx、task-logs-filter-bar.tsx 等），同步点一前移，
+# 这些文件里既有的自有行就从未统计变成要统计。删除行数下降同理：
+# 上游补上了我们曾经删掉的行。没有新增挂接点。

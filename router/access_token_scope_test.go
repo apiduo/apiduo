@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	// APIDUO:mcp:BEGIN
 	mcpserver "github.com/QuantumNous/new-api/mcp"
+	// APIDUO:mcp:END
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"

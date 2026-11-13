@@ -247,13 +247,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"DELETE /api/redemption/:id":     accessTokenScopeRule("redemption:write"),
 
 	// router/api-router.go: /api/audit, /api/log, /api/data
-	"GET /api/audit/self": accessTokenScopeRule("usage:read"),
-	// APIDUO:audit-token-options:BEGIN
-	// 审计页筛选下拉。一条路由同时服务管理员（audit:read）与普通用户
-	// （usage:read），handler 按 role 收窄范围；规则只能写一个 scope，
-	// 取低的那一个，否则普通用户拿自己的 PAT 打开 /audit/self 会 403。
-	"GET /api/audit/token-options": accessTokenScopeRule("usage:read"),
-	// APIDUO:audit-token-options:END
+	"GET /api/audit/self":                       accessTokenScopeRule("usage:read"),
 	"GET /api/log/":                             accessTokenScopeRule("log:read"),
 	"GET /api/log/stat":                         accessTokenScopeRule("log:read"),
 	"GET /api/log/self/stat":                    accessTokenScopeRule("usage:read"),
@@ -351,6 +345,12 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// APIDUO:option-batch:BEGIN
 	"PUT /api/option/batch": accessTokenScopeRule("option:write"),
 	// APIDUO:option-batch:END
+	// APIDUO:audit-token-options:BEGIN
+	// 审计页筛选下拉。一条路由同时服务管理员（audit:read）与普通用户
+	// （usage:read），handler 按 role 收窄范围；规则只能写一个 scope，
+	// 取低的那一个，否则普通用户拿自己的 PAT 打开 /audit/self 会 403。
+	"GET /api/audit/token-options": accessTokenScopeRule("usage:read"),
+	// APIDUO:audit-token-options:END
 }
 
 var (
