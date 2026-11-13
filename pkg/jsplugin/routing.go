@@ -476,6 +476,12 @@ var reservedRouteNamespaces = []string{
 	"/500",
 	"/503",
 	"/chat2link",
+	// APIDUO:mcp-console-pages:BEGIN
+	// MCP 控制台的两个页面前缀。插件路由不能占这一层，否则控制台会被
+	// 插件的通配段接走。
+	"/app",
+	"/connect",
+	// APIDUO:mcp-console-pages:END
 	"/system-settings",
 	"/channels",
 	"/chat",
