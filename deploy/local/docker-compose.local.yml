@@ -1,0 +1,127 @@
+# 本地测试部署：按 deploy/prod/docker-compose.apiduo-cn.yml 的生产形态落地
+#
+# 与生产的差异（仅资源与本机适配，形态保持一致）：
+#   - 项目名 apiduo-local，容器名统一 apiduo-local-*，可与线上同机共存
+#   - 内存限额按本机 4C/8G 缩放（生产 6+6+2G → 本地 2+2+1G）
+#   - 数据卷落在 deploy/local/data/，不占 /www/data
+#   保持不变的部分：
+#   - MySQL 8.2 主库 + ClickHouse 25.8 日志库 + 容器化应用
+#   - 端口只绑 127.0.0.1（PAT 的 allow_ips 依赖 ClientIP）
+#   - 健康检查判据看 /api/status 的 success 字段，不看 HTTP 200
+#   - json-file 日志轮转、unless-stopped、stop_grace_period 90s
+name: apiduo-local
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "2"
+
+services:
+  mysql:
+    image: mysql:8.2
+    container_name: apiduo-local-mysql
+    restart: unless-stopped
+    mem_limit: 2g
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set in deploy/local/.env}
+      MYSQL_DATABASE: apiduo_local
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+      - --innodb-buffer-pool-size=1G
+      - --max-connections=200
+      - --slow-query-log=ON
+      - --long-query-time=1
+      - --slow-query-log-file=/var/lib/mysql/slow.log
+      - --binlog-expire-logs-seconds=604800
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging: *default-logging
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    container_name: apiduo-local-clickhouse
+    restart: unless-stopped
+    mem_limit: 2g
+    environment:
+      CLICKHOUSE_DB: apiduo_local_logs
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set in deploy/local/.env}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      TZ: Asia/Shanghai
+    volumes:
+      # 挂目录而不是单文件：单文件绑 inode，换文件后容器里仍是旧内容
+      - ./data/clickhouse:/var/lib/clickhouse
+      - ./data/clickhouse-config/users.d:/etc/clickhouse-server/users.d
+      - ./data/clickhouse-config/config.d:/etc/clickhouse-server/config.d:ro
+    healthcheck:
+      # 密码必须 $$VAR，单引号会让变量不展开 → 永远 unhealthy → 卡死 app 的 depends_on
+      test: ["CMD-SHELL", "clickhouse-client --password=$$CLICKHOUSE_PASSWORD -q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging: *default-logging
+
+  # 可选：本地假上游，用于不花钱的端到端回归
+  #   docker compose -f docker-compose.local.yml --profile mock up -d
+  # 渠道 base_url 填 http://mock-upstream:18080（同网络），models 填 mock-gpt
+  mock-upstream:
+    image: python:3.12-slim
+    container_name: apiduo-local-mock
+    profiles: ["mock"]
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      MOCK_HOST: 0.0.0.0
+      MOCK_LOG: /tmp/mock_upstream.log
+    volumes:
+      - ./mock_upstream.py:/mock_upstream.py:ro
+    command: ["python", "/mock_upstream.py"]
+    ports:
+      - "127.0.0.1:18080:18080"
+    logging: *default-logging
+
+  app:
+    depends_on:
+      mysql:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    build:
+      context: ../..
+      dockerfile: deploy/local/Dockerfile.app
+    image: apiduo-local:dev
+    container_name: apiduo-local-app
+    restart: unless-stopped
+    mem_limit: 1g
+    env_file:
+      - .env.app
+    ports:
+      - "127.0.0.1:39047:3000"
+    volumes:
+      # 上传文件与 ./logs；主库在 MySQL，不落这里
+      - ./data/app:/data
+    healthcheck:
+      # 判据与生产一致：看正文里的 success 字段，不看 HTTP 200
+      # （生产容器内是 wget|grep；本地基座无 wget，用 python 等价实现）
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if b'\"success\":true' in urllib.request.urlopen('http://127.0.0.1:3000/api/status', timeout=5).read() else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 90s
+    logging: *default-logging
