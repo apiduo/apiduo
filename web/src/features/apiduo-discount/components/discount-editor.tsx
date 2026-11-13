@@ -190,7 +190,7 @@ export function DiscountEditor({
         {models.length === 0 && ' · 暂无模型（未配置渠道）'}
       </div>
 
-      <div className='hidden grid-cols-[18px_84px_minmax(0,1fr)_52px_100px_52px] items-center gap-2 border-b pb-1.5 text-[11.5px] text-muted-foreground sm:grid'>
+      <div className='hidden grid-cols-[18px_84px_minmax(0,1fr)_52px_96px_64px] items-center gap-2 border-b pb-1.5 text-[11.5px] text-muted-foreground sm:grid'>
         <span />
         <span>分组</span>
         <span>模型</span>
@@ -217,7 +217,7 @@ export function DiscountEditor({
               key={index}
               className={cn(
                 'grid grid-cols-2 gap-x-2 gap-y-1.5 rounded-lg border p-2',
-                'sm:grid-cols-[18px_84px_minmax(0,1fr)_52px_100px_52px] sm:items-center sm:gap-2 sm:rounded-none sm:border-0 sm:border-b sm:border-border/60 sm:p-0 sm:py-2',
+                'sm:grid-cols-[18px_84px_minmax(0,1fr)_52px_96px_64px] sm:items-center sm:gap-2 sm:rounded-none sm:border-0 sm:border-b sm:border-border/60 sm:p-0 sm:py-2',
                 (expired || isDead) && 'opacity-50'
               )}
             >
@@ -335,7 +335,7 @@ export function DiscountEditor({
               <div className='col-span-2 flex items-center justify-end gap-0.5 sm:col-span-1'>
                 <Button
                   aria-label={`上移第 ${index + 1} 行`}
-                  className='text-muted-foreground h-6 w-5'
+                  className='text-muted-foreground h-7 w-6'
                   disabled={disabled || index === 0}
                   onClick={() => move(index, -1)}
                   size='icon'
@@ -346,7 +346,7 @@ export function DiscountEditor({
                 </Button>
                 <Button
                   aria-label={`下移第 ${index + 1} 行`}
-                  className='text-muted-foreground h-6 w-5'
+                  className='text-muted-foreground h-7 w-6'
                   disabled={disabled || index === rules.length - 1}
                   onClick={() => move(index, 1)}
                   size='icon'
@@ -357,7 +357,7 @@ export function DiscountEditor({
                 </Button>
                 <Button
                   aria-label={`删除第 ${index + 1} 行`}
-                  className='text-muted-foreground h-6 w-5'
+                  className='text-muted-foreground h-7 w-6'
                   disabled={disabled}
                   onClick={() => remove(index)}
                   size='icon'
