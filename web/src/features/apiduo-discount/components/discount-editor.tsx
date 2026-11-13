@@ -172,7 +172,7 @@ export function DiscountEditor({
 
       <div className='flex items-start justify-between gap-3'>
         <div className='min-w-0'>
-          <div className='text-[13.5px] font-medium'>模型折扣</div>
+          <div className='text-sm font-medium'>模型折扣</div>
           <p className='text-muted-foreground mt-1 text-[12px] leading-relaxed'>
             从上往下第一条命中即停，不相乘。分组和模型都可写多个（逗号分隔），
             <code className='mx-0.5 font-mono'>*</code>
@@ -199,7 +199,7 @@ export function DiscountEditor({
         <span />
       </div>
 
-      <div className='space-y-2 sm:space-y-0'>
+      <div className='space-y-2 empty:hidden sm:space-y-0'>
         {rules.map((rule, index) => {
           const diagnosis = diagnoses[index]
           const expired = isExpired(rule, nowSeconds)
