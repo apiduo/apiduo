@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	mcpserver "github.com/QuantumNous/new-api/mcp"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
@@ -41,6 +42,11 @@ var accessTokenExemptRoutes = []string{
 	// and the reply is a colour plus three numbers.
 	"GET /api/appearance",
 	// APIDUO:appearance:END
+	// APIDUO:trace:BEGIN
+	// 图片外置后的唯一公开入口：URL 写在 span 正文里，Langfuse 从另一个源
+	// 加载它，没有 apiduo 会话；id 由内容生成、不可枚举。
+	"GET /api/apiduo/trace/media/:media_id",
+	// APIDUO:trace:END
 
 	// Anonymous account entry points.
 	"GET /api/verification",
@@ -98,6 +104,11 @@ func newAccessTokenScopeTestEngine(t *testing.T) *gin.Engine {
 		SetRelayRouter(engine)
 		SetTaskPluginProtocolRouter(engine)
 		SetVideoRouter(engine)
+		// APIDUO:mcp:BEGIN
+		// 与 router/main.go 的 SetRouter 保持一致：MCP 控制面的 access token
+		// 规则在 middleware 的 init 里声明，路由在这里注册，缺一边就会误报。
+		mcpserver.Register(engine)
+		// APIDUO:mcp:END
 		SetTaskRouter(engine)
 	})
 	return engine
