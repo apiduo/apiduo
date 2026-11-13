@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>额度闸门 · 防超刷原型 v0.3</title>
+<style>
+  :root{
+    --bg:#ffffff;--surface:#fbfbfc;--surface-2:#f4f4f6;--line:#e7e7ea;--line-strong:#d6d6db;
+    --ink:#17171c;--ink-2:#4a4a55;--muted:#8b8b96;--accent:#4f46e5;--accent-soft:#eef0ff;
+    --ok:#0f9d58;--ok-soft:#e8f6ee;--err:#d93025;--err-soft:#fdeceb;--warn:#b26a00;--warn-soft:#fff5e5;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  .side{width:200px;flex:0 0 200px;background:#15151a;color:#c9c9d1;padding:14px 10px;font-size:12.5px}
+  .side .brand{display:flex;align-items:center;gap:8px;padding:6px 8px 16px;color:#fff;font-weight:600;font-size:13.5px}
+  .side .dot{width:7px;height:7px;border-radius:99px;background:linear-gradient(135deg,#7c7cff,#4f46e5)}
+  .side a{display:block;padding:7px 10px;border-radius:7px;color:#a7a7b4;text-decoration:none;margin-bottom:1px}
+  .side a.on{background:#26262f;color:#fff}
+  .side .grp{padding:14px 10px 5px;color:#6a6a78;font-size:11px;letter-spacing:.04em}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+  .head{display:flex;align-items:center;gap:12px;padding:15px 22px;border-bottom:1px solid var(--line);background:#fff;flex-wrap:wrap}
+  .head h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:2px}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--ink-2);font-size:12.5px;padding:5px 12px;border-radius:7px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .body{padding:20px 22px 40px;overflow:auto}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .card + .card{margin-top:14px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:13px;font-weight:600}
+  .card-h .desc{color:var(--muted);font-size:11.5px}
+  .card-b{padding:14px}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px}
+  th{color:var(--muted);font-weight:500;font-size:11.5px;background:#fff}
+  tr:last-child td{border-bottom:0}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:99px;font-size:11.5px;font-weight:500}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.err{background:var(--err-soft);color:var(--err)}
+  .pill.mute{background:var(--surface-2);color:var(--ink-2)}
+  .pill.accent{background:var(--accent-soft);color:var(--accent)}
+  .grid-2{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;align-items:start}
+  @media (max-width:1180px){.grid-2{grid-template-columns:1fr}}
+  .sim-row{display:grid;grid-template-columns:118px 1fr 78px;gap:10px;align-items:center;margin-bottom:11px}
+  .sim-row label{color:var(--ink-2);font-size:12px}
+  .sim-row .val{text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:600}
+  input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:99px;background:var(--line-strong);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:99px;background:var(--accent);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer}
+  select{border:1px solid var(--line-strong);border-radius:6px;padding:5px 7px;font-size:12.5px;font-family:inherit;background:#fff;color:var(--ink);outline:none;width:100%}
+  select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .result{background:#15151a;color:#e9e9ef;border-radius:10px;padding:14px}
+  .result .k{color:#8f8f9d;font-size:11px}
+  .result .big{font-size:24px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .result .big span{font-size:12px;color:#9d9dab;font-weight:500;margin-left:6px}
+  .result .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  .result .metrics div{background:#22222b;border-radius:8px;padding:8px 10px}
+  .result .metrics b{display:block;font-size:15px;font-variant-numeric:tabular-nums;margin-top:2px}
+  .result .metrics .neg{color:#ff9a92}
+  .result .metrics .pos{color:#8fe3b0}
+  .trace{margin:12px 0 0;padding:0;list-style:none;font-size:12px;line-height:1.75;color:var(--ink-2)}
+  .trace li{display:flex;gap:8px;padding:3px 0}
+  .trace li i{flex:0 0 16px;height:16px;border-radius:99px;background:var(--surface-2);color:var(--muted);font-style:normal;font-size:10px;display:flex;align-items:center;justify-content:center;margin-top:3px}
+  .trace b{font-variant-numeric:tabular-nums}
+  .presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .presets button{appearance:none;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-size:11.5px;padding:4px 9px;border-radius:7px;cursor:pointer;font-family:inherit}
+  .presets button:hover{border-color:var(--accent);color:var(--accent)}
+  .presets button.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .panel{width:100%;max-width:820px;margin:0 auto}
+  .hero{background:linear-gradient(160deg,#1c1c24,#111116);color:#fff;border-radius:14px;padding:20px 22px}
+  .hero .row1{display:flex;align-items:flex-start;gap:14px}
+  .hero .lab{color:#9a9aa8;font-size:11.5px;letter-spacing:.02em}
+  .hero h3{margin:6px 0 0;font-size:18px;font-weight:600}
+  .hero .rpm{margin-left:auto;text-align:right}
+  .hero .rpm .big{font-size:32px;font-weight:700;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+  .hero .rpm .big span{font-size:12px;color:#9a9aa8;font-weight:500;margin-left:7px}
+  .hero .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
+  @media (max-width:820px){.hero .stats{grid-template-columns:repeat(2,1fr)}}
+  .hero .stats div{background:rgba(255,255,255,.06);border-radius:9px;padding:9px 11px}
+  .hero .stats .k{color:#9a9aa8;font-size:10.5px}
+  .hero .stats b{display:block;font-size:15px;margin-top:3px;font-variant-numeric:tabular-nums}
+  .dim{padding:14px 0;border-bottom:1px solid var(--line)}
+  .dim:last-child{border-bottom:0}
+  .dim .top{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
+  .dim .top .name{font-weight:600;font-size:12.5px}
+  .dim .top .why{color:var(--muted);font-size:11.5px}
+  .dim .top .now{margin-left:auto;font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:600}
+  .bar{height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+  .bar i.ok{background:var(--ok)}
+  .bar i.warn{background:#e8a33d}
+  .dim .hint{margin-top:6px;font-size:11.5px;color:var(--muted)}
+  .dim .hint b{color:var(--ink-2)}
+  .tip{background:var(--accent-soft);border:1px solid #dcdcfb;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#37328c;line-height:1.6}
+  .tip.warn{background:var(--warn-soft);border-color:#f3ddb6;color:#7a4b00}
+  .tip b{font-weight:700}
+  pre{margin:0;background:#15151a;color:#dcdce6;border-radius:10px;padding:14px;font-size:11.5px;line-height:1.7;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  pre .h{color:#8fe3b0}
+  pre .v{color:#f0c674}
+  pre .c{color:#7c7c8a}
+  .toast{background:#fff;border:1px solid #f0c9c5;border-left:3px solid var(--err);border-radius:10px;padding:13px 15px;box-shadow:0 6px 20px rgba(0,0,0,.07)}
+  .toast h4{margin:0 0 6px;font-size:12.5px;font-weight:700;color:var(--err)}
+  .toast p{margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.65}
+  .toast .acts{display:flex;gap:8px;margin-top:11px}
+  .btn{appearance:none;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);padding:6px 13px;border-radius:8px;font-size:12.5px;cursor:pointer;font-family:inherit}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .note{background:var(--surface);border:1px dashed var(--line-strong);border-radius:9px;padding:10px 12px;font-size:11.5px;color:var(--ink-2);line-height:1.7}
+  .footnote{color:var(--muted);font-size:11.5px;margin-top:12px;line-height:1.7}
+  .kbd{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  .formula{display:grid;grid-template-columns:1fr;gap:8px}
+  .formula .ln{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .formula .ln .tag{flex:0 0 auto;font-family:-apple-system,sans-serif;font-size:10.5px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+  .formula .ln b{color:var(--accent)}
+  .kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media (max-width:760px){.kpi-row{grid-template-columns:1fr}}
+  .kpi{border:1px solid var(--line);border-radius:9px;padding:11px 12px;background:var(--surface)}
+  .kpi .k{color:var(--muted);font-size:11px}
+  .kpi b{display:block;font-size:17px;margin-top:4px;font-variant-numeric:tabular-nums}
+  .kpi .s{font-size:11px;color:var(--muted);margin-top:3px}
+  .cap-in{width:64px;border:1px solid var(--line-strong);border-radius:6px;padding:3px 6px;font-size:12px;font-family:inherit;text-align:right;background:#fff;color:var(--ink);outline:none}
+  .cap-in:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="dot"></span> apiduo 控制台</div>
+    <div class="grp">运营</div>
+    <a href="#">仪表盘</a>
+    <a href="#">用户管理</a>
+    <a href="#" class="on">额度闸门</a>
+    <a href="#">渠道管理</a>
+    <div class="grp">计费</div>
+    <a href="#">充值记录</a>
+    <a href="#">坏账复核</a>
+    <a href="#">兑换码</a>
+    <div class="grp">系统</div>
+    <a href="#">限流设置</a>
+    <a href="#">日志</a>
+  </aside>
+
+  <main class="main">
+    <header class="head">
+      <h1>额度闸门 · 防超刷</h1>
+      <span class="sub">v0.3 · 单账号损失上界 = 0</span>
+      <div class="spacer"></div>
+      <div class="seg" id="viewSeg">
+        <button class="on" data-view="admin">预扣口径 · 策略</button>
+        <button data-view="user">用户端 · 额度占用</button>
+        <button data-view="err">错误契约 · 403 / 429</button>
+      </div>
+    </header>
+
+    <div class="body">
+      <!-- ============ 视图一：预扣口径 ============ -->
+      <section id="view-admin">
+        <div class="card">
+          <div class="card-h">
+            <h2>① 预扣必须覆盖单请求成本上界</h2>
+            <span class="desc">差额只剩"退款"一个方向，透支在数学上不成立</span>
+          </div>
+          <div class="card-b">
+            <div class="grid-2">
+              <div>
+                <div class="formula">
+                  <div class="ln"><span class="tag">预扣</span><div>p = ⌈prompt × input_mult × in_price⌉ + ⌈<b>min(max_tokens, cap_out)</b> × out_price⌉</div></div>
+                  <div class="ln"><span class="tag">并发</span><div>K = ⌊Q ÷ p⌋　　<span style="color:#8b8b96;font-family:inherit">预扣即闸门，无需额外计数器</span></div></div>
+                  <div class="ln"><span class="tag">结算</span><div>d = c − p　d&gt;0 只扣到余额 0，剩余记坏账并停用</div></div>
+                </div>
+                <div class="note" style="margin-top:12px">
+                  现在的实现：倍率模式预扣 = <span class="kbd">promptTokens × 1</span>（<span class="kbd">relay/helper/price.go:110</span>），tiered_expr 模式 <span class="kbd">C: 0</span>（<span class="kbd">:410</span>）。
+                  输出侧零预扣，所以 <b>c 的上界与 p 无关</b>，差额随在途请求数线性放大。
+                </div>
+              </div>
+              <div>
+                <div class="kpi-row">
+                  <div class="kpi"><div class="k">旧口径 100 并发损失</div><b style="color:var(--err)" id="kOld">¥90.10</b><div class="s">全部跑完才结算</div></div>
+                  <div class="kpi"><div class="k">新口径单账号损失</div><b style="color:var(--ok)">¥0.00</b><div class="s">p ≥ c，且 floor = 0</div></div>
+                  <div class="kpi"><div class="k">旧口径 · ¥0.5 余额可放行</div><b id="kOldPass">113</b><div class="s">新口径为 0，直接 403</div></div>
+                </div>
+                <div class="tip warn" style="margin-top:12px">
+                  <b>最大的洞不是低余额账号，而是信任旁路。</b><br>
+                  <span class="kbd">TrustQuotaUSD</span> 默认 10：余额 &gt; $10 的用户 <span class="kbd">effectiveQuota = 0</span>，完全不预扣。余额越大，单次爆发的绝对损失越大。
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>② 模型输出上限 cap_out</h2>
+            <span class="desc">cap 取模型真实最大输出，不是 P95；可直接改，表格实时重算</span>
+          </div>
+          <div class="card-b">
+            <table id="capTable">
+              <thead>
+                <tr>
+                  <th>模型族</th><th class="num">输入 ¥/M</th><th class="num">输出 ¥/M</th>
+                  <th class="num">cap_out</th><th class="num">单请求预扣 p</th>
+                  <th class="num">¥50 余额可并发</th><th>旧口径 p</th><th>判定</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="footnote">p 以 <span class="kbd">prompt = 500 tokens</span>、<span class="kbd">max_tokens = cap_out</span> 计算；旧口径 p 只含输入，输出按 8K 估算差额。</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>③ 策略模拟器</h2>
+            <span class="desc">改参数即时看：p、可并发、会不会 403、旧口径会漏多少</span>
+          </div>
+          <div class="card-b">
+            <div class="grid-2">
+              <div>
+                <div class="presets" id="presets"></div>
+                <div class="sim-row">
+                  <label>模型</label>
+                  <select id="inModel"></select>
+                  <span class="val" id="vModel"></span>
+                </div>
+                <div class="sim-row">
+                  <label>可用余额 Q</label>
+                  <input type="range" id="inQ" min="0" max="200" step="0.5" value="50">
+                  <span class="val" id="vQ">¥50</span>
+                </div>
+                <div class="sim-row">
+                  <label>prompt tokens</label>
+                  <input type="range" id="inP" min="0" max="32000" step="100" value="500">
+                  <span class="val" id="vP">500</span>
+                </div>
+                <div class="sim-row">
+                  <label>max_tokens</label>
+                  <input type="range" id="inM" min="0" max="65536" step="512" value="8192">
+                  <span class="val" id="vM">8,192</span>
+                </div>
+                <div class="sim-row">
+                  <label>实际输出</label>
+                  <input type="range" id="inA" min="0" max="65536" step="512" value="8192">
+                  <span class="val" id="vA">8,192</span>
+                </div>
+                <div class="result">
+                  <div class="k">单请求预扣 p</div>
+                  <div class="big" id="rP">¥0.90<span>每个在途请求占用</span></div>
+                  <div class="metrics">
+                    <div><div class="k">可并发 K</div><b id="rK">56</b></div>
+                    <div><div class="k">判定</div><b id="rVerdict" class="pos">放行</b></div>
+                    <div><div class="k">单账号损失上界</div><b id="rLoss" class="pos">¥0.00</b></div>
+                  </div>
+                </div>
+                <ul class="trace" id="trace"></ul>
+              </div>
+              <div>
+                <table>
+                  <thead><tr><th>口径</th><th class="num">预扣</th><th class="num">可并发</th><th class="num">实际成本/请求</th><th class="num">100 并发损失</th></tr></thead>
+                  <tbody id="cmpBody"></tbody>
+                </table>
+                <div class="note" style="margin-top:12px">
+                  旧口径下，余额 ¥0.5 能放行 <b id="oldPass">113</b> 个并发请求，全部跑完才结算。
+                  新口径下第一个请求就会被拦，代价是用户必须先把余额充到 <b id="needQ">¥0.90</b>。
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 视图二：用户端 ============ -->
+      <section id="view-user" hidden>
+        <div class="panel">
+          <div class="hero">
+            <div class="row1">
+              <div>
+                <div class="lab">当前额度</div>
+                <h3 id="uName">claude-sonnet</h3>
+                <div class="lab" style="margin-top:6px">余额 ¥50.00 中，<b style="color:#fff" id="uHeldText">¥8.80</b> 正被在途请求占用</div>
+              </div>
+              <div class="rpm">
+                <div class="lab">可用并发</div>
+                <div class="big" id="uConc">56<span>个请求</span></div>
+              </div>
+            </div>
+            <div class="stats">
+              <div><div class="k">可用余额</div><b id="uFree">¥41.20</b></div>
+              <div><div class="k">每请求占用</div><b id="uPer">¥0.88</b></div>
+              <div><div class="k">在途请求</div><b id="uInflight">10</b></div>
+              <div><div class="k">透支</div><b style="color:#8fe3b0">不允许</b></div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:14px">
+            <div class="card-h"><h2>额度去哪了</h2><span class="desc">不是"被限速"，是"额度被在途请求占着"</span></div>
+            <div class="card-b" id="dims"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h2>想提高并发，三条路</h2><span class="desc">按代价从小到大排</span></div>
+            <div class="card-b">
+              <table>
+                <thead><tr><th>动作</th><th class="num">效果</th><th>代价</th></tr></thead>
+                <tbody>
+                  <tr><td>把 <span class="kbd">max_tokens</span> 从 8,192 降到 2,048</td><td class="num">p 降到 ¥0.236，并发 ×3.9</td><td>单次输出变短</td></tr>
+                  <tr><td>换更便宜的模型（gpt-4o-mini）</td><td class="num">p 降到 ¥0.047，并发 ×19</td><td>质量下降</td></tr>
+                  <tr><td>充值 ¥50</td><td class="num">并发从 54 到 109</td><td>真金白银</td></tr>
+                </tbody>
+              </table>
+              <div class="tip" style="margin-top:12px">
+                <b>可行动是核心。</b>「余额不足」是废话；「把 max_tokens 降到 2048 可恢复 3.8 倍并发」用户才会操作。
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h2>近 24 小时拦截记录</h2><span class="desc">只有一种原因：余额不足一个 p</span></div>
+            <div class="card-b">
+              <table>
+                <thead><tr><th>时间</th><th>模型</th><th class="num">需要 p</th><th class="num">当时余额</th><th>结果</th></tr></thead>
+                <tbody>
+                  <tr><td>14:02:11</td><td>claude-sonnet</td><td class="num">¥0.912</td><td class="num">¥0.41</td><td><span class="pill err">403</span></td></tr>
+                  <tr><td>13:58:40</td><td>gpt-4o</td><td class="num">¥0.599</td><td class="num">¥0.41</td><td><span class="pill err">403</span></td></tr>
+                  <tr><td>13:41:07</td><td>gpt-4o-mini</td><td class="num">¥0.047</td><td class="num">¥0.41</td><td><span class="pill ok">200</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 视图三：错误契约 ============ -->
+      <section id="view-err" hidden>
+        <div class="grid-2">
+          <div>
+            <div class="card">
+              <div class="card-h"><h2>403 · 余额不足一个预扣</h2><span class="desc">不是限流，重试无用，必须改参数或充值</span></div>
+              <div class="card-b">
+                <pre>HTTP/1.1 <span class="v">403 Forbidden</span>
+Content-Type: application/json
+X-Quota-Required: <span class="h">900000</span>
+X-Quota-Balance: <span class="h">410000</span>
+X-Quota-Model: claude-sonnet
+X-Quota-MaxTokens-Suggest: <span class="h">3584</span>
+
+{
+  "error": {
+    "type": "insufficient_quota",
+    "code": "quota_pre_consume_insufficient",
+    "message": "余额 ¥0.41 不足以覆盖本次请求 ¥0.90（prompt 500 + max_tokens 8192）。
+                把 max_tokens 降到 3584，或充值 ¥0.49。",
+    "param": "max_tokens"
+  }
+}</pre>
+                <div class="note" style="margin-top:12px">
+                  现状代码返回的就是 <span class="kbd">403</span>（<span class="kbd">billing_session.go:408</span>），
+                  不要改成 402：402 在 OpenAI SDK 里会被当成支付问题重试，403 才是终态。
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-h"><h2>429 · 频率闸（与余额无关）</h2><span class="desc">只对 p = 0 的免费模型与 RPM 兜底生效</span></div>
+              <div class="card-b">
+                <pre>HTTP/1.1 <span class="v">429 Too Many Requests</span>
+Retry-After: 2
+X-RateLimit-Limit: <span class="h">1000</span>
+X-RateLimit-Remaining: <span class="h">0</span>
+X-RateLimit-Policy: scope=model; window=60s
+
+{
+  "error": {
+    "type": "rate_limit_error",
+    "code": "model_request_rate_limit",
+    "message": "该模型每分钟最多 1000 次成功请求，请在 2 秒后重试。"
+  }
+}</pre>
+                <div class="note" style="margin-top:12px">
+                  429 只表达"等一会再来"；403 只表达"你不该发这个请求"。两者混用会让客户端重试逻辑全部失效。
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="card">
+              <div class="card-h"><h2>客户端看到的弹窗</h2></div>
+              <div class="card-b">
+                <div class="toast">
+                  <h4>余额不足，请求未发出</h4>
+                  <p>本次请求需要预留 <b>¥0.90</b>，当前余额 <b>¥0.41</b>。请求没有到达上游，不产生任何费用。</p>
+                  <p style="margin-top:8px">把 <span class="kbd">max_tokens</span> 改为 <b>3584</b> 可立即发出；或充值 <b>¥0.49</b>。</p>
+                  <div class="acts">
+                    <button class="btn primary">按建议调整</button>
+                    <button class="btn">去充值</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-h"><h2>降级与兜底</h2><span class="desc">防刷目标下，"放行"不是安全默认值</span></div>
+              <div class="card-b">
+                <table>
+                  <thead><tr><th>故障</th><th>行为</th></tr></thead>
+                  <tbody>
+                    <tr><td>Redis 不可用</td><td>走 DB 条件更新，约束保持；<b>不 fail-open</b></td></tr>
+                    <tr><td>余额读取失败</td><td>拒绝大额请求，放行 p &lt; ¥0.02 的请求</td></tr>
+                    <tr><td>cap 配置缺失</td><td>取全局默认 8192，禁止退化为 0</td></tr>
+                    <tr><td>倍率热更</td><td>每请求冻结快照，只影响后续请求</td></tr>
+                    <tr><td>实际成本 &gt; p</td><td>扣到 0 为止，记坏账，停用账号，报警</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var MODELS = [
+    {name:"gpt-4o-mini",   inP:1.4,  outP:5.6,  cap:8192},
+    {name:"deepseek-r1",   inP:4,    outP:16,   cap:16384},
+    {name:"gpt-4o",        inP:18,   outP:72,   cap:8192},
+    {name:"claude-sonnet", inP:22,   outP:110,  cap:8192},
+    {name:"o3",            inP:15,   outP:60,   cap:32768}
+  ];
+
+  var el = function(id){ return document.getElementById(id); };
+  var fmtMoney = function(v){
+    if (v >= 100) return "¥" + v.toFixed(0);
+    if (v >= 1) return "¥" + v.toFixed(2);
+    return "¥" + v.toFixed(3);
+  };
+  var fmtInt = function(v){ return Math.round(v).toLocaleString("en-US"); };
+
+  // ---------- tabs ----------
+  var seg = el("viewSeg");
+  seg.addEventListener("click", function(e){
+    var b = e.target.closest("button");
+    if (!b) return;
+    Array.prototype.forEach.call(seg.querySelectorAll("button"), function(x){ x.classList.toggle("on", x === b); });
+    ["admin","user","err"].forEach(function(v){
+      el("view-" + v).hidden = (v !== b.getAttribute("data-view"));
+    });
+  });
+
+  // ---------- cap table ----------
+  var tbody = el("capTable").querySelector("tbody");
+  function renderCapTable(){
+    tbody.innerHTML = "";
+    MODELS.forEach(function(m, i){
+      var p = 500/1e6*m.inP + m.cap/1e6*m.outP;
+      var k = Math.floor(50 / p);
+      var pOld = 500/1e6*m.inP;
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + m.name + "</td>" +
+        "<td class='num'>" + m.inP + "</td>" +
+        "<td class='num'>" + m.outP + "</td>" +
+        "<td class='num'><input class='cap-in' data-i='" + i + "' value='" + m.cap + "'></td>" +
+        "<td class='num'><b>" + fmtMoney(p) + "</b></td>" +
+        "<td class='num'>" + fmtInt(k) + "</td>" +
+        "<td class='num' style='color:var(--muted)'>" + fmtMoney(pOld) + "</td>" +
+        "<td>" + (p <= 0.02 ? "<span class='pill mute'>免预扣</span>" : "<span class='pill accent'>必预扣</span>") + "</td>";
+      tbody.appendChild(tr);
+    });
+    Array.prototype.forEach.call(tbody.querySelectorAll(".cap-in"), function(inp){
+      inp.addEventListener("change", function(){
+        var i = +inp.getAttribute("data-i");
+        var v = parseInt(inp.value, 10);
+        if (!isFinite(v) || v < 0) v = 0;
+        MODELS[i].cap = v;
+        renderCapTable();
+        syncModelSelect();
+        render();
+      });
+    });
+  }
+
+  // ---------- simulator ----------
+  var sel = el("inModel");
+  function syncModelSelect(cur){
+    var idx = (cur === undefined) ? sel.selectedIndex : cur;
+    sel.innerHTML = "";
+    MODELS.forEach(function(m, i){
+      var o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = m.name + "（cap " + fmtInt(m.cap) + "）";
+      sel.appendChild(o);
+    });
+    sel.selectedIndex = Math.max(0, Math.min(idx, MODELS.length - 1));
+  }
+
+  var ids = ["inQ","inP","inM","inA"];
+  ids.forEach(function(id){ el(id).addEventListener("input", render); });
+  sel.addEventListener("change", function(){ el("inM").value = String(Math.min(+el("inM").value, MODELS[sel.selectedIndex].cap)); render(); });
+
+  function readState(){
+    return {
+      model: MODELS[sel.selectedIndex],
+      Q: +el("inQ").value,
+      prompt: +el("inP").value,
+      maxTok: +el("inM").value,
+      actualOut: +el("inA").value
+    };
+  }
+
+  function calc(s){
+    var m = s.model;
+    var capTok = Math.min(s.maxTok, m.cap);
+    var pIn = s.prompt/1e6*m.inP;
+    var pOut = capTok/1e6*m.outP;
+    var p = pIn + pOut;
+    var pOld = pIn;
+    var c = s.prompt/1e6*m.inP + Math.min(s.actualOut, m.cap)/1e6*m.outP;
+    var K = p > 0 ? Math.floor(s.Q / p) : Infinity;
+    var KOld = pOld > 0 ? Math.floor(s.Q / pOld) : Infinity;
+    var EXPOSURE = 100;
+    var exposure = Math.min(EXPOSURE, isFinite(KOld) ? KOld : EXPOSURE);
+    var lossOld = exposure * Math.max(0, c - pOld);
+    return {p:p, pOld:pOld, pIn:pIn, pOut:pOut, c:c, K:K, KOld:KOld, lossOld:lossOld, exposure:exposure, capTok:capTok, clamp:s.maxTok > m.cap};
+  }
+
+  function render(){
+    var s = readState();
+    var r = calc(s);
+
+    el("vQ").textContent = fmtMoney(s.Q);
+    el("vP").textContent = fmtInt(s.prompt);
+    el("vM").textContent = fmtInt(s.maxTok);
+    el("vA").textContent = fmtInt(s.actualOut);
+    el("vModel").textContent = s.model.name;
+
+    el("rP").innerHTML = fmtMoney(r.p) + "<span>每个在途请求占用</span>";
+    el("rK").textContent = r.p <= 0 ? "∞" : fmtInt(r.K);
+
+    var verdict = el("rVerdict");
+    if (r.p <= 0.02) { verdict.textContent = "免预扣"; verdict.className = "pos"; }
+    else if (r.K >= 1) { verdict.textContent = "放行"; verdict.className = "pos"; }
+    else { verdict.textContent = "403"; verdict.className = "neg"; }
+    el("rLoss").textContent = "¥0.00";
+
+    el("trace").innerHTML =
+      "<li><i>1</i><div>输入项：<b>" + fmtInt(s.prompt) + "</b> × " + s.model.inP + " ¥/M = <b>" + fmtMoney(r.pIn) + "</b></div></li>" +
+      "<li><i>2</i><div>输出项：min(" + fmtInt(s.maxTok) + ", cap " + fmtInt(s.model.cap) + ") = <b>" + fmtInt(r.capTok) + "</b> × " + s.model.outP + " ¥/M = <b>" + fmtMoney(r.pOut) + "</b></div></li>" +
+      "<li><i>3</i><div>可用并发：⌊" + fmtMoney(s.Q) + " ÷ " + fmtMoney(r.p) + "⌋ = <b>" + (r.p <= 0 ? "∞" : fmtInt(r.K)) + "</b></div></li>" +
+      "<li><i>4</i><div>结算差额：c " + fmtMoney(r.c) + " − p " + fmtMoney(r.p) + " = <b>" + fmtMoney(r.c - r.p) + "</b>（≤0 即退款）</div></li>";
+
+    el("kOld").textContent = fmtMoney(r.lossOld);
+    el("kOldPass").textContent = r.pOld <= 0 ? "∞" : fmtInt(Math.floor(0.5 / r.pOld));
+
+    el("cmpBody").innerHTML =
+      "<tr><td>v0.2 只算输入</td><td class='num'>" + fmtMoney(r.pOld) + "</td><td class='num'>" + (r.pOld <= 0 ? "∞" : fmtInt(r.KOld)) + "</td><td class='num'>" + fmtMoney(r.c) + "</td><td class='num' style='color:var(--err)'><b>" + fmtMoney(r.lossOld) + "</b></td></tr>" +
+      "<tr><td>v0.3 含输出 cap</td><td class='num'>" + fmtMoney(r.p) + "</td><td class='num'>" + (r.p <= 0 ? "∞" : fmtInt(r.K)) + "</td><td class='num'>" + fmtMoney(r.c) + "</td><td class='num' style='color:var(--ok)'><b>¥0.00</b></td></tr>";
+
+    el("oldPass").textContent = (r.pOld <= 0 ? "∞" : fmtInt(Math.floor(0.5 / r.pOld)));
+    el("needQ").textContent = fmtMoney(r.p);
+
+    // user view
+    el("uName").textContent = s.model.name;
+    var inflight = 10;
+    var held = Math.min(s.Q, inflight * r.p);
+    el("uHeldText").textContent = fmtMoney(held);
+    el("uFree").textContent = fmtMoney(Math.max(0, s.Q - held));
+    el("uPer").textContent = fmtMoney(r.p);
+    el("uInflight").textContent = String(inflight);
+    el("uConc").innerHTML = (r.p <= 0 ? "∞" : fmtInt(r.K)) + "<span>个请求</span>";
+  }
+
+  // presets
+  var PRESETS = [
+    {t:"低余额小号", Q:0.5, P:200, M:32768, A:8192, model:"claude-sonnet"},
+    {t:"正常用户", Q:50, P:500, M:8192, A:8192, model:"claude-sonnet"},
+    {t:"大额充值", Q:200, P:2000, M:16384, A:16384, model:"o3"},
+    {t:"批量 embedding", Q:20, P:20000, M:0, A:0, model:"gpt-4o-mini"}
+  ];
+  var pre = el("presets");
+  PRESETS.forEach(function(pr, i){
+    var b = document.createElement("button");
+    b.textContent = pr.t;
+    b.addEventListener("click", function(){
+      var idx = MODELS.findIndex(function(m){ return m.name === pr.model; });
+      syncModelSelect(idx);
+      el("inQ").value = String(pr.Q);
+      el("inP").value = String(pr.P);
+      el("inM").value = String(pr.M);
+      el("inA").value = String(pr.A);
+      Array.prototype.forEach.call(pre.querySelectorAll("button"), function(x){ x.classList.toggle("on", x === b); });
+      render();
+    });
+    pre.appendChild(b);
+  });
+
+  // user view dimension bars (static-ish, driven by state)
+  function renderDims(){
+    var s = readState();
+    var r = calc(s);
+    var inflight = 10;
+    var held = Math.min(s.Q, inflight * r.p);
+    var rows = [
+      {n:"在途占用", why:"每请求预扣 p × 在途数", now:fmtMoney(held), pct: s.Q>0 ? Math.min(100, held/s.Q*100) : 0, cls:""},
+      {n:"可用余额", why:"还能承载 ⌊可用 ÷ p⌋ 个请求", now:fmtMoney(Math.max(0,s.Q-held)), pct: s.Q>0 ? Math.min(100, Math.max(0,(s.Q-held))/s.Q*100) : 0, cls:"ok"},
+      {n:"已用 / 总充值", why:"累计消耗，不影响本次并发", now:"¥6,420 / ¥20,000", pct:32, cls:""}
+    ];
+    el("dims").innerHTML = rows.map(function(x){
+      return "<div class='dim'><div class='top'><span class='name'>" + x.n + "</span><span class='why'>" + x.why + "</span><span class='now'>" + x.now + "</span></div>" +
+        "<div class='bar'><i class='" + x.cls + "' style='width:" + x.pct.toFixed(1) + "%'></i></div></div>";
+    }).join("");
+  }
+
+  var _render = render;
+  render = function(){ _render(); renderDims(); };
+
+  renderCapTable();
+  syncModelSelect(3);
+  el("inM").value = "8192";
+  render();
+  pre.querySelectorAll("button")[1].classList.add("on");
+})();
+</script>
+</body>
+</html>
