@@ -50,7 +50,6 @@ import {
   toPayload,
   type HintCategory,
   type McpKind,
-  type McpProtocol,
   type ModelProfile,
   type ProtocolHint,
   type ProfileDraft,
@@ -155,10 +154,14 @@ const CATEGORY_LABEL: Record<
   unknown: (t) => t('Other'),
 }
 
+// 产物类型是唯一的「协议」维度：端点由它决定。files / search / audio 现在
+// 只能声明、调不通（后端会回「端点尚未接入」），但目录要先能挂上去。
 const KIND_LABEL: Record<McpKind, (t: (key: string) => string) => string> = {
   image: (t) => t('Image'),
   video: (t) => t('Video'),
+  files: (t) => t('Files'),
   search: (t) => t('Search'),
+  audio: (t) => t('Audio'),
 }
 
 // 候选项的分类来自服务端 mcp/suggest.go，前端不再自带正则：
@@ -801,40 +804,14 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
                       <SelectContent>
                         <SelectItem value='image'>{t('Image')}</SelectItem>
                         <SelectItem value='video'>{t('Video')}</SelectItem>
+                        <SelectItem value='files'>{t('Files')}</SelectItem>
                         <SelectItem value='search'>{t('Search')}</SelectItem>
+                        <SelectItem value='audio'>{t('Audio')}</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className='space-y-1.5'>
-                    <Label className='text-xs'>{t('Protocol')}</Label>
-                    <Select
-                      value={draft.protocol}
-                      onValueChange={(v) =>
-                        setField(
-                          'protocol',
-                          (v ?? 'ark') as McpProtocol
-                        )
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue>{draft.protocol}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {/* 协议跟着产物类型走：图/视频都是方舟，检索还没接端点，
-                            列出来但不可选，免得选完保存不了。 */}
-                        {PROTOCOLS_BY_KIND[draft.kind].map((protocol) => (
-                          <SelectItem
-                            key={protocol}
-                            value={protocol}
-                            disabled={draft.kind === 'search'}
-                          >
-                            {protocol === 'deepseek'
-                              ? 'deepseek（待接入）'
-                              : protocol}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <p className='text-muted-foreground text-[11px]'>
+                      {t('Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.')}
+                    </p>
                   </div>
                 </div>
 

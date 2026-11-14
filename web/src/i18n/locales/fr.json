@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Files": "Fichiers",
+    "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.": "Les images et vidéos sont disponibles. Fichiers, recherche et audio peuvent être déclarés dès maintenant ; leurs points de terminaison ne sont pas encore connectés.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

@@ -40,7 +40,12 @@ var transports = map[string]transport{
 type ErrUnknownTransport struct{ Name string }
 
 func (e *ErrUnknownTransport) Error() string {
-	return "未知产物类型: " + e.Name + "（可用: image, video）"
+	// 区分「类型写错」与「类型合法但端点还没接」：能力注册允许先声明
+	// files / search / audio，真调用时才需要说清是后者。
+	if knownKinds[e.Name] {
+		return e.Name + " 的生成端点尚未接入（当前可用: image, video）"
+	}
+	return "未知产物类型: " + e.Name + "（可用: " + kindList() + "）"
 }
 
 func getTransport(name string) (transport, error) {

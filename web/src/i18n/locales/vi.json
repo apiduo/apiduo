@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Files": "Tệp",
+    "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.": "Hình ảnh và video đã hoạt động. Tệp, tìm kiếm và âm thanh có thể khai báo ngay; endpoint chưa được kết nối.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

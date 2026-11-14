@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export type McpKind = 'image' | 'video' | 'search'
+export type McpKind = 'image' | 'video' | 'files' | 'search' | 'audio'
 /**
  * 协议按上游厂商命名。图片和视频都走方舟 —— 网关只对这两种产物开门，
  * 厂商差异由渠道和 JS 插件吸收；deepseek / openai 是留给检索与文件的，
@@ -27,9 +27,13 @@ export type McpProtocol = 'ark' | 'deepseek' | 'openai'
 
 /** 每种产物类型能选哪些协议。 */
 export const PROTOCOLS_BY_KIND: Record<McpKind, McpProtocol[]> = {
+  // 协议不再由人选择：端点由产物类型决定，上游方言归渠道。这里保留映射
+  // 只是为了让保存 payload 有一个稳定值（后端同样只接受 ark）。
   image: ['ark'],
   video: ['ark'],
-  search: ['deepseek'],
+  files: ['ark'],
+  search: ['ark'],
+  audio: ['ark'],
 }
 
 /**

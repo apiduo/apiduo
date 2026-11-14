@@ -74,6 +74,22 @@ type ModelProfile struct {
 
 func (ModelProfile) TableName() string { return "mcp_model_profiles" }
 
+// knownKinds 是全部可声明的产物类型。
+//
+// 之所以在这里一次列全、而 getTransport 只实现 image/video：声明可以先建，
+// 端点晚点接。产品上这是「能力目录」与「运行时」的分离 —— 面板能提前把模型
+// 挂上去，调用方在端点接好之前会收到明确的「尚未接入」，而不是「未知类型」。
+var knownKinds = map[string]bool{
+	"image":  true,
+	"video":  true,
+	"files":  true,
+	"search": true,
+	"audio":  true,
+}
+
+// kindList 按产品口径输出，顺序稳定（不要用 map 遍历顺序）。
+func kindList() string { return "image / video / files / search / audio" }
+
 // ErrorRule 是错误到「agent 该不该重试」的映射。
 //
 // Scope=global 的规则对所有模型生效；Scope=model 只覆盖指定模型的例外。
@@ -246,8 +262,8 @@ func normalizeAndValidateProfile(p *ModelProfile) error {
 	if p.ModelId == "" {
 		return userErrf("模型 ID 不能为空")
 	}
-	if p.Kind != "image" && p.Kind != "video" && p.Kind != "search" {
-		return userErrf("产物类型不合法: %q", p.Kind)
+	if !knownKinds[p.Kind] {
+		return userErrf("产物类型不合法: %q（可用: %s）", p.Kind, kindList())
 	}
 	if p.Protocol == "" {
 		p.Protocol = defaultProtocol(p.Kind)
@@ -354,12 +370,8 @@ func validateProfileShape(p *ModelProfile) error {
 	// 空值一律当「未声明」：UpdateProfile 只写请求里出现的键，形状校验不能把
 	// 没改的字段当成错。真正落库前 SaveProfile 会补上默认 kind 与 protocol。
 	if p.Kind != "" {
-		switch p.Kind {
-		case "image", "video", "search", "files":
-			// 合法声明。search / files 的端点还没接，声明能存，
-			// 真调用会在 getTransport 处明确报「未知产物类型」。
-		default:
-			return userErrf("产物类型只能是 image / video / search，收到 %q", p.Kind)
+		if !knownKinds[p.Kind] {
+			return userErrf("产物类型只能是 %s，收到 %q", kindList(), p.Kind)
 		}
 	}
 	if p.Protocol != "" {

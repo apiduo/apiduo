@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Files": "文件",
+    "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.": "图片和视频已可用；文件、搜索、音频现在可以先登记，端点接通后即可调用。",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

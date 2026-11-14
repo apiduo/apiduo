@@ -185,7 +185,7 @@ func TestUpsertValidatesShape(t *testing.T) {
 	setupDB(t)
 
 	cases := map[string]string{
-		"产物类型":    `{"kind":"audio"}`,
+		"产物类型":    `{"kind":"embedding"}`,
 		"负数上限":    `{"kind":"image","max_ref_images":-1}`,
 		"参数 JSON": `{"kind":"image","parameters":"{not json}"}`,
 	}
