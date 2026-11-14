@@ -407,7 +407,7 @@ func TestInitializeCarriesInstructions(t *testing.T) {
 	if strings.TrimSpace(text) == "" {
 		t.Fatal("initialize 必须带 instructions：客户端靠它把使用方式注入模型上下文")
 	}
-	for _, want := range []string{"models.list", "task.get", "billed", "retry_action"} {
+	for _, want := range []string{"models.list", "task.get", "billed", "retry_action", "lasting preference", "one-off"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("instructions 缺少 %q：%s", want, text)
 		}

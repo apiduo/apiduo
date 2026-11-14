@@ -38,7 +38,16 @@ Rules
 - If the request is vague, ask one clarifying question before spending money.
 - On error read code and retry_action: none = stop, call_models_list = pick another
   model, wait = retry after retry_after_ms.
-- Give the user the output URL; never report success without one.`
+- Give the user the output URL; never report success without one.
+
+Preferences
+- If you have a memory mechanism, use it: when the user states a lasting preference
+  (a default model, a usual aspect ratio, a recurring style, a budget cap), record it
+  and follow it in later sessions instead of asking again.
+- Record only what sounds durable. A one-off "use flux this time" is not a preference,
+  and remembering it will make later calls wrong.
+- A remembered preference never overrides the model list: confirm the model still
+  exists and the price before spending money.`
 
 var (
 	protoOnce    sync.Once
