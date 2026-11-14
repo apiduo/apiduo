@@ -37,6 +37,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 			"model 可以不传，会用默认模型并在返回里说明是哪个；要指定就先调 models.list 看可选值，" +
 			"按 summary 里的场景/成本挑，不要凭模型名猜。" +
 			"models.list 里该模型声明的 parameters（aspect_ratio / resolution 等）直接平铺传即可。" +
+			"prompt 也可省略，改传方舟形状的 content 数组（type=text / image_url），会被拆成提示词与参考图。" +
 			"size/n/quality 可以不传。传的话：声明里有 enum 就取 enum 内的值；没有 enum 就看 note，" +
 			"或按常见写法给（size 支持 WxH，如 1024x1024）。不要凭模型名臆造档位。",
 	}, d.generateImage)
@@ -200,7 +201,10 @@ func absorbUndeclaredParams(req *mcpsdk.CallToolRequest, in *generateInput) {
 // ── 生成 ────────────────────────────────────────────────────────────────
 
 type generateInput struct {
-	Prompt          string         `json:"prompt" jsonschema:"提示词，描述想要的内容"`
+	// 不标 required：方舟形状的 content 数组是 prompt 的另一种说法，
+	// SDK 在 schema 阶段拦住缺 prompt 的请求，absorbArkContent 就没机会跑了。
+	// 空提示词改在 buildPayload 之后统一校验，那时 content 已经拆完。
+	Prompt          string         `json:"prompt,omitempty" jsonschema:"提示词，描述想要的内容。与 content 二选一"`
 	Model           string         `json:"model,omitempty" jsonschema:"模型 id。不传用默认模型（返回里会说明）；取值来自 models.list"`
 	ReferenceImages any            `json:"reference_images,omitempty" jsonschema:"参考图 URL，单个字符串或字符串数组。传了就由图生图/图生视频"`
 	Size            string         `json:"size,omitempty" jsonschema:"尺寸。取值见该模型 parameters.size 的 enum 或 note；都没写时传 WxH，如 1024x1024"`

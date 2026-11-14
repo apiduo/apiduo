@@ -198,3 +198,44 @@ func TestModelsSummaryListsIDs(t *testing.T) {
 		t.Error("简介应当被截断")
 	}
 }
+
+// 只传方舟形状的 content、不传 prompt，必须能走到 buildPayload。
+//
+// 这条是端到端才暴露的：单测里 absorbArkContent 一直是好的，但 SDK 会在
+// schema 阶段先拦「缺少 prompt」，agent 照方舟文档传 content 时永远进不来。
+func TestContentOnlyCallReachesUpstream(t *testing.T) {
+	setupDB(t)
+	rec := mockUpstream(t)
+	resetProtocol()
+
+	p := ModelProfile{
+		ModelId: "content-only", Kind: "video", Protocol: "ark",
+		Enabled: true, Async: true,
+		Parameters: `{"duration":{"enum":[5,10]}}`,
+	}
+	if err := SaveProfile(&p); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+
+	res := callTool(t, srv.URL, "sk-test", "video.generate", map[string]any{
+		"model":    "content-only",
+		"content":  []any{map[string]any{"type": "text", "text": "海浪拍打礁石"}},
+		"duration": 5,
+	})
+	if res["status"] != "working" {
+		t.Fatalf("应当已提交，实际 %v", res)
+	}
+
+	rec.mu.Lock()
+	body := rec.video
+	rec.mu.Unlock()
+	content, _ := body["content"].([]any)
+	if len(content) == 0 {
+		t.Fatalf("上游没收到 content，实际 %v", body)
+	}
+	first, _ := content[0].(map[string]any)
+	if first["type"] != "text" || first["text"] != "海浪拍打礁石" {
+		t.Errorf("提示词没有从 content 拆出来，实际 %v", first)
+	}
+}
