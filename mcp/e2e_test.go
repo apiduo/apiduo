@@ -400,7 +400,7 @@ func TestParamValidationRejectsOutOfRange(t *testing.T) {
 		want string
 	}{
 		{"enum 外取值", map[string]any{"prompt": "x", "size": "8K"}, "不被模型"},
-		{"n 超上限", map[string]any{"prompt": "x", "n": 5}, "不能大于"},
+		{"n 超上限", map[string]any{"prompt": "x", "n": 5}, "最多"},
 		{"参考图超上限", map[string]any{"prompt": "x", "reference_images": []any{"a"}}, "不支持参考图"},
 		{"未声明参数", map[string]any{"prompt": "x", "extra": map[string]any{"seed": 1}}, "未声明参数"},
 	}

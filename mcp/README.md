@@ -149,6 +149,14 @@ curl -sS --noproxy '*' -X PUT \
 6. **观察只记结构性参数**：`size` / `duration` / `n` / 参考图张数。
    提示词内容与图片 URL 一个字都不落盘。
 7. **观察写入不阻塞调用**：队列满就丢样本。丢一条观察数据可以接受，卡住生成请求不行。
+8. **错误必须可分类**：本地校验给稳定码（`PARAM_OUT_OF_RANGE` / `MODEL_NOT_FOUND` …），
+   上游错误查 `mcp_error_rules` 翻译成 `retryable` / `retry_action` / `hint`。
+   agent 靠这三个字段决定「重发、改参数还是充值」；纯文本它只能猜，猜错要计费。
+9. **产物地址必须进 text content**：多数 MCP 客户端只渲染 text，`structuredContent`
+   里的 URL 它们看不见。只给结构化输出会出现「agent 说生成了、用户拿不到图」。
+10. **能力边界写进 `note`**：`1080P 存在但当前号池不可用` 这类事实表达不进 enum；
+    note 随 models.list 下发，并在参数被拒时附在错误里。`content` 同理 ——
+    agent 按方舟形状传 `content` 时直接拆成 prompt + reference_images，不报「未声明参数」。
 
 ## 6. 已修的坑（别再踩）
 

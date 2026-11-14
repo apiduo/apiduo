@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
@@ -135,9 +136,18 @@ func TestLocalRejectLeavesObservationSample(t *testing.T) {
 		t.Fatalf("超长提示词应当被拒，实际 %v", res)
 	}
 
+	// 观察走异步队列（README §5：不阻塞主链路），所以这里轮询而不是假设
+	// goroutine 已经落库 —— 原来的单次查询在本地拒绝路径上会抢在写入之前。
 	var rows []model.Log
-	if err := model.LOG_DB.Where("model_name = ?", "reject-obs").Find(&rows).Error; err != nil {
-		t.Fatalf("查观察行失败: %v", err)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if err := model.LOG_DB.Where("model_name = ?", "reject-obs").Find(&rows).Error; err != nil {
+			t.Fatalf("查观察行失败: %v", err)
+		}
+		if len(rows) > 0 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if len(rows) != 1 {
 		t.Fatalf("本地拒应当留 1 条样本，实际 %d 条", len(rows))

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -125,6 +127,15 @@ func absorbUndeclaredParams(req *mcpsdk.CallToolRequest, in *generateInput) {
 		if declared[key] {
 			continue
 		}
+		// 方舟形状的 content 不是「多余参数」，是同一件事的另一种说法。
+		// Agent 读方舟文档后照抄 content 数组很常见（线上最高频的一类报错），
+		// 报错等于让它把已经说清楚的意思重说一遍。这里拆成 prompt +
+		// reference_images，与直接传这两个字段走同一条路径。
+		if key == "content" {
+			if absorbArkContent(value, in) {
+				continue
+			}
+		}
 		if in.Extra == nil {
 			in.Extra = make(map[string]any, len(raw))
 		}
@@ -158,13 +169,14 @@ type outputItem struct {
 }
 
 type generateOutput struct {
-	Status   string         `json:"status"` // completed | working
+	Status   string         `json:"status"` // completed | working | failed
 	Model    string         `json:"model"`
 	TaskID   string         `json:"task_id,omitempty"`
 	Outputs  []outputItem   `json:"outputs,omitempty"`
 	Usage    map[string]any `json:"usage,omitempty"`
 	PollMS   int            `json:"poll_after_ms,omitempty"`
 	Upstream map[string]any `json:"upstream,omitempty"`
+	Error    *toolError     `json:"error,omitempty"`
 }
 
 func (d *toolDeps) generateImage(ctx context.Context, req *mcpsdk.CallToolRequest, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
@@ -185,7 +197,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	common.SysLog(common.LogText("[mcp] %s.generate start: user=%d token=%d model=%q size=%q",
 		kind, caller.UserId, caller.TokenId, in.Model, in.Size))
 	if strings.TrimSpace(in.Prompt) == "" {
-		return nil, generateOutput{}, fmt.Errorf("prompt 不能为空")
+		return d.fail(in.Model, userParamErrorf(CodePromptRequired, "prompt 不能为空"))
 	}
 
 	views, err := listEnabledViews()
@@ -194,12 +206,12 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	}
 	m, err := pickView(views, kind, in.Model)
 	if err != nil {
-		return nil, generateOutput{}, err
+		return d.fail(in.Model, err)
 	}
 
 	refs, err := parseRefs(in.ReferenceImages)
 	if err != nil {
-		return nil, generateOutput{}, err
+		return d.fail(m.ID, err)
 	}
 	payload, err := buildPayload(m, in, refs)
 	if err != nil {
@@ -210,12 +222,12 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		// 「参数从未探测」，等于把「声明写错了」显示成「还没人用过」。
 		// 这里没有出站，Latency 记 0；只记结构性参数，提示词不进快照。
 		observeCall(ctx, callObservation{Tool: kind + ".generate", ModelID: m.ID, Params: snapshotInput(in, refs), ErrorMsg: errText(err)})
-		return nil, generateOutput{}, err
+		return d.fail(m.ID, err)
 	}
 
 	t, err := getTransport(m.Kind)
 	if err != nil {
-		return nil, generateOutput{}, err
+		return d.fail(m.ID, err)
 	}
 
 	started := time.Now()
@@ -233,7 +245,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	})
 
 	if err != nil {
-		return nil, generateOutput{}, err
+		return d.fail(m.ID, err)
 	}
 
 	if tid, ok := firstString(resp, "task_id", "id"); ok && m.Async {
@@ -251,7 +263,15 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	out := parseOutputs(resp)
 	if len(out) == 0 {
 		// 上游没给可用产物：如实说明，不要伪造成功。
-		return nil, generateOutput{}, fmt.Errorf("上游未返回图片/视频数据：%s", brief(resp))
+		// 这类失败重发一次往往就过了（同参数、不同上游实例），所以标可重试。
+		return d.failWith(m.ID, &toolError{
+			Code:         CodeUpstreamError,
+			Message:      "上游未返回图片/视频数据：" + brief(resp),
+			Retryable:    true,
+			RetryAction:  "wait",
+			RetryAfterMS: 5000,
+			Hint:         "同参数退避后重试一次；仍失败就换模型",
+		})
 	}
 	inline := 0
 	for _, o := range out {
@@ -259,7 +279,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 			inline++
 		}
 	}
-	summary := fmt.Sprintf("生成完成（模型 %s），共 %d 个产物", m.ID, len(out))
+	summary := appendOutputLinks(fmt.Sprintf("生成完成（模型 %s），共 %d 个产物", m.ID, len(out)), out)
 	if strings.TrimSpace(in.Model) == "" {
 		// The panel and the log page are searched by model name. Silently
 		// defaulting to the first enabled model produced a real support case:
@@ -291,7 +311,7 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 	// 按字符数而不是字节数 —— 中文提示词按字节算会短三倍。
 	if m.MaxPromptChars != nil && *m.MaxPromptChars > 0 {
 		if n := len([]rune(in.Prompt)); n > *m.MaxPromptChars {
-			return nil, fmt.Errorf("prompt 长度 %d 超过模型 %s 的上限 %d", n, m.ID, *m.MaxPromptChars)
+			return nil, userParamErrorf(CodePromptTooLong, "prompt 长度 %d 超过模型 %s 的上限 %d", n, m.ID, *m.MaxPromptChars)
 		}
 	}
 
@@ -300,10 +320,10 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		// 按 0 处理会误杀图生图能力。
 		if m.MaxRefImages != nil {
 			if *m.MaxRefImages <= 0 {
-				return nil, fmt.Errorf("模型 %s 不支持参考图（上限 0）", m.ID)
+				return nil, userParamErrorf(CodeRefImagesUnsupported, "模型 %s 不支持参考图（上限 0），去掉 reference_images 再试", m.ID)
 			}
 			if len(refs) > *m.MaxRefImages {
-				return nil, fmt.Errorf("模型 %s 最多接受 %d 张参考图，收到 %d 张", m.ID, *m.MaxRefImages, len(refs))
+				return nil, userParamErrorf(CodeRefImagesExceed, "模型 %s 最多接受 %d 张参考图，收到 %d 张", m.ID, *m.MaxRefImages, len(refs))
 			}
 		}
 	}
@@ -350,7 +370,7 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 	}
 	if in.N != nil {
 		if *in.N < 1 {
-			return nil, fmt.Errorf("n 必须 ≥ 1，收到 %d", *in.N)
+			return nil, userParamErrorf(CodeParamOutOfRange, "n 必须 ≥ 1，收到 %d", *in.N)
 		}
 		if err := checkRange(m, "n", float64(*in.N)); err != nil {
 			return nil, err
@@ -358,7 +378,7 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		if _, declared := m.Params["n"]; !declared && *in.N > maxBatchN {
 			// 没声明上限时的兜底：上游常常只认 n、不给 max，
 			// 一次 n=1000 就能把额度打光。「没配置」不该等价于「没有上限」。
-			return nil, fmt.Errorf("模型 %s 未声明 n 的上限，单次最多 %d；要更多请分多次调用", m.ID, maxBatchN)
+			return nil, userParamErrorf(CodeParamOutOfRange, "模型 %s 未声明 n 的上限，单次最多 %d；要更多请分多次调用", m.ID, maxBatchN)
 		}
 		if !isVideo {
 			p["n"] = *in.N
@@ -366,7 +386,7 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 	}
 	for k, v := range in.Extra {
 		if _, ok := m.Params[k]; !ok && !standardParams[k] {
-			return nil, fmt.Errorf("模型 %s 未声明参数 %q，可用：%s", m.ID, k, strings.Join(paramNames(m), ", "))
+			return nil, userParamErrorf(CodeParamNotDeclared, "模型 %s 未声明参数 %q，可用：%s", m.ID, k, strings.Join(paramNames(m), ", "))
 		}
 		if err := checkExtra(m, k, v); err != nil {
 			return nil, err
@@ -422,7 +442,39 @@ func checkEnum(m modelView, name, val string) error {
 		}
 		opts = append(opts, fmt.Sprint(v))
 	}
-	return fmt.Errorf("%s 取值 %q 不被模型 %s 接受，可选：%s", name, val, m.ID, strings.Join(opts, ", "))
+	// 数值型枚举给最接近的可选值：线上把「5 秒」写成 7 的情况真实发生过，
+	// 只说「不可用」会让 agent 在附近继续猜。
+	if target, err := strconv.ParseFloat(val, 64); err == nil {
+		best, bestDiff := "", math.Inf(1)
+		for _, v := range spec.Enum {
+			f, ok := toFloat(v)
+			if !ok {
+				continue
+			}
+			if d := math.Abs(f - target); d < bestDiff {
+				best, bestDiff = fmt.Sprint(v), d
+			}
+		}
+		if best != "" {
+			return userParamErrorf(CodeParamOutOfRange, "%s",
+				withSpecNote(fmt.Sprintf("%s 取值 %q 不可用，最接近的是 %s；可选：%s",
+					name, val, best, strings.Join(opts, ", ")), spec))
+		}
+	}
+	return userParamErrorf(CodeParamOutOfRange, "%s",
+		withSpecNote(fmt.Sprintf("%s 取值 %q 不被模型 %s 接受，可选：%s",
+			name, val, m.ID, strings.Join(opts, ", ")), spec))
+}
+
+// withSpecNote 把声明里的说明附在错误后面。
+//
+// agent 收到「不可用」时最想知道的是「为什么」——特别是当某个值看起来
+// 应该存在（如 1080P）。没有这一句，它下一轮大概率还在同一个方向上试。
+func withSpecNote(msg string, spec ParamSpec) string {
+	if note := strings.TrimSpace(spec.Note); note != "" {
+		return msg + "；说明：" + note
+	}
+	return msg
 }
 
 func checkRange(m modelView, name string, val float64) error {
@@ -431,10 +483,10 @@ func checkRange(m modelView, name string, val float64) error {
 		return nil
 	}
 	if spec.Min != nil && val < *spec.Min {
-		return fmt.Errorf("%s 不能小于 %g", name, *spec.Min)
+		return userParamErrorf(CodeParamOutOfRange, "%s 不能小于 %g，收到 %g", name, *spec.Min, val)
 	}
 	if spec.Max != nil && val > *spec.Max {
-		return fmt.Errorf("%s 不能大于 %g", name, *spec.Max)
+		return userParamErrorf(CodeParamOutOfRange, "%s 最多 %g，收到 %g；要更多请分多次调用", name, *spec.Max, val)
 	}
 	return nil
 }
@@ -455,17 +507,19 @@ func checkExtra(m modelView, name string, val any) error {
 			}
 			opts = append(opts, fmt.Sprint(v))
 		}
-		return fmt.Errorf("%s 取值 %q 不被模型 %s 接受，可选：%s", name, s, m.ID, strings.Join(opts, ", "))
+		return userParamErrorf(CodeParamOutOfRange, "%s",
+			withSpecNote(fmt.Sprintf("%s 取值 %q 不被模型 %s 接受，可选：%s",
+				name, s, m.ID, strings.Join(opts, ", ")), spec))
 	}
 	f, numeric := toFloat(val)
 	if !numeric {
 		return nil
 	}
 	if spec.Min != nil && f < *spec.Min {
-		return fmt.Errorf("%s 不能小于 %g", name, *spec.Min)
+		return userParamErrorf(CodeParamOutOfRange, "%s", withSpecNote(fmt.Sprintf("%s 不能小于 %g", name, *spec.Min), spec))
 	}
 	if spec.Max != nil && f > *spec.Max {
-		return fmt.Errorf("%s 不能大于 %g", name, *spec.Max)
+		return userParamErrorf(CodeParamOutOfRange, "%s", withSpecNote(fmt.Sprintf("%s 最多 %g，收到 %g", name, *spec.Max, f), spec))
 	}
 	return nil
 }
@@ -522,6 +576,103 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 
 func textResult(s string) *mcpsdk.CallToolResult {
 	return &mcpsdk.CallToolResult{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: s}}}
+}
+
+// fail 把错误包成 isError 结果，让 agent 拿到码与下一步，而不是一段中文。
+func (d *toolDeps) fail(modelId string, err error) (*mcpsdk.CallToolResult, generateOutput, error) {
+	return d.failWith(modelId, classifyToolError(modelId, err))
+}
+
+func (d *toolDeps) failWith(modelId string, te *toolError) (*mcpsdk.CallToolResult, generateOutput, error) {
+	out := generateOutput{Status: "failed", Model: modelId, Error: te}
+	res := &mcpsdk.CallToolResult{IsError: true}
+	if te != nil {
+		res.Content = []mcpsdk.Content{&mcpsdk.TextContent{Text: te.Message}}
+	}
+	return res, out, nil
+}
+
+// appendOutputLinks 把产物地址写进人读文本。
+//
+// 只放在 structuredContent 里不够：多数 MCP 客户端只渲染 text content，
+// agent 于是回一句「已生成」而用户拿不到图。这条摘要就是它们的唯一出口。
+func appendOutputLinks(summary string, out []outputItem) string {
+	lines := make([]string, 0, len(out))
+	for i, o := range out {
+		switch {
+		case o.URL != "" && len(out) == 1:
+			lines = append(lines, o.URL)
+		case o.URL != "":
+			lines = append(lines, fmt.Sprintf("%d. %s", i+1, o.URL))
+		case o.B64JSON != "":
+			lines = append(lines, fmt.Sprintf("%d. base64 内联（b64_json，%d 字符）", i+1, len(o.B64JSON)))
+		}
+	}
+	if len(lines) == 0 {
+		return summary
+	}
+	if len(lines) == 1 {
+		return summary + "：" + lines[0]
+	}
+	return summary + "：\n" + strings.Join(lines, "\n")
+}
+
+// absorbArkContent 把方舟形状的 content 落到 prompt / reference_images 上。
+//
+// 显式给出的 prompt 优先：两者同时存在时，说明调用方有意覆盖，不要用 content 盖掉它。
+func absorbArkContent(raw any, in *generateInput) bool {
+	prompt, refs, ok := parseArkContent(raw)
+	if !ok {
+		return false
+	}
+	if strings.TrimSpace(in.Prompt) == "" && prompt != "" {
+		in.Prompt = prompt
+	}
+	if in.ReferenceImages == nil && len(refs) > 0 {
+		in.ReferenceImages = refs
+	}
+	return true
+}
+
+// parseArkContent 把方舟形状的 content 数组拆成提示词与参考图。
+//
+// 只认方舟文档里的两种 part：{type:text,text} 与 {type:image_url,image_url:{url}}。
+// 认不出就返回 ok=false，让调用方照旧报「未声明参数」—— 静默吞掉一个不认识的
+// 形状，比直接报错更难查。
+func parseArkContent(raw any) (string, []string, bool) {
+	parts, ok := raw.([]any)
+	if !ok {
+		return "", nil, false
+	}
+	texts := make([]string, 0, 1)
+	refs := make([]string, 0, 1)
+	for _, item := range parts {
+		part, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch fmt.Sprint(part["type"]) {
+		case "text":
+			if text, ok := part["text"].(string); ok && strings.TrimSpace(text) != "" {
+				texts = append(texts, text)
+			}
+		case "image_url":
+			switch v := part["image_url"].(type) {
+			case map[string]any:
+				if u, ok := v["url"].(string); ok && strings.TrimSpace(u) != "" {
+					refs = append(refs, u)
+				}
+			case string:
+				if strings.TrimSpace(v) != "" {
+					refs = append(refs, v)
+				}
+			}
+		}
+	}
+	if len(texts) == 0 && len(refs) == 0 {
+		return "", nil, false
+	}
+	return strings.Join(texts, "\n"), refs, true
 }
 
 // parseRefs 兼容 string 与 string[]：入口宽松，内部统一成数组。

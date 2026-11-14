@@ -29,6 +29,12 @@ type ParamSpec struct {
 	Min     *float64 `json:"min,omitempty"`
 	Max     *float64 `json:"max,omitempty"`
 	Default any      `json:"default,omitempty"`
+	// Note 是给 agent 读的一句约束说明，随 models.list 下发、并在参数被拒时附在错误里。
+	//
+	// 有些边界表达不进 enum：「1080P 这个档位存在，但当前号池开不了」。
+	// 只列可选值会让 agent 以为声明漏了，于是换个措辞继续试探同一个方向；
+	// 写清原因，它才会换模型或接受 720P。
+	Note string `json:"note,omitempty"`
 }
 
 // paramNameRe 限制参数名，因为它要拼进 SQL 路径。

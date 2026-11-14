@@ -139,7 +139,11 @@ func pickView(views []modelView, kind, want string) (modelView, error) {
 				return modelView{}, &errKindMismatch{Model: want, Actual: v.Kind, Want: kind}
 			}
 		}
-		return modelView{}, &errModelNotAvailable{Model: want}
+		ids := make([]string, 0, len(byKind))
+		for _, v := range byKind {
+			ids = append(ids, v.ID)
+		}
+		return modelView{}, &errModelNotAvailable{Model: want, Kind: kind, Available: ids}
 	}
 	if len(byKind) == 0 {
 		return modelView{}, errNoModelOfKind(kind)
@@ -159,8 +163,18 @@ func (e *errKindMismatch) Error() string {
 	return "模型 " + e.Model + " 的产物类型是 " + e.Actual + "，不能用于 " + e.Want
 }
 
-type errModelNotAvailable struct{ Model string }
+type errModelNotAvailable struct {
+	Model     string
+	Kind      string
+	Available []string
+}
 
 func (e *errModelNotAvailable) Error() string {
-	return "模型 " + e.Model + " 未注册或已停用，先用 models.list 查看"
+	// 给候选而不是只说「没注册」：线上出现过 agent 凭训练知识直接写
+	// nano-banana-2 —— 它不在本部署的能力表里，光说「未注册」它下一轮还会猜。
+	if len(e.Available) == 0 {
+		return "模型 " + e.Model + " 未注册或已停用，先用 models.list 查看可用模型"
+	}
+	return "模型 " + e.Model + " 未注册或已停用；可用的 " + e.Kind + " 模型：" +
+		strings.Join(e.Available, ", ") + "。先用 models.list 查看能力"
 }
