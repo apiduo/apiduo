@@ -276,3 +276,26 @@ func TestModelsSummaryCarriesCost(t *testing.T) {
 		t.Errorf("引导语应含默认模型价格与候选，实际 %q", note)
 	}
 }
+
+// 摘要按 80 字截断会切掉枚举值，参数行必须单独给一份紧凑版。
+func TestModelsSummaryListsParams(t *testing.T) {
+	out := modelsSummary([]map[string]any{
+		{
+			"id": "happyhorse1.1", "kind": "video",
+			"summary": strings.Repeat("长摘要", 30),
+			"cost":    "$0.05/次起",
+			"parameters": map[string]ParamSpec{
+				"duration":   {Enum: []any{5, 10, 15}},
+				"resolution": {Enum: []any{"720P"}},
+				"n":          {Min: ptrFloat(1), Max: ptrFloat(1)},
+			},
+		},
+	})
+	for _, want := range []string{"duration=5/10/15", "resolution=720P", "n=1", "$0.05/次起"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("清单缺少 %q，实际 %q", want, out)
+		}
+	}
+}
+
+func ptrFloat(v float64) *float64 { return &v }
