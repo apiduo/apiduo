@@ -4,7 +4,7 @@
 # 格式：<key>	<value>
 files	142
 blocks	426
-added	4054
+added	4062
 deleted	221
 
 # 2026-11-13 20:2x 用户折扣「生效检查」改造：files 141->142、blocks 422->426、
@@ -25,3 +25,10 @@ deleted	221
 # （combobox-input.tsx、task-logs-filter-bar.tsx 等），同步点一前移，
 # 这些文件里既有的自有行就从未统计变成要统计。删除行数下降同理：
 # 上游补上了我们曾经删掉的行。没有新增挂接点。
+
+# 2026-11-14 22:3x 端点互转错误归因：added 4054->4062（+8），files/blocks/deleted 不变。
+# relay/convert_request_error.go 的 APIDUO:tool-type-400 块内新增判断：chat 的 n>1 与
+# responses 的状态化字段（previous_response_id 等）在目标格式无法表达时，原先落默认分支
+# 成 500，SDK 会当服务端故障自动重试，把一次参数错误放大成多次请求。改成 400 + skip_retry。
+# 全部加在已有标记块内，未新增块、未新增上游文件（回归测试放在新建的
+# relay/convert_request_error_apiduo_test.go，不参与合并面检查）。
