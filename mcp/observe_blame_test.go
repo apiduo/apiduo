@@ -2,29 +2,57 @@ package mcp
 
 import "testing"
 
-// 本地参数校验拒绝的是被点名那个参数，不能连坐同一次调用里的其它参数。
-func TestBlamesParam(t *testing.T) {
-	const err = `模型 happyhorse1.1 未声明参数 "content"，可用：duration, generate_audio, n, ratio, resolution`
+// 失败归因在写入侧算一次：本地校验点名谁就是谁；上游错误不点名时，
+// 只有单参数快照才能定责。多参数请求里硬归因会让巡检建议改错声明。
+func TestBlameFrom(t *testing.T) {
 	cases := []struct {
 		name   string
 		err    string
-		param  string
-		expect bool
+		params map[string]string
+		want   string
 	}{
-		{"点名的参数记失败", err, "content", true},
-		{"没点名的参数不记", err, "reference_images", false},
-		{"上游错误照样算", "upstream 429 too many requests", "reference_images", true},
-		{"空错误照样算", "", "n", true},
 		{
-			"上游信封错误不算到参数头上",
-			`upstream 400 (POST /contents/generations/tasks): {"error":{"message":"'content' 必须是非空数组"}}`,
-			"reference_images",
-			false,
+			"未声明参数点名 content，不连坐其它参数",
+			`模型 x 未声明参数 "content"，可用：n, aspect_ratio`,
+			map[string]string{"n": "9", "aspect_ratio": "32:9"},
+			"",
 		},
+		{
+			"点名了快照里的参数就归给它",
+			`模型 x 未声明参数 "n"，可用：size`,
+			map[string]string{"n": "9"},
+			"n",
+		},
+		{
+			"单参数样本的上游拒绝可以定责",
+			"upstream 400 invalid value",
+			map[string]string{"duration": "12"},
+			"duration",
+		},
+		{
+			"多参数样本的上游拒绝无法定责",
+			"upstream 403 insufficient_user_quota (POST /images/generations)",
+			map[string]string{"n": "1", "size": "1:1"},
+			"",
+		},
+		{
+			"上游点名该参数就算",
+			"n must be <= 4",
+			map[string]string{"n": "9"},
+			"n",
+		},
+		{
+			"content 信封错误不算到可调参数上",
+			`'content' 必须是非空数组`,
+			map[string]string{"n": "9"},
+			"",
+		},
+		{"空错误没有归因依据", "", map[string]string{"n": "9"}, ""},
+		{"没有快照就没有归因", "boom", nil, ""},
 	}
 	for _, c := range cases {
-		if got := blamesParam(c.err, c.param); got != c.expect {
-			t.Errorf("%s: blamesParam(%q, %q) = %v, 期望 %v", c.name, c.err, c.param, got, c.expect)
+		if got := blameFrom(c.err, c.params); got != c.want {
+			t.Errorf("%s: blameFrom(%q, %v) = %q，期望 %q", c.name, c.err, c.params, got, c.want)
 		}
 	}
 }

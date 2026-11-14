@@ -24,10 +24,13 @@ func TestQueryParamsSQLiteCountsEachParamIndependently(t *testing.T) {
 		t.Fatalf("建表失败: %v", err)
 	}
 
-	insert := func(typ int, snapshot map[string]any, upstreamErr string) {
+	insert := func(typ int, snapshot map[string]any, upstreamErr, blamed string) {
 		info := map[string]any{"param_snapshot": snapshot, "mcp": true}
 		if upstreamErr != "" {
 			info["upstream_error"] = upstreamErr
+		}
+		if blamed != "" {
+			info["failed_param"] = blamed
 		}
 		raw, _ := json.Marshal(map[string]any{"admin_info": info})
 		row := model.Log{
@@ -42,13 +45,13 @@ func TestQueryParamsSQLiteCountsEachParamIndependently(t *testing.T) {
 	}
 
 	// 一次成功：两个参数都记 ok
-	insert(logTypeConsume, map[string]any{"n": "9", "aspect_ratio": "32:9", "size": "1024x1024"}, "")
-	// 本地校验点名 content：跟 n / aspect_ratio 无关，不算它们的失败
-	insert(logTypeError, map[string]any{"n": "9", "aspect_ratio": "32:9"}, `模型 x 未声明参数 "content"，可用：n`)
+	insert(logTypeConsume, map[string]any{"n": "9", "aspect_ratio": "32:9", "size": "1024x1024"}, "", "")
+	// 本地校验点名 content：跟 n / aspect_ratio 无关，写入侧不给归因
+	insert(logTypeError, map[string]any{"n": "9", "aspect_ratio": "32:9"}, `模型 x 未声明参数 "content"，可用：n`, "")
 	// 上游信封错误：content 是请求体结构，同样不算到快照参数上
-	insert(logTypeError, map[string]any{"n": "9"}, `'content' 必须是非空数组`)
-	// 真正的取值失败：算 n 的
-	insert(logTypeError, map[string]any{"n": "9"}, "upstream 400 invalid value")
+	insert(logTypeError, map[string]any{"n": "9"}, `'content' 必须是非空数组`, "")
+	// 真正的取值失败：单参数快照，写入侧归因给 n
+	insert(logTypeError, map[string]any{"n": "9"}, "upstream 400 invalid value", "n")
 
 	stats, err := queryParamsSQLite(db, "batch-image", []string{"n", "aspect_ratio"}, time.Now().AddDate(0, 0, -7).Unix())
 	if err != nil {

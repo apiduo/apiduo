@@ -470,27 +470,30 @@ func TestUpstreamDefaultBaseURL(t *testing.T) {
 func TestObservationsOnSQLite(t *testing.T) {
 	setupDB(t)
 
-	insertLog := func(params map[string]any, ok bool) {
+	insertLog := func(params map[string]any, ok bool, blamed string) {
 		typ := logTypeConsume
 		if !ok {
 			typ = logTypeError
 		}
-		raw, _ := json.Marshal(map[string]any{
-			"admin_info": map[string]any{"param_snapshot": params, "mcp": true},
-		})
+		info := map[string]any{"param_snapshot": params, "mcp": true}
+		if blamed != "" {
+			info["failed_param"] = blamed
+		}
+		raw, _ := json.Marshal(map[string]any{"admin_info": info})
 		row := model.Log{CreatedAt: time.Now().Unix(), Type: typ, ModelName: "obs-video", Other: string(raw)}
 		if err := model.LOG_DB.Create(&row).Error; err != nil {
 			t.Fatalf("插入日志失败: %v", err)
 		}
 	}
 	for i := 0; i < 12; i++ {
-		insertLog(map[string]any{"duration": "5"}, true)
+		insertLog(map[string]any{"duration": "5"}, true, "")
 	}
 	for i := 0; i < 8; i++ {
-		insertLog(map[string]any{"duration": "10"}, true)
+		insertLog(map[string]any{"duration": "10"}, true, "")
 	}
-	insertLog(map[string]any{"duration": "12"}, false)
-	insertLog(map[string]any{"duration": "15"}, false)
+	// 失败样本带写入侧算好的归因参数；读取侧不再从错误文本猜。
+	insertLog(map[string]any{"duration": "12"}, false, "duration")
+	insertLog(map[string]any{"duration": "15"}, false, "duration")
 
 	p := ModelProfile{ModelId: "obs-video", Kind: "video", Enabled: true}
 	if err := SaveProfile(&p); err != nil {

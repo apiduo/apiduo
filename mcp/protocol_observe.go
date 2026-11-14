@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,7 +64,10 @@ type callObservation struct {
 	Params   map[string]string
 	OK       bool
 	ErrorMsg string
-	Latency  time.Duration
+	// FailedParam 是这次失败的归因参数，只有写入侧能算准（那里同时有
+	// 错误原文与完整快照）。巡检只认这个字段，不从错误文本里猜。
+	FailedParam string
+	Latency     time.Duration
 }
 
 // observableParams 是允许落盘的参数白名单。
@@ -122,6 +126,11 @@ func writeObservation(o callObservation) {
 	if o.ErrorMsg != "" {
 		adminInfo["upstream_error"] = o.ErrorMsg
 	}
+	if !o.OK {
+		if blamed := blameFrom(o.ErrorMsg, o.Params); blamed != "" {
+			adminInfo["failed_param"] = blamed
+		}
+	}
 	other := map[string]any{"admin_info": adminInfo}
 	raw, err := json.Marshal(other)
 	if err != nil {
@@ -157,6 +166,45 @@ func writeObservation(o callObservation) {
 	//      request_id 为空的同秒行会在后台合并时折叠成一行 —— 样本静默变少，面板看不出来。
 	// 失败仍然不重试：观察是旁路，丢一条比刷错误日志好。
 	_ = model.EnqueueLog(row)
+}
+
+// blameFrom 判断这次失败该记在哪个参数头上，返回空表示无法定责。
+//
+// 归因只在写入侧做一次：这里是唯一同时拥有错误原文与完整参数快照的地方。
+// 放到读取侧就要在 ClickHouse / MySQL / SQLite 三套方言里各写一遍同样的
+// 规则，必然漂移 —— 而且线上误报正是这么来的：一次上游 403 额度不足被算成
+// 「n=1 被拒」，巡检于是建议去改一个本来正确的上限。
+func blameFrom(errText string, params map[string]string) string {
+	if strings.TrimSpace(errText) == "" || len(params) == 0 {
+		return ""
+	}
+	// 本地校验会点名一个参数：点名了谁就是谁。
+	if strings.Contains(errText, "未声明参数") {
+		for name := range params {
+			if strings.Contains(errText, `未声明参数 "`+name+`"`) {
+				return name
+			}
+		}
+		return ""
+	}
+	// 信封类错误说的是请求体结构，不是快照里的可调参数。
+	if strings.Contains(errText, `"content"`) || strings.Contains(errText, `'content'`) {
+		return ""
+	}
+	for name := range params {
+		if mentionsParam(errText, name) {
+			return name
+		}
+	}
+	// 上游只说「取值不合法」时，只有快照里仅一个参数才能定责。
+	// 多参数请求里无法判断是哪个被拒，硬归因会让运维改错声明 ——
+	// 误报比漏报贵，因为人会照做。
+	if len(params) == 1 {
+		for name := range params {
+			return name
+		}
+	}
+	return ""
 }
 
 // snapshotParams 从请求体里挑出可观察的参数。

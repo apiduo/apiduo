@@ -99,16 +99,11 @@ func queryParamsClickHouse(db *gorm.DB, modelId string, names []string, since in
 		SELECT param,
 		       JSONExtractString(snap, param) AS value,
 		       countIf(type = ?) AS ok,
-		       countIf(type = ? AND NOT (
-		           position(err, '"content"') > 0
-		           OR position(err, concat(char(39), 'content', char(39))) > 0
-		           OR (position(err, '未声明参数') > 0
-		               AND position(err, concat('未声明参数 "', param, '"')) = 0)
-		       )) AS fail
+		       countIf(type = ? AND blamed = param) AS fail
 		FROM (
 		    SELECT type,
 		           JSONExtractString(other, 'admin_info', 'param_snapshot') AS snap,
-		           JSONExtractString(other, 'admin_info', 'upstream_error') AS err
+		           JSONExtractString(other, 'admin_info', 'failed_param') AS blamed
 		    FROM logs
 		    WHERE model_name = ? AND created_at >= ?
 		)
@@ -131,16 +126,8 @@ func queryParamsMySQL(db *gorm.DB, modelId string, names []string, since int64) 
 		sql := fmt.Sprintf(`
 			SELECT JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.param_snapshot.%s')) AS value,
 			       SUM(type = ?) AS ok,
-			       SUM(type = ? AND NOT (
-			           IFNULL(LOCATE('"content"',
-			               JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.upstream_error'))), 0) > 0
-			           OR IFNULL(LOCATE(CONCAT(CHAR(39), 'content', CHAR(39)),
-			               JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.upstream_error'))), 0) > 0
-			           OR (IFNULL(LOCATE('未声明参数',
-			               JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.upstream_error'))), 0) > 0
-			               AND IFNULL(LOCATE(CONCAT('未声明参数 "', '%s', '"'),
-			               JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.upstream_error'))), 0) = 0)
-			       )) AS fail
+			       SUM(type = ? AND
+			           JSON_UNQUOTE(JSON_EXTRACT(other, '$.admin_info.failed_param')) = '%s') AS fail
 			FROM logs
 			WHERE model_name = ? AND created_at >= ?
 			  AND other IS NOT NULL AND other <> '' AND JSON_VALID(other)
@@ -174,7 +161,7 @@ func queryParamsSQLite(db *gorm.DB, modelId string, names []string, since int64)
 
 	counts := make(map[string]map[string]*ParamStat, len(names))
 	for _, r := range rows {
-		snap, errText := snapshotOf(r.Other)
+		snap, blamed := snapshotOf(r.Other)
 		if len(snap) == 0 {
 			continue
 		}
@@ -197,7 +184,7 @@ func queryParamsSQLite(db *gorm.DB, modelId string, names []string, since int64)
 			case logTypeConsume:
 				st.OK++
 			case logTypeError:
-				if blamesParam(errText, name) {
+				if blamed == name {
 					st.Fail++
 				}
 			}
@@ -238,7 +225,10 @@ func cleanStats(rows []ParamStat, names []string) []ParamStat {
 	return out
 }
 
-// snapshotOf 解析一次 other，同时给出参数快照与错误文案。
+// snapshotOf 解析一次 other，给出参数快照与该次失败的归因参数。
+//
+// 归因由写入侧算好（failed_param），这里不重复判断：读取侧再猜一遍，
+// 三套方言就会各有一套结论，而线上误报正是这么来的。
 //
 // SQLite 路径要按行遍历所有参数，逐参数再 Unmarshal 一遍纯属浪费；
 // 结构对不上就返回空，调用方按「这条日志没有快照」处理。
@@ -249,7 +239,7 @@ func snapshotOf(other string) (map[string]string, string) {
 	var doc struct {
 		AdminInfo struct {
 			ParamSnapshot map[string]any `json:"param_snapshot"`
-			UpstreamError string         `json:"upstream_error"`
+			FailedParam   string         `json:"failed_param"`
 		} `json:"admin_info"`
 	}
 	if err := json.Unmarshal([]byte(other), &doc); err != nil {
@@ -259,32 +249,43 @@ func snapshotOf(other string) (map[string]string, string) {
 	for k, v := range doc.AdminInfo.ParamSnapshot {
 		vals[k] = strings.TrimSpace(fmt.Sprint(v))
 	}
-	return vals, doc.AdminInfo.UpstreamError
+	return vals, doc.AdminInfo.FailedParam
 }
 
-// blamesParam 判断一次失败该不该记在当前参数头上。
+// mentionsParam 判断错误文本里是否把这个参数当成独立标识符提到。
 //
-// 本地参数校验失败时，错误文案会点名一个参数（模型 X 未声明参数 "content"）。
-// 这种失败只跟被点名的参数有关，不能算到同一次调用快照里的其它参数上 ——
-// 否则 agent 传真了 content，reference_images 会平白多一次「被拒」，
-// 巡检就会报出「声明 9 却 1 被拒」这种自相矛盾的结论。
+// 必须按词边界匹配：n 这种单字母参数用子串匹配会在 "insufficient"、
+// "/images/generations" 里到处命中，等于没有过滤。
 //
-// 没有点名任何参数的失败（上游 4xx/5xx）仍然算数：那才是「这个值可能不被接受」
-// 的证据，把它一起排掉就等于把巡检的输入掐了。
-func blamesParam(errText, name string) bool {
-	if strings.TrimSpace(errText) == "" {
-		return true
-	}
-	// 本地校验失败会点名一个参数：点名了谁就只记给谁。
-	if strings.Contains(errText, "未声明参数") {
-		return strings.Contains(errText, `未声明参数 "`+name+`"`)
-	}
-	// 上游的信封类错误（'content' 必须是非空数组）：content 是请求体结构，
-	// 不是快照里的可调参数，记到 duration / reference_images 头上就是冤枉。
-	if strings.Contains(errText, `"content"`) || strings.Contains(errText, `'content'`) {
+// 不用正则：这段每个样本的每个参数都要跑一次，编译开销没必要。
+func mentionsParam(errText, name string) bool {
+	if name == "" {
 		return false
 	}
-	return true
+	text := strings.ToLower(errText)
+	needle := strings.ToLower(name)
+	for offset := 0; offset <= len(text)-len(needle); {
+		i := strings.Index(text[offset:], needle)
+		if i < 0 {
+			return false
+		}
+		start := offset + i
+		end := start + len(needle)
+		if !isWordByte(text, start-1) && !isWordByte(text, end) {
+			return true
+		}
+		offset = start + 1
+	}
+	return false
+}
+
+// isWordByte 判断下标处是否属于 ASCII 标识符字符。越界视为边界。
+func isWordByte(s string, i int) bool {
+	if i < 0 || i >= len(s) {
+		return false
+	}
+	c := s[i]
+	return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')
 }
 
 // snapshotError 取日志里的 upstream_error 原文。
