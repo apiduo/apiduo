@@ -18,6 +18,11 @@ type transport struct {
 
 // transports 按产物类型索引：端点由 kind 决定，与上游厂商无关 —— 图片和视频
 // 都走方舟，只是方舟自己给这两种产物开了两套接口。
+//
+// 🔴 图片只有这一个入口：`/v1/images/generations`，文生图与图生图共用
+// （图生图多一个 `image` 字段）。不要为图生图加 edits 分支，也不要因为上游
+// 是 gpt-image 就在协议层另开一条路 —— gpt-image 已适配主端点，渠道内部
+// 是否转成 edits 是渠道的事，客户端看到的永远只有这一个端点。
 var transports = map[string]transport{
 	"image": {
 		Name:     "image",
