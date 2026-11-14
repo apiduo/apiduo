@@ -11,6 +11,35 @@ import (
 // protocolVersion 只用于 initialize 的 serverInfo，不参与协议协商。
 const protocolVersion = "0.1.0"
 
+// serverInstructions 随 initialize 下发给客户端，被注入模型上下文。
+//
+// 这是 MCP 自带的使用引导：接入页要人去看，工具描述只在 agent 决定调用时
+// 才读得到，而 instructions 在连上那一刻就已经在上下文里了。所以「先查
+// models.list」「每次生成都计费」「视频要轮询」这几件事写在这里，比写在
+// 任何文档里都更早生效。
+//
+// 用英文：客户端与模型实现以英文为主，指令遵循更稳；模型回应用户时仍用
+// 用户的语言。保持简短 —— 它会占用每一轮对话的上下文。
+const serverInstructions = `Generate images and videos from a prompt.
+
+Workflow
+1. Call models.list before the first generation unless the model is already known.
+   It carries each model's summary, price and accepted parameters. Model ids must
+   come from that list — never invent or guess one.
+2. Call image.generate or video.generate. Pass the model's declared parameters at
+   the top level, not inside extra. reference_images turns the call into
+   image-to-image or image-to-video; omit it for text-to-image.
+3. Video is usually asynchronous: the call returns task_id, then poll task.get
+   using poll_after_ms.
+
+Rules
+- model may be omitted; the default is used and named in the response.
+- Every generation is billed. Say which model you picked and roughly what it costs.
+- If the request is vague, ask one clarifying question before spending money.
+- On error read code and retry_action: none = stop, call_models_list = pick another
+  model, wait = retry after retry_after_ms.
+- Give the user the output URL; never report success without one.`
+
 var (
 	protoOnce    sync.Once
 	protoHandler http.Handler
@@ -30,7 +59,7 @@ func protocolHandler() http.Handler {
 		server := mcpsdk.NewServer(&mcpsdk.Implementation{
 			Name:    "apiduo-mcp",
 			Version: protocolVersion,
-		}, nil)
+		}, &mcpsdk.ServerOptions{Instructions: serverInstructions})
 		registerTools(server, &toolDeps{up: newUpClient()})
 		protoHandler = mcpsdk.NewStreamableHTTPHandler(
 			func(*http.Request) *mcpsdk.Server { return server },

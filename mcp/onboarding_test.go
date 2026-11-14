@@ -388,3 +388,28 @@ func TestAudioKindDeclarableButNotCallable(t *testing.T) {
 		t.Error("未收录的类型应当被拒")
 	}
 }
+
+// MCP 自带的使用引导必须随 initialize 下发。
+//
+// 接入页要人去看，工具描述只在 agent 决定调用时才读得到；instructions
+// 在连上那一刻就在上下文里。它一旦被删掉，用户会退回「不知道怎么开口」。
+func TestInitializeCarriesInstructions(t *testing.T) {
+	setupDB(t)
+	resetProtocol()
+	srv := mcpServer(t)
+
+	res := rpc(t, srv.URL, "", "initialize", map[string]any{
+		"protocolVersion": "2025-06-18",
+		"capabilities":    map[string]any{},
+		"clientInfo":      map[string]any{"name": "probe", "version": "1"},
+	})
+	text, _ := res["instructions"].(string)
+	if strings.TrimSpace(text) == "" {
+		t.Fatal("initialize 必须带 instructions：客户端靠它把使用方式注入模型上下文")
+	}
+	for _, want := range []string{"models.list", "task.get", "billed", "retry_action"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("instructions 缺少 %q：%s", want, text)
+		}
+	}
+}
