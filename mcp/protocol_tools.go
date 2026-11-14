@@ -36,7 +36,8 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
 			"model 必填：先调 models.list，按 summary 里的场景/成本挑一个，不要凭模型名猜。" +
 			"models.list 里该模型声明的 parameters（aspect_ratio / resolution 等）直接平铺传即可。" +
-			"size/n/quality 留空即交给上游默认；从提示词推断时只能取 models.list 里声明的 enum 值，不要臆造。",
+			"size/n/quality 可以不传。传的话：声明里有 enum 就取 enum 内的值；没有 enum 就看 note，" +
+			"或按常见写法给（size 支持 WxH，如 1024x1024）。不要凭模型名臆造档位。",
 	}, d.generateImage)
 
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
@@ -47,7 +48,8 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 			"也可以直接把方舟形状的 content 数组传进来（type=text / image_url），会被拆成提示词与参考图。" +
 			"models.list 里该模型声明的 parameters（duration / resolution 等）直接平铺传即可。" +
 			"多数视频模型是异步的，会立即返回 task_id，用 task.get 查询结果。" +
-			"duration/resolution 留空即交给上游默认；从提示词推断时只能取 models.list 里声明的值。",
+			"duration/resolution 可以不传。传的话取 models.list 里声明的 enum 值；" +
+			"报错会给出最接近的合法值，照着改即可。",
 	}, d.generateVideo)
 
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
@@ -181,9 +183,9 @@ type generateInput struct {
 	Prompt          string         `json:"prompt" jsonschema:"提示词，描述想要的内容"`
 	Model           string         `json:"model,omitempty" jsonschema:"模型 id（必填）。取值来自 models.list"`
 	ReferenceImages any            `json:"reference_images,omitempty" jsonschema:"参考图 URL，单个字符串或字符串数组。传了就由图生图/图生视频"`
-	Size            string         `json:"size,omitempty" jsonschema:"尺寸，取值见 models.list 里该模型的 parameters.size.enum"`
+	Size            string         `json:"size,omitempty" jsonschema:"尺寸。取值见该模型 parameters.size 的 enum 或 note；都没写时传 WxH，如 1024x1024"`
 	N               *int           `json:"n,omitempty" jsonschema:"生成数量，上限由模型声明约束"`
-	Quality         string         `json:"quality,omitempty" jsonschema:"质量档位，取值见该模型的 parameters.quality.enum"`
+	Quality         string         `json:"quality,omitempty" jsonschema:"质量档位。取值见该模型 parameters.quality 的 enum 或 note；没写就不传"`
 	Extra           map[string]any `json:"extra,omitempty" jsonschema:"该模型声明的其他参数，键必须在 models.list 里存在"`
 }
 
