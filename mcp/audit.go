@@ -100,7 +100,6 @@ func profileAuditSnapshot(p ModelProfile) map[string]any {
 	return map[string]any{
 		"display_name":     p.DisplayName,
 		"kind":             p.Kind,
-		"protocol":         p.Protocol,
 		"async":            p.Async,
 		"enabled":          p.Enabled,
 		"max_ref_images":   intOrNil(p.MaxRefImages),

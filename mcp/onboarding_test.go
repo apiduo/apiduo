@@ -209,7 +209,7 @@ func TestContentOnlyCallReachesUpstream(t *testing.T) {
 	resetProtocol()
 
 	p := ModelProfile{
-		ModelId: "content-only", Kind: "video", Protocol: "ark",
+		ModelId: "content-only", Kind: "video",
 		Enabled: true, Async: true,
 		Parameters: `{"duration":{"enum":[5,10]}}`,
 	}
@@ -308,7 +308,7 @@ func TestContentInsideExtraIsAbsorbed(t *testing.T) {
 	resetProtocol()
 
 	p := ModelProfile{
-		ModelId: "content-extra", Kind: "video", Protocol: "ark",
+		ModelId: "content-extra", Kind: "video",
 		Enabled: true, Async: true,
 	}
 	if err := SaveProfile(&p); err != nil {
@@ -341,8 +341,8 @@ func TestContentInsideExtraIsAbsorbed(t *testing.T) {
 func TestPriorityDrivesDefaultModel(t *testing.T) {
 	setupDB(t)
 
-	first := ModelProfile{ModelId: "a-expensive", Kind: "image", Protocol: "ark", Enabled: true, Priority: 10}
-	second := ModelProfile{ModelId: "z-recommended", Kind: "image", Protocol: "ark", Enabled: true, Priority: 100}
+	first := ModelProfile{ModelId: "a-expensive", Kind: "image", Enabled: true, Priority: 10}
+	second := ModelProfile{ModelId: "z-recommended", Kind: "image", Enabled: true, Priority: 100}
 	for _, p := range []ModelProfile{first, second} {
 		profile := p
 		if err := SaveProfile(&profile); err != nil {
@@ -359,18 +359,13 @@ func TestPriorityDrivesDefaultModel(t *testing.T) {
 	}
 }
 
-// 图片对外只有一个入口：/v1/images/generations（文生图与图生图共用）。
-// 上游方言是渠道的属性，不能在能力声明里再分出一套 openai 协议。
-func TestImageProfileRejectsForeignProtocol(t *testing.T) {
-	setupDB(t)
-	if err := SaveProfile(&ModelProfile{ModelId: "gpt-方言", Kind: "image", Protocol: "openai"}); err == nil {
-		t.Error("图片声明不该接受 openai —— 那是渠道的 image_protocol，不是协议族")
-	}
-	if err := SaveProfile(&ModelProfile{ModelId: "bad", Kind: "image", Protocol: "grpc"}); err == nil {
-		t.Error("未知协议应当被拒")
-	}
-	if err := SaveProfile(&ModelProfile{ModelId: "ok", Kind: "image", Protocol: "ark"}); err != nil {
-		t.Errorf("ark 应当被接受: %v", err)
+// 能力声明里没有 protocol 可选：端点由产物类型决定，上游方言归渠道。
+// 这条测试锁住字段本身 —— 一旦有人把它加回来，ModelCard 会重新出现
+// 一个 agent 读到却无从使用的键。
+func TestModelCardHasNoProtocolField(t *testing.T) {
+	card := ModelCard(ModelProfile{ModelId: "m", Kind: "image", Async: false})
+	if _, ok := card["protocol"]; ok {
+		t.Fatal("ModelCard 不该再有 protocol：客户端看到它只会误以为存在第二套协议")
 	}
 }
 
@@ -378,7 +373,7 @@ func TestImageProfileRejectsForeignProtocol(t *testing.T) {
 // 不能回「未知类型」——那是两种完全不同的下一步。
 func TestAudioKindDeclarableButNotCallable(t *testing.T) {
 	setupDB(t)
-	p := ModelProfile{ModelId: "tts-demo", Kind: "audio", Protocol: "ark", Enabled: true}
+	p := ModelProfile{ModelId: "tts-demo", Kind: "audio", Enabled: true}
 	if err := SaveProfile(&p); err != nil {
 		t.Fatalf("audio 应当能声明: %v", err)
 	}

@@ -230,7 +230,7 @@ func TestEndToEndProtocol(t *testing.T) {
 
 	img := 2
 	image := ModelProfile{
-		ModelId: "mock-image", Kind: "image", Protocol: "ark",
+		ModelId: "mock-image", Kind: "image",
 		Enabled: true, MaxRefImages: &img,
 		Parameters: `{"size":{"enum":["1K","2K"],"default":"2K"}}`,
 		Summary:    "测试图片模型",
@@ -239,7 +239,7 @@ func TestEndToEndProtocol(t *testing.T) {
 		t.Fatalf("保存图片声明失败: %v", err)
 	}
 	video := ModelProfile{
-		ModelId: "mock-video", Kind: "video", Protocol: "ark",
+		ModelId: "mock-video", Kind: "video",
 		Enabled: true, Async: true,
 		Parameters: `{"duration":{"min":5,"max":10}}`,
 	}
@@ -385,7 +385,7 @@ func TestParamValidationRejectsOutOfRange(t *testing.T) {
 
 	zero := 0
 	p := ModelProfile{
-		ModelId: "strict-image", Kind: "image", Protocol: "ark",
+		ModelId: "strict-image", Kind: "image",
 		Enabled: true, MaxRefImages: &zero,
 		Parameters: `{"size":{"enum":["1K","2K"]},"n":{"min":1,"max":2}}`,
 	}
@@ -492,7 +492,7 @@ func TestObservationsOnSQLite(t *testing.T) {
 	insertLog(map[string]any{"duration": "12"}, false)
 	insertLog(map[string]any{"duration": "15"}, false)
 
-	p := ModelProfile{ModelId: "obs-video", Kind: "video", Protocol: "ark", Enabled: true}
+	p := ModelProfile{ModelId: "obs-video", Kind: "video", Enabled: true}
 	if err := SaveProfile(&p); err != nil {
 		t.Fatal(err)
 	}
@@ -606,7 +606,7 @@ func TestTaskGetReadsWrappedGatewayResponse(t *testing.T) {
 	t.Cleanup(func() { os.Unsetenv("MCP_UPSTREAM_BASE_URL") })
 	resetProtocol()
 
-	p := ModelProfile{ModelId: "wrapped-video", Kind: "video", Protocol: "ark", Enabled: true, Async: true}
+	p := ModelProfile{ModelId: "wrapped-video", Kind: "video", Enabled: true, Async: true}
 	if err := SaveProfile(&p); err != nil {
 		t.Fatal(err)
 	}
@@ -651,7 +651,7 @@ func TestPromptLimitEnforced(t *testing.T) {
 	resetProtocol()
 
 	limit := 12
-	p := ModelProfile{ModelId: "short-prompt", Kind: "image", Protocol: "ark",
+	p := ModelProfile{ModelId: "short-prompt", Kind: "image",
 		Enabled: true, MaxPromptChars: &limit}
 	if err := SaveProfile(&p); err != nil {
 		t.Fatal(err)

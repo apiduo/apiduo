@@ -577,7 +577,6 @@ func ModelCard(p ModelProfile) map[string]any {
 	card := map[string]any{
 		"model_id": p.ModelId,
 		"kind":     p.Kind,
-		"protocol": p.Protocol,
 		"execution": map[string]any{
 			"task": map[bool]string{true: "async", false: "sync"}[p.Async],
 		},

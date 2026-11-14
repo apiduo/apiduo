@@ -55,9 +55,6 @@ func TestSuggestProtocolByName(t *testing.T) {
 			if got.Conflict {
 				t.Fatalf("%s: 没有反证时不应打 conflict", tc.modelID)
 			}
-			if tc.wantKind != "" && got.Protocol != defaultProtocol(tc.wantKind) {
-				t.Fatalf("%s: protocol = %q，应与 defaultProtocol 一致", tc.modelID, got.Protocol)
-			}
 		})
 	}
 }

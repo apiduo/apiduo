@@ -34,7 +34,6 @@ type ModelProfile struct {
 	ModelId     string `json:"model_id" gorm:"size:191;not null;uniqueIndex:uk_mcp_profile_model"`
 	DisplayName string `json:"display_name" gorm:"size:191"`
 	Kind        string `json:"kind" gorm:"size:16;not null"`
-	Protocol    string `json:"protocol" gorm:"size:32;not null"`
 	Async       bool   `json:"async" gorm:"not null"`
 	Enabled     bool   `json:"enabled" gorm:"not null;index"`
 
@@ -265,9 +264,6 @@ func normalizeAndValidateProfile(p *ModelProfile) error {
 	if !knownKinds[p.Kind] {
 		return userErrf("产物类型不合法: %q（可用: %s）", p.Kind, kindList())
 	}
-	if p.Protocol == "" {
-		p.Protocol = defaultProtocol(p.Kind)
-	}
 	if p.Source == "" {
 		p.Source = "manual"
 	}
@@ -289,7 +285,6 @@ func writeProfileColumns(p *ModelProfile, expectedVersion *int64) error {
 	values := map[string]any{
 		"display_name":     p.DisplayName,
 		"kind":             p.Kind,
-		"protocol":         p.Protocol,
 		"async":            p.Async,
 		"max_ref_images":   p.MaxRefImages,
 		"max_ref_videos":   p.MaxRefVideos,
@@ -374,20 +369,6 @@ func validateProfileShape(p *ModelProfile) error {
 			return userErrf("产物类型只能是 %s，收到 %q", kindList(), p.Kind)
 		}
 	}
-	if p.Protocol != "" {
-		if !knownProtocol(p.Protocol) {
-			return userErrf("协议只能是 ark / deepseek / openai，收到 %q", p.Protocol)
-		}
-		// 图片与视频的入口各自只有一个，与上游厂商无关：
-		//   图片  /v1/images/generations（文生图与图生图共用，图生图靠 image 字段）
-		//   视频  /v1/contents/generations/tasks（方舟任务形状）
-		// 上游方言（方舟档位 / OpenAI edits）是**渠道**的属性，由 image_protocol
-		// 在内部改写，不属于能力声明。在这里区分 openai 会让「图片有两种协议」的
-		// 假象成立 —— 客户端看到的端点其实只有一个。
-		if p.Kind != "" && p.Kind != "search" && p.Kind != "files" && p.Protocol != "ark" {
-			return userErrf("%s 的入口固定为 /v1/images/generations 或方舟任务，protocol 只能是 ark，收到 %q", p.Kind, p.Protocol)
-		}
-	}
 	for _, f := range []struct {
 		name  string
 		value string
@@ -430,7 +411,7 @@ func validateProfileShape(p *ModelProfile) error {
 //
 // model_id 不在集合里（改名等于换模型）；enabled 也不在（启停走 SetProfileEnabled）。
 var profilePatchKeys = []string{
-	"display_name", "kind", "protocol", "async", "cost", "priority",
+	"display_name", "kind", "async", "cost", "priority",
 	"max_ref_images", "max_ref_videos", "max_prompt_chars",
 	"parameters", "summary", "tags", "source",
 }
@@ -457,8 +438,6 @@ func applyProfilePatch(base ModelProfile, patch map[string]json.RawMessage) (Mod
 			base.DisplayName = incoming.DisplayName
 		case "kind":
 			base.Kind = incoming.Kind
-		case "protocol":
-			base.Protocol = incoming.Protocol
 		case "async":
 			base.Async = incoming.Async
 		case "max_ref_images":
@@ -573,20 +552,6 @@ func UpsertProfileByModelId(modelId string, patch map[string]json.RawMessage, ex
 	}
 	saved, err := GetProfile(base.Id)
 	return saved, false, err
-}
-
-// knownProtocol 是协议白名单。图片视频都走方舟；deepseek 与 openai 先占位，
-// 对应的产物类型（检索 / 文件）还没有端点。
-func knownProtocol(name string) bool {
-	switch name {
-	case "ark", "deepseek", "openai":
-		return true
-	}
-	return false
-}
-
-func defaultProtocol(kind string) string {
-	return "ark"
 }
 
 // SetProfileEnabled 单独翻转启停。

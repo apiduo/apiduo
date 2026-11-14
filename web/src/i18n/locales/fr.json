@@ -8260,7 +8260,6 @@
     "export timeout, fixed with the HTTP client": "délai d'export, fixé avec le client HTTP",
     "defaults to the build version": "par défaut, la version de build",
     "Pick the upstream task protocol, then adjust whatever differs.": "Pick the upstream task protocol, then adjust whatever differs.",
-    "Protocol": "Protocol",
     "Video tasks on /api/v3/contents/generations/tasks, polled by task id.": "Video tasks on /api/v3/contents/generations/tasks, polled by task id.",
     "POST /v1/images/generations returns a task id; GET /{id} returns the image.": "POST /v1/images/generations returns a task id; GET /{id} returns the image.",
     "Describe the upstream task API yourself.": "Describe the upstream task API yourself.",

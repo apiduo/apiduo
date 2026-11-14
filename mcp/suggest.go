@@ -7,7 +7,9 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 )
 
-// ProtocolHint 是「这个模型该声明成什么」的建议，不是结论。
+// ProtocolHint 是「这个模型该声明成什么产物类型」的建议，不是结论。
+//
+// 只建议产物类型：端点由类型决定，没有第二个「协议」维度可选。
 //
 // 为什么要放在服务端：声明落库后直接决定 /mcp 的本地拦截与 payload 构造，
 // 判错就改变了对外行为。规则只能有一份 —— 前端各自写一套正则，一旦漂移，
@@ -28,17 +30,16 @@ import (
 // 名称与其它判据矛盾时以模型名为准：名称是唯一直接描述模型的信号，
 // 渠道描述的是「能承载什么」。矛盾只降置信度并打 Conflict 标记，不丢结论。
 //
-// Confidence 为 none 时 Kind/Protocol 留空，由管理员手动补全 ——
+// Confidence 为 none 时 Kind 留空，由管理员手动补全 ——
 // 这比猜一个默认值更安全：猜错会被当成「已声明」静默生效。
 type ProtocolHint struct {
-	Kind     string `json:"kind,omitempty"`
-	Protocol string `json:"protocol,omitempty"`
+	Kind string `json:"kind,omitempty"`
 	// Category 是给下拉分组的展示分类，比 Kind 宽：kind 只服务 image/video
 	// 两种协议，而候选里混着文本、检索、向量模型，它们不适用但需要被看见 ——
 	// 平铺成一片「未识别?」等于把所有模型都变成噪音。
 	// 取值：image / video / search / audio / embedding / text / unknown。
 	Category string `json:"category"`
-	// Confidence 为 high / medium 时 Kind/Protocol 可直接带出；low 带出但需确认。
+	// Confidence 为 high / medium 时 Kind 可直接带出；low 带出但需确认。
 	Confidence string `json:"confidence"`
 	// Conflict 表示名称与其它判据（渠道类型、模型端点）互相矛盾。
 	// Kind 仍按名称给出，但界面必须加问号提示，不能当成干净结论。
@@ -220,7 +221,6 @@ func suggestProtocol(modelID string, channelTypes []int, endpoints []constant.En
 		if conflict != "" {
 			return ProtocolHint{
 				Kind:       kind,
-				Protocol:   defaultProtocol(kind),
 				Confidence: hintMedium,
 				Conflict:   true,
 				Reason: "模型名命中" + nameReason + "，但" + conflict +
@@ -230,14 +230,12 @@ func suggestProtocol(modelID string, channelTypes []int, endpoints []constant.En
 		if chKind == kind {
 			return ProtocolHint{
 				Kind:       kind,
-				Protocol:   defaultProtocol(kind),
 				Confidence: hintHigh,
 				Reason:     "模型名命中" + nameReason + "，" + chReason,
 			}
 		}
 		return ProtocolHint{
 			Kind:       kind,
-			Protocol:   defaultProtocol(kind),
 			Confidence: hintMedium,
 			Reason:     "模型名命中" + nameReason + "，无渠道类型佐证",
 		}
@@ -256,7 +254,6 @@ func suggestProtocol(modelID string, channelTypes []int, endpoints []constant.En
 	if epKind != "" {
 		return ProtocolHint{
 			Kind:       epKind,
-			Protocol:   defaultProtocol(epKind),
 			Confidence: hintMedium,
 			Reason:     epReason + "，模型名未识别",
 		}
@@ -264,7 +261,6 @@ func suggestProtocol(modelID string, channelTypes []int, endpoints []constant.En
 	if chKind != "" {
 		return ProtocolHint{
 			Kind:       chKind,
-			Protocol:   defaultProtocol(chKind),
 			Confidence: hintLow,
 			Reason:     chReason + "，模型名未识别",
 		}

@@ -8260,7 +8260,6 @@
     "export timeout, fixed with the HTTP client": "导出超时，HTTP client 创建时固定",
     "defaults to the build version": "默认取构建版本",
     "Pick the upstream task protocol, then adjust whatever differs.": "选择上游任务协议，再改掉不一致的地方。",
-    "Protocol": "协议",
     "Video tasks on /api/v3/contents/generations/tasks, polled by task id.": "方舟视频任务：提交到 /api/v3/contents/generations/tasks，按任务号轮询。",
     "POST /v1/images/generations returns a task id; GET /{id} returns the image.": "POST /v1/images/generations 返回任务号；GET /{id} 拿图片。",
     "Describe the upstream task API yourself.": "自己描述上游任务 API。",

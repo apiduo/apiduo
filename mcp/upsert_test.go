@@ -55,9 +55,6 @@ func TestUpsertCreatesByModelId(t *testing.T) {
 	if p.Version != 1 {
 		t.Errorf("新建的 version 应当是 1，实际 %d", p.Version)
 	}
-	if p.Protocol != "ark" {
-		t.Errorf("protocol 应当按 kind 兜底成 ark，实际 %q", p.Protocol)
-	}
 }
 
 // 第二次调用同一份 patch：不新建、不报错、版本前进一格。
@@ -298,7 +295,7 @@ func TestUpsertHandlerConflictResponse(t *testing.T) {
 func TestMigrateLiftsLegacyVersionToZeroFree(t *testing.T) {
 	db := setupDB(t)
 
-	legacy := ModelProfile{ModelId: "m-legacy", Kind: "image", Protocol: "ark", Enabled: true}
+	legacy := ModelProfile{ModelId: "m-legacy", Kind: "image", Enabled: true}
 	if err := db.Create(&legacy).Error; err != nil {
 		t.Fatal(err)
 	}
