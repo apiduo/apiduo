@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UAPI 端点路由 · 合并优先方案 · apiduo 产品原型</title>
+<style>
+  :root{
+    --bg:#ffffff;--surface:#fbfbfc;--surface-2:#f4f4f6;--line:#e7e7ea;--line-strong:#d6d6db;
+    --ink:#17171c;--ink-2:#4a4a55;--muted:#8b8b96;--accent:#4f46e5;--accent-soft:#eef0ff;
+    --ok:#0f7a52;--ok-soft:#e6f4ed;--err:#c02a20;--err-soft:#fdeceb;--warn:#9a6200;--warn-soft:#fdf3e0;
+    --radius:10px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  .side{width:208px;flex:0 0 208px;background:#15151a;color:#c9c9d1;padding:14px 10px;font-size:12.5px;display:flex;flex-direction:column}
+  .side .brand{display:flex;align-items:center;gap:8px;padding:6px 8px 16px;color:#fff;font-weight:600;font-size:13.5px}
+  .side .dot{width:7px;height:7px;border-radius:99px;background:#6d63ff}
+  .side .grp{padding:14px 10px 5px;color:#63636f;font-size:10.5px;letter-spacing:.06em}
+  .side button{appearance:none;border:0;background:transparent;width:100%;text-align:left;display:flex;align-items:center;gap:7px;
+    padding:7px 10px;border-radius:7px;color:#a7a7b4;font-family:inherit;font-size:12.5px;cursor:pointer;margin-bottom:1px}
+  .side button:hover{background:#1f1f27;color:#e6e6ec}
+  .side button.on{background:#26262f;color:#fff}
+  .side button .n{margin-left:auto;font-size:10px;color:#7b7b88;font-variant-numeric:tabular-nums}
+  .side button.on .n{color:#b9b9c6}
+  .side .foot{margin-top:auto;padding:12px 10px 4px;color:#5d5d6a;font-size:10.5px;line-height:1.6;border-top:1px solid #26262f}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+  .head{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .head h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .ctx{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 8px;font-size:11.5px;color:var(--ink-2)}
+  .ctx b{font-weight:600;color:var(--ink)}
+  .ctx .k{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .tabs{display:flex;gap:2px;padding:0 22px;border-bottom:1px solid var(--line);background:#fff;flex-wrap:wrap}
+  .tabs button{appearance:none;border:0;background:transparent;font-family:inherit;font-size:13px;color:var(--muted);
+    padding:11px 12px;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px;display:flex;align-items:center;gap:6px}
+  .tabs button.on{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+  .tabs .cnt{background:var(--surface-2);color:var(--ink-2);font-size:10px;font-weight:600;padding:0 5px;border-radius:99px;line-height:15px}
+  .tabs button.on .cnt{background:var(--accent-soft);color:var(--accent)}
+  .body{padding:18px 22px 48px;overflow:auto}
+  .panel[hidden]{display:none}
+  .note{display:flex;gap:9px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--ink-2);line-height:1.65}
+  .note b{color:var(--ink);font-weight:600}
+  .note .k{flex:0 0 auto;width:3px;align-self:stretch;border-radius:2px;background:var(--accent)}
+  .note.warn .k{background:var(--warn)}
+  .note.danger .k{background:var(--err)}
+  .note.ok .k{background:var(--ok)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .card+.card{margin-top:14px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:12.5px;font-weight:600}
+  .card-h .desc{color:var(--muted);font-size:11.5px}
+  .card-h .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .card-b{padding:14px}
+  .card-b.tight{padding:0}
+  .grid2{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,1fr);gap:14px;align-items:start}
+  .grid2b{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,330px);gap:14px;align-items:start}
+  .row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);font-size:12.5px;flex-wrap:wrap}
+  .row:last-child{border-bottom:0}
+  .row .lab{flex:1 1 190px;color:var(--ink-2)}
+  .row .lab b{display:block;color:var(--ink);font-weight:600;margin-bottom:2px}
+  .row .lab span{font-size:11.5px;color:var(--muted);line-height:1.5}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:middle}
+  th{color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.02em;background:var(--surface);white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#fcfcfd}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono);font-size:11.5px}
+  .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:99px;font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap}
+  .pill.k{background:#1d1d24;color:#fff}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.b{background:var(--surface-2);color:var(--ink-2)}
+  .pill.mute{background:var(--surface-2);color:var(--muted)}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.err{background:var(--err-soft);color:var(--err)}
+  .btn{appearance:none;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-family:inherit;
+    font-size:11.5px;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--ink-2);color:var(--ink)}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.p:hover{background:#443bc9;color:#fff}
+  .btn.sm{padding:3px 8px;font-size:11px}
+  .btn.danger{border-color:#e7b9b6;color:var(--err);background:#fff}
+  .btn.danger:hover{background:var(--err-soft);border-color:var(--err)}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:2px}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--ink-2);font-size:12px;padding:5px 10px;border-radius:7px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;border:1px solid var(--line)}
+  .mini{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .mini .m{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:11px 13px;flex:1 1 150px}
+  .mini .m .l{font-size:11px;color:var(--muted);margin-bottom:5px}
+  .mini .m .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.2}
+  .mini .m .d{font-size:10.5px;margin-top:4px;color:var(--muted)}
+  .up{color:var(--ok)}.down{color:var(--err)}.flat{color:var(--muted)}.warnc{color:var(--warn)}
+  .chain{display:flex;flex-direction:column;gap:0}
+  .ch{display:grid;grid-template-columns:122px 1fr auto;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);align-items:start}
+  .ch:last-child{border-bottom:0}
+  .ch .s{font-family:var(--mono);font-size:10.5px;color:var(--muted);padding-top:2px}
+  .ch .b{font-size:12px;color:var(--ink-2);line-height:1.55;min-width:0}
+  .ch .b b{color:var(--ink);font-weight:600}
+  .ch .b .kv{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;display:inline-block;margin:1px 3px 1px 0;word-break:break-all}
+  .ch .r{font-size:11px;color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .ch.bottom .r{color:var(--accent);font-weight:600}
+  .ch.skip .r{color:var(--err);font-weight:600}
+  .cand{border:1px solid var(--line);border-radius:8px;padding:10px 11px;margin-bottom:8px;background:#fff}
+  .cand:last-child{margin-bottom:0}
+  .cand .top{display:flex;align-items:center;gap:7px;margin-bottom:5px;flex-wrap:wrap}
+  .cand .nm{font-weight:600;font-size:12.5px}
+  .cand .id{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .cand .meta{display:flex;gap:12px;font-size:11.5px;color:var(--ink-2);flex-wrap:wrap;margin-top:6px}
+  .cand .meta b{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+  .cand.bad{border-color:#ecc9c6;background:#fffafa}
+  .cand .note-line{margin-top:7px;font-size:11px;color:var(--err);line-height:1.5}
+  .cand .caps{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+  .cap{font-size:10.5px;padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--muted);background:#fff}
+  .cap.on{border-color:#c5ded0;background:var(--ok-soft);color:var(--ok)}
+  .cap.mid{border-color:#eadfc8;background:#fffdf7;color:var(--warn)}
+  .cap.off{border-color:#ecc9c6;background:var(--err-soft);color:var(--err)}
+  .cap.na{opacity:.55}
+  .form{display:grid;grid-template-columns:110px 1fr;gap:0;font-size:12.5px}
+  .form .k{padding:9px 0;color:var(--muted);border-bottom:1px solid var(--line)}
+  .form .v{padding:9px 0;border-bottom:1px solid var(--line);color:var(--ink);min-width:0}
+  .form .k:last-of-type,.form .v:last-of-type{border-bottom:0}
+  .check{border:1px solid var(--line);border-radius:8px;padding:10px 11px;font-size:12px;line-height:1.6;background:var(--surface)}
+  .check.ok{border-color:#c5ded0;background:var(--ok-soft);color:#14563c}
+  .check.bad{border-color:#ecc9c6;background:var(--err-soft);color:#8a1d16}
+  .check .h{font-weight:600;margin-bottom:4px}
+  .check ul{margin:4px 0 0;padding-left:16px}
+  .mx{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+  .mx th,.mx td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:8px 9px;text-align:left}
+  .mx th:last-child,.mx td:last-child{border-right:0}
+  .mx thead th{background:var(--surface);font-size:11px;color:var(--muted);font-weight:500;white-space:nowrap}
+  .mx tbody th{background:#fff;font-weight:600;font-size:12px;min-width:150px}
+  .mx td.cell{cursor:pointer;min-width:92px}
+  .mx td.cell:hover{background:#f7f7ff}
+  .mx td.empty{color:#c9c9d1;text-align:center;cursor:default;background:#fcfcfd}
+  .cell .c{display:flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums;font-weight:600}
+  .cell .s{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .sq{width:7px;height:7px;border-radius:2px;flex:0 0 auto}
+  .sq.ok{background:var(--ok)}.sq.warn{background:var(--warn)}.sq.err{background:var(--err)}.sq.idle{background:#c9c9d1}
+  .cx{font-size:11px;font-weight:600;padding:1px 5px;border-radius:4px;display:inline-block;line-height:1.6;white-space:nowrap;font-style:normal}
+  .cx.n{background:var(--ok-soft);color:var(--ok)}
+  .cx.c{background:#fffdf7;color:var(--warn);border:1px solid #eadfc8}
+  .cx.x{background:var(--err-soft);color:var(--err);border:1px solid #ecc9c6}
+  .cx.u{background:var(--surface-2);color:var(--muted)}
+  .cx.p{background:var(--warn-soft);color:var(--warn);border:1px solid #eadfc8}
+  .lg{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--ink-2);padding:10px 14px;border-top:1px solid var(--line);background:var(--surface)}
+  .lg span{display:inline-flex;align-items:center;gap:5px}
+  .cx.r{background:var(--accent-soft);color:var(--accent)}
+  .drawer{border:1px solid var(--line);border-radius:var(--radius);background:#fff;overflow:hidden}
+  .drawer .dh{padding:11px 13px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .drawer .dh .t{font-weight:600;font-size:12.5px;margin-bottom:2px}
+  .drawer .dh .s{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .drawer .db{padding:12px 13px}
+  .drawer .empty{color:var(--muted);font-size:12px;line-height:1.7;padding:6px 0}
+  .lrow{cursor:pointer}
+  .lrow.open{background:var(--accent-soft)}
+  .det td{background:#fcfcff;padding:0;border-bottom:1px solid var(--line)}
+  .det .in{padding:12px 14px 14px}
+  .snap{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .snap h4{margin:0 0 6px;font-size:11px;color:var(--muted);font-weight:500}
+  .snap .list{font-size:11.5px;line-height:1.8;color:var(--ink-2)}
+  .snap .list .x{color:var(--err)}
+  .snap code{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:1px 4px}
+  .code{font-family:var(--mono);font-size:11.5px;line-height:1.7;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px 12px;white-space:pre;overflow:auto;color:var(--ink-2)}
+  .code .c{color:var(--muted)}
+  .code .k{color:var(--accent)}
+  .code .add{background:var(--ok-soft);display:block;margin:0 -12px;padding:0 12px}
+  .hint{font-size:11px;color:var(--muted);line-height:1.6;margin-top:6px}
+  .stat3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px;background:#fff}
+  .stat3 div{padding:8px 10px;border-right:1px solid var(--line)}
+  .stat3 div:last-child{border-right:0}
+  .stat3 .l{font-size:10.5px;color:var(--muted);margin-bottom:3px}
+  #mergeTable{table-layout:fixed}
+  #mergeTable th:nth-child(1){width:270px}
+  #mergeTable th:nth-child(2){width:74px}
+  #mergeTable th:nth-child(4){width:98px}
+  #mergeTable th:nth-child(5){width:92px}
+  #mergeTable th:nth-child(6){width:124px}
+  #mergeTable td.num{white-space:nowrap}
+  .stat3 .v{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.25}
+  .bar{height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-top:6px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .budget{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .budget .b{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fff}
+  .budget .b .l{font-size:10.5px;color:var(--muted);margin-bottom:4px}
+  .budget .b .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+  .budget .b .d{font-size:10.5px;color:var(--muted);margin-top:3px}
+  .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+  @media (max-width:1180px){
+    .grid2,.grid2b,.split{grid-template-columns:1fr}
+    .snap{grid-template-columns:1fr}
+    .budget{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (max-width:860px){.side{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="dot"></span>apiduo · 路由控制台</div>
+    <div class="grp">路由</div>
+    <button data-tab="diag" class="on">现状诊断<span class="n">4 例</span></button>
+    <button data-tab="caps">端点能力<span class="n">7×8</span></button>
+    <button data-tab="matrix">覆盖矩阵<span class="n">6×6</span></button>
+    <button data-tab="logs">决策日志<span class="n">5</span></button>
+    <div class="grp">工程</div>
+    <button data-tab="merge">合并面<span class="n">P0</span></button>
+    <div class="foot">样本：newapi-0to1 · 30 天<br>方案：默认放行，只写负向</div>
+  </aside>
+
+  <main class="main">
+    <div class="head">
+      <h1>UAPI 端点路由</h1>
+      <span class="sub">模型 + 端点，分组只做授权与计价</span>
+      <span class="spacer"></span>
+      <span class="ctx"><span class="k">scope</span><b>default</b> / 生产</span>
+      <span class="ctx"><span class="k">budget</span><b>142</b> / 426 / 4054 / 221</span>
+      <span class="ctx"><span class="k">P0</span><b>1</b> 个挂接点</span>
+    </div>
+
+    <nav class="tabs">
+      <button data-tab="diag" class="on">现状诊断</button>
+      <button data-tab="caps">端点能力</button>
+      <button data-tab="matrix">覆盖矩阵</button>
+      <button data-tab="logs">决策日志</button>
+      <button data-tab="merge">合并面</button>
+    </nav>
+
+    <div class="body">
+
+      <!-- ============ 现状诊断 ============ -->
+      <section class="panel" id="panel-diag">
+        <div class="note">
+          <span class="k"></span>
+          <div><b>请求的身份是 (model, endpoint)，现状键是 (group, model)。</b>端点只决定走哪个 handler，从不参与选渠道；
+          普通渠道的路径过滤直接返回 true。所以同一个模型的不同端点，拿到的是同一组候选。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>请求解析</h2>
+            <span class="desc">从路径到候选渠道</span>
+            <span class="right"><span class="seg" id="caseSeg">
+              <button data-case="three" class="on">同模型三端点</button>
+              <button data-case="flux">flux-3 端点错配</button>
+              <button data-case="seedream">seedream 死渠道</button>
+              <button data-case="minimax">minimax 对照</button>
+            </span></span>
+          </div>
+          <div class="card-b">
+            <div class="grid2">
+              <div><div class="chain" id="chain"></div></div>
+              <div><div id="cands"></div></div>
+            </div>
+            <div class="note" id="verdict" style="margin:14px 0 0"></div>
+          </div>
+        </div>
+
+        <div class="mini" id="diagMetrics" style="margin-top:14px"></div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card-h"><h2>三个维度，各归各位</h2><span class="desc">不要让一个字段干三件事</span></div>
+            <div class="card-b tight">
+              <table>
+                <thead><tr><th>维度</th><th>来源</th><th>该决定什么</th><th>不该决定什么</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">group</td><td>令牌 / 用户</td><td>授权、计价</td><td>端点能不能用</td></tr>
+                  <tr><td class="mono">model</td><td>body / 路径</td><td>候选渠道、计价</td><td>协议族</td></tr>
+                  <tr><td class="mono">endpoint</td><td>请求路径</td><td>handler、候选过滤</td><td>价格</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>三类错误，三种修法</h2><span class="desc">不要用一个开关解决全部</span></div>
+            <div class="card-b">
+              <div class="row"><div class="lab"><b>端点错配</b><span>Anthropic 渠道接到 images 请求。P0 的负向表解决。</span></div><span class="pill a">P0</span></div>
+              <div class="row"><div class="lab"><b>渠道坏掉</b><span>500 / 403 / 账户冻结。与端点无关，健康闸门解决。</span></div><span class="pill warn">P3</span></div>
+              <div class="row"><div class="lab"><b>跨模型降级</b><span>seedance 落到 MiniMax H3。fallback 策略问题。</span></div><span class="pill err">先下线</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 端点能力 ============ -->
+      <section class="panel" id="panel-caps" hidden>
+        <div class="note">
+          <span class="k"></span>
+          <div><b>只写「确定不可能」，其余一律放行。</b>一张不完整的白名单会把正常流量打成 503；一张负向表不会。
+          每条「拒绝」都必须能对应到适配器源码里的一个明确分支。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>端点能力矩阵</h2>
+            <span class="desc">行 = 渠道协议族，列 = 端点族</span>
+            <span class="right"><button class="btn sm" id="onlyDeny">只看 P0 会拦截的格子</button></span>
+          </div>
+          <div class="card-b tight" style="overflow:auto">
+            <table class="mx" id="capTable"></table>
+            <div class="lg">
+              <span><i class="cx n">原生</i>适配器有直接路径</span>
+              <span><i class="cx c">转换</i>经协议转换可服务</span>
+              <span><i class="cx p">部分</i>按模型或子能力支持（不拦截）</span>
+              <span><i class="cx x">拒绝</i>P0 过滤</span>
+              <span><i class="cx u">未验证</i>放行</span>
+              <span><i class="cx r">路由表</i>由渠道或插件声明</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:14px">
+          <div class="card">
+            <div class="card-h"><h2>三条原则</h2></div>
+            <div class="card-b">
+              <div class="row"><div class="lab"><b>1 · 默认放行</b><span>未列出的组合返回 true，行为与今天完全一致。表没写完不会造成新故障。</span></div></div>
+              <div class="row"><div class="lab"><b>2 · 只写负向</b><span>不维护「支持」清单。适配器能转换的组合太多，写白名单一定漏。</span></div></div>
+              <div class="row"><div class="lab"><b>3 · 每条有依据</b><span>一条记录 = 一个源码分支 + 一个回归测试。没有依据的猜测不进表。</span></div></div>
+              <div class="hint">代价是：同类型渠道的端点差异（bfl 与 fal 都是 type 1）这张表管不了，留给渠道级覆盖与健康闸门。</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>唯一挂接点</h2><span class="desc">model/channel_constraint.go</span></div>
+            <div class="card-b">
+              <div class="code"><span class="c">case dto.FilterRequestPath:</span>
+    <span class="k">if</span> filter.RequestPath == "" {
+        <span class="k">return</span> true
+    }
+    <span class="k">if</span> !constant.IsAdvancedCustomChannel(ch.Type) &amp;&amp;
+       ch.Type != constant.ChannelTypeAdvancedAsync {
+<span class="add">        <span class="c">// APIDUO:endpoint-capability:BEGIN</span>
+        <span class="k">return</span> endpoint.ChannelServesPath(ch.Type, filter.RequestPath)
+        <span class="c">// APIDUO:endpoint-capability:END</span></span>
+    }</div>
+              <div class="hint">热路径（内存缓存）与冷路径（数据库）都经过 `ChannelSatisfiesFilters`，改这一处即可覆盖两条路。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>首版负向表</h2><span class="desc">逐条对应适配器源码</span></div>
+          <div class="card-b tight">
+            <table>
+              <thead><tr><th>渠道类型</th><th>明确不支持</th><th>依据</th></tr></thead>
+              <tbody>
+                <tr><td>Anthropic(14)</td><td class="mono">images / audio / embeddings / rerank / video</td><td>GetRequestURL 固定 /v1/messages，无这些模态的转换路径</td></tr>
+                <tr><td>Gemini(24)</td><td class="mono">audio / rerank / video</td><td>无音频与重排转换；视频走 Veo 任务插件</td></tr>
+                <tr><td>火山(45)</td><td class="mono">audio.transcriptions / audio.translations</td><td>GetRequestURL 的 switch 无这两个分支，落到 unsupported relay mode</td></tr>
+                <tr><td>任务插件(61) / 自定义(58) / 异步(8001)</td><td class="mono">不进入本表</td><td>已有自己的路由表声明，重复判断会互相打架</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 覆盖矩阵 ============ -->
+      <section class="panel" id="panel-matrix" hidden>
+        <div class="note">
+          <span class="k"></span>
+          <div><b>P0 之后，这张表就是运营的主视图：每个模型的每个端点，有几条渠道真的能服务。</b>
+          格子点开看渠道明细；红格是端点级缺口，黄格是渠道级退化。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>模型 × 端点</h2><span class="desc">候选数已按端点过滤</span>
+            <span class="right"><span class="pill mute">P0 视图</span></span></div>
+          <div class="card-b tight" style="overflow:auto;max-height:520px">
+            <table class="mx" id="mxTable"></table>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:14px">
+          <div class="drawer" id="mxDrawer">
+            <div class="dh"><div class="t">选择一个格子</div><div class="s">cell = (group, model, endpoint)</div></div>
+            <div class="db"><div class="empty">点击矩阵中的任意非空格子，查看该端点的候选渠道、能力与健康。</div></div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>怎么读</h2></div>
+            <div class="card-b">
+              <div class="row"><span class="sq ok"></span><div class="lab"><b>端点有供给且健康</b><span>至少 1 条渠道支持该端点，错误率 &lt; 5%。</span></div></div>
+              <div class="row"><span class="sq warn"></span><div class="lab"><b>端点有供给但退化</b><span>支持，但错误率 5%–50%，或只剩 1 条渠道。</span></div></div>
+              <div class="row"><span class="sq err"></span><div class="lab"><b>端点级缺口</b><span>没有渠道支持该端点，或全部 &gt; 50% 失败。</span></div></div>
+              <div class="row"><span class="sq idle"></span><div class="lab"><b>该模型没有这个端点</b><span>未上架该模态，不需要处理。</span></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 决策日志 ============ -->
+      <section class="panel" id="panel-logs" hidden>
+        <div class="note">
+          <span class="k"></span>
+          <div><b>P0 只加一列：这次请求的端点。</b>现有的 <span class="mono">admin_info.request_policy</span> 已经在记每次尝试的渠道、状态、决策；
+          补上端点和「被谁过滤」，就能回答「为什么没选它」。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>请求记录</h2><span class="desc">近 1 小时 · 抽样</span><span class="right"><span class="pill mute">不含 prompt</span></span></div>
+          <div class="card-b tight">
+            <table id="logTable">
+              <thead><tr><th>时间</th><th>模型</th><th>端点</th><th>命中渠道</th><th>结果</th><th>端点过滤</th><th class="num">耗时</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>决策快照</h2><span class="desc">在现有 request_policy 上追加两个字段</span></div>
+          <div class="card-b">
+            <div class="code">{
+  <span class="k">"attempt"</span>: 1,
+  <span class="k">"channel_id"</span>: 38,
+  <span class="k">"group"</span>: <span class="k">"default"</span>,
+  <span class="k">"endpoint"</span>: <span class="k">"images.generations"</span>,      <span class="c">// P1 新增</span>
+  <span class="k">"filtered"</span>: [                               <span class="c">// P1 新增</span>
+    { <span class="k">"channel_id"</span>: 18, <span class="k">"by"</span>: <span class="k">"endpoint_capability"</span> }
+  ],
+  <span class="k">"decision"</span>: { <span class="k">"action"</span>: <span class="k">"attempt"</span>, <span class="k">"reason"</span>: <span class="k">"channel_selected"</span> }
+}</div>
+            <div class="hint">不新建日志表，不新建 trace 系统。现有结构够用，只是缺两个字段。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 合并面 ============ -->
+      <section class="panel" id="panel-merge" hidden>
+        <div class="note ok">
+          <span class="k"></span>
+          <div><b>P0 只改一个上游文件的单个分支，其余全部是新文件。</b>新文件不在上游树里，永远不会产生合并冲突；
+          上游文件里的改动被一个标记块包住，回滚只需把块删掉。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>改动清单</h2><span class="desc">P0 = 端点过滤</span></div>
+          <div class="card-b tight">
+            <table id="mergeTable">
+              <thead><tr><th>文件</th><th>类型</th><th>改动</th><th class="num">files</th><th class="num">blocks</th><th class="num">added</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">pkg/endpoint/endpoint.go</td><td><span class="pill ok">新增</span></td><td>路径 → 端点族</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+                <tr><td class="mono">pkg/endpoint/capability.go</td><td><span class="pill ok">新增</span></td><td>负向表 + ChannelServesPath</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+                <tr><td class="mono">pkg/endpoint/capability_test.go</td><td><span class="pill ok">新增</span></td><td>表驱动测试</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+                <tr><td class="mono">model/channel_constraint.go</td><td><span class="pill warn">上游</span></td><td>1 个标记块，替换 1 行</td><td class="num">0</td><td class="num">+1</td><td class="num">+3</td></tr>
+                <tr><td><b>合计</b></td><td></td><td></td><td class="num"><b>142 → 142</b></td><td class="num"><b>426 → 427</b></td><td class="num"><b>4054 → 4057</b></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="budget" style="margin-top:14px">
+          <div class="b"><div class="l">上游文件数</div><div class="v">142</div><div class="d">不变</div></div>
+          <div class="b"><div class="l">标记块</div><div class="v">426 → 427</div><div class="d">+1</div></div>
+          <div class="b"><div class="l">新增行</div><div class="v">4054 → 4057</div><div class="d">+3</div></div>
+          <div class="b"><div class="l">删除上游行</div><div class="v">221 → 222</div><div class="d">+1</div></div>
+        </div>
+
+        <div class="grid2" style="margin-top:14px">
+          <div class="card">
+            <div class="card-h"><h2>为什么不是 v1 的 Route 对象</h2></div>
+            <div class="card-b">
+              <div class="row"><div class="lab"><b>新增实体 = 新增运维面</b><span>每条线路都要命名、绑渠道、做同构校验；线路内部仍可能异构。</span></div></div>
+              <div class="row"><div class="lab"><b>对外契约不可逆</b><span>线路一旦暴露给用户，下线要过渡期；端点过滤没有对外契约。</span></div></div>
+              <div class="row"><div class="lab"><b>不改 abilities 就够</b><span>候选集已经由 (group, model) 给出；缺的只是一次过滤，不是一张新表。</span></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>回滚与实施</h2></div>
+            <div class="card-b">
+              <div class="row"><div class="lab"><b>回滚</b><span>删 <span class="mono">pkg/endpoint/</span>，把标记块恢复成 <span class="mono">return true</span>。无 schema、无数据、无配置。</span></div><span class="pill ok">1 次提交</span></div>
+              <div class="row"><div class="lab"><b>实施顺序</b><span>先写表与测试 → 再接挂接点 → 跑 markercheck → 用构造请求验证 → 灰度。</span></div><span class="pill a">P0</span></div>
+              <div class="row"><div class="lab"><b>前置检查</b><span><span class="mono">go run ./tools/markercheck -cost</span> 确认 files 仍为 142。</span></div><span class="pill b">验收</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>可选的后续改动</h2><span class="desc">各自独立，不合批</span></div>
+          <div class="card-b tight">
+            <table>
+              <thead><tr><th>期</th><th>文件</th><th>改动</th><th>解决什么</th><th class="num">预算</th></tr></thead>
+              <tbody>
+                <tr><td>P1</td><td class="mono">service/request_policy.go</td><td>PolicyEvent 加 endpoint / filtered</td><td>日志能回答「为什么没选它」</td><td class="num">files +1</td></tr>
+                <tr><td>P2</td><td class="mono">relaykit/dto/channel_settings.go</td><td>ChannelOtherSettings 加 endpoints</td><td>同类型但只实现部分端点的渠道</td><td class="num">blocks +1</td></tr>
+                <tr><td>P3</td><td class="mono">pkg/endpoint/health.go（新增）</td><td>cell 级熔断，共用同一挂接点</td><td>500 / 403 / 账户冻结</td><td class="num">0</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var panels = {
+    diag: document.getElementById('panel-diag'),
+    caps: document.getElementById('panel-caps'),
+    matrix: document.getElementById('panel-matrix'),
+    logs: document.getElementById('panel-logs'),
+    merge: document.getElementById('panel-merge')
+  };
+  function show(tab){
+    Object.keys(panels).forEach(function(k){ panels[k].hidden = k !== tab; });
+    document.querySelectorAll('.side button[data-tab]').forEach(function(b){
+      b.classList.toggle('on', b.dataset.tab === tab);
+    });
+    document.querySelectorAll('.tabs button[data-tab]').forEach(function(b){
+      b.classList.toggle('on', b.dataset.tab === tab);
+    });
+  }
+  document.querySelectorAll('[data-tab]').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.dataset.tab); });
+  });
+  var initial = (location.hash || '').replace('#','');
+  if (panels[initial]) { show(initial); }
+
+  /* ---------- 诊断 ---------- */
+  var cases = {
+    three: {
+      model:'claude-sonnet-4-5', path:'POST /v1/images/generations', fam:'images.generations', group:'default',
+      abilities:2, filter:'今天：普通渠道直接 return true，2 条全部通过', filtered:0, filterLabel:'未拦截 2 条', filterClass:'skip',
+      pick:'2 选 1，各 50%',
+      cands:[
+        {id:18,name:'anthropic-official',type:'14 · Anthropic',ok:false,err:0,calls:0,note:'GetRequestURL 固定 /v1/messages，无图片模态',caps:{messages:'on',chat:'mid',responses:'mid',images:'off'}},
+        {id:9,name:'anthropic-bedrock',type:'14 · Anthropic',ok:false,err:0,calls:0,note:'同一适配器：只有 messages 与转换路径',caps:{messages:'on',chat:'mid',responses:'mid',images:'off'}}
+      ],
+      verdict:{kind:'danger',text:'<b>同一个模型、三条端点：messages 与 chat 都能工作，images 没有任何候选能服务。</b>但今天两条渠道对 images 仍是合法候选，各 50% 命中，全部在上游失败。修法不是换更聪明的随机，而是先把不可能完成的候选去掉——请求在网关内直接得到明确的「无可用渠道」。'},
+      metrics:[{l:'候选渠道',v:'2',d:'abilities 命中 2 条'},{l:'能服务 images',v:'0',d:'按负向表过滤后'},{l:'误判概率',v:'100%',d:'2 / 2 都不可能完成'}]
+    },
+    flux: {
+      model:'flux-3', path:'POST /v1/images/generations', fam:'images.generations', group:'default',
+      abilities:2, filter:'两条都是 type 1，负向表认为 images 支持 → P0 不过滤', filtered:0, filterLabel:'未拦截 2 条', filterClass:'skip',
+      pick:'2 选 1，各 50%',
+      cands:[
+        {id:39,name:'bfl-flux-precise',type:'1 · OpenAI',ok:true,err:100,calls:9,note:'30 天零成功：404 Not Found ×9',caps:{images:'on',chat:'on',responses:'on'}},
+        {id:38,name:'image-adapter-fal-flux3',type:'1 · OpenAI',ok:true,err:29,calls:14,note:'Upstream 403 ×4',caps:{images:'on',chat:'on',responses:'on'}}
+      ],
+      verdict:{kind:'warn',text:'<b>这是 P0 的边界：同类型渠道的端点差异，负向表管不了。</b>bfl 与 fal 都是 type 1，类型级判断认为都支持 images；真正的原因是 bfl 上游只实现了部分路径。需要 P2 的渠道级覆盖，或 P3 的健康闸门把它摘掉。'},
+      metrics:[{l:'候选渠道',v:'2',d:'同一协议族'},{l:'P0 过滤',v:'0',d:'类型级无法区分'},{l:'零成功渠道',v:'1',d:'仍在接收流量'}]
+    },
+    seedream: {
+      model:'doubao-seedream-5-0-260128', path:'POST /v1/images/generations', fam:'images.generations', group:'default',
+      abilities:2, filter:'两条都是 type 1，端点本身支持', filtered:0, filterLabel:'未拦截 2 条', filterClass:'skip',
+      pick:'2 选 1，各 50%',
+      cands:[
+        {id:2,name:'image-adapter-ark-seedream',type:'1 · OpenAI',ok:true,err:100,calls:10,note:'500 do request failed ×10',caps:{images:'on'}},
+        {id:42,name:'image-adapter-senseaudio',type:'1 · OpenAI',ok:true,err:100,calls:9,note:'400 计费账户已被冻结 ×9',caps:{images:'on'}}
+      ],
+      verdict:{kind:'danger',text:'<b>两条渠道都 100% 失败，且都不是端点问题。</b>P0 不会过滤它们——这不是方案缺陷，而是边界：端点过滤只管「协议族能不能」，不管「上游活不活」。这类必须靠 P3 的健康闸门，且配置类错误要人工恢复。'},
+      metrics:[{l:'候选渠道',v:'2',d:'同一协议族'},{l:'可用渠道',v:'0',d:'30 天无成功'},{l:'错误类型',v:'2',d:'上游 500 / 计费冻结'}]
+    },
+    minimax: {
+      model:'minimaxH3', path:'POST /v1/video/generations', fam:'video', group:'default',
+      abilities:2, filter:'两条都声明了 video 端点，均通过', filtered:0, filterLabel:'无需拦截', filterClass:'',
+      pick:'按 weight 约 6:1',
+      cands:[
+        {id:35,name:'Aivideomaker Direct',type:'61 · task plugin',ok:true,err:0,calls:691,note:'无错误',caps:{video:'on'}},
+        {id:44,name:'Aivideomaker Video_copy',type:'61 · task plugin',ok:true,err:0,calls:117,note:'无错误',caps:{video:'on'}}
+      ],
+      verdict:{kind:'ok',text:'<b>健康对照组：同模型两条渠道、同协议族、都健康。</b>分流只带来容量分摊，没有语义差异。说明「同模型多渠道」本身不是问题，<b>异构才是</b>；端点维度补上之后，这类流量完全不受影响。'},
+      metrics:[{l:'候选渠道',v:'2',d:'同一插件类型'},{l:'错误率',v:'0%',d:'808 次调用零错误'},{l:'P0 影响',v:'无',d:'行为不变'}]
+    }
+  };
+
+  var caseKey = 'three';
+  function row(s,b,r,cls){
+    return '<div class="ch ' + (cls||'') + '"><div class="s">' + s + '</div><div class="b">' + b + '</div><div class="r">' + r + '</div></div>';
+  }
+  function renderDiag(){
+    var c = cases[caseKey];
+    document.getElementById('chain').innerHTML =
+      row('1 · endpoint', '<span class="kv">' + c.path + '</span> → <b>' + c.fam + '</b>', '端点族') +
+      row('2 · group', '<span class="kv">token.group</span> → <b>' + c.group + '</b>', '只做授权/计价') +
+      row('3 · model', '<span class="kv">abilities(' + c.group + ', ' + c.model + ')</span> → <b>' + c.abilities + ' 条</b>', '候选集') +
+      row('4 · filter', c.filter, c.filterLabel, c.filterClass) +
+      row('5 · pick', 'priority → weight+10 → 随机<br><b>' + c.pick + '</b>', '与端点无关', 'bottom');
+
+    document.getElementById('cands').innerHTML = c.cands.map(function(x){
+      var caps = Object.keys(x.caps).map(function(k){
+        var v = x.caps[k];
+        var label = v === 'on' ? '✓ ' : v === 'mid' ? '~ ' : '✕ ';
+        return '<span class="cap ' + v + '">' + label + k + '</span>';
+      }).join('');
+      var pill = !x.ok ? '<span class="pill err">应被排除</span>'
+        : x.err >= 90 ? '<span class="pill err">候选 · 零成功</span>'
+        : x.err > 0 ? '<span class="pill warn">候选 · 退化</span>'
+        : '<span class="pill ok">候选</span>';
+      var barColor = x.err >= 50 ? 'var(--err)' : 'var(--warn)';
+      return '<div class="cand ' + (x.ok ? '' : 'bad') + '">' +
+        '<div class="top"><span class="nm">' + x.name + '</span><span class="id">#' + x.id + '</span>' + pill + '</div>' +
+        '<div class="meta"><span>' + x.type + '</span><span>30d <b>' + x.calls + '</b> 次</span><span>错误率 <b>' + x.err + '%</b></span></div>' +
+        '<div class="caps">' + caps + '</div>' +
+        '<div class="note-line" style="color:' + (x.err === 0 && x.ok ? 'var(--muted)' : 'var(--err)') + '">' + x.note + '</div>' +
+        (x.err > 0 ? '<div class="bar"><i style="width:' + x.err + '%;background:' + barColor + '"></i></div>' : '') +
+        '</div>';
+    }).join('');
+
+    var v = document.getElementById('verdict');
+    v.className = 'note ' + (c.verdict.kind === 'ok' ? 'ok' : c.verdict.kind === 'warn' ? 'warn' : 'danger');
+    v.innerHTML = '<span class="k"></span><div>' + c.verdict.text + '</div>';
+
+    document.getElementById('diagMetrics').innerHTML = c.metrics.map(function(m){
+      return '<div class="m"><div class="l">' + m.l + '</div><div class="v">' + m.v + '</div><div class="d">' + m.d + '</div></div>';
+    }).join('');
+  }
+  document.querySelectorAll('#caseSeg button').forEach(function(b){
+    b.addEventListener('click', function(){
+      caseKey = b.dataset.case;
+      document.querySelectorAll('#caseSeg button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      renderDiag();
+    });
+  });
+  renderDiag();
+
+  /* ---------- 端点能力矩阵 ---------- */
+  var eps = ['chat','messages','responses','images','embeddings','audio','video','rerank'];
+  var fams = [
+    {name:'OpenAI 兼容 (1/3/8/20)', caps:{chat:'n',messages:'c',responses:'n',images:'n',embeddings:'n',audio:'n',video:'r',rerank:'n'}},
+    {name:'Anthropic (14)', caps:{chat:'c',messages:'n',responses:'c',images:'x',embeddings:'x',audio:'x',video:'x',rerank:'x'}},
+    {name:'Gemini (24)', caps:{chat:'c',messages:'c',responses:'c',images:'p',embeddings:'n',audio:'x',video:'x',rerank:'x'}},
+    {name:'火山 (45)', caps:{chat:'n',messages:'c',responses:'n',images:'n',embeddings:'n',audio:'p',video:'r',rerank:'n'}},
+    {name:'xAI (48)', caps:{chat:'n',messages:'u',responses:'n',images:'u',embeddings:'u',audio:'u',video:'r',rerank:'u'}},
+    {name:'任务插件 (61)', caps:{chat:'r',messages:'r',responses:'r',images:'r',embeddings:'r',audio:'r',video:'r',rerank:'r'}},
+    {name:'自定义 (58) / 异步 (8001)', caps:{chat:'r',messages:'r',responses:'r',images:'r',embeddings:'r',audio:'r',video:'r',rerank:'r'}}
+  ];
+  var capLabel = {n:'原生',c:'转换',x:'拒绝',u:'未验证',r:'路由表',p:'部分'};
+  var onlyDeny = false;
+
+  function renderCaps(){
+    var head = '<thead><tr><th>协议族</th>' + eps.map(function(e){ return '<th>' + e + '</th>'; }).join('') + '</tr></thead>';
+    var body = '<tbody>';
+    fams.forEach(function(f){
+      body += '<tr><th>' + f.name + '</th>';
+      eps.forEach(function(e){
+        var v = f.caps[e];
+        var cls = v === 'x' ? 'x' : v === 'n' ? 'n' : v === 'c' ? 'c' : v === 'r' ? 'r' : v === 'p' ? 'p' : 'u';
+        var dim = (onlyDeny && v !== 'x') ? ' style="opacity:.18"' : '';
+        body += '<td' + dim + '><span class="cx ' + cls + '">' + capLabel[v] + '</span></td>';
+      });
+      body += '</tr>';
+    });
+    body += '</tbody>';
+    document.getElementById('capTable').innerHTML = head + body;
+  }
+  document.getElementById('onlyDeny').addEventListener('click', function(){
+    onlyDeny = !onlyDeny;
+    this.classList.toggle('p', onlyDeny);
+    this.textContent = onlyDeny ? '显示全部' : '只看 P0 会拦截的格子';
+    renderCaps();
+  });
+  renderCaps();
+
+  /* ---------- 覆盖矩阵 ---------- */
+  var matrix = {
+    'claude-sonnet-4-5': {
+      chat:{n:2, state:'ok', sub:'2/2 可服务', ch:[
+        {id:18,name:'anthropic-official',fam:'Anthropic',cap:'转换',err:0,calls:0},
+        {id:22,name:'openai-compat',fam:'OpenAI',cap:'原生',err:0,calls:0}]},
+      messages:{n:2, state:'ok', sub:'2/2 可服务', ch:[
+        {id:18,name:'anthropic-official',fam:'Anthropic',cap:'原生',err:0,calls:0},
+        {id:22,name:'openai-compat',fam:'OpenAI',cap:'转换',err:0,calls:0}]},
+      responses:{n:2, state:'ok', sub:'2/2 可服务', ch:[
+        {id:18,name:'anthropic-official',fam:'Anthropic',cap:'转换',err:0,calls:0},
+        {id:22,name:'openai-compat',fam:'OpenAI',cap:'原生',err:0,calls:0}]},
+      images:{n:0, filtered:2, state:'err', sub:'2 条被端点过滤', ch:[
+        {id:18,name:'anthropic-official',fam:'Anthropic',cap:'不支持',err:0,calls:0,filtered:true},
+        {id:9,name:'anthropic-bedrock',fam:'Anthropic',cap:'不支持',err:0,calls:0,filtered:true}]}
+    },
+    'flux-3': {
+      images:{n:2, state:'err', sub:'可用 1/2', ch:[
+        {id:38,name:'image-adapter-fal-flux3',fam:'OpenAI',cap:'原生',err:29,calls:14},
+        {id:39,name:'bfl-flux-precise',fam:'OpenAI',cap:'原生',err:100,calls:9}]},
+      chat:{n:0,state:'idle',sub:'未上架',ch:[]}
+    },
+    'doubao-seedream-5-0-260128': {
+      images:{n:2, state:'err', sub:'可用 0/2', ch:[
+        {id:2,name:'image-adapter-ark-seedream',fam:'OpenAI',cap:'原生',err:100,calls:10},
+        {id:42,name:'image-adapter-senseaudio',fam:'OpenAI',cap:'原生',err:100,calls:9}]}
+    },
+    'minimaxH3': {
+      video:{n:2, state:'ok', sub:'2/2 可服务', ch:[
+        {id:35,name:'Aivideomaker Direct',fam:'task plugin',cap:'路由表',err:0,calls:691},
+        {id:44,name:'Aivideomaker Video_copy',fam:'task plugin',cap:'路由表',err:0,calls:117}]}
+    },
+    'qwen3.8-max': {
+      chat:{n:1, state:'ok', sub:'1/1 可服务', ch:[
+        {id:12,name:'qwen2api-text',fam:'OpenAI',cap:'原生',err:0,calls:0}]},
+      responses:{n:0,state:'idle',sub:'端点级缺口',ch:[]}
+    },
+    'doubao-seedance-1-5-pro-251215': {
+      video:{n:3, state:'warn', sub:'含 1 条跨模型', ch:[
+        {id:44,name:'Aivideomaker Direct',fam:'task plugin',cap:'路由表',err:0,calls:0},
+        {id:35,name:'Aivideomaker Video_copy',fam:'task plugin',cap:'路由表',err:0,calls:0},
+        {id:7,name:'seedance-redirect-to-minimaxh3',fam:'VolcEngine',cap:'原生',err:0,calls:0}]}
+    }
+  };
+
+  function renderMatrix(){
+    var head = '<thead><tr><th>模型</th>' + eps.map(function(e){ return '<th>' + e + '</th>'; }).join('') + '</tr></thead>';
+    var body = '<tbody>';
+    Object.keys(matrix).forEach(function(model){
+      body += '<tr><th class="mono">' + model + '</th>';
+      eps.forEach(function(e){
+        var c = matrix[model][e];
+        if (!c) { body += '<td class="empty">—</td>'; return; }
+        if (c.n === 0) {
+          var sq = c.filtered ? 'err' : 'idle';
+          body += '<td class="cell" data-model="' + model + '" data-ep="' + e + '"><div class="c"><span class="sq ' + sq + '"></span>' + (c.filtered ? '0 条' : '未覆盖') + '</div><div class="s">' + c.sub + '</div></td>';
+          return;
+        }
+        body += '<td class="cell" data-model="' + model + '" data-ep="' + e + '"><div class="c">' +
+          '<span class="sq ' + c.state + '"></span>' + c.n + ' 条</div><div class="s">' + c.sub + '</div></td>';
+      });
+      body += '</tr>';
+    });
+    body += '</tbody>';
+    var t = document.getElementById('mxTable');
+    t.innerHTML = head + body;
+    t.querySelectorAll('td.cell').forEach(function(td){
+      td.addEventListener('click', function(){ openCell(td.dataset.model, td.dataset.ep); });
+    });
+  }
+
+  function openCell(model, ep){
+    var c = (matrix[model] || {})[ep];
+    if (!c) { return; }
+    var rows = c.ch.length ? c.ch.map(function(x){
+      if (x.filtered) {
+        return '<div class="cand bad" style="margin-bottom:6px">' +
+          '<div class="top"><span class="nm">' + x.name + '</span><span class="id">#' + x.id + '</span>' +
+          '<span class="pill err">端点不支持</span></div>' +
+          '<div class="meta"><span class="mono">' + x.fam + '</span><span>被 <b>endpoint_capability</b> 过滤</span></div>' +
+          '</div>';
+      }
+      var cls = x.err === 0 ? 'ok' : x.err >= 90 ? 'err' : 'warn';
+      return '<div class="cand ' + (x.err >= 90 ? 'bad' : '') + '" style="margin-bottom:6px">' +
+        '<div class="top"><span class="nm">' + x.name + '</span><span class="id">#' + x.id + '</span>' +
+        '<span class="pill ' + cls + '">' + (x.err === 0 ? '健康' : x.err + '% 失败') + '</span></div>' +
+        '<div class="meta"><span class="mono">' + x.fam + '</span><span>端点能力 <b>' + x.cap + '</b></span><span>30d <b>' + x.calls + '</b> 次</span></div>' +
+        '</div>';
+    }).join('') : '<div class="empty">没有渠道支持这个端点。要么补供给，要么在协议层显式拒绝。</div>';
+
+    document.getElementById('mxDrawer').innerHTML =
+      '<div class="dh"><div class="t">' + model + ' · ' + ep + '</div>' +
+      '<div class="s">cell = (default, ' + model + ', ' + ep + ')</div></div>' +
+      '<div class="db">' + rows +
+      (c.filtered
+        ? '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">' +
+          '<button class="btn sm p">补一条支持该端点的渠道</button>' +
+          '<button class="btn sm">在模型上标记不支持</button>' +
+          '<button class="btn sm">忽略</button></div>'
+        : '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">' +
+          '<button class="btn sm p">补渠道</button>' +
+          '<button class="btn sm">渠道级端点覆盖</button>' +
+          '<button class="btn sm danger">摘除</button></div>') +
+      '<div class="hint">P0 只能看到类型级能力；同类型渠道的差异要靠 P2 覆盖或 P3 健康。</div></div>';
+  }
+  renderMatrix();
+  openCell('claude-sonnet-4-5', 'images');
+
+  /* ---------- 日志 ---------- */
+  var logs = [
+    {t:'15:02:11', model:'claude-sonnet-4-5', ep:'images.generations', ch:'—', ok:false, filtered:'2 条', ms:12,
+     note:'端点过滤生效：两条候选的协议族都不支持图片，直接返回无可用渠道，没有打到上游。'},
+    {t:'15:01:47', model:'claude-sonnet-4-5', ep:'messages', ch:'#18', ok:true, filtered:'0 条', ms:2210,
+     note:'原生 messages，候选 2 条，优先级与权重不变。'},
+    {t:'14:58:22', model:'flux-3', ep:'images.generations', ch:'#38', ok:true, filtered:'0 条', ms:6120,
+     note:'两端点同族，P0 不过滤；命中健康的 #38。'},
+    {t:'14:57:41', model:'flux-3', ep:'images.generations', ch:'#39', ok:false, filtered:'0 条', ms:840,
+     note:'P0 的边界：同类型渠道的端点差异看不出来，404 只能靠 P3 摘除。'},
+    {t:'14:52:18', model:'doubao-seedream-5-0-260128', ep:'images.generations', ch:'#42', ok:false, filtered:'0 条', ms:310,
+     note:'计费账户冻结，端点本身支持；属于渠道健康问题。'}
+  ];
+  function renderLogs(){
+    var tb = document.querySelector('#logTable tbody');
+    tb.innerHTML = logs.map(function(l, i){
+      return '<tr class="lrow" data-i="' + i + '">' +
+        '<td class="mono">' + l.t + '</td>' +
+        '<td class="mono">' + l.model + '</td>' +
+        '<td class="mono">' + l.ep + '</td>' +
+        '<td class="mono">' + l.ch + '</td>' +
+        '<td>' + (l.ok ? '<span class="pill ok">成功</span>' : '<span class="pill err">失败</span>') + '</td>' +
+        '<td>' + (l.filtered === '0 条' ? '<span class="flat">—</span>' : '<span class="pill a">' + l.filtered + '</span>') + '</td>' +
+        '<td class="num">' + l.ms + ' ms</td>' +
+        '</tr>';
+    }).join('');
+
+    tb.querySelectorAll('tr.lrow').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        var i = Number(tr.dataset.i);
+        var open = tr.classList.contains('open');
+        tb.querySelectorAll('tr.det').forEach(function(x){ x.remove(); });
+        tb.querySelectorAll('tr.lrow').forEach(function(x){ x.classList.remove('open'); });
+        if (open) { return; }
+        tr.classList.add('open');
+        var l = logs[i];
+        var det = document.createElement('tr');
+        det.className = 'det';
+        det.innerHTML = '<td colspan="7"><div class="in"><div class="snap">' +
+          '<div><h4>这次请求</h4><div class="list">' +
+            '端点 <code>' + l.ep + '</code><br>' +
+            '命中 <code>' + l.ch + '</code><br>' +
+            '端点过滤 <span class="x">' + l.filtered + '</span><br>' +
+            '耗时 <code>' + l.ms + ' ms</code>' +
+          '</div></div>' +
+          '<div><h4>判定</h4><div class="list">' + l.note + '</div>' +
+          '<div class="hint">P1 之后，这里会多一个 filtered 数组，列出每条被端点能力排除的渠道与原因。</div></div>' +
+        '</div></div></td>';
+        tr.parentNode.insertBefore(det, tr.nextSibling);
+      });
+    });
+  }
+  renderLogs();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>渠道端点策略 · 只有 chat 的模型如何获得其他端点 · apiduo 产品原型</title>
+<style>
+  :root{
+    --bg:#ffffff;--surface:#fbfbfc;--surface-2:#f4f4f6;--line:#e7e7ea;--line-strong:#d6d6db;
+    --ink:#17171c;--ink-2:#4a4a55;--muted:#8b8b96;--accent:#4f46e5;--accent-soft:#eef0ff;
+    --ok:#0f7a52;--ok-soft:#e6f4ed;--err:#c02a20;--err-soft:#fdeceb;--warn:#9a6200;--warn-soft:#fdf3e0;
+    --radius:10px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  .side{width:220px;flex:0 0 220px;background:#15151a;color:#c9c9d1;padding:14px 10px;font-size:12.5px;display:flex;flex-direction:column}
+  .side .brand{display:flex;align-items:center;gap:8px;padding:6px 8px 16px;color:#fff;font-weight:600;font-size:13.5px}
+  .side .dot{width:7px;height:7px;border-radius:99px;background:#6d63ff}
+  .side .grp{padding:14px 10px 5px;color:#63636f;font-size:10.5px;letter-spacing:.06em}
+  .side button{appearance:none;border:0;background:transparent;width:100%;text-align:left;display:block;
+    padding:8px 10px;border-radius:7px;color:#a7a7b4;font-family:inherit;font-size:12.5px;cursor:pointer;margin-bottom:1px}
+  .side button:hover{background:#1f1f27;color:#e6e6ec}
+  .side button.on{background:#26262f;color:#fff}
+  .side button .t{display:flex;align-items:center;gap:6px}
+  .side button .s{font-size:10.5px;color:#6f6f7c;margin-top:2px;padding-left:1px}
+  .side button.on .s{color:#9a9aa8}
+  .side .foot{margin-top:auto;padding:12px 10px 4px;color:#5d5d6a;font-size:10.5px;line-height:1.6;border-top:1px solid #26262f}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+  .head{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .head h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .ctx{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 8px;font-size:11.5px;color:var(--ink-2)}
+  .ctx b{font-weight:600;color:var(--ink)}
+  .ctx .k{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .btn{appearance:none;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-family:inherit;
+    font-size:11.5px;padding:6px 11px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--ink-2);color:var(--ink)}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.p:hover{background:#443bc9;color:#fff}
+  .btn.sm{padding:4px 9px;font-size:11px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .body{padding:18px 22px 48px;overflow:auto}
+  .note{display:flex;gap:9px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--ink-2);line-height:1.65}
+  .note b{color:var(--ink);font-weight:600}
+  .note .k{flex:0 0 auto;width:3px;align-self:stretch;border-radius:2px;background:var(--accent)}
+  .note.warn .k{background:var(--warn)}
+  .note.danger .k{background:var(--err)}
+  .note.ok .k{background:var(--ok)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .card+.card{margin-top:14px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:12.5px;font-weight:600}
+  .card-h .desc{color:var(--muted);font-size:11.5px}
+  .card-h .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .card-b{padding:14px}
+  .card-b.tight{padding:0}
+  .grid2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:14px;align-items:start}
+  .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:middle}
+  th{color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.02em;background:var(--surface);white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#fcfcfd}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono);font-size:11.5px}
+  .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:99px;font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap}
+  .pill.k{background:#1d1d24;color:#fff}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.b{background:var(--surface-2);color:var(--ink-2)}
+  .pill.mute{background:var(--surface-2);color:var(--muted)}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.err{background:var(--err-soft);color:var(--err)}
+  .row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);font-size:12.5px;flex-wrap:wrap}
+  .row:last-child{border-bottom:0}
+  .row .lab{flex:1 1 190px;color:var(--ink-2)}
+  .row .lab b{display:block;color:var(--ink);font-weight:600;margin-bottom:2px}
+  .row .lab span{font-size:11.5px;color:var(--muted);line-height:1.5}
+  .form{display:grid;grid-template-columns:100px 1fr;gap:0;font-size:12.5px}
+  .form .k{padding:9px 0;color:var(--muted);border-bottom:1px solid var(--line)}
+  .form .v{padding:9px 0;border-bottom:1px solid var(--line);color:var(--ink);min-width:0}
+  .form .k:last-of-type,.form .v:last-of-type{border-bottom:0}
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+  .stats div{padding:9px 11px;border-right:1px solid var(--line)}
+  .stats div:last-child{border-right:0}
+  .stats .l{font-size:10.5px;color:var(--muted);margin-bottom:3px}
+  .stats .v{font-size:13px;font-weight:600;line-height:1.3}
+  /* matrix */
+  .mx{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+  .mx th,.mx td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:9px 10px;text-align:left}
+  .mx th:last-child,.mx td:last-child{border-right:0}
+  .mx thead th{background:var(--surface);font-size:11px;color:var(--muted);font-weight:500}
+  .mx tbody th{background:#fff;font-weight:600;font-size:12px;min-width:150px}
+  .mx td.cell{cursor:pointer;min-width:112px}
+  .mx td.cell:hover{background:#f7f7ff}
+  .mx td.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+  .st{display:flex;align-items:center;gap:6px;font-weight:600}
+  .st .dot{width:7px;height:7px;border-radius:2px;flex:0 0 auto}
+  .st.native .dot{background:var(--ok)}
+  .st.convert .dot{background:var(--warn)}
+  .st.reject .dot{background:var(--err)}
+  .st.auto .dot{background:#c9c9d1}
+  .st .tx{font-size:12px}
+  .st.native .tx{color:var(--ok)}
+  .st.convert .tx{color:var(--warn)}
+  .st.reject .tx{color:var(--err)}
+  .st.auto .tx{color:var(--muted)}
+  .cell .why{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.45}
+  .cell .why b{color:var(--ink-2);font-weight:600}
+  /* mode seg */
+  .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:4px 0 10px}
+  .modes button{appearance:none;border:1px solid var(--line-strong);background:#fff;border-radius:7px;padding:8px 6px;
+    font-family:inherit;cursor:pointer;text-align:left}
+  .modes button .n{display:block;font-size:11.5px;font-weight:600;color:var(--ink)}
+  .modes button .d{display:block;font-size:10px;color:var(--muted);margin-top:2px;line-height:1.4}
+  .modes button.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+  .modes button.on .n{color:var(--accent)}
+  .modes button:disabled{opacity:.45;cursor:not-allowed}
+  .hint{font-size:11px;color:var(--muted);line-height:1.6;margin-top:6px}
+  /* flow */
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:4px 0 10px}
+  .flow .n{border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:#fff;min-width:120px;flex:1 1 120px}
+  .flow .n .l{font-size:10px;color:var(--muted);margin-bottom:3px}
+  .flow .n .t{font-family:var(--mono);font-size:11px;font-weight:600;line-height:1.45;word-break:break-all}
+  .flow .n.conv{border-color:#eadfc8;background:#fffdf7}
+  .flow .n.fail{border-color:#ecc9c6;background:#fffafa}
+  .flow .ar{display:flex;align-items:center;justify-content:center;color:var(--muted);width:24px;flex:0 0 24px;font-size:12px}
+  .code{font-family:var(--mono);font-size:11.5px;line-height:1.7;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px 12px;white-space:pre;overflow:auto;color:var(--ink-2)}
+  .code .c{color:var(--muted)}
+  .code .k{color:var(--accent)}
+  .code .s{color:var(--ok)}
+  .testout{border:1px solid var(--line);border-radius:8px;background:#1b1b21;color:#d8d8e0;padding:10px 12px;
+    font-family:var(--mono);font-size:11px;line-height:1.7;white-space:pre-wrap;min-height:64px}
+  .testout .ok{color:#9ae6b4}.testout .warn{color:#f6ad55}.testout .err{color:#fc8181}.testout .m{color:#a5b4fc}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--ink-2);padding:10px 14px;border-top:1px solid var(--line);background:var(--surface)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .lgd{width:7px;height:7px;border-radius:2px}
+  @media (max-width:1180px){.grid2,.split{grid-template-columns:1fr}}
+  @media (max-width:860px){.side{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="dot"></span>apiduo · 渠道</div>
+    <div class="grp">渠道</div>
+    <button class="on"><div class="t">qwen2api-text</div><div class="s">type 1 · 只有 chat</div></button>
+    <button><div class="t">deepseek-official</div><div class="s">type 43 · 三端点原生</div></button>
+    <button><div class="t">anthropic-official</div><div class="s">type 14 · messages 原生</div></button>
+    <button><div class="t">bfl-flux-precise</div><div class="s">type 1 · 图片，404</div></button>
+    <div class="grp">该渠道</div>
+    <button><div class="t">基础设置</div></button>
+    <button><div class="t">模型</div></button>
+    <button><div class="t">高级设置</div></button>
+    <button class="on" style="margin-left:8px;background:#26262f"><div class="t">端点策略</div></button>
+    <div class="foot">管理员配置。终端用户只发 model + 端点，不感知转换。</div>
+  </aside>
+
+  <main class="main">
+    <div class="head">
+      <h1>端点策略</h1>
+      <span class="sub">qwen2api-text · 让只有 chat 的模型获得 responses / messages 能力</span>
+      <span class="spacer"></span>
+      <span class="ctx"><span class="k">type</span><b>1 · OpenAI 兼容</b></span>
+      <span class="ctx"><span class="k">model</span><b id="curModel">qwen3.8-max</b></span>
+      <button class="btn p" id="saveBtn">保存策略</button>
+    </div>
+
+    <div class="body">
+      <div class="note warn">
+        <span class="k"></span>
+        <div><b>这是一个「适配器说支持、上游其实没有」的渠道。</b>类型 1 的 OpenAI 适配器默认声明 chat 与 responses 都原生，
+        但这条上游只实现了 <span class="mono">/v1/chat/completions</span>。不做配置，客户端打 <span class="mono">/v1/responses</span> 会直接拿到上游 404。</div>
+      </div>
+
+      <div class="stats" style="margin-bottom:14px">
+        <div><div class="l">渠道类型</div><div class="v">OpenAI 兼容</div></div>
+        <div><div class="l">模型</div><div class="v">3 个</div></div>
+        <div><div class="l">上游实际端点</div><div class="v">仅 chat</div></div>
+        <div><div class="l">策略状态</div><div class="v" id="policyState">1 个模型已配置</div></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-h">
+            <h2>模型 × 端点</h2>
+            <span class="desc">点格子编辑；显示的是「生效结果」，不是原始配置</span>
+            <span class="right"><button class="btn sm" id="applyAll">把当前模型策略应用到全部</button></span>
+          </div>
+          <div class="card-b tight">
+            <table class="mx" id="matrix"></table>
+            <div class="legend">
+              <span><i class="lgd" style="background:var(--ok)"></i>原生：直接透传上游</span>
+              <span><i class="lgd" style="background:var(--warn)"></i>转换：网关内转换后发出</span>
+              <span><i class="lgd" style="background:var(--err)"></i>拒绝：网关直接返回 400</span>
+              <span><i class="lgd" style="background:#c9c9d1"></i>跟随适配器默认</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>策略编辑器</h2>
+            <span class="desc" id="editorSub">qwen3.8-max · responses</span>
+          </div>
+          <div class="card-b">
+            <div class="modes" id="modes">
+              <button data-mode="passthrough"><span class="n">透传</span><span class="d">按客户端格式直接发</span></button>
+              <button data-mode="convert"><span class="n">转换</span><span class="d">网关内转成上游母语</span></button>
+              <button data-mode="reject"><span class="n">拒绝</span><span class="d">返回明确错误</span></button>
+            </div>
+
+            <div class="form" id="editForm"></div>
+            <div id="editHint"></div>
+
+            <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn p sm" id="applyCell">应用</button>
+              <button class="btn sm" id="resetCell">恢复跟随默认</button>
+              <button class="btn sm" id="simulate">模拟一次请求</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h2>生效预览</h2><span class="desc">当前选中：<span id="previewSub" class="mono">qwen3.8-max · responses · 转换</span></span></div>
+        <div class="card-b">
+          <div class="flow" id="flow"></div>
+          <div class="testout" id="testout">点「模拟一次请求」生成结果。</div>
+        </div>
+      </div>
+
+      <div class="split" style="margin-top:14px">
+        <div class="card">
+          <div class="card-h"><h2>这个模型保存的配置</h2><span class="desc">写入 channel.other_settings.endpoint_policy</span></div>
+          <div class="card-b">
+            <div class="code" id="jsonBox"></div>
+            <div class="hint">没写进 models 的端点跟随渠道默认；渠道默认再跟随适配器推导。三层优先级：模型 &gt; 渠道 &gt; 适配器。</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>为什么不能自动判断</h2></div>
+          <div class="card-b">
+            <div class="row"><div class="lab"><b>适配器只能代表协议</b><span>类型 1 的适配器实现了 responses，但它不知道某个上游是否真的部署了这个端点。</span></div><span class="pill b">代码层</span></div>
+            <div class="row"><div class="lab"><b>上游差异只能实测或声明</b><span>同一个 type 1，A 家只开 chat，B 家开 chat + responses。渠道级配置是唯一准确的落点。</span></div><span class="pill b">渠道层</span></div>
+            <div class="row"><div class="lab"><b>用户不该承担这个判断</b><span>用户只发 model + 端点；转换、拒绝、兜底都在网关内完成。</span></div><span class="pill b">用户层</span></div>
+            <div class="hint">可选：保存时并发探测一次 <span class="mono">/v1/responses</span>，把「实测结果」作为默认值，管理员只需要确认。</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var endpoints = ['chat','responses','messages','embeddings'];
+  var models = ['qwen3.8-max','qwen3.8-plus','qwen3.6-plus'];
+
+  // 适配器默认能力（类型 1 OpenAI）：chat/responses 原生，messages 转换，embeddings 原生
+  var adapterDefault = { chat:'native', responses:'native', messages:'converted', embeddings:'none' };
+  // 上游实测：只有 chat
+  var upstreamReality = { chat:true, responses:false, messages:false, embeddings:false };
+
+  // 每个模型的策略：'auto' 表示跟随适配器；其余为显式覆盖
+  var policy = {
+    'qwen3.8-max': { chat:'passthrough', responses:'convert', messages:'convert', embeddings:'reject' },
+    'qwen3.8-plus': { chat:'auto', responses:'auto', messages:'auto', embeddings:'auto' },
+    'qwen3.6-plus': { chat:'auto', responses:'auto', messages:'auto', embeddings:'auto' }
+  };
+
+  var sel = { model:'qwen3.8-max', ep:'responses' };
+
+  function endpointLabel(ep){
+    return { chat:'chat', responses:'responses', messages:'messages', embeddings:'embeddings' }[ep];
+  }
+
+  function effective(model, ep){
+    var mode = (policy[model] || {})[ep] || 'auto';
+    if (mode !== 'auto') { return { mode:mode, source:'model' }; }
+    var d = adapterDefault[ep];
+    if (d === 'native') { return { mode:'passthrough', source:'adapter' }; }
+    if (d === 'converted') { return { mode:'convert', source:'adapter' }; }
+    return { mode:'reject', source:'adapter' };
+  }
+
+  function stateOf(model, ep){
+    var e = effective(model, ep);
+    if (e.mode === 'passthrough') { return { cls:'native', label:'原生', why:'上游直接收这个端点' }; }
+    if (e.mode === 'convert') { return { cls:'convert', label:'转换', why:'网关转成 chat 后发出' }; }
+    return { cls:'reject', label:'拒绝', why:'没有可用路径' };
+  }
+
+  function renderMatrix(){
+    var head = '<thead><tr><th>模型</th>' + endpoints.map(function(e){
+      return '<th>' + endpointLabel(e) + '</th>';
+    }).join('') + '</tr></thead>';
+    var body = '<tbody>';
+    models.forEach(function(m){
+      body += '<tr><th class="mono">' + m + '</th>';
+      endpoints.forEach(function(ep){
+        var st = stateOf(m, ep);
+        var selected = (m === sel.model && ep === sel.ep);
+        var why = st.why;
+        var e = effective(m, ep);
+        if (e.mode === 'convert' && adapterDefault[ep] === 'native' && !upstreamReality[ep]) {
+          why = '<b>强制转换</b>：适配器说原生，上游 404';
+        } else if (e.source === 'adapter' && e.mode === 'passthrough' && !upstreamReality[ep]) {
+          why = '适配器默认原生 · <b style="color:var(--err)">上游实测 404</b>';
+        } else if (e.source === 'adapter' && e.mode === 'convert') {
+          why = '适配器默认转换 · 经 chat';
+        }
+        body += '<td class="cell ' + (selected ? 'sel' : '') + '" data-model="' + m + '" data-ep="' + ep + '">' +
+          '<div class="st ' + st.cls + '"><span class="dot"></span><span class="tx">' + st.label + '</span></div>' +
+          '<div class="why">' + why + '</div></td>';
+      });
+      body += '</tr>';
+    });
+    body += '</tbody>';
+    var t = document.getElementById('matrix');
+    t.innerHTML = head + body;
+    t.querySelectorAll('td.cell').forEach(function(td){
+      td.addEventListener('click', function(){
+        sel.model = td.dataset.model; sel.ep = td.dataset.ep;
+        renderAll();
+      });
+    });
+  }
+
+  function renderEditor(){
+    var m = sel.model, ep = sel.ep;
+    var e = effective(m, ep);
+    document.getElementById('editorSub').textContent = m + ' · ' + endpointLabel(ep);
+    document.getElementById('curModel').textContent = m;
+
+    document.querySelectorAll('#modes button').forEach(function(b){
+      b.classList.toggle('on', b.dataset.mode === e.mode);
+      var disabled = (b.dataset.mode === 'passthrough' && adapterDefault[ep] === 'none');
+      if (ep === 'embeddings') { disabled = b.dataset.mode !== 'reject' ? false : false; }
+      b.disabled = false;
+    });
+
+    var path = '';
+    if (ep === 'responses') { path = 'responses → chat → native'; }
+    else if (ep === 'messages') { path = 'messages → chat → native'; }
+    else if (ep === 'chat') { path = 'chat → native（直连）'; }
+    else { path = '无路径'; }
+
+    var quality = ep === 'responses' ? 'good' : ep === 'messages' ? 'fair' : '—';
+    var sourceText = e.source === 'model' ? '模型覆盖' : '适配器默认';
+
+    var form = '';
+    form += '<div class="k">生效模式</div><div class="v"><b>' + ({passthrough:'透传',convert:'转换',reject:'拒绝'}[e.mode]) + '</b> <span class="pill mute" style="margin-left:6px">' + sourceText + '</span></div>';
+    form += '<div class="k">转换路径</div><div class="v mono">' + path + '</div>';
+    form += '<div class="k">转换质量</div><div class="v">' + (quality === '—' ? '—' : '<span class="pill ' + (quality === 'good' ? 'ok' : 'warn') + '">' + quality + '</span>') + '</div>';
+    form += '<div class="k">上游实测</div><div class="v">' + (upstreamReality[ep] ? '<span class="pill ok">可用</span>' : '<span class="pill err">404 / 不存在</span>') + '</div>';
+    document.getElementById('editForm').innerHTML = form;
+
+    var hint = '';
+    if (ep === 'responses') {
+      hint = '<div class="note warn" style="margin:8px 0 0;padding:8px 10px"><span class="k"></span><div>适配器声明原生，但实测上游 404。选「转换」后，网关会先把 responses 转成 chat 再发上游。</div></div>';
+    } else if (ep === 'embeddings') {
+      hint = '<div class="note danger" style="margin:8px 0 0;padding:8px 10px"><span class="k"></span><div>没有 embeddings 转换路径，只能拒绝。若确实需要，请给该渠道补一条支持 embeddings 的供给。</div></div>';
+    } else if (ep === 'chat') {
+      hint = '<div class="hint">chat 是上游母语，正常应保持透传。把它改成转换只会绕一圈回到 chat。</div>';
+    } else {
+      hint = '<div class="hint">messages 走适配器内置转换（fair）。如果这个渠道不能接受有损转换，可以改成拒绝。</div>';
+    }
+    document.getElementById('editHint').innerHTML = hint;
+  }
+
+  function renderPreview(){
+    var m = sel.model, ep = sel.ep;
+    var e = effective(m, ep);
+    var label = endpointLabel(ep);
+    var modeText = {passthrough:'透传',convert:'转换',reject:'拒绝'}[e.mode];
+    document.getElementById('previewSub').textContent = m + ' · ' + label + ' · ' + modeText;
+
+    var flow = '';
+    if (e.mode === 'reject') {
+      flow = node('客户端', 'POST /v1/' + (ep === 'messages' ? 'messages' : ep === 'responses' ? 'responses' : ep)) +
+        arrow() + nodeFail('网关', '直接返回 400') + arrow() + nodeFail('上游', '不会发出请求');
+    } else if (e.mode === 'convert') {
+      flow = node('客户端', 'POST /v1/' + (ep === 'messages' ? 'messages' : ep === 'responses' ? 'responses' : ep)) +
+        arrow() + nodeConv('转换', ep + ' → chat') + arrow() + node('上游', 'POST /v1/chat/completions') +
+        arrow() + nodeConv('回包', 'chat → ' + ep);
+    } else {
+      flow = node('客户端', 'POST /v1/' + (ep === 'messages' ? 'messages' : ep === 'responses' ? 'responses' : ep)) +
+        arrow() + node('上游', 'POST /v1/' + (ep === 'messages' ? 'messages' : ep === 'responses' ? 'responses' : 'chat/completions'));
+    }
+    document.getElementById('flow').innerHTML = flow;
+  }
+
+  function node(l,t){ return '<div class="n"><div class="l">' + l + '</div><div class="t">' + t + '</div></div>'; }
+  function nodeConv(l,t){ return '<div class="n conv"><div class="l">' + l + '</div><div class="t">' + t + '</div></div>'; }
+  function nodeFail(l,t){ return '<div class="n fail"><div class="l">' + l + '</div><div class="t">' + t + '</div></div>'; }
+  function arrow(){ return '<div class="ar">→</div>'; }
+
+  function renderJSON(){
+    var m = sel.model;
+    var out = {};
+    endpoints.forEach(function(ep){
+      if (ep === 'chat') { return; } // 母语端点不需要写，native 已声明
+      var mode = (policy[m] || {})[ep] || 'auto';
+      if (mode !== 'auto') {
+        out[ep] = { mode:mode };
+        if (ep === 'responses') { out[ep].quality_floor = 'good'; }
+        if (ep === 'messages') { out[ep].quality_floor = 'fair'; }
+      }
+    });
+    var keys = Object.keys(out);
+    var lines = ['{', '  "native": "chat",', '  "endpoints": {'];
+    keys.forEach(function(ep, i){
+      var item = out[ep];
+      var parts = ['"mode": "' + item.mode + '"'];
+      if (item.quality_floor) { parts.push('"quality_floor": "' + item.quality_floor + '"'); }
+      lines.push('    "' + ep + '": { ' + parts.join(', ') + ' }' + (i < keys.length - 1 ? ',' : ''));
+    });
+    lines.push('  },');
+    lines.push('  "fallback": "native_first"');
+    lines.push('}');
+    document.getElementById('jsonBox').innerHTML = highlight(lines.join('\n'));
+  }
+
+  function highlight(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/("(?:[^"\\]|\\.)*")(\s*:)/g, '<span class="k">$1</span>$2')
+      .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span class="s">$1</span>')
+      .replace(/\b(true|false|null|\d+)\b/g, '<span class="s">$1</span>');
+  }
+
+  function renderAll(){
+    renderMatrix(); renderEditor(); renderPreview(); renderJSON();
+    var configured = models.filter(function(m){
+      return endpoints.some(function(ep){ return (policy[m]||{})[ep] && policy[m][ep] !== 'auto'; });
+    }).length;
+    document.getElementById('policyState').textContent = configured + ' 个模型已配置';
+  }
+
+  document.querySelectorAll('#modes button').forEach(function(b){
+    b.addEventListener('click', function(){
+      var m = sel.model, ep = sel.ep;
+      policy[m] = policy[m] || {};
+      policy[m][ep] = b.dataset.mode;
+      renderAll();
+    });
+  });
+
+  document.getElementById('applyCell').addEventListener('click', function(){
+    renderAll();
+    var out = document.getElementById('testout');
+    out.innerHTML = '<span class="ok">已应用</span>：' + sel.model + ' · ' + endpointLabel(sel.ep) + ' → ' + ({passthrough:'透传',convert:'转换',reject:'拒绝'}[effective(sel.model,sel.ep).mode]);
+  });
+
+  document.getElementById('resetCell').addEventListener('click', function(){
+    policy[sel.model][sel.ep] = 'auto';
+    renderAll();
+  });
+
+  document.getElementById('applyAll').addEventListener('click', function(){
+    var src = policy[sel.model] || {};
+    models.forEach(function(m){ policy[m] = Object.assign({}, src); });
+    sel.model = models[0];
+    renderAll();
+    document.getElementById('testout').innerHTML = '<span class="ok">已应用</span>：全部 ' + models.length + ' 个模型使用同一套策略。';
+  });
+
+  document.getElementById('simulate').addEventListener('click', function(){
+    var m = sel.model, ep = sel.ep, e = effective(m, ep);
+    var out = document.getElementById('testout');
+    if (e.mode === 'reject') {
+      out.innerHTML = '<span class="err">HTTP 400</span>  <span class="m">endpoint_not_supported</span>\n' +
+        'model=' + m + ' endpoint=' + ep + '\n' +
+        'reason: no conversion path, rejected by channel policy';
+      return;
+    }
+    if (e.mode === 'passthrough') {
+      out.innerHTML = '<span class="ok">pass-through</span>  upstream=POST /v1/' + (ep === 'messages' ? 'messages' : ep === 'responses' ? 'responses' : 'chat/completions') + '\n' +
+        'model=' + m + ' endpoint=' + ep + '\n' +
+        'conversion_path=native';
+      return;
+    }
+    out.innerHTML = '<span class="warn">converted</span>  upstream=POST /v1/chat/completions\n' +
+      'model=' + m + ' endpoint=' + ep + '\n' +
+      'request_path=' + ep + ' → chat (' + (ep === 'responses' ? 'good' : 'fair') + ')\n' +
+      'response_path=chat → ' + ep + '\n' +
+      'conversion_path=fallback';
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', function(){
+    document.getElementById('testout').innerHTML = '<span class="ok">已保存</span>  channel=qwen2api-text  model=' + sel.model + '\n' +
+      '写入 channel.other_settings.endpoint_policy.models["' + sel.model + '"]\n' +
+      '下一次请求起生效，不需要重启。';
+  });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
