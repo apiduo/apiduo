@@ -373,3 +373,23 @@ func TestImageProfileRejectsForeignProtocol(t *testing.T) {
 		t.Errorf("ark 应当被接受: %v", err)
 	}
 }
+
+// 产物类型先能声明、端点后接。audio 现在合法，但调用必须回「尚未接入」，
+// 不能回「未知类型」——那是两种完全不同的下一步。
+func TestAudioKindDeclarableButNotCallable(t *testing.T) {
+	setupDB(t)
+	p := ModelProfile{ModelId: "tts-demo", Kind: "audio", Protocol: "ark", Enabled: true}
+	if err := SaveProfile(&p); err != nil {
+		t.Fatalf("audio 应当能声明: %v", err)
+	}
+	_, err := getTransport("audio")
+	if err == nil {
+		t.Fatal("audio 端点还没接")
+	}
+	if !strings.Contains(err.Error(), "尚未接入") {
+		t.Errorf("应当说明端点未接入，实际 %q", err.Error())
+	}
+	if err := SaveProfile(&ModelProfile{ModelId: "bad-kind", Kind: "embedding"}); err == nil {
+		t.Error("未收录的类型应当被拒")
+	}
+}
