@@ -109,6 +109,12 @@ func defaultedModelNote(views []modelView, kind, used string) string {
 		}
 	}
 	note := "未指定 model，本次用了 " + used + "。"
+	for _, v := range views {
+		if v.ID == used && v.Cost != "" {
+			note = "未指定 model，本次用了 " + used + "（" + v.Cost + "）。"
+			break
+		}
+	}
 	if len(ids) > 1 {
 		note += "可选：" + strings.Join(ids, ", ") + "；下次带上 model 就能指定。"
 	}
@@ -129,7 +135,11 @@ func modelsSummary(models []map[string]any) string {
 		if strings.TrimSpace(summary) == "" {
 			summary = "无简介"
 		}
-		fmt.Fprintf(&b, "\n- %s（%s）：%s", id, kind, clipRunes(summary, 80))
+		line := fmt.Sprintf("\n- %s（%s）：%s", id, kind, clipRunes(summary, 80))
+		if cost, _ := m["cost"].(string); cost != "" {
+			line += "｜" + cost
+		}
+		b.WriteString(line)
 	}
 	return b.String()
 }

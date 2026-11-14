@@ -23,6 +23,7 @@ type modelView struct {
 	Params         map[string]ParamSpec
 	Summary        string
 	Tags           []string
+	Cost           string
 }
 
 func viewFromProfile(p ModelProfile) modelView {
@@ -36,6 +37,7 @@ func viewFromProfile(p ModelProfile) modelView {
 		MaxPromptChars: p.MaxPromptChars,
 		Params:         ParseSpecs(p.Parameters),
 		Summary:        p.Summary,
+		Cost:           p.Cost,
 	}
 	if p.Tags != "" {
 		for _, t := range strings.Split(p.Tags, ",") {
@@ -69,6 +71,9 @@ func (m modelView) card() map[string]any {
 	}
 	if len(m.Tags) > 0 {
 		out["tags"] = m.Tags
+	}
+	if m.Cost != "" {
+		out["cost"] = m.Cost
 	}
 	input := map[string]any{}
 	if m.MaxRefImages != nil {

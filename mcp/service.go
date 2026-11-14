@@ -585,6 +585,9 @@ func ModelCard(p ModelProfile) map[string]any {
 	if p.Summary != "" {
 		card["summary"] = p.Summary
 	}
+	if p.Cost != "" {
+		card["cost"] = p.Cost
+	}
 	if p.Tags != "" {
 		card["tags"] = strings.Split(p.Tags, ",")
 	}

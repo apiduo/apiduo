@@ -258,3 +258,21 @@ func TestCheckExtraSuggestsNearest(t *testing.T) {
 		t.Errorf("应当是可分类的参数错误，实际 %#v", err)
 	}
 }
+
+// 成本必须出现在 models.list 的 text 里。实测四个测试 agent 全部回答「费用未知」，
+// 因为它们只能看到能力，看不到价格 —— 而这恰恰是用户决定要不要试的第一道门槛。
+func TestModelsSummaryCarriesCost(t *testing.T) {
+	out := modelsSummary([]map[string]any{
+		{"id": "qwen-image-3.0", "kind": "image", "summary": "便宜", "cost": "$0.01/次"},
+	})
+	if !strings.Contains(out, "$0.01/次") {
+		t.Errorf("清单应带价格，实际 %q", out)
+	}
+	note := defaultedModelNote([]modelView{
+		{ID: "qwen-image-3.0", Kind: "image", Cost: "$0.01/次"},
+		{ID: "flux-3-image", Kind: "image", Cost: "$0.20/次"},
+	}, "image", "qwen-image-3.0")
+	if !strings.Contains(note, "$0.01/次") || !strings.Contains(note, "flux-3-image") {
+		t.Errorf("引导语应含默认模型价格与候选，实际 %q", note)
+	}
+}

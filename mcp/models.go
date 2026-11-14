@@ -46,9 +46,16 @@ type ModelProfile struct {
 	// 用 text 而不是拆列：参数集合按模型而异，拆列会让每加一个参数就改一次表结构。
 	Parameters string `json:"parameters" gorm:"type:text"`
 
-	Summary   string `json:"summary" gorm:"size:512"`
-	Tags      string `json:"tags" gorm:"size:255"`
-	Source    string `json:"source" gorm:"size:16"`
+	Summary string `json:"summary" gorm:"size:512"`
+	Tags    string `json:"tags" gorm:"size:255"`
+	Source  string `json:"source" gorm:"size:16"`
+
+	// Cost 是给人看的一行价格说明，例如 "$0.01/次" 或 "按倍率计费"。
+	//
+	// 不用结构化数字：定价有三种形态（固定价 / 倍率 / tiered_expr），
+	// 折算成单一数字会在某一种上撒谎。MCP 只需要回答 agent 最关心的那句
+	// 「这个大概多少钱」，把口径写清楚比给一个精确到小数点的假数更有用。
+	Cost      string `json:"cost" gorm:"size:64"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
 
@@ -269,6 +276,7 @@ func writeProfileColumns(p *ModelProfile, expectedVersion *int64) error {
 		"summary":          p.Summary,
 		"tags":             p.Tags,
 		"source":           p.Source,
+		"cost":             p.Cost,
 		"updated_at":       p.UpdatedAt,
 		"version":          gorm.Expr("version + 1"),
 	}
@@ -368,6 +376,7 @@ func validateProfileShape(p *ModelProfile) error {
 		{"来源", p.Source, 16},
 		// 参数约束是整份 JSON，按字符数放宽；它不该长到几十 KB。
 		{"参数约束", p.Parameters, 16384},
+		{"价格说明", p.Cost, 64},
 	} {
 		if n := len([]rune(f.value)); n > f.limit {
 			return userErrf("%s最多 %d 个字符，收到 %d", f.name, f.limit, n)
@@ -397,7 +406,7 @@ func validateProfileShape(p *ModelProfile) error {
 //
 // model_id 不在集合里（改名等于换模型）；enabled 也不在（启停走 SetProfileEnabled）。
 var profilePatchKeys = []string{
-	"display_name", "kind", "protocol", "async",
+	"display_name", "kind", "protocol", "async", "cost",
 	"max_ref_images", "max_ref_videos", "max_prompt_chars",
 	"parameters", "summary", "tags", "source",
 }
