@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 // upClient 是 apiduo 自身的 /v1 客户端。
@@ -77,16 +79,21 @@ func newUpClient() *upClient {
 }
 
 // do 发起请求。apiKey 为空时拒绝出网 —— 没有凭证就不该发请求。
-func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any) ([]byte, error) {
+//
+// 第二个返回值是 relay 的 X-Oneapi-Request-Id：MCP 层写的观察日志必须能
+// 指回它触发的那条 relay 消费日志，否则「MCP 说上游 400」与「relay 记了
+// 一次消费」在日志页上是两条互不相干的记录，只能靠同秒猜。
+// 失败路径也返回它 —— 恰恰是失败时最需要对上账。
+func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any) ([]byte, string, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, &upError{Status: http.StatusUnauthorized, Msg: "缺少 api_key"}
+		return nil, "", &upError{Status: http.StatusUnauthorized, Msg: "缺少 api_key"}
 	}
 	var rdr io.Reader
 	contentType := ""
 	if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("编码请求失败: %w", err)
+			return nil, "", fmt.Errorf("编码请求失败: %w", err)
 		}
 		rdr = bytes.NewReader(raw)
 		contentType = "application/json"
@@ -94,7 +101,7 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, rdr)
 	if err != nil {
-		return nil, fmt.Errorf("构造请求失败: %w", err)
+		return nil, "", fmt.Errorf("构造请求失败: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
@@ -104,16 +111,17 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("请求上游失败: %w", redactErr(err, apiKey))
+		return nil, "", fmt.Errorf("请求上游失败: %w", redactErr(err, apiKey))
 	}
 	defer resp.Body.Close()
+	relayRequestId := resp.Header.Get(common.RequestIdKey)
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
-		return nil, fmt.Errorf("读取上游响应失败: %w", err)
+		return nil, relayRequestId, fmt.Errorf("读取上游响应失败: %w", err)
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return data, nil
+		return data, relayRequestId, nil
 	}
 
 	up := parseUpError(resp.StatusCode, data)
@@ -123,11 +131,11 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 	up.Msg = redact(up.Msg, apiKey)
 	up.Code = redact(up.Code, apiKey)
 	up.Method, up.Path = method, path
-	return nil, up
+	return nil, relayRequestId, up
 }
 
 func (c *upClient) listModels(ctx context.Context, apiKey string) ([]map[string]any, error) {
-	data, err := c.do(ctx, apiKey, http.MethodGet, "/models", nil)
+	data, _, err := c.do(ctx, apiKey, http.MethodGet, "/models", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -142,12 +150,14 @@ func (c *upClient) listModels(ctx context.Context, apiKey string) ([]map[string]
 	return doc.Data, nil
 }
 
-func (c *upClient) generate(ctx context.Context, apiKey string, t transport, payload map[string]any) (map[string]any, error) {
-	data, err := c.do(ctx, apiKey, http.MethodPost, t.Generate, payload)
+// generate 同时返回 relay 的 request id，供观察日志回填关联键。
+func (c *upClient) generate(ctx context.Context, apiKey string, t transport, payload map[string]any) (map[string]any, string, error) {
+	data, relayRequestId, err := c.do(ctx, apiKey, http.MethodPost, t.Generate, payload)
 	if err != nil {
-		return nil, err
+		return nil, relayRequestId, err
 	}
-	return decodeObject(data)
+	out, err := decodeObject(data)
+	return out, relayRequestId, err
 }
 
 func (c *upClient) getTask(ctx context.Context, apiKey string, t transport, taskKey string) (map[string]any, error) {
@@ -157,7 +167,7 @@ func (c *upClient) getTask(ctx context.Context, apiKey string, t transport, task
 	if strings.TrimSpace(taskKey) == "" {
 		return nil, errors.New("缺少上游任务键")
 	}
-	data, err := c.do(ctx, apiKey, http.MethodGet, t.queryPath(taskKey), nil)
+	data, _, err := c.do(ctx, apiKey, http.MethodGet, t.queryPath(taskKey), nil)
 	if err != nil {
 		return nil, err
 	}

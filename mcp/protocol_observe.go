@@ -67,7 +67,11 @@ type callObservation struct {
 	// FailedParam 是这次失败的归因参数，只有写入侧能算准（那里同时有
 	// 错误原文与完整快照）。巡检只认这个字段，不从错误文本里猜。
 	FailedParam string
-	Latency     time.Duration
+	// RelayRequestId 是这条调用触发的 relay 请求 id。MCP 观察日志与 relay
+	// 消费日志的 request_id 是各自生成的（EnqueueLog 会补一个新的），
+	// 只有这个字段能把两笔账确定性地连起来。
+	RelayRequestId string
+	Latency        time.Duration
 }
 
 // observableParams 是允许落盘的参数白名单。
@@ -123,6 +127,9 @@ func writeObservation(o callObservation) {
 	if o.Tool != "" {
 		adminInfo["tool"] = o.Tool
 	}
+	if o.RelayRequestId != "" {
+		adminInfo["relay_request_id"] = o.RelayRequestId
+	}
 	if o.ErrorMsg != "" {
 		adminInfo["upstream_error"] = o.ErrorMsg
 	}
@@ -151,6 +158,11 @@ func writeObservation(o callObservation) {
 		Type:      logType,
 		ModelName: o.ModelID,
 		TokenId:   o.TokenId,
+		// ChannelId 记 -1 而不是 0：MCP 层没有渠道，真正的 relay 请求会另记
+		// 一条带真实 channel_id 与额度的记录。用 -1 是为了让「按渠道统计」
+		// 能用 channel_id > 0 天然排掉这批观察日志 —— 0 在库里是合法的默认值，
+		// 与「没有渠道」混在一起就再也分不开了。
+		ChannelId: -1,
 		// quota 留 0：MCP 层的这条日志只用于观察，计费由 relay 完成。
 		// 记成 0 而不是真实额度，避免运营看日志页时把两笔账加在一起。
 		Quota:   0,

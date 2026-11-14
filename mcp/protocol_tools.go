@@ -367,17 +367,18 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	}
 
 	started := time.Now()
-	resp, err := d.up.generate(ctx, key, t, payload)
+	resp, relayRequestId, err := d.up.generate(ctx, key, t, payload)
 
 	// 观察埋点：无论成败都记一条，失败的样本比成功的更值钱。
 	// 只记结构性参数，提示词内容一个字都不落盘。
 	observeCall(ctx, callObservation{
-		Tool:     kind + ".generate",
-		ModelID:  m.ID,
-		Params:   snapshotParams(payload),
-		OK:       err == nil,
-		ErrorMsg: errText(err),
-		Latency:  time.Since(started),
+		Tool:           kind + ".generate",
+		ModelID:        m.ID,
+		Params:         snapshotParams(payload),
+		OK:             err == nil,
+		ErrorMsg:       errText(err),
+		RelayRequestId: relayRequestId,
+		Latency:        time.Since(started),
 	})
 
 	if err != nil {

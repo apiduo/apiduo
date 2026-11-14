@@ -90,6 +90,9 @@ func mockUpstream(t *testing.T) *upstreamRecorder {
 		rec.image = body
 		rec.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		// 真实 apiduo 由 middleware.RequestId 回这个头，MCP 用它把观察日志
+		// 关联到 relay 那条消费日志。
+		w.Header().Set("X-Oneapi-Request-Id", "relay-req-image")
 		fmt.Fprint(w, `{"created":1,"data":[{"url":"https://example.test/a.png","mime_type":"image/png"}]}`)
 	})
 	mux.HandleFunc("/v1/contents/generations/tasks", func(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +102,7 @@ func mockUpstream(t *testing.T) *upstreamRecorder {
 		rec.video = body
 		rec.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Oneapi-Request-Id", "relay-req-video")
 		fmt.Fprint(w, `{"task_id":"upstream-task-1","status":"queued"}`)
 	})
 	mux.HandleFunc("/v1/contents/generations/tasks/upstream-task-1", func(w http.ResponseWriter, r *http.Request) {
@@ -341,6 +345,18 @@ func TestEndToEndProtocol(t *testing.T) {
 		}
 		if row.ModelName != "mock-image" && row.ModelName != "mock-video" {
 			t.Fatalf("观察日志 model_name = %q", row.ModelName)
+		}
+		// MCP 层没有渠道：必须是 -1，不能是 0。0 是合法默认值，混在一起
+		// 之后「按渠道统计」就再也分不出这条记录属于哪一层。
+		if row.ChannelId != -1 {
+			t.Errorf("MCP 观察日志 channel_id 应为 -1，实际 %d", row.ChannelId)
+		}
+		if row.Quota != 0 {
+			t.Errorf("MCP 观察日志不应计费，实际 quota = %d", row.Quota)
+		}
+		// 观察日志与 relay 消费日志的 request_id 各自生成，只能靠这个键关联。
+		if !strings.Contains(row.Other, `"relay_request_id":"relay-req-`) {
+			t.Errorf("观察日志缺 relay_request_id 关联键: %s", row.Other)
 		}
 	}
 
