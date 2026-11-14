@@ -155,23 +155,22 @@ func TestCardCarriesParamNote(t *testing.T) {
 	}
 }
 
-// 不指定模型不再回落「第一个已启用模型」：那是隐式选择，用户以为跑的是 A，
-// 实际跑的是 B。全新功能不需要为这种便利付代价。
-func TestPickViewRequiresModel(t *testing.T) {
+// 不指定模型时回落第一个已启用模型，并在返回里说清用了哪个、还有哪些可选。
+// 硬性必填会把「画张图」变成「先查清单再画」，用户体感是「用不了」。
+func TestPickViewModelFallback(t *testing.T) {
 	views := []modelView{
 		{ID: "flux-3-image", Kind: "image"},
 		{ID: "qwen-image-3.0", Kind: "image"},
 	}
-	if _, err := pickView(views, "image", ""); err == nil {
-		t.Fatal("未指定 model 应当被拒")
-	} else {
-		var mr *errModelRequired
-		if !errors.As(err, &mr) {
-			t.Fatalf("应当是 errModelRequired，实际 %T: %v", err, err)
-		}
-		if len(mr.Available) != 2 {
-			t.Errorf("候选数 = %d", len(mr.Available))
-		}
+	got, err := pickView(views, "image", "")
+	if err != nil {
+		t.Fatalf("不传 model 不该报错: %v", err)
+	}
+	if got.ID != "flux-3-image" {
+		t.Errorf("应回落到第一个，实际 %s", got.ID)
+	}
+	if note := defaultedModelNote(views, "image", got.ID); !strings.Contains(note, "qwen-image-3.0") {
+		t.Errorf("引导语应列出其他可选模型，实际 %q", note)
 	}
 
 	// 该类型下一个模型都没有：这是「去后台注册」，不是「少传参数」。
@@ -183,11 +182,6 @@ func TestPickViewRequiresModel(t *testing.T) {
 			t.Fatalf("应当是 errNoModelOfKind，实际 %T", err)
 		}
 	}
-
-	got := classifyToolError("m", &errModelRequired{Kind: "image", Available: []string{"a"}})
-	if got.Code != CodeModelRequired || got.RetryAction != "call_models_list" {
-		t.Errorf("分类结果 = %#v", got)
-	}
 }
 
 // models.list 的 text 必须是可读清单。只回「共 N 个模型」时，
@@ -197,7 +191,7 @@ func TestModelsSummaryListsIDs(t *testing.T) {
 		{"id": "flux-3-image", "kind": "image", "summary": "写实，多参考图"},
 		{"id": "qwen-image-3.0", "kind": "image", "summary": strings.Repeat("很长的简介", 40)},
 	})
-	if !strings.Contains(out, "flux-3-image") || !strings.Contains(out, "必须显式指定 model") {
+	if !strings.Contains(out, "flux-3-image") || !strings.Contains(out, "不指定 model") {
 		t.Errorf("清单缺少关键信息: %q", out)
 	}
 	if strings.Contains(out, strings.Repeat("很长的简介", 40)) {

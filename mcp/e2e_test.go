@@ -403,7 +403,6 @@ func TestParamValidationRejectsOutOfRange(t *testing.T) {
 		{"n 超上限", map[string]any{"model": "strict-image", "prompt": "x", "n": 5}, "最多"},
 		{"参考图超上限", map[string]any{"model": "strict-image", "prompt": "x", "reference_images": []any{"a"}}, "不支持参考图"},
 		{"未声明参数", map[string]any{"model": "strict-image", "prompt": "x", "extra": map[string]any{"seed": 1}}, "未声明参数"},
-		{"未指定模型", map[string]any{"prompt": "x"}, "必须指定 model"},
 	}
 	for _, c := range cases {
 		body := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call",

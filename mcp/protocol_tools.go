@@ -34,7 +34,8 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Name:        "image.generate",
 		InputSchema: generateInputSchema(),
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
-			"model 必填：先调 models.list，按 summary 里的场景/成本挑一个，不要凭模型名猜。" +
+			"model 可以不传，会用默认模型并在返回里说明是哪个；要指定就先调 models.list 看可选值，" +
+			"按 summary 里的场景/成本挑，不要凭模型名猜。" +
 			"models.list 里该模型声明的 parameters（aspect_ratio / resolution 等）直接平铺传即可。" +
 			"size/n/quality 可以不传。传的话：声明里有 enum 就取 enum 内的值；没有 enum 就看 note，" +
 			"或按常见写法给（size 支持 WxH，如 1024x1024）。不要凭模型名臆造档位。",
@@ -44,7 +45,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Name:        "video.generate",
 		InputSchema: generateInputSchema(),
 		Description: "生成视频。语义与 image.generate 相同，产物是视频；传 reference_images 可做图生视频。" +
-			"model 必填：先调 models.list 挑一个，不要凭模型名猜。" +
+			"model 可以不传，会用默认模型并在返回里说明；要指定就先调 models.list 挑，不要凭模型名猜。" +
 			"也可以直接把方舟形状的 content 数组传进来（type=text / image_url），会被拆成提示词与参考图。" +
 			"models.list 里该模型声明的 parameters（duration / resolution 等）直接平铺传即可。" +
 			"多数视频模型是异步的，会立即返回 task_id，用 task.get 查询结果。" +
@@ -94,13 +95,32 @@ func (d *toolDeps) listModels(ctx context.Context, _ *mcpsdk.CallToolRequest, in
 	return textResult(modelsSummary(out)), res, nil
 }
 
+// defaultedModelNote 说明本次用了哪个默认模型、还有哪些可选。
+//
+// 不做硬性必填是产品决定：MCP 的使用者是让 agent 帮忙做事的人，
+// 多一轮「先查清单再画」的往返会把「画张图」变成一件麻烦事。
+// 引导放在结果里，不放在门槛上。
+func defaultedModelNote(views []modelView, kind, used string) string {
+	ids := make([]string, 0, len(views))
+	for _, v := range views {
+		if v.Kind == kind {
+			ids = append(ids, v.ID)
+		}
+	}
+	note := "未指定 model，本次用了 " + used + "。"
+	if len(ids) > 1 {
+		note += "可选：" + strings.Join(ids, ", ") + "；下次带上 model 就能指定。"
+	}
+	return note
+}
+
 // modelsSummary 是给「只渲染 text 的客户端」看的清单。
 //
 // structuredContent 字段更全，但多数客户端只显示 text。只回一句「共 N 个模型」
 // 等于让 agent 再猜一次；这里把 id、类型和一句简介直接写出来，它才选得动。
 func modelsSummary(models []map[string]any) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "可用模型 %d 个（生成时必须显式指定 model）：", len(models))
+	fmt.Fprintf(&b, "可用模型 %d 个（不指定 model 时用第一个）：", len(models))
 	for _, m := range models {
 		id, _ := m["id"].(string)
 		kind, _ := m["kind"].(string)
@@ -181,7 +201,7 @@ func absorbUndeclaredParams(req *mcpsdk.CallToolRequest, in *generateInput) {
 
 type generateInput struct {
 	Prompt          string         `json:"prompt" jsonschema:"提示词，描述想要的内容"`
-	Model           string         `json:"model,omitempty" jsonschema:"模型 id（必填）。取值来自 models.list"`
+	Model           string         `json:"model,omitempty" jsonschema:"模型 id。不传用默认模型（返回里会说明）；取值来自 models.list"`
 	ReferenceImages any            `json:"reference_images,omitempty" jsonschema:"参考图 URL，单个字符串或字符串数组。传了就由图生图/图生视频"`
 	Size            string         `json:"size,omitempty" jsonschema:"尺寸。取值见该模型 parameters.size 的 enum 或 note；都没写时传 WxH，如 1024x1024"`
 	N               *int           `json:"n,omitempty" jsonschema:"生成数量，上限由模型声明约束"`
@@ -209,6 +229,9 @@ type generateOutput struct {
 	PollMS   int            `json:"poll_after_ms,omitempty"`
 	Upstream map[string]any `json:"upstream,omitempty"`
 	Error    *toolError     `json:"error,omitempty"`
+	// ModelDefaulted 表示调用方没点名模型，本次用了默认那个。
+	// 客户端可以据此在界面上提示「换模型就带上 model」，而不是让它成为隐形行为。
+	ModelDefaulted bool `json:"model_defaulted,omitempty"`
 }
 
 func (d *toolDeps) generateImage(ctx context.Context, req *mcpsdk.CallToolRequest, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
@@ -288,7 +311,8 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 			IssuedAt: time.Now().Unix(),
 		})
 		return textResult("已提交（模型 " + m.ID + "），任务 " + signed + " 进行中"), generateOutput{
-			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfterMS, Upstream: resp,
+			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfterMS,
+			Upstream: resp, ModelDefaulted: strings.TrimSpace(in.Model) == "",
 		}, nil
 	}
 
@@ -316,15 +340,17 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		// The panel and the log page are searched by model name. Silently
 		// defaulting to the first enabled model produced a real support case:
 		// the caller asked for "flux", the log recorded flux-3, and the query
-		// for flux-3-image came back empty. Say which model ran.
-		summary = fmt.Sprintf("未指定 model，已用默认模型 %s。", m.ID) + summary
+		// for flux-3-image came back empty. Say which model ran — and which
+		// others were available, so the next call can name one.
+		summary = defaultedModelNote(views, kind, m.ID) + summary
 	}
 	if inline > 0 {
 		// 明确告诉调用方「图在 b64_json 里」，否则它会去找 url 找不到。
 		summary += fmt.Sprintf("（其中 %d 个以 base64 内联返回，字段 b64_json）", inline)
 	}
 	return textResult(summary), generateOutput{
-		Status: "completed", Model: m.ID, Outputs: out, Usage: usageOf(resp), Upstream: resp,
+		Status: "completed", Model: m.ID, Outputs: out, Usage: usageOf(resp),
+		Upstream: resp, ModelDefaulted: strings.TrimSpace(in.Model) == "",
 	}, nil
 }
 

@@ -129,16 +129,16 @@ func pickView(views []modelView, kind, want string) (modelView, error) {
 	// 而真正要改的是 model 参数。
 	want = strings.TrimSpace(want)
 	if want == "" {
-		// 不再回落「第一个已启用模型」：那是隐式选择，用户以为跑的是 A、
-		// 实际跑的是 B，日志里只留下 B。全新功能不需要为这种便利付代价。
+		// 不点名就回落第一个已启用模型，而不是报错。
+		//
+		// 这条是刻意的：MCP 的用户是「让 agent 帮忙做事」的人，不是读文档的开发者。
+		// 硬性要求 model 会把「画张图」变成「先查清单再画」，多一轮往返，
+		// 用户体感是「用不了」。默认可用的代价是可能选错，所以返回里必须说清
+		// 用了哪个、还有哪些可选 —— 引导放在结果里，不放在门槛上。
 		if len(byKind) == 0 {
 			return modelView{}, errNoModelOfKind(kind)
 		}
-		ids := make([]string, 0, len(byKind))
-		for _, v := range byKind {
-			ids = append(ids, v.ID)
-		}
-		return modelView{}, &errModelRequired{Kind: kind, Available: ids}
+		return byKind[0], nil
 	}
 	if want != "" {
 		for _, v := range byKind {
@@ -171,19 +171,6 @@ type errKindMismatch struct{ Model, Actual, Want string }
 
 func (e *errKindMismatch) Error() string {
 	return "模型 " + e.Model + " 的产物类型是 " + e.Actual + "，不能用于 " + e.Want
-}
-
-// errModelRequired 是「有模型可选，但调用方没点名」。
-//
-// 与 errNoModelOfKind 分开：那个是能力注册里没有这类模型（要去后台加），
-// 这个是调用方少传参数（要去 models.list 挑）。两条错误的下一步完全不同。
-type errModelRequired struct {
-	Kind      string
-	Available []string
-}
-
-func (e *errModelRequired) Error() string {
-	return "必须指定 model。可用的 " + e.Kind + " 模型：" + strings.Join(e.Available, ", ")
 }
 
 type errModelNotAvailable struct {

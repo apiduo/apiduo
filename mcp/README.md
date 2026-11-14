@@ -157,8 +157,10 @@ curl -sS --noproxy '*' -X PUT \
 10. **能力边界写进 `note`**：`1080P 存在但当前号池不可用` 这类事实表达不进 enum；
     note 随 models.list 下发，并在参数被拒时附在错误里。`content` 同理 ——
     agent 按方舟形状传 `content` 时直接拆成 prompt + reference_images，不报「未声明参数」。
-11. **`model` 必填**：不回落到「第一个已启用模型」。隐式选择让用户以为跑的是 A、
-    实际跑的是 B，而日志里只留下 B；错误里给同 kind 候选，agent 照着换就行。
+11. **`model` 可省略，但必须回报默认**：不点名时回落第一个已启用模型，返回里写明
+    「本次用了 X，可选 a/b/c；下次带上 model 就能指定」，`structuredContent` 带
+    `model_defaulted`。硬性必填会把「画张图」变成「先查清单再画」——MCP 的用户是
+    让 agent 帮忙做事的人，引导要放在结果里，不放在门槛上。
 12. **`models.list` 的 text 必须是可读清单**：逐模型给出 id / kind / 一句简介。
     只回「共 N 个模型」时，只渲染 text 的客户端拿不到任何选择依据。
 
