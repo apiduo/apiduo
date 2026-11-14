@@ -127,7 +127,20 @@ func pickView(views []modelView, kind, want string) (modelView, error) {
 	// 线上实测给 image.generate 传一个 search 模型，收到的是
 	// 「没有已启用的 image 模型，请先在能力注册里添加」，agent 会照着去建声明，
 	// 而真正要改的是 model 参数。
-	if want = strings.TrimSpace(want); want != "" {
+	want = strings.TrimSpace(want)
+	if want == "" {
+		// 不再回落「第一个已启用模型」：那是隐式选择，用户以为跑的是 A、
+		// 实际跑的是 B，日志里只留下 B。全新功能不需要为这种便利付代价。
+		if len(byKind) == 0 {
+			return modelView{}, errNoModelOfKind(kind)
+		}
+		ids := make([]string, 0, len(byKind))
+		for _, v := range byKind {
+			ids = append(ids, v.ID)
+		}
+		return modelView{}, &errModelRequired{Kind: kind, Available: ids}
+	}
+	if want != "" {
 		for _, v := range byKind {
 			if v.ID == want {
 				return v, nil
@@ -145,10 +158,7 @@ func pickView(views []modelView, kind, want string) (modelView, error) {
 		}
 		return modelView{}, &errModelNotAvailable{Model: want, Kind: kind, Available: ids}
 	}
-	if len(byKind) == 0 {
-		return modelView{}, errNoModelOfKind(kind)
-	}
-	return byKind[0], nil
+	return modelView{}, errNoModelOfKind(kind)
 }
 
 type errNoModelOfKind string
@@ -161,6 +171,19 @@ type errKindMismatch struct{ Model, Actual, Want string }
 
 func (e *errKindMismatch) Error() string {
 	return "模型 " + e.Model + " 的产物类型是 " + e.Actual + "，不能用于 " + e.Want
+}
+
+// errModelRequired 是「有模型可选，但调用方没点名」。
+//
+// 与 errNoModelOfKind 分开：那个是能力注册里没有这类模型（要去后台加），
+// 这个是调用方少传参数（要去 models.list 挑）。两条错误的下一步完全不同。
+type errModelRequired struct {
+	Kind      string
+	Available []string
+}
+
+func (e *errModelRequired) Error() string {
+	return "必须指定 model。可用的 " + e.Kind + " 模型：" + strings.Join(e.Available, ", ")
 }
 
 type errModelNotAvailable struct {

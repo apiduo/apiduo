@@ -298,7 +298,7 @@ func TestEndToEndProtocol(t *testing.T) {
 
 	// 4) image.generate：同步，返回产物
 	gen := callTool(t, srv.URL, "sk-test", "image.generate", map[string]any{
-		"prompt": "a cat", "size": "2K",
+		"model": "mock-image", "prompt": "a cat", "size": "2K",
 	})
 	if gen["status"] != "completed" {
 		t.Fatalf("image.generate status = %v", gen["status"])
@@ -310,7 +310,7 @@ func TestEndToEndProtocol(t *testing.T) {
 
 	// 5) video.generate：异步，返回签名 task_id
 	vg := callTool(t, srv.URL, "sk-test", "video.generate", map[string]any{
-		"prompt": "a dog", "extra": map[string]any{"duration": 5},
+		"model": "mock-video", "prompt": "a dog", "extra": map[string]any{"duration": 5},
 	})
 	if vg["status"] != "working" {
 		t.Fatalf("video.generate status = %v", vg["status"])
@@ -399,10 +399,11 @@ func TestParamValidationRejectsOutOfRange(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"enum 外取值", map[string]any{"prompt": "x", "size": "8K"}, "不被模型"},
-		{"n 超上限", map[string]any{"prompt": "x", "n": 5}, "最多"},
-		{"参考图超上限", map[string]any{"prompt": "x", "reference_images": []any{"a"}}, "不支持参考图"},
-		{"未声明参数", map[string]any{"prompt": "x", "extra": map[string]any{"seed": 1}}, "未声明参数"},
+		{"enum 外取值", map[string]any{"model": "strict-image", "prompt": "x", "size": "8K"}, "不被模型"},
+		{"n 超上限", map[string]any{"model": "strict-image", "prompt": "x", "n": 5}, "最多"},
+		{"参考图超上限", map[string]any{"model": "strict-image", "prompt": "x", "reference_images": []any{"a"}}, "不支持参考图"},
+		{"未声明参数", map[string]any{"model": "strict-image", "prompt": "x", "extra": map[string]any{"seed": 1}}, "未声明参数"},
+		{"未指定模型", map[string]any{"prompt": "x"}, "必须指定 model"},
 	}
 	for _, c := range cases {
 		body := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call",

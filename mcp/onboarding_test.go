@@ -154,3 +154,53 @@ func TestCardCarriesParamNote(t *testing.T) {
 		t.Errorf("card 应带出 note，实际 %s", raw)
 	}
 }
+
+// 不指定模型不再回落「第一个已启用模型」：那是隐式选择，用户以为跑的是 A，
+// 实际跑的是 B。全新功能不需要为这种便利付代价。
+func TestPickViewRequiresModel(t *testing.T) {
+	views := []modelView{
+		{ID: "flux-3-image", Kind: "image"},
+		{ID: "qwen-image-3.0", Kind: "image"},
+	}
+	if _, err := pickView(views, "image", ""); err == nil {
+		t.Fatal("未指定 model 应当被拒")
+	} else {
+		var mr *errModelRequired
+		if !errors.As(err, &mr) {
+			t.Fatalf("应当是 errModelRequired，实际 %T: %v", err, err)
+		}
+		if len(mr.Available) != 2 {
+			t.Errorf("候选数 = %d", len(mr.Available))
+		}
+	}
+
+	// 该类型下一个模型都没有：这是「去后台注册」，不是「少传参数」。
+	if _, err := pickView(views, "video", ""); err == nil {
+		t.Fatal("没有 video 模型时应当被拒")
+	} else {
+		var nk errNoModelOfKind
+		if !errors.As(err, &nk) {
+			t.Fatalf("应当是 errNoModelOfKind，实际 %T", err)
+		}
+	}
+
+	got := classifyToolError("m", &errModelRequired{Kind: "image", Available: []string{"a"}})
+	if got.Code != CodeModelRequired || got.RetryAction != "call_models_list" {
+		t.Errorf("分类结果 = %#v", got)
+	}
+}
+
+// models.list 的 text 必须是可读清单。只回「共 N 个模型」时，
+// 只渲染 text 的客户端拿不到任何选择依据。
+func TestModelsSummaryListsIDs(t *testing.T) {
+	out := modelsSummary([]map[string]any{
+		{"id": "flux-3-image", "kind": "image", "summary": "写实，多参考图"},
+		{"id": "qwen-image-3.0", "kind": "image", "summary": strings.Repeat("很长的简介", 40)},
+	})
+	if !strings.Contains(out, "flux-3-image") || !strings.Contains(out, "必须显式指定 model") {
+		t.Errorf("清单缺少关键信息: %q", out)
+	}
+	if strings.Contains(out, strings.Repeat("很长的简介", 40)) {
+		t.Error("简介应当被截断")
+	}
+}

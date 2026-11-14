@@ -27,6 +27,7 @@ type toolError struct {
 const (
 	CodePromptRequired       = "PROMPT_REQUIRED"
 	CodePromptTooLong        = "PROMPT_TOO_LONG"
+	CodeModelRequired        = "MODEL_REQUIRED"
 	CodeModelNotFound        = "MODEL_NOT_FOUND"
 	CodeKindMismatch         = "KIND_MISMATCH"
 	CodeParamNotDeclared     = "PARAM_NOT_DECLARED"
@@ -66,6 +67,10 @@ func classifyToolError(modelId string, err error) *toolError {
 	}
 	// 这三个是 pickView 的判定结果，不是参数取值问题：给独立码，
 	// agent 才能区分「模型名写错」和「参数超范围」，而不是统一当参数错误。
+	var mr *errModelRequired
+	if errors.As(err, &mr) {
+		return &toolError{Code: CodeModelRequired, Message: mr.Error(), Retryable: false, RetryAction: "call_models_list"}
+	}
 	var km *errKindMismatch
 	if errors.As(err, &km) {
 		return &toolError{Code: CodeKindMismatch, Message: km.Error(), Retryable: false, RetryAction: "none"}

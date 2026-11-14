@@ -34,7 +34,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Name:        "image.generate",
 		InputSchema: generateInputSchema(),
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
-			"model 留空会用已启用图片模型里的第一个，量产站上那通常不是你想要的那个——要指定就显式传 model。" +
+			"model 必填：先调 models.list，按 summary 里的场景/成本挑一个，不要凭模型名猜。" +
 			"models.list 里该模型声明的 parameters（aspect_ratio / resolution 等）直接平铺传即可。" +
 			"size/n/quality 留空即交给上游默认；从提示词推断时只能取 models.list 里声明的 enum 值，不要臆造。",
 	}, d.generateImage)
@@ -43,7 +43,8 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Name:        "video.generate",
 		InputSchema: generateInputSchema(),
 		Description: "生成视频。语义与 image.generate 相同，产物是视频；传 reference_images 可做图生视频。" +
-			"model 留空会用已启用视频模型里的第一个，要指定就显式传。" +
+			"model 必填：先调 models.list 挑一个，不要凭模型名猜。" +
+			"也可以直接把方舟形状的 content 数组传进来（type=text / image_url），会被拆成提示词与参考图。" +
 			"models.list 里该模型声明的 parameters（duration / resolution 等）直接平铺传即可。" +
 			"多数视频模型是异步的，会立即返回 task_id，用 task.get 查询结果。" +
 			"duration/resolution 留空即交给上游默认；从提示词推断时只能取 models.list 里声明的值。",
@@ -86,8 +87,37 @@ func (d *toolDeps) listModels(ctx context.Context, _ *mcpsdk.CallToolRequest, in
 		// 空列表最常见的两种原因是「没注册」和「注册了但停用」，直接说清楚，
 		// 免得 agent 反复调用同一个工具试探。
 		res.Note = "没有匹配的已启用模型。请到 apiduo 的「MCP 能力注册」里添加并启用模型。"
+		return textResult(res.Note), res, nil
 	}
-	return textResult(fmt.Sprintf("共 %d 个模型", len(out))), res, nil
+	return textResult(modelsSummary(out)), res, nil
+}
+
+// modelsSummary 是给「只渲染 text 的客户端」看的清单。
+//
+// structuredContent 字段更全，但多数客户端只显示 text。只回一句「共 N 个模型」
+// 等于让 agent 再猜一次；这里把 id、类型和一句简介直接写出来，它才选得动。
+func modelsSummary(models []map[string]any) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "可用模型 %d 个（生成时必须显式指定 model）：", len(models))
+	for _, m := range models {
+		id, _ := m["id"].(string)
+		kind, _ := m["kind"].(string)
+		summary, _ := m["summary"].(string)
+		if strings.TrimSpace(summary) == "" {
+			summary = "无简介"
+		}
+		fmt.Fprintf(&b, "\n- %s（%s）：%s", id, kind, clipRunes(summary, 80))
+	}
+	return b.String()
+}
+
+// clipRunes 按字符截断，避免把中文切成半个字。
+func clipRunes(s string, limit int) string {
+	r := []rune(s)
+	if len(r) <= limit {
+		return s
+	}
+	return string(r[:limit]) + "…"
 }
 
 // generateInputSchema 放宽「额外属性」。
@@ -149,7 +179,7 @@ func absorbUndeclaredParams(req *mcpsdk.CallToolRequest, in *generateInput) {
 
 type generateInput struct {
 	Prompt          string         `json:"prompt" jsonschema:"提示词，描述想要的内容"`
-	Model           string         `json:"model,omitempty" jsonschema:"模型 id。留空用该类型的第一个已启用模型"`
+	Model           string         `json:"model,omitempty" jsonschema:"模型 id（必填）。取值来自 models.list"`
 	ReferenceImages any            `json:"reference_images,omitempty" jsonschema:"参考图 URL，单个字符串或字符串数组。传了就由图生图/图生视频"`
 	Size            string         `json:"size,omitempty" jsonschema:"尺寸，取值见 models.list 里该模型的 parameters.size.enum"`
 	N               *int           `json:"n,omitempty" jsonschema:"生成数量，上限由模型声明约束"`

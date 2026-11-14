@@ -130,7 +130,7 @@ func TestLocalRejectLeavesObservationSample(t *testing.T) {
 	res := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{
 		"name": "image.generate",
 		// 提示词 3 个字 > 上限 1，必然在本地被拒；同时带上 size 供快照断言。
-		"arguments": map[string]any{"prompt": "一只猫", "size": "1K"},
+		"arguments": map[string]any{"model": "reject-obs", "prompt": "一只猫", "size": "1K"},
 	})
 	if isErr, _ := res["isError"].(bool); !isErr {
 		t.Fatalf("超长提示词应当被拒，实际 %v", res)
