@@ -24,6 +24,7 @@ type modelView struct {
 	Summary        string
 	Tags           []string
 	Cost           string
+	Priority       int
 }
 
 func viewFromProfile(p ModelProfile) modelView {
@@ -38,6 +39,7 @@ func viewFromProfile(p ModelProfile) modelView {
 		Params:         ParseSpecs(p.Parameters),
 		Summary:        p.Summary,
 		Cost:           p.Cost,
+		Priority:       p.Priority,
 	}
 	if p.Tags != "" {
 		for _, t := range strings.Split(p.Tags, ",") {
@@ -113,6 +115,11 @@ func listEnabledViews() ([]modelView, error) {
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Kind != out[j].Kind {
 			return out[i].Kind < out[j].Kind
+		}
+		// 默认模型由运维用 priority 指定，不能交给字典序 ——
+		// 否则新加一个名字靠前的模型会静默变成默认。
+		if out[i].Priority != out[j].Priority {
+			return out[i].Priority > out[j].Priority
 		}
 		return out[i].ID < out[j].ID
 	})

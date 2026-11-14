@@ -55,9 +55,15 @@ type ModelProfile struct {
 	// 不用结构化数字：定价有三种形态（固定价 / 倍率 / tiered_expr），
 	// 折算成单一数字会在某一种上撒谎。MCP 只需要回答 agent 最关心的那句
 	// 「这个大概多少钱」，把口径写清楚比给一个精确到小数点的假数更有用。
-	Cost      string `json:"cost" gorm:"size:64"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	Cost string `json:"cost" gorm:"size:64"`
+
+	// Priority 决定「不指定 model 时用哪个」以及 models.list 的展示顺序（越大越靠前）。
+	//
+	// 不能靠 id 字典序：新加一个名字靠前的模型会静默变成默认，而它可能是
+	// 0.2 美元一张的那个。默认模型是产品决策，必须显式声明、可覆盖。
+	Priority  int   `json:"priority" gorm:"not null;default:0"`
+	CreatedAt int64 `json:"created_at"`
+	UpdatedAt int64 `json:"updated_at"`
 
 	// Version 是乐观锁版本号，每次写库 +1。
 	//
@@ -277,6 +283,7 @@ func writeProfileColumns(p *ModelProfile, expectedVersion *int64) error {
 		"tags":             p.Tags,
 		"source":           p.Source,
 		"cost":             p.Cost,
+		"priority":         p.Priority,
 		"updated_at":       p.UpdatedAt,
 		"version":          gorm.Expr("version + 1"),
 	}
@@ -359,9 +366,15 @@ func validateProfileShape(p *ModelProfile) error {
 		if !knownProtocol(p.Protocol) {
 			return userErrf("协议只能是 ark / deepseek / openai，收到 %q", p.Protocol)
 		}
-		// 图片和视频只有方舟：deepseek 与 openai 留给还没实现的检索 / 文件。
-		if p.Kind != "" && p.Kind != "search" && p.Kind != "files" && p.Protocol != "ark" {
-			return userErrf("%s 只能走 ark，收到 %q", p.Kind, p.Protocol)
+		// 图片/视频允许两种方言：ark（方舟档位，size 不换算）与 openai
+		// （OpenAI images 形状，图生图走 edits multipart）。这个字段只描述
+		// 上游方言，不改变工具端点 —— 端点由 kind 决定，见 protocol.go。
+		if p.Kind != "" && p.Kind != "search" && p.Kind != "files" {
+			switch p.Protocol {
+			case "ark", "openai":
+			default:
+				return userErrf("%s 的协议只能是 ark 或 openai，收到 %q", p.Kind, p.Protocol)
+			}
 		}
 	}
 	for _, f := range []struct {
@@ -406,7 +419,7 @@ func validateProfileShape(p *ModelProfile) error {
 //
 // model_id 不在集合里（改名等于换模型）；enabled 也不在（启停走 SetProfileEnabled）。
 var profilePatchKeys = []string{
-	"display_name", "kind", "protocol", "async", "cost",
+	"display_name", "kind", "protocol", "async", "cost", "priority",
 	"max_ref_images", "max_ref_videos", "max_prompt_chars",
 	"parameters", "summary", "tags", "source",
 }

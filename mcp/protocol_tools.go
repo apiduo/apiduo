@@ -127,7 +127,10 @@ func defaultedModelNote(views []modelView, kind, used string) string {
 // 等于让 agent 再猜一次；这里把 id、类型和一句简介直接写出来，它才选得动。
 func modelsSummary(models []map[string]any) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "可用模型 %d 个（不指定 model 时用第一个）：", len(models))
+	fmt.Fprintf(&b, "可用模型 %d 个（不指定 model 时用标了默认的那个）：", len(models))
+	// models 已按 kind、priority 排好，所以每类第一条就是默认模型。
+	// 直接标出来，比让 agent 自己推断「第一个是谁」可靠。
+	defaulted := map[string]bool{}
 	for _, m := range models {
 		id, _ := m["id"].(string)
 		kind, _ := m["kind"].(string)
@@ -135,7 +138,12 @@ func modelsSummary(models []map[string]any) string {
 		if strings.TrimSpace(summary) == "" {
 			summary = "无简介"
 		}
-		line := fmt.Sprintf("\n- %s（%s）：%s", id, kind, clipRunes(summary, 80))
+		tag := kind
+		if !defaulted[kind] {
+			tag += "，默认"
+			defaulted[kind] = true
+		}
+		line := fmt.Sprintf("\n- %s（%s）：%s", id, tag, clipRunes(summary, 80))
 		if cost, _ := m["cost"].(string); cost != "" {
 			line += "｜" + cost
 		}
@@ -256,6 +264,13 @@ func absorbUndeclaredParams(req *mcpsdk.CallToolRequest, in *generateInput) {
 		}
 		if _, exists := in.Extra[key]; !exists {
 			in.Extra[key] = value
+		}
+	}
+	// agent 很爱把参数包进 extra（实测视频那组就写成 extra:{duration,ratio}）。
+	// content 被包进去时同样要吸收，否则又退回到「未声明参数 content」那条老路。
+	if v, ok := in.Extra["content"]; ok {
+		if absorbArkContent(v, in) {
+			delete(in.Extra, "content")
 		}
 	}
 }

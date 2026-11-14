@@ -146,6 +146,8 @@ curl -sS --noproxy '*' -X PUT \
    （方舟的图片接口本身就兼容这个形状），视频 `openai_video` 打
    `/v1/contents/generations/tasks`（方舟任务形状）。两者上游都是方舟，厂商差异
    由渠道与 JS 插件吸收 —— **不要往协议表里加第三套**。
+   注意 `model_profiles.protocol` 是**上游方言标签**（ark / openai），只影响展示与审计，
+   不参与路由；它与渠道的 `image_protocol.upstream` 是两个字段，改一个不会动另一个。
 6. **观察只记结构性参数**：`size` / `duration` / `n` / 参考图张数。
    提示词内容与图片 URL 一个字都不落盘。
 7. **观察写入不阻塞调用**：队列满就丢样本。丢一条观察数据可以接受，卡住生成请求不行。
@@ -161,8 +163,12 @@ curl -sS --noproxy '*' -X PUT \
     「本次用了 X，可选 a/b/c；下次带上 model 就能指定」，`structuredContent` 带
     `model_defaulted`。硬性必填会把「画张图」变成「先查清单再画」——MCP 的用户是
     让 agent 帮忙做事的人，引导要放在结果里，不放在门槛上。
-12. **`models.list` 的 text 必须是可读清单**：逐模型给出 id / kind / 一句简介。
-    只回「共 N 个模型」时，只渲染 text 的客户端拿不到任何选择依据。
+12. **`models.list` 的 text 必须是可读清单**：逐模型给出 id / kind / 一句简介 / 价格 /
+    参数枚举，并标出哪一个是默认模型。只回「共 N 个模型」时，只渲染 text 的客户端拿不到
+    任何选择依据。
+13. **默认模型由 `priority` 决定**：排序固定为 kind → priority desc → id。
+    不能靠 id 字典序 —— 新加一个名字靠前的模型会静默变成默认，而它可能贵 20 倍。
+    `priority` 是产品决策，必须显式声明。
 
 ## 6. 已修的坑（别再踩）
 

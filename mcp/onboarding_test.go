@@ -299,3 +299,74 @@ func TestModelsSummaryListsParams(t *testing.T) {
 }
 
 func ptrFloat(v float64) *float64 { return &v }
+
+// agent 实测爱把参数包进 extra。content 被包进去时也要吸收，
+// 否则又退回「未声明参数 content」那条老路。
+func TestContentInsideExtraIsAbsorbed(t *testing.T) {
+	setupDB(t)
+	rec := mockUpstream(t)
+	resetProtocol()
+
+	p := ModelProfile{
+		ModelId: "content-extra", Kind: "video", Protocol: "ark",
+		Enabled: true, Async: true,
+	}
+	if err := SaveProfile(&p); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+
+	res := callTool(t, srv.URL, "sk-test", "video.generate", map[string]any{
+		"model": "content-extra",
+		"extra": map[string]any{
+			"content": []any{map[string]any{"type": "text", "text": "礁石与浪"}},
+		},
+	})
+	if res["status"] != "working" {
+		t.Fatalf("应当已提交，实际 %v", res)
+	}
+	rec.mu.Lock()
+	content, _ := rec.video["content"].([]any)
+	rec.mu.Unlock()
+	if len(content) == 0 {
+		t.Fatal("上游没收到 content")
+	}
+	if first, _ := content[0].(map[string]any); first["text"] != "礁石与浪" {
+		t.Errorf("提示词没从 extra.content 拆出来，实际 %v", first)
+	}
+}
+
+// 默认模型由 priority 决定，不能靠 id 字典序 ——
+// 否则新加一个名字靠前的模型会静默变成默认。
+func TestPriorityDrivesDefaultModel(t *testing.T) {
+	setupDB(t)
+
+	first := ModelProfile{ModelId: "a-expensive", Kind: "image", Protocol: "ark", Enabled: true, Priority: 10}
+	second := ModelProfile{ModelId: "z-recommended", Kind: "image", Protocol: "ark", Enabled: true, Priority: 100}
+	for _, p := range []ModelProfile{first, second} {
+		profile := p
+		if err := SaveProfile(&profile); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	views, err := listEnabledViews()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(views) < 2 || views[0].ID != "z-recommended" {
+		t.Fatalf("priority 高的应排第一，实际 %v", views)
+	}
+}
+
+// 协议字段只描述上游方言：gpt-image 走 openai 形状，应当能存。
+func TestProfileAcceptsOpenAIProtocol(t *testing.T) {
+	setupDB(t)
+	p := ModelProfile{ModelId: "gpt-方言", Kind: "image", Protocol: "openai", Enabled: true}
+	if err := SaveProfile(&p); err != nil {
+		t.Fatalf("openai 方言应当被接受: %v", err)
+	}
+	if err := SaveProfile(&ModelProfile{ModelId: "bad", Kind: "image", Protocol: "grpc"}); err == nil {
+		t.Error("未知协议应当被拒")
+	}
+}
