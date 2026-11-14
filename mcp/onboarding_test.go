@@ -239,3 +239,22 @@ func TestContentOnlyCallReachesUpstream(t *testing.T) {
 		t.Errorf("提示词没有从 content 拆出来，实际 %v", first)
 	}
 }
+
+// duration 这类参数不在入参结构体里，走 Extra 通道。两条通道必须给同一套提示，
+// 否则同一句 "duration=7" 换个入口就只说「不可用」，不给最接近值。
+func TestCheckExtraSuggestsNearest(t *testing.T) {
+	m := modelView{ID: "v", Params: map[string]ParamSpec{
+		"duration": {Enum: []any{5, 10, 15}},
+	}}
+	err := checkExtra(m, "duration", 7)
+	if err == nil {
+		t.Fatal("7 应当被拒")
+	}
+	if !strings.Contains(err.Error(), "最接近的是 5") {
+		t.Errorf("Extra 通道也应给出最接近值，实际 %q", err.Error())
+	}
+	var pe *paramError
+	if !errors.As(err, &pe) || pe.Code != CodeParamOutOfRange {
+		t.Errorf("应当是可分类的参数错误，实际 %#v", err)
+	}
+}

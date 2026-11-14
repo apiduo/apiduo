@@ -561,17 +561,10 @@ func checkExtra(m modelView, name string, val any) error {
 		return nil
 	}
 	if len(spec.Enum) > 0 {
-		s := fmt.Sprint(val)
-		opts := make([]string, 0, len(spec.Enum))
-		for _, v := range spec.Enum {
-			if fmt.Sprint(v) == s {
-				return nil
-			}
-			opts = append(opts, fmt.Sprint(v))
-		}
-		return userParamErrorf(CodeParamOutOfRange, "%s",
-			withSpecNote(fmt.Sprintf("%s 取值 %q 不被模型 %s 接受，可选：%s",
-				name, s, m.ID, strings.Join(opts, ", ")), spec))
+		// 与 checkEnum 共用一套「最接近值」提示：duration / resolution 这类参数
+		// 不在入参结构体里，走的是 Extra 通道。早先只有 checkEnum 会算最接近值，
+		// 于是同一个 duration=7，从顶层传和从 extra 传拿到的提示不一样。
+		return checkEnum(m, name, fmt.Sprint(val))
 	}
 	f, numeric := toFloat(val)
 	if !numeric {
