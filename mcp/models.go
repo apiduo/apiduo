@@ -366,15 +366,14 @@ func validateProfileShape(p *ModelProfile) error {
 		if !knownProtocol(p.Protocol) {
 			return userErrf("协议只能是 ark / deepseek / openai，收到 %q", p.Protocol)
 		}
-		// 图片/视频允许两种方言：ark（方舟档位，size 不换算）与 openai
-		// （OpenAI images 形状，图生图走 edits multipart）。这个字段只描述
-		// 上游方言，不改变工具端点 —— 端点由 kind 决定，见 protocol.go。
-		if p.Kind != "" && p.Kind != "search" && p.Kind != "files" {
-			switch p.Protocol {
-			case "ark", "openai":
-			default:
-				return userErrf("%s 的协议只能是 ark 或 openai，收到 %q", p.Kind, p.Protocol)
-			}
+		// 图片与视频的入口各自只有一个，与上游厂商无关：
+		//   图片  /v1/images/generations（文生图与图生图共用，图生图靠 image 字段）
+		//   视频  /v1/contents/generations/tasks（方舟任务形状）
+		// 上游方言（方舟档位 / OpenAI edits）是**渠道**的属性，由 image_protocol
+		// 在内部改写，不属于能力声明。在这里区分 openai 会让「图片有两种协议」的
+		// 假象成立 —— 客户端看到的端点其实只有一个。
+		if p.Kind != "" && p.Kind != "search" && p.Kind != "files" && p.Protocol != "ark" {
+			return userErrf("%s 的入口固定为 /v1/images/generations 或方舟任务，protocol 只能是 ark，收到 %q", p.Kind, p.Protocol)
 		}
 	}
 	for _, f := range []struct {

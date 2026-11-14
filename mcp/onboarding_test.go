@@ -359,14 +359,17 @@ func TestPriorityDrivesDefaultModel(t *testing.T) {
 	}
 }
 
-// 协议字段只描述上游方言：gpt-image 走 openai 形状，应当能存。
-func TestProfileAcceptsOpenAIProtocol(t *testing.T) {
+// 图片对外只有一个入口：/v1/images/generations（文生图与图生图共用）。
+// 上游方言是渠道的属性，不能在能力声明里再分出一套 openai 协议。
+func TestImageProfileRejectsForeignProtocol(t *testing.T) {
 	setupDB(t)
-	p := ModelProfile{ModelId: "gpt-方言", Kind: "image", Protocol: "openai", Enabled: true}
-	if err := SaveProfile(&p); err != nil {
-		t.Fatalf("openai 方言应当被接受: %v", err)
+	if err := SaveProfile(&ModelProfile{ModelId: "gpt-方言", Kind: "image", Protocol: "openai"}); err == nil {
+		t.Error("图片声明不该接受 openai —— 那是渠道的 image_protocol，不是协议族")
 	}
 	if err := SaveProfile(&ModelProfile{ModelId: "bad", Kind: "image", Protocol: "grpc"}); err == nil {
 		t.Error("未知协议应当被拒")
+	}
+	if err := SaveProfile(&ModelProfile{ModelId: "ok", Kind: "image", Protocol: "ark"}); err != nil {
+		t.Errorf("ark 应当被接受: %v", err)
 	}
 }

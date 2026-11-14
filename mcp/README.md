@@ -146,8 +146,11 @@ curl -sS --noproxy '*' -X PUT \
    （方舟的图片接口本身就兼容这个形状），视频 `openai_video` 打
    `/v1/contents/generations/tasks`（方舟任务形状）。两者上游都是方舟，厂商差异
    由渠道与 JS 插件吸收 —— **不要往协议表里加第三套**。
-   注意 `model_profiles.protocol` 是**上游方言标签**（ark / openai），只影响展示与审计，
-   不参与路由；它与渠道的 `image_protocol.upstream` 是两个字段，改一个不会动另一个。
+   图片只有一个入口：`/v1/images/generations`，**文生图与图生图共用**（图生图靠 `image`
+   字段），不存在第二套图片协议。上游方言（方舟档位 / OpenAI edits）是**渠道**的属性，
+   由 `image_protocol` 在内部改写，对客户端不可见。
+   `model_profiles.protocol` 因此只允许 `ark`：它不参与路由，也不该用来表达上游方言 ——
+   把它标成 `openai` 会让「图片有两种协议」的假象成立。
 6. **观察只记结构性参数**：`size` / `duration` / `n` / 参考图张数。
    提示词内容与图片 URL 一个字都不落盘。
 7. **观察写入不阻塞调用**：队列满就丢样本。丢一条观察数据可以接受，卡住生成请求不行。
