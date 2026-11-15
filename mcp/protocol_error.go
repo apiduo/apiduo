@@ -25,12 +25,15 @@ type toolError struct {
 
 // 本地校验的错误码。取值稳定，客户端可以按码分支，不要跟着文案改。
 const (
-	CodePromptRequired       = "PROMPT_REQUIRED"
-	CodePromptTooLong        = "PROMPT_TOO_LONG"
-	CodeModelNotFound        = "MODEL_NOT_FOUND"
-	CodeKindMismatch         = "KIND_MISMATCH"
-	CodeParamNotDeclared     = "PARAM_NOT_DECLARED"
-	CodeParamOutOfRange      = "PARAM_OUT_OF_RANGE"
+	CodePromptRequired   = "PROMPT_REQUIRED"
+	CodePromptTooLong    = "PROMPT_TOO_LONG"
+	CodeModelNotFound    = "MODEL_NOT_FOUND"
+	CodeKindMismatch     = "KIND_MISMATCH"
+	CodeParamNotDeclared = "PARAM_NOT_DECLARED"
+	CodeParamOutOfRange  = "PARAM_OUT_OF_RANGE"
+	// CodeParamInvalid：类型/shape 不对（不是取值越界）。与 INTERNAL_ERROR 必须分开：
+	// 后者意味着「服务端有问题，可以重试」，前者重试多少次都一样。
+	CodeParamInvalid         = "PARAM_INVALID"
 	CodeRefImagesExceed      = "REFERENCE_IMAGES_EXCEEDED"
 	CodeRefImagesUnsupported = "REFERENCE_IMAGES_UNSUPPORTED"
 	// task.get 专用：句柄本身不可解（伪造、换过 api_key、跨副本密钥不一致）。
@@ -41,10 +44,13 @@ const (
 	CodeTaskFailed    = "TASK_FAILED"
 	CodeRateLimited   = "RATE_LIMITED"
 	// 幂等相关：一个是「同键首次还没跑完」，一个是「首次成功但结果太大没缓存」。
-	CodeRequestInFlight   = "REQUEST_IN_FLIGHT"
-	CodeReplayUnavailable = "REPLAY_UNAVAILABLE"
-	CodeUpstreamError     = "UPSTREAM_ERROR"
-	CodeInternal          = "INTERNAL_ERROR"
+	CodeRequestInFlight = "REQUEST_IN_FLIGHT"
+	// CodeIdempotencyKeyReused：同一个键配了另一组参数。不能重放（结果对不上），
+	// 也不能重试（换参数同样对不上），只能换键。
+	CodeIdempotencyKeyReused = "IDEMPOTENCY_KEY_REUSED"
+	CodeReplayUnavailable    = "REPLAY_UNAVAILABLE"
+	CodeUpstreamError        = "UPSTREAM_ERROR"
+	CodeInternal             = "INTERNAL_ERROR"
 )
 
 // paramError 是「本地能判定、不需要问上游」的错误。

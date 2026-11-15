@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -197,5 +198,42 @@ func TestBatchNSameMessageFromBothChannels(t *testing.T) {
 	}
 	if !strings.Contains(topErr.Error(), "分多次调用") {
 		t.Fatalf("拒绝文案应给出下一步（分多次调用）: %q", topErr.Error())
+	}
+}
+
+// 视频不接受图片的批量/尺寸参数。之前是校验后静默丢弃：
+// agent 传 size=1920x1080，拿到 720P，还以为参数生效了。
+func TestVideoRejectsImageOnlyParams(t *testing.T) {
+	m := modelView{ID: "v", Kind: "video"}
+	for _, in := range []generateInput{
+		{Prompt: "x", Size: "1920x1080"},
+		{Prompt: "x", Quality: "high"},
+	} {
+		_, err := buildPayload(m, in, nil)
+		if err == nil {
+			t.Fatalf("视频不该接受 size/quality: %+v", in)
+		}
+		var pe *paramError
+		if !errors.As(err, &pe) || pe.Code != CodeParamNotDeclared {
+			t.Fatalf("应回 %s，实际 %v", CodeParamNotDeclared, err)
+		}
+	}
+}
+
+// reference_images 的类型错误是调用方问题，不能归成 INTERNAL_ERROR：
+// 那会让 agent 以为服务端故障，反复重试同一个错误。
+func TestParseRefsTypeErrorIsParamInvalid(t *testing.T) {
+	for _, v := range []any{
+		map[string]any{"a": 1},
+		[]any{"ok", 1},
+	} {
+		_, err := parseRefs(v)
+		if err == nil {
+			t.Fatalf("应拒绝 %#v", v)
+		}
+		var pe *paramError
+		if !errors.As(err, &pe) || pe.Code != CodeParamInvalid {
+			t.Fatalf("%#v 应回 %s，实际 %v", v, CodeParamInvalid, err)
+		}
 	}
 }

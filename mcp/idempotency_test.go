@@ -93,7 +93,7 @@ func TestGenerateIdempotentInFlight(t *testing.T) {
 	calls, _ := idemUpstream(t, http.StatusOK, `{"created":1,"data":[{"url":"https://example.test/i.png"}]}`)
 	srv := idemServer(t)
 
-	if _, err := reserveIdempotency(0, "image", "req-busy"); err != nil {
+	if _, err := reserveIdempotency(0, "image", "req-busy", ""); err != nil {
 		t.Fatal(err)
 	}
 	res := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{
@@ -195,5 +195,70 @@ func TestIdempotentStalePendingIsTakenOver(t *testing.T) {
 	})
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("陈旧占位应被接管并放行，上游调用 %d 次", got)
+	}
+}
+
+// 同一个 client_request_id 配另一组参数，必须报错而不是静默返回上一次的产物。
+// 这不是「幂等命中」，是「键被复用」—— 重放会让 agent 以为自己生成了新东西。
+func TestIdempotentKeyReuseDifferentPayloadRejected(t *testing.T) {
+	setupDB(t)
+	calls, _ := idemUpstream(t, http.StatusOK,
+		`{"created":1,"data":[{"url":"https://example.test/first.png"}]}`)
+	srv := idemServer(t)
+
+	first := callTool(t, srv.URL, "sk-test", "image.generate", map[string]any{
+		"model": "idem-image", "prompt": "a red apple", "client_request_id": "req-reuse",
+	})
+	if _, ok := first["outputs"]; !ok {
+		t.Fatalf("首次应成功: %v", first)
+	}
+
+	res := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{
+		"name": "image.generate",
+		"arguments": map[string]any{
+			"model": "idem-image", "prompt": "a blue car", "client_request_id": "req-reuse",
+		},
+	})
+	if isErr, _ := res["isError"].(bool); !isErr {
+		t.Fatalf("同键不同参数应报错: %v", res)
+	}
+	sc, _ := res["structuredContent"].(map[string]any)
+	terr, _ := sc["error"].(map[string]any)
+	if code, _ := terr["code"].(string); code != CodeIdempotencyKeyReused {
+		t.Fatalf("code = %v，期望 %s", terr["code"], CodeIdempotencyKeyReused)
+	}
+	if retry, _ := terr["retryable"].(bool); retry {
+		t.Fatal("键复用不该标可重试")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("只应有一次上游调用，实际 %d", got)
+	}
+}
+
+// 参数等价（显式传默认值 vs 不传）不算复用：指纹取自归一化后的载荷。
+func TestIdempotentKeyReuseDetectsParamChange(t *testing.T) {
+	setupDB(t)
+	calls, _ := idemUpstream(t, http.StatusOK,
+		`{"created":1,"data":[{"url":"https://example.test/x.png"}]}`)
+	srv := idemServer(t)
+
+	callTool(t, srv.URL, "sk-test", "image.generate", map[string]any{
+		"model": "idem-image", "prompt": "a cat", "client_request_id": "req-norm",
+	})
+	res := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{
+		"name": "image.generate",
+		"arguments": map[string]any{
+			"model": "idem-image", "prompt": "a cat", "client_request_id": "req-norm",
+			"n": 1, "size": "1024x1024",
+		},
+	})
+	sc, _ := res["structuredContent"].(map[string]any)
+	// n=1 与 size 都会进 payload，指纹因此不同 —— 这里断言的是「被识别为复用」，
+	// 不是静默重放：说明判定看的是载荷而不是「有没有多传键」。
+	if code := (sc["error"]).(map[string]any)["code"]; code != CodeIdempotencyKeyReused {
+		t.Fatalf("载荷不同应判为键复用，实际 %v", code)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("上游应只调用一次，实际 %d", got)
 	}
 }

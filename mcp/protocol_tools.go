@@ -414,7 +414,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		if err := validateClientRequestID(in.ClientRequestID); err != nil {
 			return d.fail(m.ID, err)
 		}
-		replay, reserveErr := reserveIdempotency(caller.TokenId, kind, in.ClientRequestID)
+		replay, reserveErr := reserveIdempotency(caller.TokenId, kind, in.ClientRequestID, requestFingerprint(kind, payload))
 		switch {
 		case reserveErr == nil && replay != nil:
 			out := replay.Output
@@ -430,6 +430,14 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 				RetryAction:  "wait",
 				RetryAfterMS: 2000,
 				Hint:         "不要换一个新的 client_request_id 重发，否则会真的多生成一次",
+			})
+		case errors.Is(reserveErr, errIdempotencyKeyReused):
+			return d.failWith(m.ID, &toolError{
+				Code:        CodeIdempotencyKeyReused,
+				Message:     "client_request_id 已用于另一组参数，不能复用",
+				Retryable:   false,
+				RetryAction: "none",
+				Hint:        "换一个新的 client_request_id 再发；用同一个键不会产生新的生成，只会拿回无关的旧结果",
 			})
 		case errors.Is(reserveErr, errReplayUnavailable):
 			return d.failWith(m.ID, &toolError{
@@ -577,6 +585,12 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 	}
 
 	isVideo := m.Kind == "video"
+	if isVideo && (in.Size != "" || in.Quality != "") {
+		// 之前是「校验后丢掉」：agent 传了 size=1920x1080，拿到 720P 且没有任何提示。
+		// 静默丢弃一个直接影响产物形状的参数，比拒绝更难查。
+		return nil, userParamErrorf(CodeParamNotDeclared,
+			"视频模型 %s 不收 size/quality；画幅用 ratio，清晰度用 resolution", m.ID)
+	}
 	p := map[string]any{"model": m.ID}
 	if isVideo {
 		content := make([]map[string]any, 0, len(refs)+1)
@@ -1039,7 +1053,7 @@ func parseRefs(v any) ([]string, error) {
 		for _, it := range t {
 			sv, ok := it.(string)
 			if !ok {
-				return nil, fmt.Errorf("reference_images 数组元素必须是字符串")
+				return nil, userParamErrorf(CodeParamInvalid, "reference_images 数组元素必须是字符串，收到 %T", it)
 			}
 			if sv = strings.TrimSpace(sv); sv != "" {
 				out = append(out, sv)
@@ -1055,7 +1069,7 @@ func parseRefs(v any) ([]string, error) {
 		}
 		return out, nil
 	}
-	return nil, fmt.Errorf("reference_images 需为字符串或字符串数组")
+	return nil, userParamErrorf(CodeParamInvalid, "reference_images 需为字符串或字符串数组，收到 %T", v)
 }
 
 // parseOutputs 从上游响应里提取产物地址，兼容几种常见形状。

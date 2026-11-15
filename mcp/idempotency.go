@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"sync/atomic"
@@ -32,6 +34,9 @@ const (
 var (
 	errIdempotencyInFlight = errors.New("同一 client_request_id 的请求仍在处理中")
 	errReplayUnavailable   = errors.New("首次结果未缓存，无法重放")
+	// errIdempotencyKeyReused：键相同但参数不同。既不能重放（结果对不上），
+	// 也不能当成新请求发（那正好是幂等要防的重复计费）。
+	errIdempotencyKeyReused = errors.New("同一 client_request_id 已用于另一组参数")
 )
 
 // IdempotencyRecord 是 generate 的幂等占位与结果。
@@ -41,6 +46,12 @@ type IdempotencyRecord struct {
 	Tool            string `json:"tool" gorm:"type:varchar(32);not null;uniqueIndex:idx_mcp_idem"`
 	ClientRequestId string `json:"client_request_id" gorm:"type:varchar(64);not null;uniqueIndex:idx_mcp_idem"`
 	Status          string `json:"status" gorm:"type:varchar(16);not null"`
+	// RequestHash 是首次请求的指纹（工具 + 归一化后的载荷）。
+	//
+	// 没有它，同一个键配另一组参数会静默拿回上一次的产物：agent 以为生成了
+	// 一辆红色跑车，实际拿到的是十分钟前的苹果 —— 比报错危险得多。
+	// 空值表示本次上线前写入的旧行，按「无法判定」放行，不做回溯校验。
+	RequestHash string `json:"request_hash" gorm:"type:varchar(64)"`
 	// Result 是 idempotentResult 的 JSON；空表示「首次成功但结果太大，不缓存」。
 	Result    string `json:"result" gorm:"type:text"`
 	CreatedAt int64  `json:"created_at" gorm:"bigint;index"`
@@ -62,11 +73,12 @@ type idempotentResult struct {
 //
 // 返回 (nil, nil) 表示这是首次调用，调用方继续执行；返回非 nil 表示命中，
 // 直接重放；errIdempotencyInFlight 表示同一键的首次调用还没结束。
-func reserveIdempotency(tokenId int, tool, clientRequestId string) (*idempotentResult, error) {
+func reserveIdempotency(tokenId int, tool, clientRequestId, requestHash string) (*idempotentResult, error) {
 	now := common.GetTimestamp()
 	rec := IdempotencyRecord{
 		TokenId: tokenId, Tool: tool, ClientRequestId: clientRequestId,
-		Status: idempotencyPending, CreatedAt: now, UpdatedAt: now,
+		Status: idempotencyPending, RequestHash: requestHash,
+		CreatedAt: now, UpdatedAt: now,
 	}
 	res := model.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&rec)
 	if res.Error != nil {
@@ -84,11 +96,17 @@ func reserveIdempotency(tokenId int, tool, clientRequestId string) (*idempotentR
 	).First(&existing).Error; err != nil {
 		return nil, err
 	}
+	// 先判指纹再判状态：键相同、参数不同的请求，无论首次是 pending 还是 done，
+	// 都不该被当成「同一请求」—— 前者回 in-flight 会引导调用方等待一个
+	// 与它无关的结果，后者更糟，直接给一张别的图。
+	if existing.RequestHash != "" && requestHash != "" && existing.RequestHash != requestHash {
+		return nil, errIdempotencyKeyReused
+	}
 	if existing.Status != idempotencyDone {
 		if now-existing.CreatedAt > int64(idempotencyStaleAfter/time.Second) {
 			// 首次调用已经死了：删掉占位重抢一次（最多递归一层）。
 			model.DB.Delete(&IdempotencyRecord{}, existing.Id)
-			return reserveIdempotency(tokenId, tool, clientRequestId)
+			return reserveIdempotency(tokenId, tool, clientRequestId, requestHash)
 		}
 		return nil, errIdempotencyInFlight
 	}
@@ -100,6 +118,20 @@ func reserveIdempotency(tokenId int, tool, clientRequestId string) (*idempotentR
 		return nil, errReplayUnavailable
 	}
 	return &out, nil
+}
+
+// requestFingerprint 把「工具 + 归一化载荷」压成一个稳定的哈希。
+//
+// 用 payload 而不是原始入参：buildPayload 已经把默认值补齐、把比例/别名归一，
+// 所以「第一次不传 duration」和「第二次显式传 duration=5」得到同一个指纹，
+// 不会把等价的两次请求误判成参数不同。encoding/json 对 map 按键排序，结果稳定。
+func requestFingerprint(kind string, payload map[string]any) string {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(append([]byte(kind+"\x00"), raw...))
+	return hex.EncodeToString(sum[:])
 }
 
 // completeIdempotency 回填结果，让重试能拿到同一份响应。
