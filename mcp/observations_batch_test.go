@@ -79,3 +79,24 @@ func TestQueryParamsSQLiteCountsEachParamIndependently(t *testing.T) {
 		t.Errorf("期望 2 行（每个参数一个取值），实际 %d 行：%+v", len(stats), stats)
 	}
 }
+
+// 模型声明的开关/枚举参数必须进快照，否则「声明太紧」的巡检看不到它们。
+func TestSnapshotKeepsDeclaredSwitchParams(t *testing.T) {
+	in := generateInput{
+		Prompt: "x",
+		Extra: map[string]any{
+			"watermark": "yes", "ratio": "21:9", "generate_audio": false,
+			"sequential_image_generation": "auto",
+		},
+	}
+	snap := snapshotInput(in, nil)
+	for _, k := range []string{"watermark", "ratio", "generate_audio", "sequential_image_generation"} {
+		if _, ok := snap[k]; !ok {
+			t.Fatalf("快照缺少 %s: %v", k, snap)
+		}
+	}
+	// 归因要能顺着错误原文点名到参数。
+	if got := blameFrom(`watermark 取值 "yes" 不被模型 x 接受，可选：true, false`, snap); got != "watermark" {
+		t.Fatalf("failed_param = %q，期望 watermark", got)
+	}
+}

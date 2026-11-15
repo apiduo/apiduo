@@ -81,6 +81,13 @@ type callObservation struct {
 var observableParams = map[string]bool{
 	"size": true, "duration": true, "n": true, "resolution": true,
 	"aspect_ratio": true, "quality": true, "format": true,
+	// 模型声明的枚举/开关型参数。不放进来时它们永远进不了快照：
+	// 线上实测 watermark=yes 被拒，样本里 param_snapshot 是 {}，
+	// failed_param 也归因不到 —— 巡检于是看不到「这个声明收得太紧」。
+	// 维护规则：新增模型参数且希望被巡检看到，就把键加到这里；
+	// 数值型高基数参数（seed 之类）不要加。
+	"ratio": true, "generate_audio": true, "watermark": true,
+	"sequential_image_generation": true,
 }
 
 var observeQueue = make(chan callObservation, 1024)
