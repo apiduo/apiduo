@@ -155,6 +155,12 @@ jobs:
       - name: Task log filter contract
         run: go test ./controller/ -run TestTaskLogFilter -count=1
 
+      # MCP 协议层：4 个工具、task.get 的状态机、幂等键、限流、错误分类都在这个包里。
+      # 它不在 relay 主链路上，坏了不影响别的功能，只能靠这里拦 —— ci.yml 只在
+      # pull_request 触发，而本仓库是直接 push main。
+      - name: MCP protocol tests
+        run: go test ./mcp/ -count=1
+
       # 标记块覆盖：上游已有的文件里，自上次同步以来新增的代码必须写在
       # APIDUO:<feature>:BEGIN/END 内。否则下次合并上游时无法区分哪些行是自己的，
       # 冲突只能靠记忆去拼。基线在 .apiduo/sync-base，见 docs/apiduo/upstream-sync.md。

@@ -47,8 +47,14 @@ Rules
 - model may be omitted; the default is used and named in the response.
 - Every generation is billed. Say which model you picked and roughly what it costs.
 - If the request is vague, ask one clarifying question before spending money.
+- A generation can take minutes and your client may time out first. If it does,
+  retry with the SAME client_request_id — the server keeps working and returns the
+  original result instead of generating (and billing) it again. A new id means a
+  new generation.
 - On error read code and retry_action: none = stop, call_models_list = pick another
-  model, wait = retry after retry_after_ms.
+  model, wait = retry after retry_after_ms, check_console = confirm in the console
+  before retrying (the work may have completed and been billed).
+- task.get is rate limited per token: poll after poll_after_ms, never in a tight loop.
 - Give the user the output URL; never report success without one.
 
 Preferences

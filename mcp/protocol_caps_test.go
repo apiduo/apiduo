@@ -136,3 +136,19 @@ func TestToolsHaveTitles(t *testing.T) {
 		}
 	}
 }
+
+// instructions 是 agent 唯一会读的「怎么用」：重试语义与限流都写在这里。
+// 少了这几句，幂等键就只是个没人用的字段。
+func TestInstructionsExplainRetrySemantics(t *testing.T) {
+	srv := mcpServer(t)
+	res := rpc(t, srv.URL, "sk-test", "initialize", map[string]any{
+		"protocolVersion": "2025-06-18", "capabilities": map[string]any{},
+		"clientInfo": map[string]any{"name": "probe", "version": "1"},
+	})
+	text, _ := res["instructions"].(string)
+	for _, want := range []string{"client_request_id", "poll_after_ms", "check_console"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("instructions 缺少 %q", want)
+		}
+	}
+}
