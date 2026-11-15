@@ -92,7 +92,7 @@ func loadOrCreateTaskSigningKey() ([]byte, error) {
 	}
 	read := func() ([]byte, error) {
 		var opt model.Option
-		if err := model.DB.Where("key = ?", taskSigningKeyOption).First(&opt).Error; err != nil {
+		if err := optionQuery(taskSigningKeyOption).First(&opt).Error; err != nil {
 			return nil, err
 		}
 		raw, err := hex.DecodeString(strings.TrimSpace(opt.Value))
@@ -127,6 +127,15 @@ func loadOrCreateTaskSigningKey() ([]byte, error) {
 		return nil, err
 	}
 	return raw, nil
+}
+
+// optionQuery 按 key 查 options 表。
+//
+// 用 map 条件而不是裸 "key = ?"：key 是 MySQL 保留字，裸写会报 1064
+// （线上 0.0.142 首启就是这么炸的，SQLite 测不出来）。GORM 对 map 条件
+// 按方言加引号，三种库都能跑。
+func optionQuery(key string) *gorm.DB {
+	return model.DB.Where(map[string]any{"key": key})
 }
 
 func signTaskID(p taskPayload) (string, error) {

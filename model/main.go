@@ -341,7 +341,9 @@ func migrateDB() error {
 	/* APIDUO:mcp-protocol:BEGIN */
 	// MCP 的 protocol 从传输形状改成厂商维度：图片和视频都归到 ark。
 	// 旧值 openai_image / openai_video 不兼容，启动时一次性改掉；幂等。
-	if DB.Migrator().HasTable("mcp_model_profiles") {
+	// protocol 列已在重构中删除，但这条迁移留着做旧库升级：先确认列还在，
+	// 否则每次启动都会刷一条 "Unknown column 'protocol'" 的假错误。
+	if DB.Migrator().HasTable("mcp_model_profiles") && DB.Migrator().HasColumn("mcp_model_profiles", "protocol") {
 		if err := DB.Exec(
 			"UPDATE mcp_model_profiles SET protocol = ? WHERE protocol IN (?, ?)",
 			"ark", "openai_image", "openai_video",

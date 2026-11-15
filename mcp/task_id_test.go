@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+
+	"gorm.io/gorm"
 )
 
 // 签名密钥必须在库里：重启或换副本后，旧 task_id 仍要能解开。
@@ -119,5 +121,18 @@ func TestTaskGetForeignUserIsStructured(t *testing.T) {
 	}
 	if txt := toolText(t, res); !strings.Contains(txt, "不属于当前用户") {
 		t.Fatalf("text 应点明归属，实际 %q", txt)
+	}
+}
+
+// key 是 MySQL 保留字：这条守的是查询必须带标识符引号。
+// SQLite 不引号也能跑，所以只能查生成的 SQL。
+func TestOptionQueryQuotesReservedWord(t *testing.T) {
+	setupDB(t)
+	stmt := optionQuery(taskSigningKeyOption).
+		Session(&gorm.Session{DryRun: true}).
+		First(&model.Option{}).Statement
+	sql := stmt.SQL.String()
+	if !strings.Contains(sql, "`key`") && !strings.Contains(sql, `"key"`) {
+		t.Fatalf("options.key 查询没有加引号，MySQL 会报 1064: %s", sql)
 	}
 }
