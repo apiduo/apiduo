@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -140,6 +141,32 @@ func requestFingerprint(kind string, payload map[string]any) string {
 // 超过上限时只标 done 不存内容 —— 重放会得到明确的「不可重放」而不是一次新生成。
 func completeIdempotency(tokenId int, tool, clientRequestId, text string, out generateOutput) {
 	out.Upstream = nil
+	// 只落可达地址，不落图片字节。
+	//
+	// 有些渠道会忽略 response_format=url 照旧回 b64 —— 那是几 MB 的图片被塞进
+	// MySQL，重放时还要再塞回上下文。URL 能表达同样的东西，且后台本来就存着。
+	// 全部产物都是 b64 时，如实告诉调用方「结果没缓存」，而不是给一个空数组。
+	inline := 0
+	// 必须新开切片：out.Outputs 与调用方要返回给用户的是同一个底层数组，
+	// 原地裁剪会把「本次响应」里的 b64 也一起清掉 —— 调用方明明该拿到图，
+	// 却只剩一个空产物。
+	kept := make([]outputItem, 0, len(out.Outputs))
+	for _, o := range out.Outputs {
+		if o.B64JSON == "" {
+			kept = append(kept, o)
+			continue
+		}
+		inline++
+		if o.URL == "" {
+			continue
+		}
+		o.B64JSON = ""
+		kept = append(kept, o)
+	}
+	out.Outputs = kept
+	if inline > 0 {
+		text += fmt.Sprintf("（其中 %d 个以 base64 内联返回，未缓存；重放只给地址）", inline)
+	}
 	raw, err := json.Marshal(idempotentResult{Text: text, Output: out})
 	if err != nil || len(raw) > maxIdempotentResult {
 		raw = nil

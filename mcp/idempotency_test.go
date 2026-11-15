@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -260,5 +261,62 @@ func TestIdempotentKeyReuseDetectsParamChange(t *testing.T) {
 	}
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("上游应只调用一次，实际 %d", got)
+	}
+}
+
+// 幂等表只存地址，不存图片字节；但**不能**因此清掉本次响应里的 b64。
+// out.Outputs 与返回给调用方的是同一个底层数组，原地裁剪会两个一起改。
+func TestCompleteIdempotencyDropsInlineButKeepsResponse(t *testing.T) {
+	setupDB(t)
+	out := generateOutput{
+		Status: "completed", Model: "m",
+		Outputs: []outputItem{
+			{B64JSON: "AAAA"},
+			{URL: "https://example.test/a.png", B64JSON: "BBBB"},
+		},
+	}
+	if _, err := reserveIdempotency(0, "image", "req-inline", ""); err != nil {
+		t.Fatal(err)
+	}
+	completeIdempotency(0, "image", "req-inline", "生成完成", out)
+
+	// 调用方手里的对象不能被改。
+	if out.Outputs[0].B64JSON != "AAAA" || out.Outputs[1].B64JSON != "BBBB" {
+		t.Fatalf("调用方的产物被就地清空了: %#v", out.Outputs)
+	}
+
+	var rec IdempotencyRecord
+	if err := model.DB.Where("client_request_id = ?", "req-inline").First(&rec).Error; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rec.Result, "AAAA") || strings.Contains(rec.Result, "BBBB") {
+		t.Fatalf("表里仍有 base64: %s", rec.Result)
+	}
+	if !strings.Contains(rec.Result, "https://example.test/a.png") {
+		t.Fatalf("地址应保留: %s", rec.Result)
+	}
+	if !strings.Contains(rec.Result, "未缓存") {
+		t.Fatalf("应说明有产物未缓存: %s", rec.Result)
+	}
+}
+
+// 只有「确定什么都没发生」才允许放行重试。
+func TestShouldReleaseIdempotency(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"上游 4xx/5xx（有响应）", &upError{Status: 400, Msg: "bad"}, true},
+		{"拨号超时（没发出去）", &errUpstreamTimeout{Msg: "x", BeforeSend: true}, true},
+		{"等响应超时（可能已计费）", &errUpstreamTimeout{Msg: "x", BeforeSend: false}, false},
+		{"编码/构造失败（没发出去）", &errNotSent{Err: errors.New("bad body")}, true},
+		{"200 但解析失败（结论未知）", errors.New("解析上游响应失败"), false},
+		{"普通错误（结论未知）", errors.New("boom"), false},
+	}
+	for _, c := range cases {
+		if got := shouldReleaseIdempotency(c.err); got != c.want {
+			t.Fatalf("%s: got %v want %v", c.name, got, c.want)
+		}
 	}
 }

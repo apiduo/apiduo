@@ -474,7 +474,16 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 
 	if err != nil {
 		if in.ClientRequestID != "" {
-			releaseIdempotency(caller.TokenId, kind, in.ClientRequestID)
+			if shouldReleaseIdempotency(err) {
+				releaseIdempotency(caller.TokenId, kind, in.ClientRequestID)
+			} else {
+				// 请求已经发出、没等到响应：上游很可能已经受理并计费。
+				// 释放键 = 允许下一次重试再扣一次，所以这里把结论写死，
+				// 重放时明确告诉调用方去后台确认，而不是悄悄重生成。
+				completeIdempotency(caller.TokenId, kind, in.ClientRequestID,
+					"首次调用超时，结果未能取回；产物可能已在控制台任务页可见。为避免重复扣费，本次不再重新生成",
+					generateOutput{Status: "failed", Model: m.ID, Error: classifyToolError(m.ID, err)})
+			}
 		}
 		return d.fail(m.ID, err)
 	}
@@ -913,6 +922,31 @@ func upstreamFailReason(resp map[string]any) string {
 		return s
 	}
 	return "上游任务失败"
+}
+
+// shouldReleaseIdempotency 决定这条失败能不能让调用方「原样重试」。
+//
+// 只有「确定什么都没发生」才释放占位：
+//   - 上游给了 HTTP 响应（4xx/5xx）：无论成败，这次调用的结论已知；
+//   - 拨号超时：连都没连上，请求没发出去。
+//
+// 等响应超时不能释放 —— 请求已经在路上，上游可能已经受理并计费，
+// 释放等于放行第二次扣费。
+func shouldReleaseIdempotency(err error) bool {
+	// 没发出去：释放。
+	var ns *errNotSent
+	if errors.As(err, &ns) {
+		return true
+	}
+	var ut *errUpstreamTimeout
+	if errors.As(err, &ut) {
+		return ut.BeforeSend
+	}
+	// 有 HTTP 状态码：这次调用的结论已知（无论 4xx 还是 5xx），释放。
+	// 200 但解析失败、读响应体失败都落到这里返回 false —— 结论未知，
+	// 宁可让调用方去后台确认，也不要放行第二次扣费。
+	var ue *upError
+	return errors.As(err, &ue)
 }
 
 // failTask 把查询失败包成 isError + 结构化错误。

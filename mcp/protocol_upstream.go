@@ -56,6 +56,13 @@ func (e *upError) Error() string {
 // defaultUpstreamPort 与 apiduo 的默认监听端口一致。
 const defaultUpstreamPort = "3000"
 
+const (
+	// listModelsTimeout 是读 /models 的上限。
+	listModelsTimeout = 15 * time.Second
+	// getTaskTimeout 是查一次任务的上限。任务查询是纯读，8 分钟只会拖死轮询。
+	getTaskTimeout = 30 * time.Second
+)
+
 func newUpClient() *upClient {
 	base := strings.TrimSpace(os.Getenv("MCP_UPSTREAM_BASE_URL"))
 	if base == "" {
@@ -96,7 +103,7 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 	if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
-			return nil, "", fmt.Errorf("编码请求失败: %w", err)
+			return nil, "", &errNotSent{Err: fmt.Errorf("编码请求失败: %w", err)}
 		}
 		rdr = bytes.NewReader(raw)
 		contentType = "application/json"
@@ -104,7 +111,7 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, rdr)
 	if err != nil {
-		return nil, "", fmt.Errorf("构造请求失败: %w", err)
+		return nil, "", &errNotSent{Err: fmt.Errorf("构造请求失败: %w", err)}
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
@@ -137,8 +144,24 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 	return nil, relayRequestId, up
 }
 
+// errNotSent 表示请求根本没离开本进程（编码失败、构造失败、拨号失败）。
+//
+// 与「发出去了但没等到响应」必须分开：前者可以安全重试，后者重试可能是
+// 第二次扣费。幂等键要不要释放，全靠这个区分。
+type errNotSent struct{ Err error }
+
+func (e *errNotSent) Error() string { return e.Err.Error() }
+func (e *errNotSent) Unwrap() error { return e.Err }
+
 // errUpstreamTimeout 标记「等上游超时」，与普通网络错误分开归类。
-type errUpstreamTimeout struct{ Msg string }
+//
+// BeforeSend 区分两种超时，处置完全相反：
+//   - 拨号超时：请求根本没到上游，什么都没发生，可以放心重试；
+//   - 等响应超时：请求已经发出，上游很可能已经受理并计费，重试就是第二次扣费。
+type errUpstreamTimeout struct {
+	Msg        string
+	BeforeSend bool
+}
 
 func (e *errUpstreamTimeout) Error() string { return e.Msg }
 
@@ -154,7 +177,7 @@ func (c *upClient) wrapNetErr(err error, apiKey string) error {
 		msg = strings.ReplaceAll(msg, host, "")
 	}
 	if isTimeoutErr(err) {
-		return &errUpstreamTimeout{Msg: "请求上游超时: " + msg}
+		return &errUpstreamTimeout{Msg: "请求上游超时: " + msg, BeforeSend: isDialErr(err)}
 	}
 	return fmt.Errorf("请求上游失败: %w", errors.New(msg))
 }
@@ -172,6 +195,15 @@ func (c *upClient) schemeHost() string {
 	return c.baseURL[:i+3] + rest
 }
 
+// isDialErr 判断错误发生在拨号阶段（连接都没建立，请求肯定没发出去）。
+func isDialErr(err error) bool {
+	var op *net.OpError
+	if errors.As(err, &op) {
+		return op.Op == "dial"
+	}
+	return false
+}
+
 func isTimeoutErr(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
@@ -181,6 +213,9 @@ func isTimeoutErr(err error) bool {
 }
 
 func (c *upClient) listModels(ctx context.Context, apiKey string) ([]map[string]any, error) {
+	// 与生图分开：/models 是一次轻量读，卡住 8 分钟没有意义。
+	ctx, cancel := context.WithTimeout(ctx, listModelsTimeout)
+	defer cancel()
 	data, _, err := c.do(ctx, apiKey, http.MethodGet, "/models", nil)
 	if err != nil {
 		return nil, err
@@ -207,6 +242,8 @@ func (c *upClient) generate(ctx context.Context, apiKey string, t transport, pay
 }
 
 func (c *upClient) getTask(ctx context.Context, apiKey string, t transport, taskKey string) (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(ctx, getTaskTimeout)
+	defer cancel()
 	if t.Query == "" {
 		return nil, fmt.Errorf("协议 %s 不支持任务查询", t.Name)
 	}
