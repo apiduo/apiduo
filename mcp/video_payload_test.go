@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -174,5 +175,27 @@ func TestBuildPayloadExplicitValueBeatsDefault(t *testing.T) {
 	}
 	if p["duration"] != 10 {
 		t.Errorf("显式 duration 应覆盖默认值，得到 %#v", p["duration"])
+	}
+}
+
+// 同一个超限的 n，从顶层传和从 extra 传必须得到同一句话。
+// 两条通道若各自判定，agent 会以为遇到的是两个不同问题。
+func TestBatchNSameMessageFromBothChannels(t *testing.T) {
+	m := modelView{
+		ID:     "strict-image",
+		Kind:   "image",
+		Params: map[string]ParamSpec{"n": {Min: floatPtr(1), Max: floatPtr(4)}},
+	}
+	n := 1000
+	_, topErr := buildPayload(m, generateInput{Prompt: "x", N: &n}, nil)
+	_, extraErr := buildPayload(m, generateInput{Prompt: "x", Extra: map[string]any{"n": 1000}}, nil)
+	if topErr == nil || extraErr == nil {
+		t.Fatalf("两条通道都该拒绝: top=%v extra=%v", topErr, extraErr)
+	}
+	if topErr.Error() != extraErr.Error() {
+		t.Fatalf("两条通道的文案应一致:\n  顶层  %q\n  extra %q", topErr.Error(), extraErr.Error())
+	}
+	if !strings.Contains(topErr.Error(), "分多次调用") {
+		t.Fatalf("拒绝文案应给出下一步（分多次调用）: %q", topErr.Error())
 	}
 }

@@ -355,6 +355,10 @@ type generateOutput struct {
 	// ModelDefaulted 表示调用方没点名模型，本次用了默认那个。
 	// 客户端可以据此在界面上提示「换模型就带上 model」，而不是让它成为隐形行为。
 	ModelDefaulted bool `json:"model_defaulted,omitempty"`
+	// Replayed 表示这次没有真的生成，而是按 client_request_id 复用了首次结果。
+	// 只写进 text 不够：只看 structuredContent 的客户端会把重放当成一次新生成，
+	// 于是「同一次调用」在它的账上变成两次。
+	Replayed bool `json:"replayed,omitempty"`
 }
 
 func (d *toolDeps) generateImage(ctx context.Context, req *mcpsdk.CallToolRequest, in generateInput) (*mcpsdk.CallToolResult, generateOutput, error) {
@@ -413,7 +417,9 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		replay, reserveErr := reserveIdempotency(caller.TokenId, kind, in.ClientRequestID)
 		switch {
 		case reserveErr == nil && replay != nil:
-			return textResult(replayText(replay)), replay.Output, nil
+			out := replay.Output
+			out.Replayed = true
+			return textResult(replayText(replay)), out, nil
 		case reserveErr == nil:
 			// 首次调用，继续往下走。
 		case errors.Is(reserveErr, errIdempotencyInFlight):
@@ -622,12 +628,11 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		if _, ok := m.Params[k]; !ok && !standardParams[k] {
 			return nil, userParamErrorf(CodeParamNotDeclared, "模型 %s 未声明参数 %q，可用：%s", m.ID, k, strings.Join(paramNames(m), ", "))
 		}
-		if err := checkExtra(m, k, v); err != nil {
-			return nil, err
-		}
 		if k == "n" {
 			// n 是直接乘价格的参数：extra 通道必须和顶层走同一条判定，
 			// 否则 extra.n 能绕过 ≥1 与 maxBatchN（只被 relay 的 128 截住）。
+			// 也不能落到 checkExtra：它不带「要更多请分多次调用」那句，
+			// 同一个超限值从两条通道传进来会得到两种说法。
 			n, numeric := toFloat(v)
 			if !numeric {
 				return nil, userParamErrorf(CodeParamOutOfRange, "n 必须是数字，收到 %v", v)
@@ -635,6 +640,11 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 			if err := checkBatchN(m, n); err != nil {
 				return nil, err
 			}
+			p[k] = v
+			continue
+		}
+		if err := checkExtra(m, k, v); err != nil {
+			return nil, err
 		}
 		p[k] = v
 	}

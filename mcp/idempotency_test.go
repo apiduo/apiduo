@@ -78,6 +78,13 @@ func TestGenerateIdempotentReplay(t *testing.T) {
 	if txt := toolText(t, res); !strings.Contains(txt, "未重复生成") {
 		t.Fatalf("重放的 text 应说明没有重复生成，实际 %q", txt)
 	}
+	// 只看 structuredContent 的客户端也要能分辨：否则它会以为这是第二次生成。
+	if rp, _ := second["replayed"].(bool); !rp {
+		t.Fatalf("重放的结果应带 replayed=true，实际 %v", second["replayed"])
+	}
+	if rp, _ := first["replayed"].(bool); rp {
+		t.Fatalf("首次结果不该带 replayed，实际 %v", first["replayed"])
+	}
 }
 
 // 同键首次还在跑时，第二次必须被挡住，而不是再发一次。
