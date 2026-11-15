@@ -40,7 +40,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Title:       "生成图片",
 		InputSchema: generateInputSchema(),
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
-			"参考图用 http(s) URL；本地文件可读成 data:image/<mime>;base64,… 内联，但只有部分上游接受（gpt-image 支持，qwen/flux 会 502）。" +
+			"参考图用 http(s) URL 或 base64：本地文件读成 base64 直接传即可，带不带 data:image/<mime>;base64, 前缀都行（发送前会剥掉前缀，上游只认裸 base64）。" +
 			"model 可以不传，会用默认模型并在返回里说明是哪个；要指定就先调 models.list 看可选值，" +
 			"按 summary 里的场景/成本挑，不要凭模型名猜。" +
 			"models.list 里该模型声明的 parameters（aspect_ratio / resolution 等）直接平铺到顶层传，不要包进 extra。" +
@@ -54,7 +54,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Title:       "生成视频",
 		InputSchema: generateInputSchema(),
 		Description: "生成视频。语义与 image.generate 相同，产物是视频；传 reference_images 可做图生视频。" +
-			"参考图用 http(s) URL；data:image 内联只在部分上游可用。" +
+			"参考图用 http(s) URL，或 data:image/<mime>;base64,…（视频的 image_url 需要真 URL，不接受裸 base64）。" +
 			"model 可以不传，会用默认模型并在返回里说明；要指定就先调 models.list 挑，不要凭模型名猜。" +
 			"也可以直接把方舟形状的 content 数组传进来（type=text / image_url），会被拆成提示词与参考图。" +
 			"models.list 里该模型声明的 parameters（duration / resolution 等）直接平铺到顶层传，不要包进 extra。" +
@@ -763,6 +763,12 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		content := make([]map[string]any, 0, len(refs)+1)
 		content = append(content, map[string]any{"type": "text", "text": in.Prompt})
 		for _, ref := range refs {
+			// content 里的 image_url 需要一个真 URL：裸 base64 放进去上游解析不了。
+			// 图片那条路不用 data URI（上游不认），视频这条路反过来必须带前缀。
+			if lower := strings.ToLower(ref); !strings.HasPrefix(lower, "http") && !strings.HasPrefix(lower, "data:") {
+				return nil, userParamErrorf(CodeParamInvalid,
+					"视频参考图需要 http(s) URL 或 data URI；裸 base64 请加前缀 data:image/png;base64,…")
+			}
 			content = append(content, map[string]any{
 				"type":      "image_url",
 				"image_url": map[string]string{"url": ref},
@@ -776,7 +782,17 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		p["prompt"] = in.Prompt
 		p["response_format"] = "url"
 		if len(refs) > 0 {
-			p["image"] = refs
+			// image 字段接受 str 与 str[]。单张发字符串：这是实测走过的形态
+			// （qwen 的 image="<裸 base64>" 105 秒出图），少一层数组也更省报文。
+			vals := make([]string, len(refs))
+			for i, r := range refs {
+				vals[i] = imageRef(r)
+			}
+			if len(vals) == 1 {
+				p["image"] = vals[0]
+			} else {
+				p["image"] = vals
+			}
 		}
 	}
 
@@ -1362,7 +1378,7 @@ func parseRefs(v any) ([]string, error) {
 		if strings.TrimSpace(t) == "" {
 			return nil, nil
 		}
-		if err := validateRefURL(t); err != nil {
+		if err := validateRef(t); err != nil {
 			return nil, err
 		}
 		return []string{t}, nil
@@ -1374,7 +1390,7 @@ func parseRefs(v any) ([]string, error) {
 				return nil, userParamErrorf(CodeParamInvalid, "reference_images 数组元素必须是字符串，收到 %T", it)
 			}
 			if sv = strings.TrimSpace(sv); sv != "" {
-				if err := validateRefURL(sv); err != nil {
+				if err := validateRef(sv); err != nil {
 					return nil, err
 				}
 				out = append(out, sv)
@@ -1398,25 +1414,85 @@ func parseRefs(v any) ([]string, error) {
 // 之前什么都不校验：空格、相对路径、file:// 都会被原样转给上游，换回来一个
 // 看不懂的 400。data URL 是本地文件的正路 —— 客户端把图片 base64 内联进来，
 // 走的是 /v1/images/generations 的 base64 参考图，不需要额外上传接口。
-func validateRefURL(raw string) error {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return userParamErrorf(CodeParamInvalid, "参考图地址不合法：%s", clipRunes(raw, 80))
+// validateRef 校验参考图的形态。三种都收：
+//
+//	http(s) URL
+//	data:image|video/*;base64,…    （会被剥成裸 base64 再发）
+//	裸 base64                       （上游 image 字段真正认的形态）
+//
+// 之所以要单独认裸 base64：qwen2api 的 image 字段接受裸 base64，但对带
+// data: 前缀的同一张图直接回 502 —— 客户端把本地文件读成 base64 传进来是
+// 最简单的一条路，不该因为少了/多了个前缀就失败。
+func validateRef(raw string) error {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return userParamErrorf(CodeParamInvalid, "参考图不能是空字符串")
 	}
-	switch strings.ToLower(u.Scheme) {
-	case "http", "https":
-		return nil
-	case "data":
-		lower := strings.ToLower(raw)
-		if strings.HasPrefix(lower, "data:image/") || strings.HasPrefix(lower, "data:video/") {
-			return nil
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "data:") {
+		if !strings.HasPrefix(lower, "data:image/") && !strings.HasPrefix(lower, "data:video/") {
+			return userParamErrorf(CodeParamInvalid, "data URL 只接受 data:image/* 或 data:video/*")
 		}
-		return userParamErrorf(CodeParamInvalid, "data URL 只接受 data:image/* 或 data:video/*")
-	case "":
-		return userParamErrorf(CodeParamInvalid, "参考图必须是绝对 URL 或 data URL：%s", clipRunes(raw, 80))
-	default:
-		return userParamErrorf(CodeParamInvalid, "参考图协议 %s 不支持（只收 http / https / data）", u.Scheme)
+		i := strings.IndexByte(s, ',')
+		if i < 0 || !strings.Contains(lower[:i], ";base64") {
+			return userParamErrorf(CodeParamInvalid, "data URL 必须是 base64 编码：data:image/png;base64,…")
+		}
+		if !isBase64Payload(strings.TrimSpace(s[i+1:])) {
+			return userParamErrorf(CodeParamInvalid, "data URL 的 base64 内容不合法")
+		}
+		return nil
 	}
+	if u, err := url.Parse(s); err == nil && u.Scheme != "" {
+		switch strings.ToLower(u.Scheme) {
+		case "http", "https":
+			return nil
+		default:
+			return userParamErrorf(CodeParamInvalid, "参考图协议 %s 不支持（只收 http / https / data）", u.Scheme)
+		}
+	}
+	if isBase64Payload(s) {
+		return nil
+	}
+	return userParamErrorf(CodeParamInvalid,
+		"参考图必须是 http(s) URL、data:image/…;base64,… 或裸 base64：%s", clipRunes(s, 60))
+}
+
+// isBase64Payload 判断一段文本是不是裸 base64。
+//
+// 不能只看字符集：相对路径 /tmp/a.png 里的字符也大多合法。所以再加两条 ——
+// 长度下限（真实图片的 base64 远长于 32）与禁止点号（文件名几乎都带扩展名）。
+func isBase64Payload(s string) bool {
+	if len(s) < 32 || strings.ContainsAny(s, " \t\r\n.") {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '+', c == '/':
+		case c == '=':
+			// 填充只能在末尾，最多两个
+			if i < len(s)-2 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// imageRef 把参考图变成 /v1/images/generations 的 image 字段值。
+//
+// 上游认 URL 与裸 base64，不认 data: 前缀（实测 qwen2api 对 data URI 回 502）。
+// 所以这里把 data URL 剥成载荷，其余原样。
+func imageRef(raw string) string {
+	s := strings.TrimSpace(raw)
+	if strings.HasPrefix(strings.ToLower(s), "data:") {
+		if i := strings.IndexByte(s, ','); i >= 0 {
+			return strings.TrimSpace(s[i+1:])
+		}
+	}
+	return s
 }
 
 // parseOutputs 从上游响应里提取产物地址，兼容几种常见形状。

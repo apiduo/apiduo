@@ -259,17 +259,20 @@ curl -sS --noproxy '*' -X PUT \
 
 `n>1` 拆单时每个分片显式传 `n=1`。
 
-**本地文件怎么进**（2026-11-15 实测）：
+**本地文件怎么进**（2026-11-15 实测，`image` 字段）：
 
-| 路径 | 结果 |
+| 传入形态 | 结果 |
 |---|---|
-| `data:image/...;base64,...` 内联 | **gpt-image 可用**（实测 200）；qwen / flux 的上游拒绝（502 / 422） |
-| 公网 http(s) URL | 所有模型可用，前提是文件先放到可访问地址 |
-| `/v1/files` 上传 | 返回的是网关 file id，上游取不到，**不能**直接当参考图 |
+| `image = "<裸 base64>"` | **可用**：qwen-image-3.0 实测 105 秒出图 |
+| `image = "data:image/png;base64,…"` | **不可用**：qwen2api 对 data 前缀回 502 |
+| `image = "https://…"` | 可用（所有模型，前提是文件在公网） |
+| `image` 为数组 | 支持（`image` 收 str 与 str[]） |
+| `/v1/files` 上传 | 返回网关 file id，上游取不到；之后再做 |
 
-所以「本地图片能不能用」取决于模型：gpt-image 走 data URL；其它模型要先有公网地址。
-要把 `/v1/files` 的 id 变成上游可取的 URL，得在 relay 里加一次改写（上传到对象存储
-并回填地址），那是 relay 的活，不在 MCP 层。
+所以 MCP 的规则是：**接受 URL / data URL / 裸 base64 三种输入，发送前把 data 前缀
+剥掉**（`imageRef`）。客户端把本地文件读成 base64 直接塞进 `reference_images` 就行，
+不用先传到别处。视频那条路相反：`content[].image_url.url` 需要真 URL，裸 base64 会被
+本地拒掉，提示补 `data:` 前缀。
 
 ## 6. 已修的坑（别再踩）
 

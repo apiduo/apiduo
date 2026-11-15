@@ -120,7 +120,8 @@ func TestBuildPayloadImageKeepsOpenAIShape(t *testing.T) {
 	if p["prompt"] != "一只猫" || p["response_format"] != "url" || p["size"] != "1024x1024" || p["n"] != 2 {
 		t.Fatalf("图片载荷应保持 OpenAI 形状: %v", p)
 	}
-	if image, ok := p["image"].([]string); !ok || len(image) != 1 {
+	// 单张参考图发字符串：image 字段收 str 与 str[]，单张用 str 是实测走过的形态。
+	if image, ok := p["image"].(string); !ok || image != "https://example.com/a.png" {
 		t.Fatalf("image = %#v", p["image"])
 	}
 	if _, present := p["content"]; present {

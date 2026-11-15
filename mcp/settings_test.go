@@ -98,23 +98,67 @@ func TestSettingsHotApplyBatchN(t *testing.T) {
 	}
 }
 
-// 本地文件的正路：data URL 直接内联，不需要额外上传接口。
-func TestParseRefsAcceptsDataURLAndRejectsOtherSchemes(t *testing.T) {
+// 参考图三种形态都收：http(s) URL、data URL、裸 base64。
+//
+// 线上实测：qwen2api 的 image 字段认裸 base64（105 秒出图），但对同一张图的
+// data URI 回 502。所以 MCP 必须同时接受两者，并在发送前把 data: 前缀剥掉。
+func TestParseRefsAcceptsURLDataURLAndRawBase64(t *testing.T) {
+	raw64 := strings.Repeat("QUJDRA", 12) // 72 字符，合法 base64
 	ok := []string{
 		"https://example.test/a.png",
-		"data:image/png;base64,AAAA",
-		"data:video/mp4;base64,AAAA",
+		"data:image/png;base64," + raw64,
+		"data:video/mp4;base64," + raw64,
+		raw64,
 	}
 	for _, raw := range ok {
 		if _, err := parseRefs(raw); err != nil {
-			t.Fatalf("%q 应被接受: %v", raw, err)
+			t.Fatalf("%q 应被接受: %v", clipRunes(raw, 40), err)
 		}
 	}
-	bad := []string{"a.png", "/tmp/a.png", "file:///tmp/a.png", "data:text/plain,hi"}
+	bad := []string{
+		"a.png",                      // 相对路径
+		"/tmp/a.png",                 // 绝对路径：点号暴露它不是 base64
+		"file:///tmp/a.png",          // 不支持的协议
+		"data:text/plain,hi",         // 不是图片/视频
+		"data:image/png,abcd",        // 缺 base64 声明
+		"data:image/png;base64,====", // 载荷非法
+		strings.Repeat("A", 20),      // 太短，不像真实图片
+	}
 	for _, raw := range bad {
 		if _, err := parseRefs(raw); err == nil {
-			t.Fatalf("%q 应被拒绝", raw)
+			t.Fatalf("%q 应被拒绝", clipRunes(raw, 40))
 		}
+	}
+}
+
+// 发出去的形态：单张是字符串、多张是数组；data URI 要剥成裸 base64。
+func TestBuildPayloadImageRefShape(t *testing.T) {
+	raw64 := strings.Repeat("QUJDRA", 12)
+	m := modelView{ID: "ref-image", Kind: "image"}
+
+	p, err := buildPayload(m, generateInput{Prompt: "x"}, []string{"data:image/png;base64," + raw64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := p["image"].(string); got != raw64 {
+		t.Fatalf("单张应是剥掉前缀的字符串，实际 %T %v", p["image"], clipRunes(fmt.Sprint(p["image"]), 40))
+	}
+
+	p, err = buildPayload(m, generateInput{Prompt: "x"}, []string{"https://a.test/1.png", raw64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	arr, ok := p["image"].([]string)
+	if !ok || len(arr) != 2 {
+		t.Fatalf("多张应是数组，实际 %T", p["image"])
+	}
+	if arr[0] != "https://a.test/1.png" || arr[1] != raw64 {
+		t.Fatalf("数组内容不对: %v", arr)
+	}
+
+	// content.image_url 需要一个真 URL，裸 base64 在视频上不成立。
+	if _, err := buildPayload(modelView{ID: "v", Kind: "video"}, generateInput{Prompt: "x"}, []string{raw64}); err == nil {
+		t.Fatal("视频不该接受裸 base64")
 	}
 }
 
