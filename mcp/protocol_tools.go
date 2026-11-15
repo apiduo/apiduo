@@ -422,13 +422,23 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 			// 异步任务的重放：表里存的是「提交时」的快照，任务可能早就完成了。
 			// 查一次当前状态（本地读，30 秒上限）再返回，省掉 agent 拿着
 			// 「进行中」再轮询一轮 —— 这一步不产生任何上游调用。
+			if out.Status == "failed" {
+				// 首次是失败（超时 / 无产物 / 句柄签不出来），重放必须维持 isError=true，
+				// 否则同一件事第一次是错误、第二次是成功，agent 无从判断。
+				return &mcpsdk.CallToolResult{
+					IsError: true,
+					Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: replayText(replay)}},
+				}, out, nil
+			}
 			if out.Status == "working" && out.TaskID != "" {
 				if res, fresh, ferr := d.getTask(ctx, nil, taskInput{TaskID: out.TaskID}); ferr == nil && res != nil && !res.IsError {
 					freshGen := taskToGenerateOutput(fresh)
 					freshGen.Replayed = true
 					summary := taskSummary(fresh.Model, fresh.Status, fresh)
-					if fresh.Status != "working" {
-						// 到终态了：把刷新后的结果写回表，下次重放不用再查。
+					if fresh.Status == "completed" {
+						// 只有成功才写回：失败的任务每次重放都重新查一次（本地读，很便宜），
+						// 这样它的 isError 一直是 false（查询成功、任务失败），不会因为
+						// 第一次刷新把 failed 写回表、第二次就走成 isError=true。
 						completeIdempotency(caller.TokenId, kind, in.ClientRequestID, summary, freshGen)
 					}
 					return textResult(replayRefreshedText(summary)), freshGen, nil
@@ -534,18 +544,26 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	out := parseOutputs(resp)
 	if len(out) == 0 {
 		// 上游没给可用产物：如实说明，不要伪造成功。
-		// 这类失败重发一次往往就过了（同参数、不同上游实例），所以标可重试。
-		if in.ClientRequestID != "" {
-			releaseIdempotency(caller.TokenId, kind, in.ClientRequestID)
-		}
-		return d.failWith(m.ID, &toolError{
+		// 不带键时可以退避重试一次（同参数、不同上游实例，往往就过了）。
+		te := &toolError{
 			Code:         CodeUpstreamError,
 			Message:      "上游未返回图片/视频数据：" + brief(resp),
 			Retryable:    true,
 			RetryAction:  "wait",
 			RetryAfterMS: 5000,
 			Hint:         "同参数退避后重试一次；仍失败就换模型",
-		})
+		}
+		if in.ClientRequestID != "" {
+			// 200 说明这次调用已经走完，计费很可能已经发生。释放键 = 放行第二次扣费，
+			// 所以标记 done：重放拿到的是这句话，而不是重新生成。
+			te.Retryable = false
+			te.RetryAction = "none"
+			te.Hint = "计费可能已发生；同一 client_request_id 不会重新生成，确认后台没有产物后换一个新的键再试"
+			completeIdempotency(caller.TokenId, kind, in.ClientRequestID,
+				"生成已走完但上游未返回可用产物；为避免重复扣费，本次不再重新生成，请到控制台任务页确认",
+				generateOutput{Status: "failed", Model: m.ID, Error: te})
+		}
+		return d.failWith(m.ID, te)
 	}
 	inline := 0
 	for _, o := range out {

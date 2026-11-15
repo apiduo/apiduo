@@ -2,7 +2,11 @@ package mcp
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
@@ -204,5 +208,92 @@ func TestTaskGetRateLimitedKeepsTaskStatus(t *testing.T) {
 	}
 	if retry, _ := terr["retryable"].(bool); !retry {
 		t.Fatal("限流应可重试")
+	}
+}
+
+// 上游 200 但没产物：计费很可能已发生，键不能释放，重放要维持 isError。
+func TestGenerateEmptyOutputKeepsKey(t *testing.T) {
+	setupDB(t)
+	var calls atomic.Int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/images/generations", func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"created":1,"data":[]}`)
+	})
+	up := httptest.NewServer(mux)
+	t.Cleanup(up.Close)
+	os.Setenv("MCP_UPSTREAM_BASE_URL", up.URL+"/v1")
+	t.Cleanup(func() { os.Unsetenv("MCP_UPSTREAM_BASE_URL") })
+	resetProtocol()
+	if err := SaveProfile(&ModelProfile{ModelId: "empty-image", Kind: "image", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+
+	args := map[string]any{"model": "empty-image", "prompt": "x", "client_request_id": "rep-empty"}
+	first := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{"name": "image.generate", "arguments": args})
+	if isErr, _ := first["isError"].(bool); !isErr {
+		t.Fatalf("首次应报错: %v", first)
+	}
+	second := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{"name": "image.generate", "arguments": args})
+	if isErr, _ := second["isError"].(bool); !isErr {
+		t.Fatalf("重放同一件失败必须是 isError: %v", second)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("键被释放了，上游被调用 %d 次", got)
+	}
+	content, _ := second["content"].([]any)
+	if txt := fmt.Sprint(content[0].(map[string]any)["text"]); !strings.Contains(txt, "不再重新生成") {
+		t.Fatalf("重放文案应说明不会重新生成: %q", txt)
+	}
+}
+
+// 任务失败是「查询成功、任务失败」，重放两次都应 isError=false，且每次都刷新
+// （失败结果不写回表，否则第二次会走成 isError=true）。
+func TestVideoReplayFailedTaskStaysNonError(t *testing.T) {
+	setupDB(t)
+	var queries atomic.Int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/contents/generations/tasks", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"task_id":"fail-task","status":"queued"}`)
+	})
+	mux.HandleFunc("/v1/contents/generations/tasks/fail-task", func(w http.ResponseWriter, _ *http.Request) {
+		queries.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"task_id":"fail-task","status":"failed","fail_reason":"content blocked"}`)
+	})
+	up := httptest.NewServer(mux)
+	t.Cleanup(up.Close)
+	os.Setenv("MCP_UPSTREAM_BASE_URL", up.URL+"/v1")
+	t.Cleanup(func() { os.Unsetenv("MCP_UPSTREAM_BASE_URL") })
+	resetProtocol()
+	resetRateLimits()
+	if err := SaveProfile(&ModelProfile{ModelId: "fail-video", Kind: "video", Enabled: true, Async: true}); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+
+	args := map[string]any{"model": "fail-video", "prompt": "x", "client_request_id": "rep-fail-task"}
+	if sc := callTool(t, srv.URL, "sk-test", "video.generate", args); sc["status"] != "working" {
+		t.Fatalf("首次应 working: %v", sc)
+	}
+	for i := range 2 {
+		res := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{"name": "video.generate", "arguments": args})
+		if isErr, _ := res["isError"].(bool); isErr {
+			t.Fatalf("第 %d 次重放不该是 isError: %v", i+2, res)
+		}
+		sc, _ := res["structuredContent"].(map[string]any)
+		if sc["status"] != "failed" {
+			t.Fatalf("第 %d 次重放 status=%v，期望 failed", i+2, sc["status"])
+		}
+		terr, _ := sc["error"].(map[string]any)
+		if retry, _ := terr["retryable"].(bool); retry {
+			t.Fatalf("content blocked 不该可重试: %v", terr)
+		}
+	}
+	if got := queries.Load(); got != 2 {
+		t.Fatalf("失败任务每次重放都该刷新，实际查询 %d 次", got)
 	}
 }
