@@ -181,9 +181,12 @@ curl -sS --noproxy '*' -X PUT \
 14. **`task_id` 用系统密钥签名，不是 `api_key`**：密钥在 `options.mcp_task_signing_key`
     （首次使用生成，跨副本共享）。payload 带 `UserId` 与 `ExpireAt`（7 天）；
     `task.get` 校验归属与有效期。用户重置令牌不再丢在途任务。
-15. **`models.list` 有目录版本与限流**：`catalog_version` 取每行 `version` 的哈希
-    （新增/改字段/删除都会变），随 text 一起下发；每令牌 60 次/分钟。
-    不要改成 `max(version)` —— 删行时它不变，缓存会永久陈旧。
+15. **两个读工具各有限流，且分桶**：`models.list` 每令牌 60 次/分钟（目录版本
+    `catalog_version` 取每行 `version` 的哈希，新增/改字段/删除都会变，随 text 下发；
+    不要改成 `max(version)` —— 删行时它不变，缓存会永久陈旧）；`task.get` 每令牌
+    120 次/分钟。两者共用同一个窗口实现，但桶名不同 —— 共用一个桶会让 models.list
+    的额度把轮询卡死。`task.get` 被限流时 `status` 保持 `working`：失败的是这次
+    查询，不是任务，把它写成 `failed` 会让 agent 放弃等待。
 16. **同步生成有 8 分钟硬超时，超时不可重试**：上游通常在超时后仍会完成并计费
     （线上实测 qwen n=4 超时 300s 时已扣 20000，产物 URL 全丢）。因此
     `UPSTREAM_TIMEOUT` 的 `retryable=false`、`retry_action=check_console`，
@@ -196,6 +199,16 @@ curl -sS --noproxy '*' -X PUT \
     （工具 + 归一化载荷的 sha256），对不上就不重放 —— 否则 agent 会在「我生成了
     一辆红色跑车」的预期下拿到十分钟前的苹果。指纹取自 `buildPayload` 之后，
     所以「不传 duration」与「显式传 duration=5」算同一个请求。
+18. **`task.get` 不回显整份上游对象**：它占响应体近一半（实测 1012 字节里 465），
+    还带 provider 模型名与任务号。agent 需要的是 `status / outputs / error /
+    poll_after_ms`。要排查上游原文时看 relay 的任务记录。
+19. **任务失败的「可重试性」按原因分类**：先查 `mcp_error_rules`（文本规则），
+    没有规则再看措辞 —— 超时 / 5xx / 限流 / `unavailable` 这类判可重试，
+    内容违规与参数错误判不可重试。失败任务在 apiduo 侧会退款，所以引导重试不会
+    二次扣费；反过来把内容违规判成可重试，会让 agent 反复提交同一个被拒的内容。
+20. **异步重放会刷新状态**：`video.generate` 的幂等记录存的是「提交时」的文本，
+    重放时先查一次任务（本地读，30 秒上限），到终态就把结果写回表并返回产物地址，
+    省掉 agent 拿着「进行中」再轮询一轮。
 
 ## 6. 已修的坑（别再踩）
 

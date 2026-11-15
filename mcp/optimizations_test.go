@@ -1,0 +1,208 @@
+package mcp
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/QuantumNous/new-api/model"
+)
+
+// 两个读工具必须各用各的窗口：否则 models.list 的 60 次额度会把 task.get 一起吃掉。
+func TestRateLimitBucketsAreIndependent(t *testing.T) {
+	resetRateLimits()
+	defer resetRateLimits()
+
+	for i := range taskGetLimit {
+		if _, ok := allowTaskGet(7); !ok {
+			t.Fatalf("第 %d 次就被限流了", i+1)
+		}
+	}
+	if _, ok := allowTaskGet(7); ok {
+		t.Fatal("超过 task.get 上限后应被限流")
+	}
+	// 另一个桶不受影响，另一个令牌也不受影响。
+	if _, ok := allowCatalogList(7); !ok {
+		t.Fatal("models.list 被 task.get 的窗口带累了")
+	}
+	if _, ok := allowTaskGet(8); !ok {
+		t.Fatal("另一个令牌被带累了")
+	}
+}
+
+// 任务失败的原因分两类：上游抖了可以重试（失败任务会退款），内容/参数问题重试无意义。
+func TestClassifyTaskFailure(t *testing.T) {
+	setupDB(t)
+
+	transient := []string{
+		"upstream error, please retry later",
+		"Input material restore service is unavailable",
+		"upstream 502 Bad Gateway",
+		"request timeout",
+	}
+	for _, reason := range transient {
+		te := classifyTaskFailure("m", reason)
+		if !te.Retryable || te.RetryAction != "wait" {
+			t.Fatalf("%q 应判为可重试，实际 %+v", reason, te)
+		}
+	}
+
+	permanent := []string{
+		"content blocked",
+		"invalid parameter: duration",
+		"copyright restriction",
+	}
+	for _, reason := range permanent {
+		te := classifyTaskFailure("m", reason)
+		if te.Retryable {
+			t.Fatalf("%q 不该判为可重试，实际 %+v", reason, te)
+		}
+	}
+}
+
+// 配了规则就以规则为准，别让启发式覆盖管理员的判断。
+func TestClassifyTaskFailurePrefersRule(t *testing.T) {
+	setupDB(t)
+	// SaveErrorRule 只更新已有规则（全局规则的 Match 是识别依据），新建走 DB。
+	if err := model.DB.Create(&ErrorRule{
+		Scope: "global", Match: "task:FAILED", Retryable: true,
+		RetryAction: "wait", RetryAfterMs: 5000, Hint: "按规则等 5 秒", Enabled: true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	te := classifyTaskFailure("m", "task:FAILED quota exhausted")
+	if !te.Retryable || te.RetryAfterMS != 5000 || te.Hint != "按规则等 5 秒" {
+		t.Fatalf("规则没生效: %+v", te)
+	}
+}
+
+// 异步任务的重放不该再给「进行中」：查一次当前状态，完成就直接给地址。
+func TestVideoReplayRefreshesStatus(t *testing.T) {
+	setupDB(t)
+	rec := mockUpstream(t)
+	resetProtocol()
+	resetRateLimits()
+
+	if err := SaveProfile(&ModelProfile{
+		ModelId: "refresh-video", Kind: "video", Enabled: true, Async: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+
+	args := map[string]any{
+		"model": "refresh-video", "prompt": "a paper boat", "client_request_id": "rep-refresh",
+	}
+	first := callTool(t, srv.URL, "sk-test", "video.generate", args)
+	if first["status"] != "working" {
+		t.Fatalf("首次应是 working，实际 %v", first["status"])
+	}
+	if q := rec.queries.Load(); q != 0 {
+		t.Fatalf("首次提交不该查任务，实际 %d 次", q)
+	}
+
+	second := callTool(t, srv.URL, "sk-test", "video.generate", args)
+	if second["status"] != "completed" {
+		t.Fatalf("重放应刷成 completed，实际 %v", second["status"])
+	}
+	if rp, _ := second["replayed"].(bool); !rp {
+		t.Fatal("重放结果应带 replayed=true")
+	}
+	outs, _ := second["outputs"].([]any)
+	if len(outs) != 1 {
+		t.Fatalf("刷新后应带产物，实际 %v", second["outputs"])
+	}
+	if q := rec.queries.Load(); q != 1 {
+		t.Fatalf("重放应只查一次任务，实际 %d 次", q)
+	}
+
+	// 第三次重放：已写回终态，不该再查。
+	third := callTool(t, srv.URL, "sk-test", "video.generate", args)
+	if third["status"] != "completed" {
+		t.Fatalf("第三次应是 completed，实际 %v", third["status"])
+	}
+	if q := rec.queries.Load(); q != 1 {
+		t.Fatalf("终态写回后不该再查任务，实际 %d 次", q)
+	}
+}
+
+// task.get 不再回显整份上游对象：它占响应体近一半，且带 provider 模型名与任务号。
+func TestTaskGetOmitsUpstreamEcho(t *testing.T) {
+	setupDB(t)
+	mockUpstream(t)
+	resetProtocol()
+	resetRateLimits()
+
+	if err := SaveProfile(&ModelProfile{
+		ModelId: "echo-video", Kind: "video", Enabled: true, Async: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+	signed, err := signTaskID(taskPayload{Model: "echo-video", Upstream: "upstream-task-1", Kind: "video"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{
+		"name": "task.get", "arguments": map[string]any{"task_id": signed},
+	})
+	sc, _ := res["structuredContent"].(map[string]any)
+	if _, exists := sc["upstream"]; exists {
+		t.Fatalf("task.get 不该再回显 upstream: %v", sc["upstream"])
+	}
+	if sc["status"] != "completed" {
+		t.Fatalf("状态丢失: %v", sc["status"])
+	}
+	content, _ := res["content"].([]any)
+	if len(content) == 0 {
+		t.Fatal("没有 text content")
+	}
+	if txt := fmt.Sprint(content[0].(map[string]any)["text"]); !strings.Contains(txt, "v.mp4") {
+		t.Fatalf("text 仍应带产物地址: %q", txt)
+	}
+}
+
+// 限流封顶时，失败的是「这次查询」而不是任务本身：status 必须是 working，
+// 否则 agent 会以为任务失败、放弃等待。
+func TestTaskGetRateLimitedKeepsTaskStatus(t *testing.T) {
+	setupDB(t)
+	mockUpstream(t)
+	resetProtocol()
+	resetRateLimits()
+	t.Cleanup(resetRateLimits)
+
+	if err := SaveProfile(&ModelProfile{
+		ModelId: "rl-video", Kind: "video", Enabled: true, Async: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+	signed, err := signTaskID(taskPayload{Model: "rl-video", Upstream: "upstream-task-1", Kind: "video"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 把该令牌的窗口用光（测试环境里 caller 没有真实令牌，TokenId 为 0）。
+	for range taskGetLimit {
+		allowTaskGet(0)
+	}
+
+	res := rpc(t, srv.URL, "sk-test", "tools/call", map[string]any{
+		"name": "task.get", "arguments": map[string]any{"task_id": signed},
+	})
+	if isErr, _ := res["isError"].(bool); !isErr {
+		t.Fatalf("限流应回 isError: %v", res)
+	}
+	sc, _ := res["structuredContent"].(map[string]any)
+	if sc["status"] != "working" {
+		t.Fatalf("限流时任务状态不该被写成 %v", sc["status"])
+	}
+	terr, _ := sc["error"].(map[string]any)
+	if code, _ := terr["code"].(string); code != CodeRateLimited {
+		t.Fatalf("code = %v，期望 %s", terr["code"], CodeRateLimited)
+	}
+	if retry, _ := terr["retryable"].(bool); !retry {
+		t.Fatal("限流应可重试")
+	}
+}

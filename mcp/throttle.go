@@ -5,12 +5,14 @@ import (
 	"time"
 )
 
-// models.list 是唯一不经过 relay 的读入口：没有额度、没有 relay 的限流，
-// 一个令牌可以把这条路径打到任意 QPS。快照缓存挡住的是数据库，挡不住请求，
-// 所以还要一个 per-token 的窗口。
+// 读类工具的 per-token 窗口。
+//
+// models.list 与 task.get 都不经过 relay：没有额度、没有 relay 的限流，
+// 一个令牌可以把它们打到任意 QPS。快照缓存挡的是数据库，挡不住请求。
 const (
-	catalogListLimit  = 60
-	catalogListWindow = time.Minute
+	catalogListLimit = 60
+	taskGetLimit     = 120
+	rateWindowLen    = time.Minute
 )
 
 type rateWindow struct {
@@ -18,45 +20,63 @@ type rateWindow struct {
 	count int
 }
 
+// rateKey 带上桶名：否则 models.list 的 60 次额度会把 task.get 一起吃掉。
+type rateKey struct {
+	bucket string
+	token  int
+}
+
 var (
 	rateMu    sync.Mutex
-	rateTable = make(map[int]*rateWindow)
+	rateTable = make(map[rateKey]*rateWindow)
 )
 
-// allowCatalogList 是固定窗口限流。返回需要等待多久（0 表示放行）。
+// allowRate 是固定窗口限流。返回需要等待多久（0 表示放行）。
 //
 // 固定窗口而不是令牌桶：这里只需要「挡住脚本」，不需要平滑突发；
 // 少一个依赖、少一份状态，代价只是窗口边界可能放过 2 倍。
-func allowCatalogList(tokenId int) (time.Duration, bool) {
+func allowRate(bucket string, tokenId, limit int) (time.Duration, bool) {
 	now := time.Now()
+	key := rateKey{bucket: bucket, token: tokenId}
 	rateMu.Lock()
 	defer rateMu.Unlock()
 
 	// 令牌数量有界，但被删掉的令牌不会自己消失。超过阈值时顺手清一遍，
 	// 避免长期运行后 map 只增不减。
 	if len(rateTable) > 4096 {
-		for id, w := range rateTable {
-			if now.Sub(w.start) >= catalogListWindow {
-				delete(rateTable, id)
+		for k, w := range rateTable {
+			if now.Sub(w.start) >= rateWindowLen {
+				delete(rateTable, k)
 			}
 		}
 	}
 
-	w := rateTable[tokenId]
-	if w == nil || now.Sub(w.start) >= catalogListWindow {
-		rateTable[tokenId] = &rateWindow{start: now, count: 1}
+	w := rateTable[key]
+	if w == nil || now.Sub(w.start) >= rateWindowLen {
+		rateTable[key] = &rateWindow{start: now, count: 1}
 		return 0, true
 	}
-	if w.count >= catalogListLimit {
-		return catalogListWindow - now.Sub(w.start), false
+	if w.count >= limit {
+		return rateWindowLen - now.Sub(w.start), false
 	}
 	w.count++
 	return 0, true
 }
 
-// resetCatalogRateLimit 清空窗口。测试用：同一个进程里 105 个测试共用一个令牌 0。
-func resetCatalogRateLimit() {
+func allowCatalogList(tokenId int) (time.Duration, bool) {
+	return allowRate("models.list", tokenId, catalogListLimit)
+}
+
+func allowTaskGet(tokenId int) (time.Duration, bool) {
+	return allowRate("task.get", tokenId, taskGetLimit)
+}
+
+// resetRateLimits 清空窗口。测试用：同一个进程里上百个测试共用一个令牌。
+func resetRateLimits() {
 	rateMu.Lock()
-	rateTable = make(map[int]*rateWindow)
+	rateTable = make(map[rateKey]*rateWindow)
 	rateMu.Unlock()
 }
+
+// resetCatalogRateLimit 保留旧名字，测试里已有调用点。
+func resetCatalogRateLimit() { resetRateLimits() }

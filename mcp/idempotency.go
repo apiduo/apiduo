@@ -210,6 +210,12 @@ func replayText(r *idempotentResult) string {
 	return "（同一 client_request_id 的重复调用，复用首次结果，未重复生成）\n" + r.Text
 }
 
+// replayRefreshedText 用于「重放时又查了一次任务状态」的情形：
+// 复用是首次提交的任务，但状态是刚刚取的，不能说成「复用首次结果」。
+func replayRefreshedText(text string) string {
+	return "（同一 client_request_id 的重复调用，复用首次提交的任务，未重复生成）\n" + text
+}
+
 func validateClientRequestID(id string) error {
 	if n := len([]rune(id)); n == 0 || n > 64 {
 		return userParamErrorf(CodeParamOutOfRange,

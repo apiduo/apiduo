@@ -419,6 +419,21 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		case reserveErr == nil && replay != nil:
 			out := replay.Output
 			out.Replayed = true
+			// 异步任务的重放：表里存的是「提交时」的快照，任务可能早就完成了。
+			// 查一次当前状态（本地读，30 秒上限）再返回，省掉 agent 拿着
+			// 「进行中」再轮询一轮 —— 这一步不产生任何上游调用。
+			if out.Status == "working" && out.TaskID != "" {
+				if res, fresh, ferr := d.getTask(ctx, nil, taskInput{TaskID: out.TaskID}); ferr == nil && res != nil && !res.IsError {
+					freshGen := taskToGenerateOutput(fresh)
+					freshGen.Replayed = true
+					summary := taskSummary(fresh.Model, fresh.Status, fresh)
+					if fresh.Status != "working" {
+						// 到终态了：把刷新后的结果写回表，下次重放不用再查。
+						completeIdempotency(caller.TokenId, kind, in.ClientRequestID, summary, freshGen)
+					}
+					return textResult(replayRefreshedText(summary)), freshGen, nil
+				}
+			}
 			return textResult(replayText(replay)), out, nil
 		case reserveErr == nil:
 			// 首次调用，继续往下走。
@@ -823,14 +838,32 @@ type taskOutput struct {
 	Outputs []outputItem `json:"outputs,omitempty"`
 	// Error 与 generateOutput 同形：agent 靠 code / retryable 决定下一步，
 	// 纯字符串它只能读中文猜。
-	Error    *toolError     `json:"error,omitempty"`
-	PollMS   int            `json:"poll_after_ms,omitempty"`
-	Upstream map[string]any `json:"upstream,omitempty"`
+	Error  *toolError `json:"error,omitempty"`
+	PollMS int        `json:"poll_after_ms,omitempty"`
 }
 
 func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in taskInput) (*mcpsdk.CallToolResult, taskOutput, error) {
 	key := apiKeyFrom(ctx)
 	caller := callerFrom(ctx)
+	// 轮询是所有工具里频率最高的那个：一个 agent 盯 10 个任务、5 秒一轮就是
+	// 120 次/分钟。没有窗口的话，这条纯读路径可以被脚本打到任意 QPS。
+	if wait, ok := allowTaskGet(caller.TokenId); !ok {
+		ms := max(int(wait.Milliseconds()), 1000)
+		// 这里**不能**用 failTaskWith：它把 status 写成 failed，agent 会以为任务失败了。
+		// 失败的是这次查询，不是任务 —— 对调用方来说正确动作是「等一会儿再查」，
+		// 那正是 working 的语义。
+		te := &toolError{
+			Code:         CodeRateLimited,
+			Message:      fmt.Sprintf("task.get 调用过于频繁，%d 秒后再试", (ms+999)/1000),
+			Retryable:    true,
+			RetryAction:  "wait",
+			RetryAfterMS: ms,
+			Hint:         "按上一次返回的 poll_after_ms 轮询，不要空转",
+		}
+		out := taskOutput{Status: "working", TaskID: clipRunes(in.TaskID, 128), Error: te, PollMS: ms}
+		res := &mcpsdk.CallToolResult{IsError: true, Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: te.Message}}}
+		return res, out, nil
+	}
 	p, err := parseTaskID(in.TaskID, caller.UserId)
 	if err != nil {
 		switch {
@@ -858,7 +891,7 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	resp := unwrapTaskBody(raw)
 
 	status := normalizeStatus(str(resp, "status"))
-	out := taskOutput{Status: status, TaskID: in.TaskID, Model: p.Model, Upstream: resp}
+	out := taskOutput{Status: status, TaskID: in.TaskID, Model: p.Model}
 	switch status {
 	case "completed":
 		out.Outputs = parseOutputs(resp)
@@ -867,13 +900,7 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	case "failed":
 		// 这是「查询成功、任务失败」，不是工具错误：仍回 isError=false，
 		// 但错误体与 generate 一样带 code / retryable，agent 才不用猜。
-		out.Error = &toolError{
-			Code:        CodeTaskFailed,
-			Message:     upstreamFailReason(resp),
-			Retryable:   false,
-			RetryAction: "none",
-			Hint:        "不要用同样参数重试；先确认参数或换模型",
-		}
+		out.Error = classifyTaskFailure(p.Model, upstreamFailReason(resp))
 	}
 	return textResult(taskSummary(p.Model, status, out)), out, nil
 }
@@ -955,7 +982,11 @@ func shouldReleaseIdempotency(err error) bool {
 // error 字段，只有把 out 一起返回（err 传 nil），SDK 才会写 structuredContent。
 // 之前直接 return err，SDK 只能包成一段纯文本，声明出来的 error 永远拿不到。
 func (d *toolDeps) failTask(modelId, taskID string, err error) (*mcpsdk.CallToolResult, taskOutput, error) {
-	te := classifyToolError(modelId, err)
+	return d.failTaskWith(modelId, taskID, classifyToolError(modelId, err))
+}
+
+// failTaskWith 用现成的 toolError 组装失败响应（限流这类不是 error 值）。
+func (d *toolDeps) failTaskWith(modelId, taskID string, te *toolError) (*mcpsdk.CallToolResult, taskOutput, error) {
 	// 回显要截断：非法 task_id 可能是任意长的输入，原样塞回 structuredContent
 	// 等于把响应放大成请求的大小。调用方自己知道发的是什么。
 	out := taskOutput{Status: "failed", TaskID: clipRunes(taskID, 128), Model: modelId, Error: te}
@@ -964,6 +995,70 @@ func (d *toolDeps) failTask(modelId, taskID string, err error) (*mcpsdk.CallTool
 		res.Content = []mcpsdk.Content{&mcpsdk.TextContent{Text: te.Message}}
 	}
 	return res, out, nil
+}
+
+// taskToGenerateOutput 把任务快照转成 generate 的输出形状。
+//
+// 重放时复用任务查询的结果，两者字段几乎一致，但状态机不同：
+// taskOutput 没有 usage / upstream（这两项只在首次生成时有意义）。
+func taskToGenerateOutput(t taskOutput) generateOutput {
+	return generateOutput{
+		Status: t.Status, Model: t.Model, TaskID: t.TaskID,
+		Outputs: t.Outputs, Error: t.Error, PollMS: t.PollMS,
+	}
+}
+
+// classifyTaskFailure 判断「任务失败」这件事该不该重试。
+//
+// 之前一律 retryable=false，但失败原因可能是上游瞬时故障（我们自己复现过 502）。
+// 失败任务在 apiduo 侧会走 RefundTaskQuota 退款，所以引导重试不会造成二次扣费；
+// 反过来，内容违规这类重试多少次都一样，必须明确禁止。
+func classifyTaskFailure(modelID, reason string) *toolError {
+	if rule := matchErrorRule(modelID, 0, reason); rule != nil {
+		return &toolError{
+			Code:         CodeTaskFailed,
+			Message:      reason,
+			Retryable:    rule.Retryable,
+			RetryAction:  rule.RetryAction,
+			RetryAfterMS: rule.RetryAfterMs,
+			Hint:         rule.Hint,
+		}
+	}
+	if transientTaskFailure(reason) {
+		return &toolError{
+			Code:         CodeTaskFailed,
+			Message:      reason,
+			Retryable:    true,
+			RetryAction:  "wait",
+			RetryAfterMS: 30000,
+			Hint:         "上游临时故障，失败任务已退款；可以稍后重新提交",
+		}
+	}
+	return &toolError{
+		Code:        CodeTaskFailed,
+		Message:     reason,
+		Retryable:   false,
+		RetryAction: "none",
+		Hint:        "不要用同样参数重试；先确认参数或换模型",
+	}
+}
+
+// transientTaskFailure 只看「上游自己抖了」这一类措辞。
+// 宁可漏判也不要把内容违规判成可重试 —— 那会让 agent 反复提交同一个被拒的内容。
+func transientTaskFailure(reason string) bool {
+	s := strings.ToLower(reason)
+	for _, k := range []string{
+		"timeout", "timed out", "502", "503", "504", "rate limit",
+		"temporarily", "try again", "retry later", "unavailable", "overloaded",
+		"connection reset", "busy", "internal error",
+		// 网关兜底文案：上游只说「失败」没给原因，按瞬时处理（失败任务会退款）
+		"upstream reported failure",
+	} {
+		if strings.Contains(s, k) {
+			return true
+		}
+	}
+	return false
 }
 
 // ── 小工具 ──────────────────────────────────────────────────────────────

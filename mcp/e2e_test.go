@@ -104,9 +104,10 @@ func drainObservations() {
 
 // upstreamRecorder 记录 mock 上游收到的请求体，供断言「发出去的到底是什么」。
 type upstreamRecorder struct {
-	mu    sync.Mutex
-	image map[string]any
-	video map[string]any
+	mu      sync.Mutex
+	image   map[string]any
+	video   map[string]any
+	queries atomic.Int64
 }
 
 func (r *upstreamRecorder) imagePayload() map[string]any {
@@ -150,6 +151,7 @@ func mockUpstream(t *testing.T) *upstreamRecorder {
 		fmt.Fprint(w, `{"task_id":"upstream-task-1","status":"queued"}`)
 	})
 	mux.HandleFunc("/v1/contents/generations/tasks/upstream-task-1", func(w http.ResponseWriter, r *http.Request) {
+		rec.queries.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"task_id":"upstream-task-1","status":"succeeded","url":"https://example.test/v.mp4","format":"mp4"}`)
 	})
@@ -695,10 +697,8 @@ func TestTaskGetReadsWrappedGatewayResponse(t *testing.T) {
 	if u := fmt.Sprint(outs[0].(map[string]any)["url"]); u != "https://example.test/v.mp4" {
 		t.Fatalf("产物应取自 result_url，实际 %q", u)
 	}
-	// data.data 是上游原始响应，解包不能解第二层：那会把 queued 当最终状态
-	if up, _ := done["upstream"].(map[string]any); up["status"] != "SUCCESS" {
-		t.Fatalf("upstream 应是解包后的网关记录，实际 %v", up["status"])
-	}
+	// data.data 是上游原始响应，解包不能解第二层：那会把 queued 当最终状态。
+	// 上面 status 必须是 completed —— 多解一层就会读到 data.data.status=queued 变成 working。
 
 	bad := callTool(t, server.URL, "sk-test", "task.get", map[string]any{"task_id": sign("task-bad")})
 	if bad["status"] != "failed" {
