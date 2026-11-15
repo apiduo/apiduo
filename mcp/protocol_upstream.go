@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -67,8 +68,10 @@ func newUpClient() *upClient {
 	return &upClient{
 		baseURL: strings.TrimRight(base, "/"),
 		hc: &http.Client{
-			// 图片/视频生成是慢操作；更长的场景走异步任务，不要调大这个值。
-			Timeout: 5 * time.Minute,
+			// 线上真实数据：qwen n=4 的一次同步生成用了 5 分钟以上，300s 超时
+			// 恰好在响应到达前触发 —— 上游照常完成并计费 20000，产物 URL 全丢。
+			// 8 分钟覆盖已观测到的最慢同步批量；再长的场景本应走异步任务。
+			Timeout: 8 * time.Minute,
 			Transport: &http.Transport{
 				MaxIdleConns:        64,
 				MaxIdleConnsPerHost: 32,
@@ -111,7 +114,7 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return nil, "", fmt.Errorf("请求上游失败: %w", redactErr(err, apiKey))
+		return nil, "", c.wrapNetErr(err, apiKey)
 	}
 	defer resp.Body.Close()
 	relayRequestId := resp.Header.Get(common.RequestIdKey)
@@ -132,6 +135,49 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 	up.Code = redact(up.Code, apiKey)
 	up.Method, up.Path = method, path
 	return nil, relayRequestId, up
+}
+
+// errUpstreamTimeout 标记「等上游超时」，与普通网络错误分开归类。
+type errUpstreamTimeout struct{ Msg string }
+
+func (e *errUpstreamTimeout) Error() string { return e.Msg }
+
+// wrapNetErr 把网络层错误变成可以直接给 agent 看的一段话。
+//
+// 两件事必须做：
+//  1. 抹掉 api_key（上游可能在错误里回显）；
+//  2. 抹掉内网地址。原始报错是 `Post "http://127.0.0.1:3000/v1/images/generations"`，
+//     这个地址对调用方毫无意义，却把部署结构暴露给了外部。
+func (c *upClient) wrapNetErr(err error, apiKey string) error {
+	msg := redact(err.Error(), apiKey)
+	if host := c.schemeHost(); host != "" {
+		msg = strings.ReplaceAll(msg, host, "")
+	}
+	if isTimeoutErr(err) {
+		return &errUpstreamTimeout{Msg: "请求上游超时: " + msg}
+	}
+	return fmt.Errorf("请求上游失败: %w", errors.New(msg))
+}
+
+// schemeHost 返回 baseURL 的 scheme://host，用于从错误文本里抹掉。
+func (c *upClient) schemeHost() string {
+	i := strings.Index(c.baseURL, "://")
+	if i < 0 {
+		return ""
+	}
+	rest := c.baseURL[i+3:]
+	if j := strings.IndexByte(rest, '/'); j >= 0 {
+		rest = rest[:j]
+	}
+	return c.baseURL[:i+3] + rest
+}
+
+func isTimeoutErr(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 func (c *upClient) listModels(ctx context.Context, apiKey string) ([]map[string]any, error) {

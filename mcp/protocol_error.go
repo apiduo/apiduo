@@ -50,7 +50,10 @@ const (
 	CodeIdempotencyKeyReused = "IDEMPOTENCY_KEY_REUSED"
 	CodeReplayUnavailable    = "REPLAY_UNAVAILABLE"
 	CodeUpstreamError        = "UPSTREAM_ERROR"
-	CodeInternal             = "INTERNAL_ERROR"
+	// CodeUpstreamTimeout：同步生成超时。上游往往仍在继续并最终计费，
+	// 所以不能标可重试 —— 重试很可能就是第二次扣费。
+	CodeUpstreamTimeout = "UPSTREAM_TIMEOUT"
+	CodeInternal        = "INTERNAL_ERROR"
 )
 
 // paramError 是「本地能判定、不需要问上游」的错误。
@@ -112,6 +115,18 @@ func classifyToolError(modelId string, err error) *toolError {
 			Retryable:   false,
 			RetryAction: "none",
 			Hint:        "未匹配到重试规则，按不可重试处理",
+		}
+	}
+	// 超时要单列：这类失败最常见的结果不是「没生成」，而是「已经生成并计费，
+	// 只是响应没等到」。标可重试 = 诱导调用方再付一次钱。
+	var ut *errUpstreamTimeout
+	if errors.As(err, &ut) {
+		return &toolError{
+			Code:        CodeUpstreamTimeout,
+			Message:     ut.Error(),
+			Retryable:   false,
+			RetryAction: "check_console",
+			Hint:        "同步生成已超时。上游通常仍在继续，可能已生成并计费；先到控制台任务页/账单确认，不要直接重试，否则可能重复扣费",
 		}
 	}
 	return &toolError{

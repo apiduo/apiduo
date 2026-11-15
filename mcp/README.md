@@ -157,7 +157,7 @@ curl -sS --noproxy '*' -X PUT \
 6. **观察只记结构性参数**：`size` / `duration` / `n` / 参考图张数。
    提示词内容与图片 URL 一个字都不落盘。
 7. **观察写入不阻塞调用**：队列满就丢样本。丢一条观察数据可以接受，卡住生成请求不行。
-8. **错误必须可分类**：本地校验给稳定码（`PARAM_OUT_OF_RANGE` / `PARAM_INVALID` / `MODEL_NOT_FOUND` / `TASK_ID_INVALID` / `TASK_ID_EXPIRED` / `TASK_FAILED` / `RATE_LIMITED` / `REQUEST_IN_FLIGHT` / `REPLAY_UNAVAILABLE` / `IDEMPOTENCY_KEY_REUSED` …），
+8. **错误必须可分类**：本地校验给稳定码（`PARAM_OUT_OF_RANGE` / `PARAM_INVALID` / `MODEL_NOT_FOUND` / `TASK_ID_INVALID` / `TASK_ID_EXPIRED` / `TASK_FAILED` / `RATE_LIMITED` / `REQUEST_IN_FLIGHT` / `REPLAY_UNAVAILABLE` / `IDEMPOTENCY_KEY_REUSED` / `UPSTREAM_TIMEOUT` …），
    上游错误查 `mcp_error_rules` 翻译成 `retryable` / `retry_action` / `hint`。
    agent 靠这三个字段决定「重发、改参数还是充值」；纯文本它只能猜，猜错要计费。
 9. **产物地址必须进 text content**：多数 MCP 客户端只渲染 text，`structuredContent`
@@ -181,7 +181,11 @@ curl -sS --noproxy '*' -X PUT \
 15. **`models.list` 有目录版本与限流**：`catalog_version` 取每行 `version` 的哈希
     （新增/改字段/删除都会变），随 text 一起下发；每令牌 60 次/分钟。
     不要改成 `max(version)` —— 删行时它不变，缓存会永久陈旧。
-16. **生成支持 `client_request_id` 幂等**：同一 `(token, tool, id)` 先占位再出站，
+16. **同步生成有 8 分钟硬超时，超时不可重试**：上游通常在超时后仍会完成并计费
+    （线上实测 qwen n=4 超时 300s 时已扣 20000，产物 URL 全丢）。因此
+    `UPSTREAM_TIMEOUT` 的 `retryable=false`、`retry_action=check_console`，
+    并明确提示先查账单。批量出图的失败代价与 `n` 成正比，别把它设成自动重试。
+17. **生成支持 `client_request_id` 幂等**：同一 `(token, tool, id)` 先占位再出站，
     成功回填结果、失败释放；重放直接返回首次结果并在 text 里标注「未重复生成」，
     `structuredContent.replayed=true`（只看结构化字段的客户端也能分辨）。
     占位超过 10 分钟视为首次进程已死，允许接管。
