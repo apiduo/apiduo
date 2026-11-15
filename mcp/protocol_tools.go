@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -483,16 +485,35 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	}
 
 	started := time.Now()
-	resp, relayRequestId, err := d.up.generate(ctx, key, t, payload)
+	var (
+		resp           map[string]any
+		relayRequestId string
+		out            []outputItem
+		partialFailed  int
+		partialErr     string
+	)
+	if parts := fanoutCount(m, kind, payload); parts > 1 {
+		out, partialFailed, partialErr, err = d.generateParts(ctx, key, t, payload, parts)
+	} else {
+		resp, relayRequestId, err = d.up.generate(ctx, key, t, payload)
+		if err == nil {
+			out = parseOutputs(resp)
+		}
+	}
 
 	// 观察埋点：无论成败都记一条，失败的样本比成功的更值钱。
 	// 只记结构性参数，提示词内容一个字都不落盘。
+	// 拆单时没有单一 relay 请求号，RelayRequestId 留空；部分失败记在 ErrorMsg 里。
+	obsErr := errText(err)
+	if obsErr == "" {
+		obsErr = partialErr
+	}
 	observeCall(ctx, callObservation{
 		Tool:           kind + ".generate",
 		ModelID:        m.ID,
 		Params:         snapshotParams(payload),
 		OK:             err == nil,
-		ErrorMsg:       errText(err),
+		ErrorMsg:       obsErr,
 		RelayRequestId: relayRequestId,
 		Latency:        time.Since(started),
 	})
@@ -541,13 +562,18 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		return textResult(text), out, nil
 	}
 
-	out := parseOutputs(resp)
 	if len(out) == 0 {
 		// 上游没给可用产物：如实说明，不要伪造成功。
 		// 不带键时可以退避重试一次（同参数、不同上游实例，往往就过了）。
+		msg := "上游未返回图片/视频数据"
+		if resp != nil {
+			msg += "：" + brief(resp)
+		} else if partialErr != "" {
+			msg += "：" + partialErr
+		}
 		te := &toolError{
 			Code:         CodeUpstreamError,
-			Message:      "上游未返回图片/视频数据：" + brief(resp),
+			Message:      msg,
 			Retryable:    true,
 			RetryAction:  "wait",
 			RetryAfterMS: 5000,
@@ -572,6 +598,9 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		}
 	}
 	summary := appendOutputLinks(fmt.Sprintf("生成完成（模型 %s），共 %d 个产物", m.ID, len(out)), out)
+	if partialFailed > 0 {
+		summary += fmt.Sprintf("（另有 %d 张失败：%s）", partialFailed, clipRunes(partialErr, 120))
+	}
 	if strings.TrimSpace(in.Model) == "" {
 		// The panel and the log page are searched by model name. Silently
 		// defaulting to the first enabled model produced a real support case:
@@ -592,6 +621,88 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		completeIdempotency(caller.TokenId, kind, in.ClientRequestID, summary, final)
 	}
 	return textResult(summary), final, nil
+}
+
+// fanoutCount 决定这次要并发出几个单张请求。
+//
+// 上游的 n 是串行生成的：qwen n=1 约 85 秒、n=2 约 154 秒、n=4 约 349 秒，
+// 近似线性 —— 一次调用必然先撞客户端超时。所以 MCP 不把 n 交给上游，而是自己
+// 拆成 n 个单张并发：实测两个单张并发 85.7 秒完成（不是 170 秒）。
+//
+// 只对图片生效：视频一次一任务，n 没有意义。
+func fanoutCount(m modelView, kind string, payload map[string]any) int {
+	if kind != "image" {
+		return 1
+	}
+	n, ok := toFloat(payload["n"])
+	if !ok || n < 2 {
+		return 1
+	}
+	// 声明的最小值大于 1 时不能拆：单张请求会违反模型自己的约束。
+	if spec, ok := m.Params["n"]; ok && spec.Min != nil && *spec.Min > 1 {
+		return 1
+	}
+	return min(int(n), maxBatchN)
+}
+
+// generateParts 并发发起 n 个单张请求，按顺序聚合产物。
+//
+// 部分失败时把已经生成的图交出去（钱已经花了，丢掉更亏），失败数量与原因
+// 由调用方写进 text。全部失败才返回错误，交给 classifyToolError 归类。
+func (d *toolDeps) generateParts(ctx context.Context, key string, t transport, payload map[string]any, n int) (out []outputItem, failed int, firstErr string, err error) {
+	// 每个分片显式传 n=1。不省略这个键：多数上游的 n 默认就是 1，但显式写出来
+	// 才不会依赖各家默认值；省略只是少一个字段，不解决「上游可能自己再串行」的问题。
+	base := make(map[string]any, len(payload))
+	maps.Copy(base, payload)
+	base["n"] = 1
+
+	type part struct {
+		items []outputItem
+		err   error
+	}
+	parts := make([]part, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			resp, _, e := d.up.generate(ctx, key, t, base)
+			if e != nil {
+				parts[i].err = e
+				return
+			}
+			parts[i].items = parseOutputs(resp)
+		}(i)
+	}
+	wg.Wait()
+
+	hardErr := 0
+	var firstHardErr error
+	for i := range parts {
+		p := &parts[i]
+		switch {
+		case p.err != nil:
+			failed++
+			hardErr++
+			if firstHardErr == nil {
+				firstHardErr = p.err
+			}
+			if firstErr == "" {
+				firstErr = errText(p.err)
+			}
+		case len(p.items) == 0:
+			failed++
+			if firstErr == "" {
+				firstErr = "上游返回成功但没有产物"
+			}
+		default:
+			out = append(out, p.items...)
+		}
+	}
+	if len(out) == 0 && hardErr == n {
+		return nil, failed, firstErr, firstHardErr
+	}
+	return out, failed, firstErr, nil
 }
 
 // buildPayload 把 MCP 入参翻译成 apiduo /v1 的通用请求体。

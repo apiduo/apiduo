@@ -104,10 +104,11 @@ func drainObservations() {
 
 // upstreamRecorder 记录 mock 上游收到的请求体，供断言「发出去的到底是什么」。
 type upstreamRecorder struct {
-	mu      sync.Mutex
-	image   map[string]any
-	video   map[string]any
-	queries atomic.Int64
+	mu         sync.Mutex
+	image      map[string]any
+	video      map[string]any
+	queries    atomic.Int64
+	imageCalls atomic.Int64
 }
 
 func (r *upstreamRecorder) imagePayload() map[string]any {
@@ -131,6 +132,7 @@ func mockUpstream(t *testing.T) *upstreamRecorder {
 	mux.HandleFunc("/v1/images/generations", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		rec.imageCalls.Add(1)
 		rec.mu.Lock()
 		rec.image = body
 		rec.mu.Unlock()

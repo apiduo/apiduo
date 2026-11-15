@@ -83,12 +83,16 @@ func TestBatchNExtraWithinLimitPasses(t *testing.T) {
 		"model": "loose-image", "prompt": "a cat",
 		"extra": map[string]any{"n": 4},
 	})
+	// n 不再整批透传：拆成 4 个单张并发，每个分片显式 n=1。
+	if got := rec.imageCalls.Load(); got != 4 {
+		t.Fatalf("应发出 4 个单张请求，实际 %d 个", got)
+	}
 	payload := rec.imagePayload()
 	if payload == nil {
 		t.Fatal("合规请求应出站")
 	}
-	if got := fmt.Sprint(payload["n"]); got != "4" {
-		t.Fatalf("n 应透传为 4，实际 %q", got)
+	if got := fmt.Sprint(payload["n"]); got != "1" {
+		t.Fatalf("分片应显式 n=1，实际 %v", payload["n"])
 	}
 }
 
