@@ -159,6 +159,9 @@ curl -sS --noproxy '*' -X PUT \
 7. **观察写入不阻塞调用**：队列满就丢样本。丢一条观察数据可以接受，卡住生成请求不行。
 8. **错误必须可分类**：本地校验给稳定码（`PARAM_OUT_OF_RANGE` / `PARAM_INVALID` / `MODEL_NOT_FOUND` / `TASK_ID_INVALID` / `TASK_ID_EXPIRED` / `TASK_FAILED` / `RATE_LIMITED` / `REQUEST_IN_FLIGHT` / `REPLAY_UNAVAILABLE` / `IDEMPOTENCY_KEY_REUSED` / `UPSTREAM_TIMEOUT` …），
    上游错误查 `mcp_error_rules` 翻译成 `retryable` / `retry_action` / `hint`。
+   `retry_action` 的取值是一组封闭动词：`none` / `wait`（看 `retry_after_ms`）/
+   `change_param` / `change_prompt` / `call_models_list` / `check_console`。
+   最后一个专给超时：先确认是否已经计费，再决定要不要重发。
    agent 靠这三个字段决定「重发、改参数还是充值」；纯文本它只能猜，猜错要计费。
 9. **产物地址必须进 text content**：多数 MCP 客户端只渲染 text，`structuredContent`
    里的 URL 它们看不见。只给结构化输出会出现「agent 说生成了、用户拿不到图」。
