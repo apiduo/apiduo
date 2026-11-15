@@ -153,7 +153,7 @@ func Migrate() error {
 	if model.DB == nil {
 		return errors.New("主库未初始化")
 	}
-	if err := model.DB.AutoMigrate(&ModelProfile{}, &ErrorRule{}); err != nil {
+	if err := model.DB.AutoMigrate(&ModelProfile{}, &ErrorRule{}, &IdempotencyRecord{}); err != nil {
 		return err
 	}
 	// 升级前的行 version 是 0，而 upsert 里 0 表示「要求这条不存在」。
@@ -249,6 +249,7 @@ func createProfile(p *ModelProfile) error {
 		}
 		return err
 	}
+	invalidateCatalog()
 	return nil
 }
 
@@ -312,6 +313,7 @@ func writeProfileColumns(p *ModelProfile, expectedVersion *int64) error {
 		}
 		return ErrProfileNotFound
 	}
+	invalidateCatalog()
 	return nil
 }
 
@@ -572,12 +574,17 @@ func SetProfileEnabled(id int64, enabled bool) error {
 	if res.RowsAffected == 0 {
 		return ErrProfileNotFound
 	}
+	invalidateCatalog()
 	return nil
 }
 
 // DeleteProfile 删除一条声明。
 func DeleteProfile(id int64) error {
-	return model.DB.Delete(&ModelProfile{}, id).Error
+	if err := model.DB.Delete(&ModelProfile{}, id).Error; err != nil {
+		return err
+	}
+	invalidateCatalog()
+	return nil
 }
 
 // ListErrorRules 返回全局规则 + 指定模型的覆盖规则。modelId 为空时只返回全局。

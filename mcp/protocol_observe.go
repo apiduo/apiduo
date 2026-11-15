@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -84,6 +85,13 @@ var observableParams = map[string]bool{
 
 var observeQueue = make(chan callObservation, 1024)
 
+// observePending 是「已入队、尚未写完」的样本数。
+//
+// 唯一读者是测试：换掉全局 LOG_DB 之前要等它归零，否则单写协程还在读旧库，
+// -race 会把「测试替换全局变量」报成数据竞争。生产里 LOG_DB 只在启动时赋值
+// 一次，这个计数没有实际作用，两个原子操作也不值得为它改设计。
+var observePending atomic.Int64
+
 var observeOnce sync.Once
 
 // startObserver 启动单写协程。
@@ -96,6 +104,7 @@ func startObserver() {
 		go func() {
 			for o := range observeQueue {
 				writeObservation(o)
+				observePending.Add(-1)
 			}
 		}()
 	})
@@ -109,10 +118,12 @@ func observeCall(ctx context.Context, o callObservation) {
 	caller := callerFrom(ctx)
 	o.UserId, o.Username, o.TokenId = caller.UserId, caller.Username, caller.TokenId
 	startObserver()
+	observePending.Add(1)
 	select {
 	case observeQueue <- o:
 	default:
 		// 队列满：丢样本。这里绝不能阻塞或 panic —— 观察是旁路，不是主链路。
+		observePending.Add(-1)
 	}
 }
 

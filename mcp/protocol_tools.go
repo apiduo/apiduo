@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -24,7 +25,8 @@ type toolDeps struct {
 
 func registerTools(s *mcpsdk.Server, d *toolDeps) {
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
-		Name: "models.list",
+		Name:  "models.list",
+		Title: "列出可用模型",
 		Description: "列出已注册且启用的模型及其能力（kind / execution / input / parameters）。" +
 			"调用生成类工具前若不确定有哪些模型、参数取什么值，先查这里。" +
 			"未出现在列表里的模型都不可调用。",
@@ -32,6 +34,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
 		Name:        "image.generate",
+		Title:       "生成图片",
 		InputSchema: generateInputSchema(),
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
 			"model 可以不传，会用默认模型并在返回里说明是哪个；要指定就先调 models.list 看可选值，" +
@@ -44,6 +47,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
 		Name:        "video.generate",
+		Title:       "生成视频",
 		InputSchema: generateInputSchema(),
 		Description: "生成视频。语义与 image.generate 相同，产物是视频；传 reference_images 可做图生视频。" +
 			"model 可以不传，会用默认模型并在返回里说明；要指定就先调 models.list 挑，不要凭模型名猜。" +
@@ -55,7 +59,8 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 	}, d.generateVideo)
 
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
-		Name: "task.get",
+		Name:  "task.get",
+		Title: "查询任务状态",
 		Description: "查询异步任务状态。task_id 由 video.generate 返回，自包含签名，任何副本都能处理。" +
 			"status=working 时按 poll_after_ms 再查；status=failed 时不要用同样参数重试。",
 	}, d.getTask)
@@ -70,30 +75,63 @@ type listInput struct {
 type listOutput struct {
 	Models []map[string]any `json:"models"`
 	Count  int              `json:"count"`
-	Note   string           `json:"note,omitempty"`
+	// CatalogVersion 是这份清单的目录版本：声明一改就变。
+	// agent 可以把上一次拿到的值记下来，下次调用对不上时主动重拉。
+	CatalogVersion string     `json:"catalog_version,omitempty"`
+	Note           string     `json:"note,omitempty"`
+	Error          *toolError `json:"error,omitempty"`
 }
 
 func (d *toolDeps) listModels(ctx context.Context, _ *mcpsdk.CallToolRequest, in listInput) (*mcpsdk.CallToolResult, listOutput, error) {
-	views, err := listEnabledViews()
+	caller := callerFrom(ctx)
+	// models.list 不走 relay，既没有额度也没有 relay 的限流，是唯一能被脚本打满的入口。
+	if wait, ok := allowCatalogList(caller.TokenId); !ok {
+		ms := int(wait.Milliseconds())
+		if ms < 1000 {
+			ms = 1000
+		}
+		return failList(&toolError{
+			Code:         CodeRateLimited,
+			Message:      fmt.Sprintf("models.list 调用过于频繁，%d 秒后再试", (ms+999)/1000),
+			Retryable:    true,
+			RetryAction:  "wait",
+			RetryAfterMS: ms,
+			Hint:         "能力清单变化不频繁，不需要高频轮询",
+		})
+	}
+
+	snap, err := loadCatalog()
 	if err != nil {
 		return nil, listOutput{}, err
 	}
 	kind := strings.ToLower(strings.TrimSpace(in.Kind))
-	out := make([]map[string]any, 0, len(views))
-	for _, v := range views {
+	out := make([]map[string]any, 0, len(snap.views))
+	for _, v := range snap.views {
 		if kind != "" && v.Kind != kind {
 			continue
 		}
 		out = append(out, v.card())
 	}
-	res := listOutput{Models: out, Count: len(out)}
+	res := listOutput{Models: out, Count: len(out), CatalogVersion: snap.version}
 	if len(out) == 0 {
 		// 空列表最常见的两种原因是「没注册」和「注册了但停用」，直接说清楚，
 		// 免得 agent 反复调用同一个工具试探。
 		res.Note = "没有匹配的已启用模型。请到 apiduo 的「MCP 能力注册」里添加并启用模型。"
 		return textResult(res.Note), res, nil
 	}
-	return textResult(modelsSummary(out)), res, nil
+	// 版本进 text 而不是只放 structuredContent：模型下一轮看的是文本，
+	// 它得能发现「这次的清单和上次不一样」。
+	return textResult(modelsSummary(out) + "\n清单版本 " + snap.version), res, nil
+}
+
+// failList 把 listModels 的失败包成结构化错误。
+func failList(te *toolError) (*mcpsdk.CallToolResult, listOutput, error) {
+	out := listOutput{Error: te}
+	res := &mcpsdk.CallToolResult{IsError: true}
+	if te != nil {
+		res.Content = []mcpsdk.Content{&mcpsdk.TextContent{Text: te.Message}}
+	}
+	return res, out, nil
 }
 
 // defaultedModelNote 说明本次用了哪个默认模型、还有哪些可选。
@@ -245,6 +283,7 @@ func absorbUndeclaredParams(req *mcpsdk.CallToolRequest, in *generateInput) {
 	declared := map[string]bool{
 		"prompt": true, "model": true, "reference_images": true,
 		"size": true, "n": true, "quality": true, "extra": true,
+		"client_request_id": true,
 	}
 	for key, value := range raw {
 		if declared[key] {
@@ -281,12 +320,15 @@ type generateInput struct {
 	// 不标 required：方舟形状的 content 数组是 prompt 的另一种说法，
 	// SDK 在 schema 阶段拦住缺 prompt 的请求，absorbArkContent 就没机会跑了。
 	// 空提示词改在 buildPayload 之后统一校验，那时 content 已经拆完。
-	Prompt          string         `json:"prompt,omitempty" jsonschema:"提示词，描述想要的内容。与 content 二选一"`
-	Model           string         `json:"model,omitempty" jsonschema:"模型 id。不传用默认模型（返回里会说明）；取值来自 models.list"`
-	ReferenceImages any            `json:"reference_images,omitempty" jsonschema:"参考图 URL，单个字符串或字符串数组。传了就由图生图/图生视频"`
-	Size            string         `json:"size,omitempty" jsonschema:"尺寸。取值见该模型 parameters.size 的 enum 或 note；都没写时传 WxH，如 1024x1024"`
-	N               *int           `json:"n,omitempty" jsonschema:"生成数量，上限由模型声明约束"`
-	Quality         string         `json:"quality,omitempty" jsonschema:"质量档位。取值见该模型 parameters.quality 的 enum 或 note；没写就不传"`
+	Prompt          string `json:"prompt,omitempty" jsonschema:"提示词，描述想要的内容。与 content 二选一"`
+	Model           string `json:"model,omitempty" jsonschema:"模型 id。不传用默认模型（返回里会说明）；取值来自 models.list"`
+	ReferenceImages any    `json:"reference_images,omitempty" jsonschema:"参考图 URL，单个字符串或字符串数组。传了就由图生图/图生视频"`
+	Size            string `json:"size,omitempty" jsonschema:"尺寸。取值见该模型 parameters.size 的 enum 或 note；都没写时传 WxH，如 1024x1024"`
+	N               *int   `json:"n,omitempty" jsonschema:"生成数量，上限由模型声明约束"`
+	Quality         string `json:"quality,omitempty" jsonschema:"质量档位。取值见该模型 parameters.quality 的 enum 或 note；没写就不传"`
+	// ClientRequestID 是调用方的幂等键：同一个值重发不会重复生成，
+	// 直接返回首次结果（1–64 字符）。
+	ClientRequestID string         `json:"client_request_id,omitempty" jsonschema:"幂等键，1–64 字符。同一键重发直接返回首次结果，不会重复生成"`
 	Extra           map[string]any `json:"extra,omitempty" jsonschema:"该模型声明的其他参数，键必须在 models.list 里存在"`
 }
 
@@ -336,10 +378,11 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		return d.fail(in.Model, userParamErrorf(CodePromptRequired, "prompt 不能为空"))
 	}
 
-	views, err := listEnabledViews()
+	snap, err := loadCatalog()
 	if err != nil {
 		return nil, generateOutput{}, err
 	}
+	views := snap.views
 	m, err := pickView(views, kind, in.Model)
 	if err != nil {
 		return d.fail(in.Model, err)
@@ -359,6 +402,40 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		// 这里没有出站，Latency 记 0；只记结构性参数，提示词不进快照。
 		observeCall(ctx, callObservation{Tool: kind + ".generate", ModelID: m.ID, Params: snapshotInput(in, refs), ErrorMsg: errText(err)})
 		return d.fail(m.ID, err)
+	}
+
+	// 幂等占位放在本地校验之后、出站之前：参数错的请求不该占用调用方的键，
+	// 而占位之后就不能再让第二个同键请求打到上游。
+	if in.ClientRequestID != "" {
+		if err := validateClientRequestID(in.ClientRequestID); err != nil {
+			return d.fail(m.ID, err)
+		}
+		replay, reserveErr := reserveIdempotency(caller.TokenId, kind, in.ClientRequestID)
+		switch {
+		case reserveErr == nil && replay != nil:
+			return textResult(replayText(replay)), replay.Output, nil
+		case reserveErr == nil:
+			// 首次调用，继续往下走。
+		case errors.Is(reserveErr, errIdempotencyInFlight):
+			return d.failWith(m.ID, &toolError{
+				Code:         CodeRequestInFlight,
+				Message:      "同一 client_request_id 的请求还在处理中",
+				Retryable:    true,
+				RetryAction:  "wait",
+				RetryAfterMS: 2000,
+				Hint:         "不要换一个新的 client_request_id 重发，否则会真的多生成一次",
+			})
+		case errors.Is(reserveErr, errReplayUnavailable):
+			return d.failWith(m.ID, &toolError{
+				Code:        CodeReplayUnavailable,
+				Message:     "首次调用已成功，但结果太大没有缓存，无法重放",
+				Retryable:   false,
+				RetryAction: "none",
+				Hint:        "到控制台任务页取产物；不要重发，会再计费一次",
+			})
+		default:
+			return d.fail(m.ID, reserveErr)
+		}
 	}
 
 	t, err := getTransport(m.Kind)
@@ -382,26 +459,47 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	})
 
 	if err != nil {
+		if in.ClientRequestID != "" {
+			releaseIdempotency(caller.TokenId, kind, in.ClientRequestID)
+		}
 		return d.fail(m.ID, err)
 	}
 
 	if tid, ok := firstString(resp, "task_id", "id"); ok && m.Async {
-		signed := signTaskID(key, taskPayload{
+		signed, signErr := signTaskID(taskPayload{
 			Model:    m.ID,
 			Upstream: tid,
 			Kind:     m.Kind, // 查询端点必须与生成端点同源
-			IssuedAt: time.Now().Unix(),
+			UserId:   caller.UserId,
 		})
-		return textResult("已提交（模型 " + m.ID + "），任务 " + signed + " 进行中"), generateOutput{
+		if signErr != nil {
+			// 上游已经受理并计费，但句柄签不出来：如实说，别假装成功。
+			text := "任务已提交但签发 task_id 失败: " + signErr.Error()
+			if in.ClientRequestID != "" {
+				// 记为 done 而不是释放：重试会再计费一次，宁可在重放时说明签不出句柄。
+				completeIdempotency(caller.TokenId, kind, in.ClientRequestID, text,
+					generateOutput{Status: "failed", Model: m.ID, Error: classifyToolError(m.ID, signErr)})
+			}
+			return d.fail(m.ID, fmt.Errorf("任务已提交但签发 task_id 失败: %w", signErr))
+		}
+		text := "已提交（模型 " + m.ID + "），任务 " + signed + " 进行中"
+		out := generateOutput{
 			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfterMS,
 			Upstream: resp, ModelDefaulted: strings.TrimSpace(in.Model) == "",
-		}, nil
+		}
+		if in.ClientRequestID != "" {
+			completeIdempotency(caller.TokenId, kind, in.ClientRequestID, text, out)
+		}
+		return textResult(text), out, nil
 	}
 
 	out := parseOutputs(resp)
 	if len(out) == 0 {
 		// 上游没给可用产物：如实说明，不要伪造成功。
 		// 这类失败重发一次往往就过了（同参数、不同上游实例），所以标可重试。
+		if in.ClientRequestID != "" {
+			releaseIdempotency(caller.TokenId, kind, in.ClientRequestID)
+		}
 		return d.failWith(m.ID, &toolError{
 			Code:         CodeUpstreamError,
 			Message:      "上游未返回图片/视频数据：" + brief(resp),
@@ -430,10 +528,14 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		// 明确告诉调用方「图在 b64_json 里」，否则它会去找 url 找不到。
 		summary += fmt.Sprintf("（其中 %d 个以 base64 内联返回，字段 b64_json）", inline)
 	}
-	return textResult(summary), generateOutput{
+	final := generateOutput{
 		Status: "completed", Model: m.ID, Outputs: out, Usage: usageOf(resp),
 		Upstream: resp, ModelDefaulted: strings.TrimSpace(in.Model) == "",
-	}, nil
+	}
+	if in.ClientRequestID != "" {
+		completeIdempotency(caller.TokenId, kind, in.ClientRequestID, summary, final)
+	}
+	return textResult(summary), final, nil
 }
 
 // buildPayload 把 MCP 入参翻译成 apiduo /v1 的通用请求体。
@@ -509,16 +611,8 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		}
 	}
 	if in.N != nil {
-		if *in.N < 1 {
-			return nil, userParamErrorf(CodeParamOutOfRange, "n 必须 ≥ 1，收到 %d", *in.N)
-		}
-		if err := checkRange(m, "n", float64(*in.N)); err != nil {
+		if err := checkBatchN(m, float64(*in.N)); err != nil {
 			return nil, err
-		}
-		if _, declared := m.Params["n"]; !declared && *in.N > maxBatchN {
-			// 没声明上限时的兜底：上游常常只认 n、不给 max，
-			// 一次 n=1000 就能把额度打光。「没配置」不该等价于「没有上限」。
-			return nil, userParamErrorf(CodeParamOutOfRange, "模型 %s 未声明 n 的上限，单次最多 %d；要更多请分多次调用", m.ID, maxBatchN)
 		}
 		if !isVideo {
 			p["n"] = *in.N
@@ -530,6 +624,17 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 		}
 		if err := checkExtra(m, k, v); err != nil {
 			return nil, err
+		}
+		if k == "n" {
+			// n 是直接乘价格的参数：extra 通道必须和顶层走同一条判定，
+			// 否则 extra.n 能绕过 ≥1 与 maxBatchN（只被 relay 的 128 截住）。
+			n, numeric := toFloat(v)
+			if !numeric {
+				return nil, userParamErrorf(CodeParamOutOfRange, "n 必须是数字，收到 %v", v)
+			}
+			if err := checkBatchN(m, n); err != nil {
+				return nil, err
+			}
 		}
 		p[k] = v
 	}
@@ -552,6 +657,21 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 
 // maxBatchN 是「模型没声明 n 上限」时的兜底数量。
 const maxBatchN = 8
+
+// checkBatchN 是 n 的唯一判定点。
+//
+// 顶层字段与 extra 两条通道都收敛到这里：只在顶层拦，extra.n 就能绕过；
+// 只在 extra 拦，顶层又会漏。「没配置上限」不该等价于「没有上限」。
+func checkBatchN(m modelView, n float64) error {
+	if n < 1 {
+		return userParamErrorf(CodeParamOutOfRange, "n 必须 ≥ 1，收到 %g", n)
+	}
+	if _, declared := m.Params["n"]; !declared && n > maxBatchN {
+		return userParamErrorf(CodeParamOutOfRange,
+			"模型 %s 未声明 n 的上限，单次最多 %d；要更多请分多次调用", m.ID, maxBatchN)
+	}
+	return checkRange(m, "n", n)
+}
 
 // standardParams 是跨厂商通用的参数名。模型声明缺失时这几个仍允许透传，
 // 否则 size/n 这类标准参数会被白名单误杀，模型直接不可用。
@@ -664,28 +784,40 @@ type taskInput struct {
 }
 
 type taskOutput struct {
-	Status   string         `json:"status"` // working | completed | failed
-	TaskID   string         `json:"task_id"`
-	Model    string         `json:"model"`
-	Outputs  []outputItem   `json:"outputs,omitempty"`
-	Error    string         `json:"error,omitempty"`
+	Status  string       `json:"status"` // working | completed | failed
+	TaskID  string       `json:"task_id"`
+	Model   string       `json:"model"`
+	Outputs []outputItem `json:"outputs,omitempty"`
+	// Error 与 generateOutput 同形：agent 靠 code / retryable 决定下一步，
+	// 纯字符串它只能读中文猜。
+	Error    *toolError     `json:"error,omitempty"`
 	PollMS   int            `json:"poll_after_ms,omitempty"`
 	Upstream map[string]any `json:"upstream,omitempty"`
 }
 
 func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in taskInput) (*mcpsdk.CallToolResult, taskOutput, error) {
 	key := apiKeyFrom(ctx)
-	p, err := parseTaskID(key, in.TaskID)
+	caller := callerFrom(ctx)
+	p, err := parseTaskID(in.TaskID, caller.UserId)
 	if err != nil {
-		return nil, taskOutput{}, fmt.Errorf("task_id 无效或已过期（换过 api_key？）")
+		switch {
+		case errors.Is(err, errTaskIDExpired):
+			return d.failTask("", in.TaskID, userParamErrorf(CodeTaskIDExpired,
+				"task_id 已过期（有效期 %d 天）；结果可在控制台任务页查看", int(taskIDTTL.Hours()/24)))
+		case errors.Is(err, errTaskIDForeign):
+			return d.failTask("", in.TaskID, userParamErrorf(CodeTaskIDInvalid, "task_id 不属于当前用户"))
+		default:
+			return d.failTask("", in.TaskID, userParamErrorf(CodeTaskIDInvalid, "task_id 无效或已损坏，需重新生成"))
+		}
 	}
 	t, err := getTransport(p.Kind)
 	if err != nil {
-		return nil, taskOutput{}, err
+		// 类型来自签名内容，能到这里说明句柄不是本服务签的（或签的时候还没有这个类型）。
+		return d.failTask(p.Model, in.TaskID, userParamErrorf(CodeTaskIDInvalid, "task_id 记录的产物类型不可用：%s", p.Kind))
 	}
 	raw, err := d.up.getTask(ctx, key, t, p.Upstream)
 	if err != nil {
-		return nil, taskOutput{}, err
+		return d.failTask(p.Model, in.TaskID, err)
 	}
 	// 生成端点回扁平结构，查询端点把记录包在 {code,message,data} 里。
 	// 只认扁平形状的后果很具体：任务状态永远读成 working，
@@ -700,9 +832,80 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	case "working":
 		out.PollMS = pollAfterMS
 	case "failed":
-		out.Error = firstNonEmpty(str(resp, "fail_reason"), str(resp, "error"), str(resp, "message"), "上游任务失败")
+		// 这是「查询成功、任务失败」，不是工具错误：仍回 isError=false，
+		// 但错误体与 generate 一样带 code / retryable，agent 才不用猜。
+		out.Error = &toolError{
+			Code:        CodeTaskFailed,
+			Message:     upstreamFailReason(resp),
+			Retryable:   false,
+			RetryAction: "none",
+			Hint:        "不要用同样参数重试；先确认参数或换模型",
+		}
 	}
-	return textResult("任务状态：" + status), out, nil
+	return textResult(taskSummary(p.Model, status, out)), out, nil
+}
+
+// taskSummary 是 task.get 的 text 出口。
+//
+// 与 generate 同理：多数客户端只渲染 text，产物地址只放 structuredContent
+// 等于「agent 说完成了、用户拿不到链接」。轮询间隔与失败原因也一样 —— 它们
+// 是 agent 下一步动作的依据，不该只存在于结构化字段里。
+func taskSummary(model, status string, out taskOutput) string {
+	switch status {
+	case "completed":
+		if len(out.Outputs) == 0 {
+			// 上游判成功但没给地址：这不是「完成」，如实说清楚，别让 agent 编一个。
+			return fmt.Sprintf("任务完成（%s），但上游没有返回产物地址；可在控制台任务页查看", model)
+		}
+		return appendOutputLinks(fmt.Sprintf("任务完成（%s），共 %d 个产物", model, len(out.Outputs)), out.Outputs)
+	case "failed":
+		// text 是给人看的一行，上游原文可能很长；全文仍在 structuredContent。
+		reason := "上游任务失败"
+		if out.Error != nil && out.Error.Message != "" {
+			reason = out.Error.Message
+		}
+		return fmt.Sprintf("任务失败（%s）：%s", model, clipRunes(reason, 200))
+	case "working":
+		return fmt.Sprintf("任务进行中（%s），约 %d 秒后再查", model, (pollAfterMS+999)/1000)
+	default:
+		return "任务状态：" + status
+	}
+}
+
+// upstreamFailReason 取失败原因，按「网关归一化过的字段优先」排序。
+//
+// 只读字符串字段会漏掉 {"error":{"message":...}} 这种 OpenAI 形状 —— 那是
+// 上游最常见的错误包装，漏了就只能回一句「上游任务失败」，真正原因留在日志里。
+func upstreamFailReason(resp map[string]any) string {
+	if s := str(resp, "fail_reason"); s != "" {
+		return s
+	}
+	if e, ok := resp["error"].(map[string]any); ok {
+		if s := firstNonEmpty(str(e, "message"), str(e, "code")); s != "" {
+			return s
+		}
+	}
+	if s := firstNonEmpty(str(resp, "error"), str(resp, "message")); s != "" {
+		return s
+	}
+	return "上游任务失败"
+}
+
+// failTask 把查询失败包成 isError + 结构化错误。
+//
+// 与 generate 的 fail 同构，但返回 taskOutput：task.get 的 outputSchema 声明了
+// error 字段，只有把 out 一起返回（err 传 nil），SDK 才会写 structuredContent。
+// 之前直接 return err，SDK 只能包成一段纯文本，声明出来的 error 永远拿不到。
+func (d *toolDeps) failTask(modelId, taskID string, err error) (*mcpsdk.CallToolResult, taskOutput, error) {
+	te := classifyToolError(modelId, err)
+	// 回显要截断：非法 task_id 可能是任意长的输入，原样塞回 structuredContent
+	// 等于把响应放大成请求的大小。调用方自己知道发的是什么。
+	out := taskOutput{Status: "failed", TaskID: clipRunes(taskID, 128), Model: modelId, Error: te}
+	res := &mcpsdk.CallToolResult{IsError: true}
+	if te != nil {
+		res.Content = []mcpsdk.Content{&mcpsdk.TextContent{Text: te.Message}}
+	}
+	return res, out, nil
 }
 
 // ── 小工具 ──────────────────────────────────────────────────────────────
@@ -847,37 +1050,52 @@ func parseRefs(v any) ([]string, error) {
 
 // parseOutputs 从上游响应里提取产物地址，兼容几种常见形状。
 func parseOutputs(resp map[string]any) []outputItem {
-	var out []outputItem
+	out := make([]outputItem, 0, 4)
+	// 同一个地址经常从两条路径同时出现：方舟任务的 content.video_url 由网关
+	// 从 result_url 补出来，两边都在时不去重就会把同一个视频报成两个产物 ——
+	// text 里连着两行一样的链接，用户会以为生成了两个。
+	seen := make(map[string]bool, 4)
+	add := func(it outputItem) {
+		key := "u:" + it.URL
+		if it.URL == "" {
+			key = "b:" + it.B64JSON
+		}
+		if key == "u:" || key == "b:" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, it)
+	}
 	for _, item := range toSlice(resp["data"]) {
 		u := str(item, "url")
 		b := str(item, "b64_json")
 		switch {
 		case u != "":
-			out = append(out, outputItem{URL: u, MimeType: str(item, "mime_type")})
+			add(outputItem{URL: u, MimeType: str(item, "mime_type")})
 		case b != "":
-			out = append(out, outputItem{B64JSON: b, MimeType: str(item, "mime_type")})
+			add(outputItem{B64JSON: b, MimeType: str(item, "mime_type")})
 		}
 	}
 	for _, item := range toSlice(resp["outputs"]) {
 		if u := str(item, "url"); u != "" {
-			out = append(out, outputItem{URL: u, MimeType: str(item, "mime_type")})
+			add(outputItem{URL: u, MimeType: str(item, "mime_type")})
 		}
 	}
 	if u := str(resp, "url"); u != "" {
-		out = append(out, outputItem{URL: u})
+		add(outputItem{URL: u})
 	}
 	// apiduo 的视频任务：{url, format}
 	if u := str(resp, "video_url"); u != "" {
-		out = append(out, outputItem{URL: u})
+		add(outputItem{URL: u})
 	}
 	// apiduo 的任务 DTO：result_url 才是最终产物地址
 	if u := str(resp, "result_url"); u != "" {
-		out = append(out, outputItem{URL: u})
+		add(outputItem{URL: u})
 	}
 	// 方舟任务对象：产物在 content.video_url，比上面几个都深一层
 	if c, ok := resp["content"].(map[string]any); ok {
 		if u := str(c, "video_url"); u != "" {
-			out = append(out, outputItem{URL: u})
+			add(outputItem{URL: u})
 		}
 	}
 	return out

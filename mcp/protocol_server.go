@@ -1,15 +1,26 @@
 package mcp
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"sync"
 
+	"github.com/QuantumNous/new-api/common"
+
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// protocolVersion 只用于 initialize 的 serverInfo，不参与协议协商。
-const protocolVersion = "0.1.0"
+// serverVersion 只用于 serverInfo，不参与协议协商。
+//
+// 一定要跟随构建版本：客户端上报的 serverInfo 是排障时唯一能确定「连的是哪个
+// 构建」的字段。写死 0.1.0 时，网关升到 v0.0.141 还报 0.1.0，等于没有信息。
+func serverVersion() string {
+	if v := strings.TrimSpace(common.Version); v != "" {
+		return "mcp/" + v
+	}
+	return "mcp/dev"
+}
 
 // serverInstructions 随 initialize 下发给客户端，被注入模型上下文。
 //
@@ -67,8 +78,23 @@ func protocolHandler() http.Handler {
 	protoOnce.Do(func() {
 		server := mcpsdk.NewServer(&mcpsdk.Implementation{
 			Name:    "apiduo-mcp",
-			Version: protocolVersion,
-		}, &mcpsdk.ServerOptions{Instructions: serverInstructions})
+			Version: serverVersion(),
+		}, &mcpsdk.ServerOptions{
+			Instructions: serverInstructions,
+			// 这个服务端所有「可缓存的结果」都是静态的：工具清单固定 4 个、
+			// 没有 resources、能力声明也不随库变化。给 5 分钟让客户端别每个会话
+			// 都重拉一次；能力清单（models）是工具返回值，不受这里影响。
+			SetCacheable: func(_ context.Context, _ mcpsdk.Request, c *mcpsdk.Cacheable) {
+				c.TTLMs = 5 * 60 * 1000
+				c.CacheScope = "public"
+			},
+			// 显式声明能力，不用 SDK 默认值：默认会带 logging（2026-07-28 已废弃），
+			// 而这个服务端在 JSONResponse 下根本发不出 notifications/message。
+			// 声明一个永远兑现不了的能力，只会让客户端在排障时多走一条死路。
+			Capabilities: &mcpsdk.ServerCapabilities{
+				Tools: &mcpsdk.ToolCapabilities{ListChanged: true},
+			},
+		})
 		registerTools(server, &toolDeps{up: newUpClient()})
 		protoHandler = mcpsdk.NewStreamableHTTPHandler(
 			func(*http.Request) *mcpsdk.Server { return server },

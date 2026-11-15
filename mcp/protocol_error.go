@@ -33,8 +33,18 @@ const (
 	CodeParamOutOfRange      = "PARAM_OUT_OF_RANGE"
 	CodeRefImagesExceed      = "REFERENCE_IMAGES_EXCEEDED"
 	CodeRefImagesUnsupported = "REFERENCE_IMAGES_UNSUPPORTED"
-	CodeUpstreamError        = "UPSTREAM_ERROR"
-	CodeInternal             = "INTERNAL_ERROR"
+	// task.get 专用：句柄本身不可解（伪造、换过 api_key、跨副本密钥不一致）。
+	// 与「任务在上游失败」（CodeTaskFailed）必须分开 —— 前者要重新生成，
+	// 后者只是这次生成没成功，两者的下一步动作不同。
+	CodeTaskIDInvalid = "TASK_ID_INVALID"
+	CodeTaskIDExpired = "TASK_ID_EXPIRED"
+	CodeTaskFailed    = "TASK_FAILED"
+	CodeRateLimited   = "RATE_LIMITED"
+	// 幂等相关：一个是「同键首次还没跑完」，一个是「首次成功但结果太大没缓存」。
+	CodeRequestInFlight   = "REQUEST_IN_FLIGHT"
+	CodeReplayUnavailable = "REPLAY_UNAVAILABLE"
+	CodeUpstreamError     = "UPSTREAM_ERROR"
+	CodeInternal          = "INTERNAL_ERROR"
 )
 
 // paramError 是「本地能判定、不需要问上游」的错误。

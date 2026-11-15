@@ -12,14 +12,17 @@
 | `api.go` | 管理 API handler |
 | `router.go` | `Register(engine)`：唯一的对外入口 |
 | `protocol.go` | 端点表：按产物类型 `image` / `video` 绑定生成与查询端点（上游统一方舟形状） |
-| `protocol_taskid.go` | HMAC 自包含任务 ID（无状态，跨副本可解） |
+| `protocol_taskid.go` | HMAC 自包含任务 ID（系统密钥签名，跨副本可解） |
+| `catalog.go` | 能力快照（1 s TTL + 写路径显式失效）与目录版本 |
+| `throttle.go` | `models.list` 的 per-token 固定窗口限流 |
+| `idempotency.go` | `client_request_id` 幂等（占位 → 回填 / 释放） |
 | `protocol_upstream.go` | apiduo `/v1` 客户端 + 错误脱敏 |
 | `protocol_model.go` | `ModelProfile` → 工具视图（替代旧版的 catalog 多级合并） |
 | `protocol_tools.go` | 4 个 MCP 工具：models.list / image.generate / video.generate / task.get |
 | `protocol_server.go` | Streamable HTTP 装配、令牌注入 |
 | `protocol_observe.go` | 观察埋点（异步队列，只记结构性参数） |
 
-## 2. 与 upstream 的接缝（sync 时只查这两处）
+## 2. 与 upstream 的接缝（sync 时只查这两处标记 + 一个依赖）
 
 | 位置 | 改动 | 标记 |
 |---|---|---|
@@ -71,8 +74,6 @@ MCP 客户端 ──POST /mcp──▶ tools ──▶ /v1（回环自调）─�
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | ANY | `/mcp` | MCP 协议端点（`TokenAuthReadOnly`，空令牌 401） |
-
-后台界面只有前端「系统设置 → 扩展 → MCP」一处；本包不再自带静态面板。
 | GET | `/api/mcp/overview` | 顶部摘要 |
 | GET | `/api/mcp/candidates` | 上游有、尚未声明的模型 |
 | GET/POST | `/api/mcp/profiles` | 列表 / 新建 |
@@ -87,6 +88,7 @@ MCP 客户端 ──POST /mcp──▶ tools ──▶ /v1（回环自调）─�
 | PUT | `/api/mcp/error-rules/:id` | 更新规则 |
 
 管理 API 全部挂 `middleware.AdminAuth()`（浏览器会话与 PAT 都收，PAT 需 `model:read` / `model:write`）。
+后台界面只有前端「系统设置 → 扩展 → MCP」一处；本包不再自带静态面板。
 
 ### 按业务键 upsert
 
@@ -155,7 +157,7 @@ curl -sS --noproxy '*' -X PUT \
 6. **观察只记结构性参数**：`size` / `duration` / `n` / 参考图张数。
    提示词内容与图片 URL 一个字都不落盘。
 7. **观察写入不阻塞调用**：队列满就丢样本。丢一条观察数据可以接受，卡住生成请求不行。
-8. **错误必须可分类**：本地校验给稳定码（`PARAM_OUT_OF_RANGE` / `MODEL_NOT_FOUND` …），
+8. **错误必须可分类**：本地校验给稳定码（`PARAM_OUT_OF_RANGE` / `MODEL_NOT_FOUND` / `TASK_ID_INVALID` / `TASK_ID_EXPIRED` / `TASK_FAILED` / `RATE_LIMITED` / `REQUEST_IN_FLIGHT` / `REPLAY_UNAVAILABLE` …），
    上游错误查 `mcp_error_rules` 翻译成 `retryable` / `retry_action` / `hint`。
    agent 靠这三个字段决定「重发、改参数还是充值」；纯文本它只能猜，猜错要计费。
 9. **产物地址必须进 text content**：多数 MCP 客户端只渲染 text，`structuredContent`
@@ -173,6 +175,15 @@ curl -sS --noproxy '*' -X PUT \
 13. **默认模型由 `priority` 决定**：排序固定为 kind → priority desc → id。
     不能靠 id 字典序 —— 新加一个名字靠前的模型会静默变成默认，而它可能贵 20 倍。
     `priority` 是产品决策，必须显式声明。
+14. **`task_id` 用系统密钥签名，不是 `api_key`**：密钥在 `options.mcp_task_signing_key`
+    （首次使用生成，跨副本共享）。payload 带 `UserId` 与 `ExpireAt`（7 天）；
+    `task.get` 校验归属与有效期。用户重置令牌不再丢在途任务。
+15. **`models.list` 有目录版本与限流**：`catalog_version` 取每行 `version` 的哈希
+    （新增/改字段/删除都会变），随 text 一起下发；每令牌 60 次/分钟。
+    不要改成 `max(version)` —— 删行时它不变，缓存会永久陈旧。
+16. **生成支持 `client_request_id` 幂等**：同一 `(token, tool, id)` 先占位再出站，
+    成功回填结果、失败释放；重放直接返回首次结果并在 text 里标注「未重复生成」。
+    占位超过 10 分钟视为首次进程已死，允许接管。
 
 ## 6. 已修的坑（别再踩）
 
@@ -197,9 +208,10 @@ curl -sS --noproxy '*' -X PUT \
   要全覆盖，需要把埋点下沉到 relay 层（下一版）。
 - 观察日志的 `quota` 固定写 0：MCP 层的这条只用于统计，真实计费由 relay 完成。
   两条账并存，用 `other.admin_info.mcp=true` 标记区分。
-- **`max_ref_videos` 只进 model_card，工具层还没有参考视频入参**。声明了也不会被校验，
-  因为 `image.generate` / `video.generate` 目前只收 `reference_images`；要真支持视频生视频，
-  得先给工具加 `reference_videos`（届时它必须像参考图一样按上限拦截）。
+- **`max_ref_videos` 字段保留但不进 model_card**：工具层还没有参考视频入参，
+  声明了既不校验也传不上去。card 只描述「现在能做什么」—— 挂着这个键会让 agent
+  去传 `reference_videos`，然后收到 `PARAM_NOT_DECLARED`。
+  要真支持视频生视频，得先给工具加 `reference_videos`（届时它必须像参考图一样按上限拦截）。
 - 没有 `search.query` 工具：apiduo 的搜索端点尚未在本部署启用。
 - 参数约束目前是 JSON 文本框，不是可视化行编辑器。
 - AI 回填草稿、边界探测尚未实现。

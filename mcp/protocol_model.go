@@ -25,6 +25,8 @@ type modelView struct {
 	Tags           []string
 	Cost           string
 	Priority       int
+	// Version 是行级乐观锁版本，只用于算能力清单的目录版本，不进 model_card。
+	Version int64
 }
 
 func viewFromProfile(p ModelProfile) modelView {
@@ -40,6 +42,7 @@ func viewFromProfile(p ModelProfile) modelView {
 		Summary:        p.Summary,
 		Cost:           p.Cost,
 		Priority:       p.Priority,
+		Version:        p.Version,
 	}
 	if p.Tags != "" {
 		for _, t := range strings.Split(p.Tags, ",") {
@@ -80,9 +83,6 @@ func (m modelView) card() map[string]any {
 	input := map[string]any{}
 	if m.MaxRefImages != nil {
 		input["max_reference_images"] = *m.MaxRefImages
-	}
-	if m.MaxRefVideos != nil {
-		input["max_reference_videos"] = *m.MaxRefVideos
 	}
 	if m.MaxPromptChars != nil {
 		input["max_prompt_chars"] = *m.MaxPromptChars

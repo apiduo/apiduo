@@ -16,7 +16,7 @@ import (
 //  1. 合并成一条查询后，某个参数的计数被别的参数串了；
 //  2. blame 过滤在应用层漏掉，导致「一次失败污染全部参数」的老毛病复发。
 func TestQueryParamsSQLiteCountsEachParamIndependently(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("file:"+testDBName()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("打开内存库失败: %v", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,9 +22,22 @@ import (
 
 // ── 测试脚手架 ──────────────────────────────────────────────────────────
 
+// testDBSeq 让每次 setupDB 拿到独立的库名。
+//
+// 只按 t.Name() 命名时，-count>1 的重复运行会复用同一个共享缓存内存库
+// （连接池没关，库就一直在），第二轮直接撞「模型已存在」。
+var testDBSeq atomic.Int64
+
+// testDBName 返回本次测试专用的库名。三个建库点（setupDB / withTestDB /
+// 观察统计）都走这里，否则漏掉一个就还是会在 -count>1 时串库。
+func testDBName() string {
+	return fmt.Sprintf("mcp-test-%d", testDBSeq.Add(1))
+}
+
 func setupDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	name := testDBName()
+	db, err := gorm.Open(sqlite.Open("file:"+name+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("打开主库失败: %v", err)
 	}
@@ -37,13 +51,18 @@ func setupDB(t *testing.T) *gorm.DB {
 	common.RedisEnabled = false
 	t.Cleanup(func() { common.RedisEnabled = oldRedis })
 
-	logDB, err := gorm.Open(sqlite.Open("file:"+t.Name()+"-log?mode=memory&cache=shared"), &gorm.Config{})
+	logDB, err := gorm.Open(sqlite.Open("file:"+name+"-log?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("打开日志库失败: %v", err)
 	}
 	oldLog := model.LOG_DB
 	model.LOG_DB = logDB
-	t.Cleanup(func() { model.LOG_DB = oldLog })
+	t.Cleanup(func() {
+		// 观察队列是包级单写协程，读的是全局 LOG_DB。先等已入队的样本写完
+		// 再换回去，否则 -race 会把「测试替换全局变量」报成数据竞争。
+		drainObservations()
+		model.LOG_DB = oldLog
+	})
 	if err := logDB.AutoMigrate(&model.Log{}); err != nil {
 		t.Fatalf("建日志表失败: %v", err)
 	}
@@ -55,7 +74,32 @@ func setupDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&model.Token{}); err != nil {
 		t.Fatalf("建令牌表失败: %v", err)
 	}
+	// 系统签名密钥（mcp_task_signing_key）存在 options 表里。
+	if err := db.AutoMigrate(&model.Option{}); err != nil {
+		t.Fatalf("建设置表失败: %v", err)
+	}
+	// 每个测试是新库，包级缓存必须一起重置，否则会拿上一个库的数据。
+	resetTaskSigningKey()
+	resetCatalogCache()
+	resetCatalogRateLimit()
 	return db
+}
+
+// drainObservations 等观察队列里的样本全部写完。
+//
+// 正常情况下队列本来就是空的（大多数测试不产生样本），所以只在非零时轮询；
+// 3 秒兜底，避免某处漏了 decrement 时整个测试挂死。
+func drainObservations() {
+	if observePending.Load() == 0 {
+		return
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if observePending.Load() == 0 {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // upstreamRecorder 记录 mock 上游收到的请求体，供断言「发出去的到底是什么」。
@@ -631,10 +675,13 @@ func TestTaskGetReadsWrappedGatewayResponse(t *testing.T) {
 	}
 	server := mcpServer(t)
 	sign := func(upstream string) string {
-		return signTaskID("sk-test", taskPayload{
+		signed, err := signTaskID(taskPayload{
 			Model: "wrapped-video", Upstream: upstream, Kind: "video",
-			IssuedAt: time.Now().Unix(),
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return signed
 	}
 
 	done := callTool(t, server.URL, "sk-test", "task.get", map[string]any{"task_id": sign("task-done")})
@@ -657,8 +704,12 @@ func TestTaskGetReadsWrappedGatewayResponse(t *testing.T) {
 	if bad["status"] != "failed" {
 		t.Fatalf("FAILURE 应映射成 failed，实际 %v", bad["status"])
 	}
-	if msg, _ := bad["error"].(string); !strings.Contains(msg, "content blocked") {
-		t.Fatalf("失败原因应取自 fail_reason，实际 %q", msg)
+	terr, _ := bad["error"].(map[string]any)
+	if msg, _ := terr["message"].(string); !strings.Contains(msg, "content blocked") {
+		t.Fatalf("失败原因应取自 error.message，实际 %v", bad["error"])
+	}
+	if code, _ := terr["code"].(string); code != CodeTaskFailed {
+		t.Fatalf("任务失败的稳定码应为 %s，实际 %v", CodeTaskFailed, terr["code"])
 	}
 }
 
