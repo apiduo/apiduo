@@ -40,7 +40,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Title:       "生成图片",
 		InputSchema: generateInputSchema(),
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
-			"参考图可以是 http(s) URL，也可以把本地文件读成 data:image/<mime>;base64,… 直接内联（不需要上传接口）。" +
+			"参考图用 http(s) URL；本地文件可读成 data:image/<mime>;base64,… 内联，但只有部分上游接受（gpt-image 支持，qwen/flux 会 502）。" +
 			"model 可以不传，会用默认模型并在返回里说明是哪个；要指定就先调 models.list 看可选值，" +
 			"按 summary 里的场景/成本挑，不要凭模型名猜。" +
 			"models.list 里该模型声明的 parameters（aspect_ratio / resolution 等）直接平铺到顶层传，不要包进 extra。" +
@@ -54,7 +54,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Title:       "生成视频",
 		InputSchema: generateInputSchema(),
 		Description: "生成视频。语义与 image.generate 相同，产物是视频；传 reference_images 可做图生视频。" +
-			"参考图同样支持 http(s) URL 与 data:image/<mime>;base64,… 内联。" +
+			"参考图用 http(s) URL；data:image 内联只在部分上游可用。" +
 			"model 可以不传，会用默认模型并在返回里说明；要指定就先调 models.list 挑，不要凭模型名猜。" +
 			"也可以直接把方舟形状的 content 数组传进来（type=text / image_url），会被拆成提示词与参考图。" +
 			"models.list 里该模型声明的 parameters（duration / resolution 等）直接平铺到顶层传，不要包进 extra。" +
