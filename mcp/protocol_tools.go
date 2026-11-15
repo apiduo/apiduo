@@ -346,14 +346,13 @@ type outputItem struct {
 }
 
 type generateOutput struct {
-	Status   string         `json:"status"` // completed | working | failed
-	Model    string         `json:"model"`
-	TaskID   string         `json:"task_id,omitempty"`
-	Outputs  []outputItem   `json:"outputs,omitempty"`
-	Usage    map[string]any `json:"usage,omitempty"`
-	PollMS   int            `json:"poll_after_ms,omitempty"`
-	Upstream map[string]any `json:"upstream,omitempty"`
-	Error    *toolError     `json:"error,omitempty"`
+	Status  string         `json:"status"` // completed | working | failed
+	Model   string         `json:"model"`
+	TaskID  string         `json:"task_id,omitempty"`
+	Outputs []outputItem   `json:"outputs,omitempty"`
+	Usage   map[string]any `json:"usage,omitempty"`
+	PollMS  int            `json:"poll_after_ms,omitempty"`
+	Error   *toolError     `json:"error,omitempty"`
 	// ModelDefaulted 表示调用方没点名模型，本次用了默认那个。
 	// 客户端可以据此在界面上提示「换模型就带上 model」，而不是让它成为隐形行为。
 	ModelDefaulted bool `json:"model_defaulted,omitempty"`
@@ -554,7 +553,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		text := "已提交（模型 " + m.ID + "），任务 " + signed + " 进行中"
 		out := generateOutput{
 			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfterMS,
-			Upstream: resp, ModelDefaulted: strings.TrimSpace(in.Model) == "",
+			ModelDefaulted: strings.TrimSpace(in.Model) == "",
 		}
 		if in.ClientRequestID != "" {
 			completeIdempotency(caller.TokenId, kind, in.ClientRequestID, text, out)
@@ -615,7 +614,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	}
 	final := generateOutput{
 		Status: "completed", Model: m.ID, Outputs: out, Usage: usageOf(resp),
-		Upstream: resp, ModelDefaulted: strings.TrimSpace(in.Model) == "",
+		ModelDefaulted: strings.TrimSpace(in.Model) == "",
 	}
 	if in.ClientRequestID != "" {
 		completeIdempotency(caller.TokenId, kind, in.ClientRequestID, summary, final)
@@ -718,10 +717,14 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 	// 声明了提示词上限就必须拦：声明只是给 agent 的事前提示，
 	// 不拦的话超长提示词会打到上游换一个 400 和一次计费。
 	// 按字符数而不是字节数 —— 中文提示词按字节算会短三倍。
-	if m.MaxPromptChars != nil && *m.MaxPromptChars > 0 {
-		if n := len([]rune(in.Prompt)); n > *m.MaxPromptChars {
-			return nil, userParamErrorf(CodePromptTooLong, "prompt 长度 %d 超过模型 %s 的上限 %d", n, m.ID, *m.MaxPromptChars)
-		}
+	// 上限取「模型声明」与「全局硬顶」的较小值：没声明的模型也要有天花板，
+	// 否则 1 MB 提示词会一路打到上游换一个 400，白占一次连接与一次计费。
+	limit := maxPromptChars
+	if m.MaxPromptChars != nil && *m.MaxPromptChars > 0 && *m.MaxPromptChars < limit {
+		limit = *m.MaxPromptChars
+	}
+	if n := len([]rune(in.Prompt)); n > limit {
+		return nil, userParamErrorf(CodePromptTooLong, "prompt 长度 %d 超过上限 %d（模型 %s）", n, limit, m.ID)
 	}
 
 	if len(refs) > 0 {
@@ -834,6 +837,10 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 
 // maxBatchN 是「模型没声明 n 上限」时的兜底数量。
 const maxBatchN = 8
+
+// maxPromptChars 是提示词的全局硬顶（按字符数，中文不按字节算）。
+// 3.2 万字符已经远超正常提示词；再长的请求只会换来一个上游 400。
+const maxPromptChars = 32000
 
 // checkBatchN 是 n 的唯一判定点。
 //
@@ -1029,7 +1036,23 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	case "failed":
 		// 这是「查询成功、任务失败」，不是工具错误：仍回 isError=false，
 		// 但错误体与 generate 一样带 code / retryable，agent 才不用猜。
-		out.Error = classifyTaskFailure(p.Model, upstreamFailReason(resp))
+		// cancelled / expired 走 normalizeStatus 也会落到 failed，但它们的下一步
+		// 动作不同（取消是用户行为、过期是上游排队过久），不能共用「参数不对」的提示。
+		switch strings.ToLower(str(resp, "status")) {
+		case "cancelled", "canceled":
+			out.Error = &toolError{
+				Code: CodeTaskFailed, Message: "任务已被取消", Retryable: false,
+				RetryAction: "none", Hint: "取消不是失败原因；需要结果请重新提交一次生成",
+			}
+		case "expired":
+			out.Error = &toolError{
+				Code: CodeTaskFailed, Message: "任务已过期（上游未在有效期内完成）", Retryable: true,
+				RetryAction: "wait", RetryAfterMS: 5000,
+				Hint: "过期通常是上游排队过久；失败任务已退款，可以重新提交",
+			}
+		default:
+			out.Error = classifyTaskFailure(p.Model, upstreamFailReason(resp))
+		}
 	}
 	return textResult(taskSummary(p.Model, status, out)), out, nil
 }

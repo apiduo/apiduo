@@ -11,8 +11,10 @@ import (
 // 一个令牌可以把它们打到任意 QPS。快照缓存挡的是数据库，挡不住请求。
 const (
 	catalogListLimit = 60
-	taskGetLimit     = 120
-	rateWindowLen    = time.Minute
+	// 一个任务按 poll_after_ms(5s) 轮询是 12 次/分钟，300 次够同时盯 25 个任务；
+	// 120 只够 10 个，多开几个视频就会被自己的轮询卡住。
+	taskGetLimit  = 300
+	rateWindowLen = time.Minute
 )
 
 type rateWindow struct {

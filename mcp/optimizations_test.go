@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -295,5 +296,94 @@ func TestVideoReplayFailedTaskStaysNonError(t *testing.T) {
 	}
 	if got := queries.Load(); got != 2 {
 		t.Fatalf("失败任务每次重放都该刷新，实际查询 %d 次", got)
+	}
+}
+
+// 提示词有全局硬顶：没声明上限的模型也不能无限长。
+func TestPromptHasGlobalCap(t *testing.T) {
+	m := modelView{ID: "no-limit", Kind: "image"}
+	_, err := buildPayload(m, generateInput{Prompt: strings.Repeat("字", maxPromptChars+1)}, nil)
+	var pe *paramError
+	if !errors.As(err, &pe) || pe.Code != CodePromptTooLong {
+		t.Fatalf("应回 %s，实际 %v", CodePromptTooLong, err)
+	}
+
+	// 模型声明更小的上限时以声明为准。
+	small := 100
+	m2 := modelView{ID: "small", Kind: "image", MaxPromptChars: &small}
+	_, err = buildPayload(m2, generateInput{Prompt: strings.Repeat("a", 200)}, nil)
+	if !errors.As(err, &pe) || !strings.Contains(pe.Msg, "100") {
+		t.Fatalf("应使用声明的 100，实际 %v", err)
+	}
+}
+
+// 鉴权端点也要有请求体上限，否则一个令牌就能把进程内存打满。
+func TestMCPRejectsOversizedBody(t *testing.T) {
+	srv := mcpServer(t)
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + strings.Repeat(" ", maxMCPBodyBytes+4096)
+	resp, err := http.Post(srv.URL+"/mcp", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("超限请求被放行了: %d", resp.StatusCode)
+	}
+}
+
+// cancelled / expired 也是 failed，但下一步动作不同，提示不能共用。
+func TestTaskGetDistinguishesCancelledAndExpired(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want string
+	}{
+		{"cancelled", "取消"},
+		{"expired", "过期"},
+	} {
+		setupDB(t)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/v1/contents/generations/tasks/t-1", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"task_id":"t-1","status":%q}`, tc.raw)
+		})
+		up := httptest.NewServer(mux)
+		os.Setenv("MCP_UPSTREAM_BASE_URL", up.URL+"/v1")
+		resetProtocol()
+		resetRateLimits()
+		if err := SaveProfile(&ModelProfile{ModelId: "st-video", Kind: "video", Enabled: true, Async: true}); err != nil {
+			t.Fatal(err)
+		}
+		srv := mcpServer(t)
+		signed, err := signTaskID(taskPayload{Model: "st-video", Upstream: "t-1", Kind: "video"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc := callTool(t, srv.URL, "sk-test", "task.get", map[string]any{"task_id": signed})
+		terr, _ := sc["error"].(map[string]any)
+		if msg := fmt.Sprint(terr["message"]); !strings.Contains(msg, tc.want) {
+			t.Fatalf("%s: message=%q，期望包含 %q", tc.raw, msg, tc.want)
+		}
+		up.Close()
+		os.Unsetenv("MCP_UPSTREAM_BASE_URL")
+	}
+}
+
+// 生成结果不再回显整份上游对象。
+func TestGenerateOmitsUpstreamEcho(t *testing.T) {
+	setupDB(t)
+	mockUpstream(t)
+	resetProtocol()
+	if err := SaveProfile(&ModelProfile{ModelId: "echo-image", Kind: "image", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+	sc := callTool(t, srv.URL, "sk-test", "image.generate", map[string]any{
+		"model": "echo-image", "prompt": "x",
+	})
+	if _, exists := sc["upstream"]; exists {
+		t.Fatalf("generate 不该再回显 upstream: %v", sc["upstream"])
+	}
+	if len(sc["outputs"].([]any)) != 1 {
+		t.Fatalf("产物丢了: %v", sc["outputs"])
 	}
 }

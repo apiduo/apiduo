@@ -140,7 +140,6 @@ func requestFingerprint(kind string, payload map[string]any) string {
 // Upstream 是上游原始响应，重放用不到；不落，避免把几 MB 的 b64 塞进表。
 // 超过上限时只标 done 不存内容 —— 重放会得到明确的「不可重放」而不是一次新生成。
 func completeIdempotency(tokenId int, tool, clientRequestId, text string, out generateOutput) {
-	out.Upstream = nil
 	// 只落可达地址，不落图片字节。
 	//
 	// 有些渠道会忽略 response_format=url 照旧回 b64 —— 那是几 MB 的图片被塞进

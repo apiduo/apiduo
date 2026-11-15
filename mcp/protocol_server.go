@@ -102,13 +102,20 @@ func protocolHandler() http.Handler {
 			},
 		})
 		registerTools(server, &toolDeps{up: newUpClient()})
-		protoHandler = mcpsdk.NewStreamableHTTPHandler(
+		h := mcpsdk.NewStreamableHTTPHandler(
 			func(*http.Request) *mcpsdk.Server { return server },
 			&mcpsdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
 		)
+		// 请求体上限：MCP 调用本身很小（提示词 + 几个 URL）。匿名端点有
+		// AnonymousRequestBodyLimit，鉴权端点此前没有任何上限 —— 一个令牌
+		// 就能发几十 MB 的 JSON 让进程把内存吃满。4 MB 对 data URL 也够用。
+		protoHandler = http.MaxBytesHandler(h, maxMCPBodyBytes)
 	})
 	return protoHandler
 }
+
+// maxMCPBodyBytes 是 /mcp 请求体的硬上限。
+const maxMCPBodyBytes = 4 << 20
 
 // injectBearer 把 Authorization 里的令牌放进 context，供工具层调用上游时使用。
 //
