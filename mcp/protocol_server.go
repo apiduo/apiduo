@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -104,7 +105,15 @@ func protocolHandler() http.Handler {
 		registerTools(server, &toolDeps{up: newUpClient()})
 		h := mcpsdk.NewStreamableHTTPHandler(
 			func(*http.Request) *mcpsdk.Server { return server },
-			&mcpsdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
+			&mcpsdk.StreamableHTTPOptions{
+				Stateless:    true,
+				JSONResponse: true,
+				// 关掉 SDK 自带的 4 MiB 上限（它是 DefaultMaxRequestBodyBytes，
+				// 只在 0 时套用；负值表示不设限）。真正的上限由外层的
+				// limitRequestBody 按 mcp_settings 逐请求执行 —— 否则无论
+				// 配置写多大，都会被这一层截在 4 MiB。
+				MaxRequestBodyBytes: -1,
+			},
 		)
 		// 请求体上限：MCP 调用本身很小（提示词 + 几个 URL）。匿名端点有
 		// AnonymousRequestBodyLimit，鉴权端点此前没有任何上限 —— 一个令牌
@@ -126,7 +135,16 @@ const maxMCPBodyBytes = 32 << 20
 // data URL，所以这个值会被调大；调完立刻生效。
 func limitRequestBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.MaxBytesHandler(next, LoadSettings().MaxBodyBytes).ServeHTTP(w, r)
+		limit := LoadSettings().MaxBodyBytes
+		// 有 Content-Length 时直接判，给出明确的 413 而不是让下游把它
+		// 当成「JSON 解析失败」回 400。
+		if r.ContentLength > limit {
+			http.Error(w, fmt.Sprintf("request body exceeds %d bytes", limit), http.StatusRequestEntityTooLarge)
+			return
+		}
+		// chunked / HTTP2 没有长度，只能边读边截；超限时下游会读到错误。
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+		next.ServeHTTP(w, r)
 	})
 }
 

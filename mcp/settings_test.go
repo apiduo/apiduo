@@ -204,3 +204,40 @@ func TestTaskGetTerminalCached(t *testing.T) {
 		t.Fatalf("终态应命中缓存，实际查询 %d 次", got)
 	}
 }
+
+// 请求体上限必须真的跟着设置走：SDK 自带的 4 MiB 默认值会把它截断，
+// 所以这里从 64KB 调到 1MB 再验证一次，确保两层没有打架。
+func TestBodyLimitFollowsSettings(t *testing.T) {
+	setupDB(t)
+	srv := mcpServer(t)
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + strings.Repeat(" ", 100<<10)
+
+	post := func() int {
+		req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if _, err := SaveSettings(map[string]json.RawMessage{"max_body_bytes": json.RawMessage(`65536`)}); err != nil {
+		t.Fatal(err)
+	}
+	if code := post(); code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("64KB 上限下 100KB 应 413，实际 %d", code)
+	}
+
+	if _, err := SaveSettings(map[string]json.RawMessage{"max_body_bytes": json.RawMessage(`1048576`)}); err != nil {
+		t.Fatal(err)
+	}
+	if code := post(); code != http.StatusOK {
+		t.Fatalf("1MB 上限下 100KB 应 200，实际 %d", code)
+	}
+}
