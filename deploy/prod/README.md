@@ -38,17 +38,23 @@ ssh ai-prod 'bash /opt/apiduo-cn/preflight.sh'
 
 ```bash
 git push origin main          # 触发 brand-release：patch 自增 → 构建 → 冒烟 → 推 GHCR + tag
-gh release view -R apiduo/apiduo   # 确认新版本号，别凭记忆
-ssh ai-prod 'docker pull ghcr.io/apiduo/apiduo:latest && cd /opt/apiduo-cn && docker compose up -d apiduo-cn'
+gh release list -R apiduo/apiduo --limit 1   # 确认新版本号，别凭记忆
+V=<version>
+ssh ai-prod "docker pull ghcr.io/apiduo/apiduo:$V && cd /opt/apiduo-cn && APIDUO_IMAGE_TAG=$V docker compose -f docker-compose.apiduo-cn.yml up -d apiduo-cn"
 ssh ai-prod 'curl -s --noproxy "*" http://127.0.0.1:39047/api/status | grep -o "\"version\": *\"[^\"]*\""'
 ```
+
+注意：`/opt/apiduo-cn/` 里**没有** `docker-compose.yml`，只有 `docker-compose.apiduo-cn.yml`，
+所以必须带 `-f`，否则报 `no configuration file provided`。
 
 坑：
 
 - **必须先 `docker pull` 再 `up -d`**。compose 只看配置不看 digest，直接 up 不会拉新镜像，
   表现是"发了版但版本号没变"。线上曾因此白跑一轮。
 - **`docker restart` 不重读 `env_file`**。改了 `.env` 必须
-  `docker compose up -d --force-recreate apiduo-cn`。
+  `docker compose -f docker-compose.apiduo-cn.yml up -d --force-recreate apiduo-cn`。
+- **镜像标签必须显式传**：compose 里是 `${APIDUO_IMAGE_TAG:-latest}`，而 `.env` 没有这个变量。
+  不传就会落到 `:latest`，跑起来的可能不是你要的版本。
 - 部署机偶尔卡在 `up -d` 的隐式 pull 十几分钟。手动 pull 会解开。
 - commit message 里只要出现 `[skip release]`，整次发版被跳过。
 
