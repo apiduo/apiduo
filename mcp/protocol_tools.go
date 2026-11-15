@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -39,6 +40,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Title:       "生成图片",
 		InputSchema: generateInputSchema(),
 		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
+			"参考图可以是 http(s) URL，也可以把本地文件读成 data:image/<mime>;base64,… 直接内联（不需要上传接口）。" +
 			"model 可以不传，会用默认模型并在返回里说明是哪个；要指定就先调 models.list 看可选值，" +
 			"按 summary 里的场景/成本挑，不要凭模型名猜。" +
 			"models.list 里该模型声明的 parameters（aspect_ratio / resolution 等）直接平铺到顶层传，不要包进 extra。" +
@@ -52,6 +54,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Title:       "生成视频",
 		InputSchema: generateInputSchema(),
 		Description: "生成视频。语义与 image.generate 相同，产物是视频；传 reference_images 可做图生视频。" +
+			"参考图同样支持 http(s) URL 与 data:image/<mime>;base64,… 内联。" +
 			"model 可以不传，会用默认模型并在返回里说明；要指定就先调 models.list 挑，不要凭模型名猜。" +
 			"也可以直接把方舟形状的 content 数组传进来（type=text / image_url），会被拆成提示词与参考图。" +
 			"models.list 里该模型声明的 parameters（duration / resolution 等）直接平铺到顶层传，不要包进 extra。" +
@@ -483,6 +486,10 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		return d.fail(m.ID, err)
 	}
 
+	// 生成本身的硬超时也来自设置：上游变慢时先放宽，别等发版。
+	ctx, cancel := context.WithTimeout(ctx, secondsToDuration(LoadSettings().UpstreamTimeoutS))
+	defer cancel()
+
 	started := time.Now()
 	var (
 		resp           map[string]any
@@ -552,7 +559,7 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 		}
 		text := "已提交（模型 " + m.ID + "），任务 " + signed + " 进行中"
 		out := generateOutput{
-			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfterMS,
+			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfter(),
 			ModelDefaulted: strings.TrimSpace(in.Model) == "",
 		}
 		if in.ClientRequestID != "" {
@@ -641,7 +648,7 @@ func fanoutCount(m modelView, kind string, payload map[string]any) int {
 	if spec, ok := m.Params["n"]; ok && spec.Min != nil && *spec.Min > 1 {
 		return 1
 	}
-	return min(int(n), maxBatchN)
+	return min(int(n), LoadSettings().MaxBatchN)
 }
 
 // generateParts 并发发起 n 个单张请求，按顺序聚合产物。
@@ -660,11 +667,15 @@ func (d *toolDeps) generateParts(ctx context.Context, key string, t transport, p
 		err   error
 	}
 	parts := make([]part, n)
+	// 并发上限可配：上游对同一个 key 的并发容忍度不一样，打太多会互相排队。
+	sem := make(chan struct{}, max(1, LoadSettings().FanoutParallel))
 	var wg sync.WaitGroup
 	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			resp, _, e := d.up.generate(ctx, key, t, base)
 			if e != nil {
 				parts[i].err = e
@@ -719,7 +730,7 @@ func buildPayload(m modelView, in generateInput, refs []string) (map[string]any,
 	// 按字符数而不是字节数 —— 中文提示词按字节算会短三倍。
 	// 上限取「模型声明」与「全局硬顶」的较小值：没声明的模型也要有天花板，
 	// 否则 1 MB 提示词会一路打到上游换一个 400，白占一次连接与一次计费。
-	limit := maxPromptChars
+	limit := LoadSettings().MaxPromptChars
 	if m.MaxPromptChars != nil && *m.MaxPromptChars > 0 && *m.MaxPromptChars < limit {
 		limit = *m.MaxPromptChars
 	}
@@ -850,9 +861,10 @@ func checkBatchN(m modelView, n float64) error {
 	if n < 1 {
 		return userParamErrorf(CodeParamOutOfRange, "n 必须 ≥ 1，收到 %g", n)
 	}
-	if _, declared := m.Params["n"]; !declared && n > maxBatchN {
+	batchCap := LoadSettings().MaxBatchN
+	if _, declared := m.Params["n"]; !declared && n > float64(batchCap) {
 		return userParamErrorf(CodeParamOutOfRange,
-			"模型 %s 未声明 n 的上限，单次最多 %d；要更多请分多次调用", m.ID, maxBatchN)
+			"模型 %s 未声明 n 的上限，单次最多 %d；要更多请分多次调用", m.ID, batchCap)
 	}
 	return checkRange(m, "n", n)
 }
@@ -976,6 +988,9 @@ type taskOutput struct {
 	// 纯字符串它只能读中文猜。
 	Error  *toolError `json:"error,omitempty"`
 	PollMS int        `json:"poll_after_ms,omitempty"`
+	// Unchanged 表示这次返回的状态与上一次相同，产物/错误字段被省略。
+	// 调用方据此知道「没有新信息」，可以继续按 poll_after_ms 等。
+	Unchanged bool `json:"unchanged,omitempty"`
 }
 
 func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in taskInput) (*mcpsdk.CallToolResult, taskOutput, error) {
@@ -1002,10 +1017,11 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	}
 	p, err := parseTaskID(in.TaskID, caller.UserId)
 	if err != nil {
+		d.observeTaskError(ctx, "", in.TaskID, err)
 		switch {
 		case errors.Is(err, errTaskIDExpired):
 			return d.failTask("", in.TaskID, userParamErrorf(CodeTaskIDExpired,
-				"task_id 已过期（有效期 %d 天）；结果可在控制台任务页查看", int(taskIDTTL.Hours()/24)))
+				"task_id 已过期（有效期 %d 天）；结果可在控制台任务页查看", LoadSettings().TaskIDTTLHours/24))
 		case errors.Is(err, errTaskIDForeign):
 			return d.failTask("", in.TaskID, userParamErrorf(CodeTaskIDInvalid, "task_id 不属于当前用户"))
 		default:
@@ -1015,10 +1031,23 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	t, err := getTransport(p.Kind)
 	if err != nil {
 		// 类型来自签名内容，能到这里说明句柄不是本服务签的（或签的时候还没有这个类型）。
+		d.observeTaskError(ctx, p.Model, in.TaskID, err)
 		return d.failTask(p.Model, in.TaskID, userParamErrorf(CodeTaskIDInvalid, "task_id 记录的产物类型不可用：%s", p.Kind))
 	}
+	settings := LoadSettings()
+	cacheKey := taskCacheKey(caller.TokenId, in.TaskID)
+	if settings.TaskCacheTTLS > 0 {
+		// 终态不会再变：TTL 内直接回缓存，连 relay 都不查。
+		if e, ok := loadTaskCache(cacheKey, settings.TaskCacheTTLS); ok && e.status != "working" {
+			out := e.out
+			out.Unchanged = true
+			return textResult(taskSummary(out.Model, out.Status, out)), out, nil
+		}
+	}
+
 	raw, err := d.up.getTask(ctx, key, t, p.Upstream)
 	if err != nil {
+		d.observeTaskError(ctx, p.Model, in.TaskID, err)
 		return d.failTask(p.Model, in.TaskID, err)
 	}
 	// 生成端点回扁平结构，查询端点把记录包在 {code,message,data} 里。
@@ -1032,7 +1061,7 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 	case "completed":
 		out.Outputs = parseOutputs(resp)
 	case "working":
-		out.PollMS = pollAfterMS
+		out.PollMS = pollAfter()
 	case "failed":
 		// 这是「查询成功、任务失败」，不是工具错误：仍回 isError=false，
 		// 但错误体与 generate 一样带 code / retryable，agent 才不用猜。
@@ -1054,7 +1083,32 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 			out.Error = classifyTaskFailure(p.Model, upstreamFailReason(resp))
 		}
 	}
+	if settings.TaskCacheTTLS > 0 {
+		prev, seen := loadTaskCache(cacheKey, 0)
+		storeTaskCache(cacheKey, status, out)
+		// 只对「还在跑」做省略：终态第一次到达时要把产物/错误完整下发一次，
+		// 之后由上面的缓存分支接住。
+		if seen && prev.status == status && status == "working" {
+			brief := taskOutput{
+				Status: "working", TaskID: in.TaskID, Model: p.Model,
+				PollMS: pollAfter(), Unchanged: true,
+			}
+			return textResult(fmt.Sprintf("任务进行中（%s），状态未变；约 %d 秒后再查",
+				p.Model, (pollAfter()+999)/1000)), brief, nil
+		}
+	}
 	return textResult(taskSummary(p.Model, status, out)), out, nil
+}
+
+// observeTaskError 把查询失败落成观察样本。轮询失败是「任务声明/句柄写错」
+// 的主要信号，但成功轮询不记 —— 300 次/分钟会把日志库刷满。
+func (d *toolDeps) observeTaskError(ctx context.Context, modelID, taskID string, err error) {
+	if !LoadSettings().RecordTaskErrors {
+		return
+	}
+	observeCall(ctx, callObservation{
+		Tool: "task.get", ModelID: modelID, OK: false, ErrorMsg: errText(err),
+	})
 }
 
 // taskSummary 是 task.get 的 text 出口。
@@ -1078,7 +1132,7 @@ func taskSummary(model, status string, out taskOutput) string {
 		}
 		return fmt.Sprintf("任务失败（%s）：%s", model, clipRunes(reason, 200))
 	case "working":
-		return fmt.Sprintf("任务进行中（%s），约 %d 秒后再查", model, (pollAfterMS+999)/1000)
+		return fmt.Sprintf("任务进行中（%s），约 %d 秒后再查", model, (pollAfter()+999)/1000)
 	default:
 		return "任务状态：" + status
 	}
@@ -1328,6 +1382,9 @@ func parseRefs(v any) ([]string, error) {
 		if strings.TrimSpace(t) == "" {
 			return nil, nil
 		}
+		if err := validateRefURL(t); err != nil {
+			return nil, err
+		}
 		return []string{t}, nil
 	case []any:
 		out := make([]string, 0, len(t))
@@ -1337,6 +1394,9 @@ func parseRefs(v any) ([]string, error) {
 				return nil, userParamErrorf(CodeParamInvalid, "reference_images 数组元素必须是字符串，收到 %T", it)
 			}
 			if sv = strings.TrimSpace(sv); sv != "" {
+				if err := validateRefURL(sv); err != nil {
+					return nil, err
+				}
 				out = append(out, sv)
 			}
 		}
@@ -1351,6 +1411,32 @@ func parseRefs(v any) ([]string, error) {
 		return out, nil
 	}
 	return nil, userParamErrorf(CodeParamInvalid, "reference_images 需为字符串或字符串数组，收到 %T", v)
+}
+
+// validateRefURL 只放行 http(s) 与 data:image/video。
+//
+// 之前什么都不校验：空格、相对路径、file:// 都会被原样转给上游，换回来一个
+// 看不懂的 400。data URL 是本地文件的正路 —— 客户端把图片 base64 内联进来，
+// 走的是 /v1/images/generations 的 base64 参考图，不需要额外上传接口。
+func validateRefURL(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return userParamErrorf(CodeParamInvalid, "参考图地址不合法：%s", clipRunes(raw, 80))
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+		return nil
+	case "data":
+		lower := strings.ToLower(raw)
+		if strings.HasPrefix(lower, "data:image/") || strings.HasPrefix(lower, "data:video/") {
+			return nil
+		}
+		return userParamErrorf(CodeParamInvalid, "data URL 只接受 data:image/* 或 data:video/*")
+	case "":
+		return userParamErrorf(CodeParamInvalid, "参考图必须是绝对 URL 或 data URL：%s", clipRunes(raw, 80))
+	default:
+		return userParamErrorf(CodeParamInvalid, "参考图协议 %s 不支持（只收 http / https / data）", u.Scheme)
+	}
 }
 
 // parseOutputs 从上游响应里提取产物地址，兼容几种常见形状。
@@ -1426,6 +1512,9 @@ func unwrapTaskBody(resp map[string]any) map[string]any {
 // 视频任务动辄 3-4 分钟，2 秒一轮等于把同一个任务问 100 多次；5 秒够快
 // 让 agent 觉得有进展，又不至于把一个任务的等待放大成上百次请求。
 const pollAfterMS = 5000
+
+// pollAfter 返回当前配置的建议轮询间隔（毫秒）。
+func pollAfter() int { return LoadSettings().PollAfterMS }
 
 func usageOf(resp map[string]any) map[string]any {
 	if u, ok := resp["usage"].(map[string]any); ok {

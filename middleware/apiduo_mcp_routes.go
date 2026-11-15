@@ -35,4 +35,9 @@ func init() {
 
 	accessTokenRouteRules["GET /api/mcp/error-rules"] = accessTokenScopeRule("model:read")
 	accessTokenRouteRules["PUT /api/mcp/error-rules/:id"] = accessTokenScopeRule("model:write")
+
+	// 运行参数：读跟随读权限；写会改变全站行为（限流、超时、请求体上限），
+	// 与模型配置同属写权限域。
+	accessTokenRouteRules["GET /api/mcp/settings"] = accessTokenScopeRule("model:read")
+	accessTokenRouteRules["PUT /api/mcp/settings"] = accessTokenScopeRule("model:write")
 }

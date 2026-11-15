@@ -66,11 +66,11 @@ func allowRate(bucket string, tokenId, limit int) (time.Duration, bool) {
 }
 
 func allowCatalogList(tokenId int) (time.Duration, bool) {
-	return allowRate("models.list", tokenId, catalogListLimit)
+	return allowRate("models.list", tokenId, LoadSettings().ModelsListPerMin)
 }
 
 func allowTaskGet(tokenId int) (time.Duration, bool) {
-	return allowRate("task.get", tokenId, taskGetLimit)
+	return allowRate("task.get", tokenId, LoadSettings().TaskGetPerMin)
 }
 
 // resetRateLimits 清空窗口。测试用：同一个进程里上百个测试共用一个令牌。

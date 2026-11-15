@@ -226,6 +226,33 @@ curl -sS --noproxy '*' -X PUT \
     重放时先查一次任务（本地读，30 秒上限），到终态就把结果写回表并返回产物地址，
     省掉 agent 拿着「进行中」再轮询一轮。
 
+## 5.1 运行参数（热更新）
+
+`GET /api/mcp/settings` 读、`PUT /api/mcp/settings` 局部改。存在 `mcp_settings`
+一行 JSON 里，读侧 2 秒 TTL、写侧立即失效 —— 改完最多 2 秒生效，不用重启。
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `max_batch_n` | 8 | 模型没声明 `n` 上限时的兜底数量 |
+| `max_prompt_chars` | 32000 | 提示词全局硬顶（rune） |
+| `models_list_per_min` | 60 | `models.list` 每令牌窗口 |
+| `task_get_per_min` | 300 | `task.get` 每令牌窗口 |
+| `max_body_bytes` | 32 MB | `/mcp` 请求体上限（data URL 内联需要） |
+| `poll_after_ms` | 5000 | 建议轮询间隔 |
+| `task_id_ttl_hours` | 168 | 句柄有效期 |
+| `upstream_timeout_seconds` | 480 | 生成整体超时 |
+| `task_timeout_seconds` | 30 | 单次任务查询超时 |
+| `models_timeout_seconds` | 15 | `/models` 超时 |
+| `fanout_parallel` | 4 | `n>1` 拆单时的最大并发 |
+| `task_cache_ttl_seconds` | 300 | 任务终态缓存；0 关闭 |
+| `record_task_errors` | true | `task.get` 失败是否落观察样本 |
+
+越界值会被夹到边界（不整份打回默认）；未知键直接报错 —— 静默忽略会让人
+以为改生效了。
+
+`n>1` 拆单时每个分片显式传 `n=1`；本地文件走 `data:image/...;base64,...` 内联，
+不走 `/v1/files`（那条路返回的是网关 file id，上游取不到）。
+
 ## 6. 已修的坑（别再踩）
 
 - **任务查询响应有两种形状**：方舟形状 `GET /v1/contents/generations/tasks/:id`

@@ -56,12 +56,8 @@ func (e *upError) Error() string {
 // defaultUpstreamPort 与 apiduo 的默认监听端口一致。
 const defaultUpstreamPort = "3000"
 
-const (
-	// listModelsTimeout 是读 /models 的上限。
-	listModelsTimeout = 15 * time.Second
-	// getTaskTimeout 是查一次任务的上限。任务查询是纯读，8 分钟只会拖死轮询。
-	getTaskTimeout = 30 * time.Second
-)
+// 读类调用的超时来自 mcp_settings（默认 15s / 30s），不再编进常量：
+// 上游变慢时要能立刻放宽，而不是发一个版本。
 
 func newUpClient() *upClient {
 	base := strings.TrimSpace(os.Getenv("MCP_UPSTREAM_BASE_URL"))
@@ -214,7 +210,7 @@ func isTimeoutErr(err error) bool {
 
 func (c *upClient) listModels(ctx context.Context, apiKey string) ([]map[string]any, error) {
 	// 与生图分开：/models 是一次轻量读，卡住 8 分钟没有意义。
-	ctx, cancel := context.WithTimeout(ctx, listModelsTimeout)
+	ctx, cancel := context.WithTimeout(ctx, secondsToDuration(LoadSettings().ModelsTimeoutS))
 	defer cancel()
 	data, _, err := c.do(ctx, apiKey, http.MethodGet, "/models", nil)
 	if err != nil {
@@ -242,7 +238,7 @@ func (c *upClient) generate(ctx context.Context, apiKey string, t transport, pay
 }
 
 func (c *upClient) getTask(ctx context.Context, apiKey string, t transport, taskKey string) (map[string]any, error) {
-	ctx, cancel := context.WithTimeout(ctx, getTaskTimeout)
+	ctx, cancel := context.WithTimeout(ctx, secondsToDuration(LoadSettings().TaskTimeoutS))
 	defer cancel()
 	if t.Query == "" {
 		return nil, fmt.Errorf("协议 %s 不支持任务查询", t.Name)

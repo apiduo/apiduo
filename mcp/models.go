@@ -153,7 +153,7 @@ func Migrate() error {
 	if model.DB == nil {
 		return errors.New("主库未初始化")
 	}
-	if err := model.DB.AutoMigrate(&ModelProfile{}, &ErrorRule{}, &IdempotencyRecord{}); err != nil {
+	if err := model.DB.AutoMigrate(&ModelProfile{}, &ErrorRule{}, &IdempotencyRecord{}, &Setting{}); err != nil {
 		return err
 	}
 	// 升级前的行 version 是 0，而 upsert 里 0 表示「要求这条不存在」。

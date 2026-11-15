@@ -294,8 +294,9 @@ func TestVideoReplayFailedTaskStaysNonError(t *testing.T) {
 			t.Fatalf("content blocked 不该可重试: %v", terr)
 		}
 	}
-	if got := queries.Load(); got != 2 {
-		t.Fatalf("失败任务每次重放都该刷新，实际查询 %d 次", got)
+	// 失败也是终态：第一次重放查一次，第二次命中终态缓存，不再查 relay。
+	if got := queries.Load(); got != 1 {
+		t.Fatalf("终态缓存后不该重复查询，实际 %d 次", got)
 	}
 }
 

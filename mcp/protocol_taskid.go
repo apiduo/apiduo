@@ -146,7 +146,7 @@ func signTaskID(p taskPayload) (string, error) {
 	now := time.Now().Unix()
 	p.IssuedAt = now
 	if p.ExpireAt == 0 {
-		p.ExpireAt = now + int64(taskIDTTL/time.Second)
+		p.ExpireAt = now + int64(secondsToDuration(LoadSettings().TaskIDTTLHours*3600)/time.Second)
 	}
 	body, err := json.Marshal(p)
 	if err != nil {

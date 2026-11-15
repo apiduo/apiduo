@@ -109,13 +109,26 @@ func protocolHandler() http.Handler {
 		// 请求体上限：MCP 调用本身很小（提示词 + 几个 URL）。匿名端点有
 		// AnonymousRequestBodyLimit，鉴权端点此前没有任何上限 —— 一个令牌
 		// 就能发几十 MB 的 JSON 让进程把内存吃满。4 MB 对 data URL 也够用。
-		protoHandler = http.MaxBytesHandler(h, maxMCPBodyBytes)
+		protoHandler = limitRequestBody(h)
 	})
 	return protoHandler
 }
 
-// maxMCPBodyBytes 是 /mcp 请求体的硬上限。
-const maxMCPBodyBytes = 4 << 20
+// maxMCPBodyBytes 是 /mcp 请求体上限的默认值（可被 mcp_settings 覆盖）。
+//
+// 32 MB：本地图片/视频通常以 data URL 内联进来，base64 会把体积放大 4/3；
+// 一张 10 MB 的图约 13 MB。4 MB 连一张原图都放不下。
+const maxMCPBodyBytes = 32 << 20
+
+// limitRequestBody 按当前设置限制请求体。
+//
+// 逐请求读设置而不是构造时固定：改上限不该需要重启。参考图可以内联成
+// data URL，所以这个值会被调大；调完立刻生效。
+func limitRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.MaxBytesHandler(next, LoadSettings().MaxBodyBytes).ServeHTTP(w, r)
+	})
+}
 
 // injectBearer 把 Authorization 里的令牌放进 context，供工具层调用上游时使用。
 //

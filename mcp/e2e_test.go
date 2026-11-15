@@ -82,6 +82,8 @@ func setupDB(t *testing.T) *gorm.DB {
 	resetTaskSigningKey()
 	resetCatalogCache()
 	resetCatalogRateLimit()
+	ResetSettingsCache()
+	resetTaskCache()
 	return db
 }
 
@@ -465,7 +467,7 @@ func TestParamValidationRejectsOutOfRange(t *testing.T) {
 	}{
 		{"enum 外取值", map[string]any{"model": "strict-image", "prompt": "x", "size": "8K"}, "不被模型"},
 		{"n 超上限", map[string]any{"model": "strict-image", "prompt": "x", "n": 5}, "最多"},
-		{"参考图超上限", map[string]any{"model": "strict-image", "prompt": "x", "reference_images": []any{"a"}}, "不支持参考图"},
+		{"参考图超上限", map[string]any{"model": "strict-image", "prompt": "x", "reference_images": []any{"https://example.test/a.png"}}, "不支持参考图"},
 		{"未声明参数", map[string]any{"model": "strict-image", "prompt": "x", "extra": map[string]any{"seed": 1}}, "未声明参数"},
 	}
 	for _, c := range cases {

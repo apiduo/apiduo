@@ -88,6 +88,10 @@ func adminRoutes() []adminRoute {
 
 		{http.MethodGet, "/error-rules", apiListErrorRules},
 		{http.MethodPut, "/error-rules/:id", apiUpdateErrorRule},
+
+		// 运行参数：热更新，改完最多 2 秒生效（读侧 2s TTL，写侧立即失效）。
+		{http.MethodGet, "/settings", apiGetSettings},
+		{http.MethodPut, "/settings", apiUpdateSettings},
 	}
 }
 
