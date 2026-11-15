@@ -4,10 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
-	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 )
 
@@ -118,90 +115,6 @@ func TestParseRefsAcceptsDataURLAndRejectsOtherSchemes(t *testing.T) {
 		if _, err := parseRefs(raw); err == nil {
 			t.Fatalf("%q 应被拒绝", raw)
 		}
-	}
-}
-
-// 状态没变时只回最小信息，不重复下发整份结果。
-func TestTaskGetUnchangedWhileWorking(t *testing.T) {
-	setupDB(t)
-	var queries atomic.Int64
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/contents/generations/tasks/t-run", func(w http.ResponseWriter, _ *http.Request) {
-		queries.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"task_id":"t-run","status":"running","progress":"30%"}`)
-	})
-	up := httptest.NewServer(mux)
-	t.Cleanup(up.Close)
-	os.Setenv("MCP_UPSTREAM_BASE_URL", up.URL+"/v1")
-	t.Cleanup(func() { os.Unsetenv("MCP_UPSTREAM_BASE_URL") })
-	resetProtocol()
-	if err := SaveProfile(&ModelProfile{ModelId: "run-video", Kind: "video", Enabled: true, Async: true}); err != nil {
-		t.Fatal(err)
-	}
-	srv := mcpServer(t)
-	signed, err := signTaskID(taskPayload{Model: "run-video", Upstream: "t-run", Kind: "video"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	first := callTool(t, srv.URL, "sk-test", "task.get", map[string]any{"task_id": signed})
-	if first["status"] != "working" || first["unchanged"] != nil {
-		t.Fatalf("第一次应完整下发: %v", first)
-	}
-	second := callTool(t, srv.URL, "sk-test", "task.get", map[string]any{"task_id": signed})
-	if second["status"] != "working" {
-		t.Fatalf("状态错误: %v", second["status"])
-	}
-	if v, _ := second["unchanged"].(bool); !v {
-		t.Fatalf("状态没变应标 unchanged: %v", second)
-	}
-	if _, exists := second["outputs"]; exists {
-		t.Fatalf("unchanged 不该带产物: %v", second)
-	}
-	if got := queries.Load(); got != 2 {
-		t.Fatalf("working 每次都要查询真实状态，实际 %d 次", got)
-	}
-}
-
-// 终态在 TTL 内直接回缓存，连 relay 都不查。
-func TestTaskGetTerminalCached(t *testing.T) {
-	setupDB(t)
-	var queries atomic.Int64
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/contents/generations/tasks/t-done", func(w http.ResponseWriter, _ *http.Request) {
-		queries.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"task_id":"t-done","status":"succeeded","url":"https://example.test/v.mp4"}`)
-	})
-	up := httptest.NewServer(mux)
-	t.Cleanup(up.Close)
-	os.Setenv("MCP_UPSTREAM_BASE_URL", up.URL+"/v1")
-	t.Cleanup(func() { os.Unsetenv("MCP_UPSTREAM_BASE_URL") })
-	resetProtocol()
-	if err := SaveProfile(&ModelProfile{ModelId: "done-video", Kind: "video", Enabled: true, Async: true}); err != nil {
-		t.Fatal(err)
-	}
-	srv := mcpServer(t)
-	signed, err := signTaskID(taskPayload{Model: "done-video", Upstream: "t-done", Kind: "video"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	first := callTool(t, srv.URL, "sk-test", "task.get", map[string]any{"task_id": signed})
-	if first["status"] != "completed" {
-		t.Fatalf("第一次应 completed: %v", first)
-	}
-	second := callTool(t, srv.URL, "sk-test", "task.get", map[string]any{"task_id": signed})
-	if v, _ := second["unchanged"].(bool); !v {
-		t.Fatalf("终态第二次应标 unchanged: %v", second)
-	}
-	outs, _ := second["outputs"].([]any)
-	if len(outs) != 1 {
-		t.Fatalf("终态即使 unchanged 也要带产物（别的会话可能没拿到）: %v", second["outputs"])
-	}
-	if got := queries.Load(); got != 1 {
-		t.Fatalf("终态应命中缓存，实际查询 %d 次", got)
 	}
 }
 

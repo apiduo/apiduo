@@ -988,16 +988,13 @@ type taskOutput struct {
 	// 纯字符串它只能读中文猜。
 	Error  *toolError `json:"error,omitempty"`
 	PollMS int        `json:"poll_after_ms,omitempty"`
-	// Unchanged 表示这次返回的状态与上一次相同，产物/错误字段被省略。
-	// 调用方据此知道「没有新信息」，可以继续按 poll_after_ms 等。
-	Unchanged bool `json:"unchanged,omitempty"`
 }
 
 func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in taskInput) (*mcpsdk.CallToolResult, taskOutput, error) {
 	key := apiKeyFrom(ctx)
 	caller := callerFrom(ctx)
-	// 轮询是所有工具里频率最高的那个：一个 agent 盯 10 个任务、5 秒一轮就是
-	// 120 次/分钟。没有窗口的话，这条纯读路径可以被脚本打到任意 QPS。
+	// 轮询是所有工具里频率最高的那个：一个 agent 盯 10 个任务、10 秒一轮就是
+	// 60 次/分钟。没有窗口的话，这条纯读路径可以被脚本打到任意 QPS。
 	if wait, ok := allowTaskGet(caller.TokenId); !ok {
 		ms := max(int(wait.Milliseconds()), 1000)
 		// 这里**不能**用 failTaskWith：它把 status 写成 failed，agent 会以为任务失败了。
@@ -1015,6 +1012,14 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 		res := &mcpsdk.CallToolResult{IsError: true, Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: te.Message}}}
 		return res, out, nil
 	}
+	// 这里**不做**响应缓存。
+	//
+	// 网关的 GET /v1/contents/generations/tasks/{id} 只是
+	// `WHERE user_id AND task_id` 的单行索引读（EXPLAIN 走 idx_tasks_task_id），
+	// 快照由网关的后台任务每 15 秒刷新一次，客户端查询不会触发上游调用。
+	// 所以缓存省下的只是一次索引查找，却引入第二个真相源（进程内、跨副本不一致、
+	// 任务被清理后还多活一个 TTL）—— 不值。轮询密度由 poll_after_ms 控制，
+	// 那里对齐的是网关的 15 秒刷新周期。
 	p, err := parseTaskID(in.TaskID, caller.UserId)
 	if err != nil {
 		d.observeTaskError(ctx, "", in.TaskID, err)
@@ -1034,17 +1039,6 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 		d.observeTaskError(ctx, p.Model, in.TaskID, err)
 		return d.failTask(p.Model, in.TaskID, userParamErrorf(CodeTaskIDInvalid, "task_id 记录的产物类型不可用：%s", p.Kind))
 	}
-	settings := LoadSettings()
-	cacheKey := taskCacheKey(caller.TokenId, in.TaskID)
-	if settings.TaskCacheTTLS > 0 {
-		// 终态不会再变：TTL 内直接回缓存，连 relay 都不查。
-		if e, ok := loadTaskCache(cacheKey, settings.TaskCacheTTLS); ok && e.status != "working" {
-			out := e.out
-			out.Unchanged = true
-			return textResult(taskSummary(out.Model, out.Status, out)), out, nil
-		}
-	}
-
 	raw, err := d.up.getTask(ctx, key, t, p.Upstream)
 	if err != nil {
 		d.observeTaskError(ctx, p.Model, in.TaskID, err)
@@ -1081,20 +1075,6 @@ func (d *toolDeps) getTask(ctx context.Context, _ *mcpsdk.CallToolRequest, in ta
 			}
 		default:
 			out.Error = classifyTaskFailure(p.Model, upstreamFailReason(resp))
-		}
-	}
-	if settings.TaskCacheTTLS > 0 {
-		prev, seen := loadTaskCache(cacheKey, 0)
-		storeTaskCache(cacheKey, status, out)
-		// 只对「还在跑」做省略：终态第一次到达时要把产物/错误完整下发一次，
-		// 之后由上面的缓存分支接住。
-		if seen && prev.status == status && status == "working" {
-			brief := taskOutput{
-				Status: "working", TaskID: in.TaskID, Model: p.Model,
-				PollMS: pollAfter(), Unchanged: true,
-			}
-			return textResult(fmt.Sprintf("任务进行中（%s），状态未变；约 %d 秒后再查",
-				p.Model, (pollAfter()+999)/1000)), brief, nil
 		}
 	}
 	return textResult(taskSummary(p.Model, status, out)), out, nil
@@ -1509,9 +1489,11 @@ func unwrapTaskBody(resp map[string]any) map[string]any {
 
 // pollAfterMS 是建议的两次 task.get 间隔。
 //
-// 视频任务动辄 3-4 分钟，2 秒一轮等于把同一个任务问 100 多次；5 秒够快
-// 让 agent 觉得有进展，又不至于把一个任务的等待放大成上百次请求。
-const pollAfterMS = 5000
+// 网关的快照由后台任务每 15 秒刷新一次（asyncTaskPollHandler.Interval），
+// 客户端查得再快也拿不到更新的数据。10 秒既能在每个刷新窗口里采到样，
+// 又把 3 分钟视频的轮询次数从 36 次压到 18 次 —— 每次轮询都是 agent
+// 上下文里的一条消息，省下来的是真金白银的 token。
+const pollAfterMS = 10000
 
 // pollAfter 返回当前配置的建议轮询间隔（毫秒）。
 func pollAfter() int { return LoadSettings().PollAfterMS }

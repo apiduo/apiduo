@@ -36,8 +36,6 @@ type Settings struct {
 	ModelsTimeoutS   int `json:"models_timeout_seconds"`
 	// FanoutParallel 是 n>1 拆单时的最大并发数。
 	FanoutParallel int `json:"fanout_parallel"`
-	// TaskCacheTTLS 是任务终态的缓存时长（秒），0 表示关闭缓存。
-	TaskCacheTTLS int `json:"task_cache_ttl_seconds"`
 	// RecordTaskErrors 决定 task.get 失败时是否落观察样本。
 	RecordTaskErrors bool `json:"record_task_errors"`
 }
@@ -56,7 +54,6 @@ var defaultSettings = Settings{
 	TaskTimeoutS:     30,
 	ModelsTimeoutS:   15,
 	FanoutParallel:   4,
-	TaskCacheTTLS:    300,
 	RecordTaskErrors: true,
 }
 
@@ -122,7 +119,6 @@ func normalizeSettings(s Settings) Settings {
 	s.TaskTimeoutS = clampInt(s.TaskTimeoutS, 3, 300, defaultSettings.TaskTimeoutS)
 	s.ModelsTimeoutS = clampInt(s.ModelsTimeoutS, 3, 300, defaultSettings.ModelsTimeoutS)
 	s.FanoutParallel = clampInt(s.FanoutParallel, 1, 16, defaultSettings.FanoutParallel)
-	s.TaskCacheTTLS = clampInt(s.TaskCacheTTLS, 0, 3600, defaultSettings.TaskCacheTTLS)
 	return s
 }
 

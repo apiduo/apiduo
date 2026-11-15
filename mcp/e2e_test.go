@@ -83,7 +83,6 @@ func setupDB(t *testing.T) *gorm.DB {
 	resetCatalogCache()
 	resetCatalogRateLimit()
 	ResetSettingsCache()
-	resetTaskCache()
 	return db
 }
 

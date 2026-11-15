@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -294,9 +295,10 @@ func TestVideoReplayFailedTaskStaysNonError(t *testing.T) {
 			t.Fatalf("content blocked 不该可重试: %v", terr)
 		}
 	}
-	// 失败也是终态：第一次重放查一次，第二次命中终态缓存，不再查 relay。
-	if got := queries.Load(); got != 1 {
-		t.Fatalf("终态缓存后不该重复查询，实际 %d 次", got)
+	// 不做响应缓存：每次重放都读一次网关快照（单行索引读，很便宜），
+	// 换来的是只有一个真相源。
+	if got := queries.Load(); got != 2 {
+		t.Fatalf("两次重放各查一次，实际 %d 次", got)
 	}
 }
 
@@ -386,5 +388,61 @@ func TestGenerateOmitsUpstreamEcho(t *testing.T) {
 	}
 	if len(sc["outputs"].([]any)) != 1 {
 		t.Fatalf("产物丢了: %v", sc["outputs"])
+	}
+}
+
+// task.get 不做响应缓存：两次查询都要读一次网关快照。
+//
+// 2026-11-15 删掉了原来那层「working 状态未变就省略 / 终态 TTL 内不查 relay」的缓存：
+// 网关的查询是 `WHERE user_id AND task_id` 的单行索引读，快照由后台每 15 秒刷新，
+// 客户端查询不触发上游调用 —— 缓存省不到什么，却让同一任务在进程内多出一个
+// 可能陈旧的真相源。这条测试守住「不缓存」这个结论，避免以后又加回来。
+func TestTaskGetAlwaysReadsGateway(t *testing.T) {
+	setupDB(t)
+	var queries atomic.Int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/contents/generations/tasks/t-live", func(w http.ResponseWriter, _ *http.Request) {
+		queries.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"task_id":"t-live","status":"running"}`)
+	})
+	up := httptest.NewServer(mux)
+	t.Cleanup(up.Close)
+	os.Setenv("MCP_UPSTREAM_BASE_URL", up.URL+"/v1")
+	t.Cleanup(func() { os.Unsetenv("MCP_UPSTREAM_BASE_URL") })
+	resetProtocol()
+	resetRateLimits()
+
+	if err := SaveProfile(&ModelProfile{ModelId: "live-video", Kind: "video", Enabled: true, Async: true}); err != nil {
+		t.Fatal(err)
+	}
+	srv := mcpServer(t)
+	signed, err := signTaskID(taskPayload{Model: "live-video", Upstream: "t-live", Kind: "video"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := range 2 {
+		sc := callTool(t, srv.URL, "sk-test", "task.get", map[string]any{"task_id": signed})
+		if sc["status"] != "working" {
+			t.Fatalf("第 %d 次 status=%v", i+1, sc["status"])
+		}
+		if _, exists := sc["unchanged"]; exists {
+			t.Fatalf("第 %d 次仍带 unchanged，说明缓存又回来了: %v", i+1, sc)
+		}
+	}
+	if got := queries.Load(); got != 2 {
+		t.Fatalf("两次查询都该读网关，实际 %d 次", got)
+	}
+
+	// 轮询间隔对齐网关的 15 秒刷新：默认 10 秒，且会随设置变化。
+	if got := LoadSettings().PollAfterMS; got != pollAfterMS {
+		t.Fatalf("默认轮询间隔 = %d，期望 %d", got, pollAfterMS)
+	}
+	if _, err := SaveSettings(map[string]json.RawMessage{"poll_after_ms": json.RawMessage(`20000`)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := pollAfter(); got != 20000 {
+		t.Fatalf("轮询间隔没有热更新: %d", got)
 	}
 }

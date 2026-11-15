@@ -184,7 +184,7 @@ curl -sS --noproxy '*' -X PUT \
 15. **两个读工具各有限流，且分桶**：`models.list` 每令牌 60 次/分钟（目录版本
     `catalog_version` 取每行 `version` 的哈希，新增/改字段/删除都会变，随 text 下发；
     不要改成 `max(version)` —— 删行时它不变，缓存会永久陈旧）；`task.get` 每令牌
-    300 次/分钟（12 次/分钟/任务 × 25 个并发任务）。两者共用同一个窗口实现，
+    300 次/分钟（按 10 秒一轮算是 6 次/分钟/任务，够 50 个并发任务）。两者共用同一个窗口实现，
     但桶名不同 —— 共用一个桶会让 models.list 的额度把轮询卡死。`task.get` 被限流时
     `status` 保持 `working`：失败的是这次查询，不是任务，把它写成 `failed` 会让
     agent 放弃等待。窗口是**进程内**的：N 个副本的实际额度是 N × 阈值。
@@ -225,6 +225,14 @@ curl -sS --noproxy '*' -X PUT \
 24. **异步重放会刷新状态**：`video.generate` 的幂等记录存的是「提交时」的文本，
     重放时先查一次任务（本地读，30 秒上限），到终态就把结果写回表并返回产物地址，
     省掉 agent 拿着「进行中」再轮询一轮。
+25. **`task.get` 不做响应缓存**（曾经做过，2026-11-15 删掉）。网关的
+    `GET /v1/contents/generations/tasks/{id}` 是 `WHERE user_id AND task_id` 的
+    单行索引读（`EXPLAIN` 走 `idx_tasks_task_id`），快照由后台任务每 15 秒刷新，
+    客户端查询**不触发上游调用**。缓存省下的只是一次索引查找，代价是第二个真相源
+    （进程内、跨副本不一致、任务被清理后还多活一个 TTL）。轮询密度靠
+    `poll_after_ms` 控制 —— 它对齐的是那个 15 秒，而不是随便取个「感觉快」的值。
+    注意 `working` 的响应本来就只有 `status/task_id/model/poll_after_ms` 四个字段，
+    没有可省的载荷；当初那个 `unchanged` 只多加了一个字段，反而更大。
 
 ## 5.1 运行参数（热更新）
 
@@ -238,13 +246,12 @@ curl -sS --noproxy '*' -X PUT \
 | `models_list_per_min` | 60 | `models.list` 每令牌窗口 |
 | `task_get_per_min` | 300 | `task.get` 每令牌窗口 |
 | `max_body_bytes` | 32 MB | `/mcp` 请求体上限（data URL 内联需要） |
-| `poll_after_ms` | 5000 | 建议轮询间隔 |
+| `poll_after_ms` | 10000 | 建议轮询间隔（对齐网关 15 秒快照刷新） |
 | `task_id_ttl_hours` | 168 | 句柄有效期 |
 | `upstream_timeout_seconds` | 480 | 生成整体超时 |
 | `task_timeout_seconds` | 30 | 单次任务查询超时 |
 | `models_timeout_seconds` | 15 | `/models` 超时 |
 | `fanout_parallel` | 4 | `n>1` 拆单时的最大并发 |
-| `task_cache_ttl_seconds` | 300 | 任务终态缓存；0 关闭 |
 | `record_task_errors` | true | `task.get` 失败是否落观察样本 |
 
 越界值会被夹到边界（不整份打回默认）；未知键直接报错 —— 静默忽略会让人
