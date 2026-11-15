@@ -170,10 +170,18 @@ agent 会照着这句话去 poll 一次，多一次往返。可以在重放时�
 测试：`TestShouldReleaseIdempotency`（6 种错误）、`TestCompleteIdempotencyDropsInlineButKeepsResponse`
 （表里没有 b64、调用方的对象没被改）。
 
-## 4. 没做，留给你决定
+## 4. 建议项的落地情况（0.0.148 / 0.0.149）
 
-1. `task.get` 去掉 `upstream`（省 46% 响应体）。
-2. `task.get` 加 per-token 限流。
-3. 失败任务按 `fail_reason` 分类可重试性。
-4. 重放时刷新异步任务的当前状态。
-5. relay 侧按 `(token, client_key)` 在建任务处去重 —— 这是 2.3 的唯一正解，但属于 relay，不是 MCP。
+| # | 项 | 状态 | 线上实测 |
+|---|---|---|---|
+| 1 | `task.get` 去掉 `upstream` | ✅ 0.0.149 | 单次响应 1012B → 657–680B，`upstream` 字段消失 |
+| 2 | `task.get` per-token 限流（120/分钟，与 models.list 分桶） | ✅ 0.0.149 | 并发 140 次：118 放行 / 22 限流；限流样本 `status=working` |
+| 3 | 失败任务按 `fail_reason` 分类可重试性 | ✅ 0.0.149 | `Input material restore service is unavailable` → `retryable=true, action=wait` |
+| 4 | 重放时刷新异步状态 | ✅ 0.0.149 | 已完成的视频重放直接回 `completed` + mp4 地址，不再回「进行中」 |
+| 5 | relay 侧按 `(token, client_key)` 在建任务处去重 | ❌ 未做 | 属于 relay 的合并面（`added` 已顶到 4062），需要单独排期 |
+
+第 2 项落地时修正了一处语义：限流**不能**把 `status` 写成 `failed` —— 失败的是这次查询，
+不是任务；写成 failed 会让 agent 放弃等待。现在是 `status=working` + `poll_after_ms`。
+
+第 4 项落地时顺带发现：刷新到终态后要把结果**写回幂等表**，否则每次重放都要多查一次任务。
+线上验证：第二次重放查一次、第三次重放零查询。
