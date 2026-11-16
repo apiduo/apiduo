@@ -8544,6 +8544,7 @@
     "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "显示为仪表盘公告列表的标题。留空时回落为正文摘要。",
     "End time (Optional)": "结束时间（可选）",
     "Keep showing until cleared": "留空则一直显示",
-    "Announcement stops appearing after this time. Leave empty to keep it visible.": "到达此时间后不再显示。留空则一直显示。"
+    "Announcement stops appearing after this time. Leave empty to keep it visible.": "到达此时间后不再显示。留空则一直显示。",
+    "{{count}} more": "还有 {{count}} 条"
   }
 }

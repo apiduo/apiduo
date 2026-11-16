@@ -8544,6 +8544,7 @@
     "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "ダッシュボードの一覧で見出しとして表示されます。空の場合は本文の抜粋が使われます。",
     "End time (Optional)": "終了時刻（任意）",
     "Keep showing until cleared": "クリアするまで表示",
-    "Announcement stops appearing after this time. Leave empty to keep it visible.": "この時刻を過ぎると表示されなくなります。空欄のままにすると表示され続けます。"
+    "Announcement stops appearing after this time. Leave empty to keep it visible.": "この時刻を過ぎると表示されなくなります。空欄のままにすると表示され続けます。",
+    "{{count}} more": "他 {{count}} 件"
   }
 }

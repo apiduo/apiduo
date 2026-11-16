@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Megaphone } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge } from '@/components/ui/icon-badge'
@@ -44,6 +44,43 @@ export function AnnouncementsPanel() {
   const [selectedAnnouncement, setSelectedAnnouncement] =
     useState<AnnouncementItem | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  // 被遮住的条数。固定 h-72 里放不下时给个可见的交代 ——
+  // macOS 的覆盖式滚动条平时不显示，没有提示用户会以为已经到底了。
+  const scrollHostRef = useRef<HTMLDivElement>(null)
+  const [hiddenCount, setHiddenCount] = useState(0)
+
+  useEffect(() => {
+    const viewport = scrollHostRef.current?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]'
+    )
+    if (!viewport) return
+
+    const measure = () => {
+      const rows = [...viewport.querySelectorAll('button')]
+      if (!rows.length) {
+        setHiddenCount(0)
+        return
+      }
+      // 底边超出视口就算一条，半条也算 —— 那正是要提示的情况
+      const bounds = viewport.getBoundingClientRect()
+      setHiddenCount(
+        rows.filter((row) => row.getBoundingClientRect().bottom > bounds.bottom + 1)
+          .length
+      )
+    }
+
+    // 首帧时列表刚挂上去，尺寸还没稳定；等下一帧再量。
+    // 滚动时不需要延迟，直接在事件里量。
+    const firstMeasure = requestAnimationFrame(measure)
+    viewport.addEventListener('scroll', measure, { passive: true })
+    const observer = new ResizeObserver(measure)
+    observer.observe(viewport)
+    return () => {
+      cancelAnimationFrame(firstMeasure)
+      viewport.removeEventListener('scroll', measure)
+      observer.disconnect()
+    }
+  }, [list.length])
 
   const handleAnnouncementClick = (item: AnnouncementItem) => {
     // 与铃铛共用同一套已读 key（`id:<id>`），点开后未读数立刻下来
@@ -71,7 +108,8 @@ export function AnnouncementsPanel() {
       height='h-72'
       contentClassName='p-0'
     >
-      <ScrollArea className='h-72'>
+      <div ref={scrollHostRef} className='relative'>
+        <ScrollArea className='h-72'>
         <div>
           {list.map((item: AnnouncementItem, idx: number) => {
             const key = item.id ?? `announcement-${idx}`
@@ -117,7 +155,15 @@ export function AnnouncementsPanel() {
             )
           })}
         </div>
-      </ScrollArea>
+        </ScrollArea>
+        {hiddenCount > 0 && (
+          <div className='pointer-events-none absolute inset-x-0 bottom-0 flex h-14 items-end justify-center bg-gradient-to-t from-card via-card/85 to-transparent pb-1.5'>
+            <span className='bg-card text-muted-foreground rounded-full px-2 py-0.5 text-[11px] tabular-nums'>
+              {t('{{count}} more', { count: hiddenCount })}
+            </span>
+          </div>
+        )}
+      </div>
 
       <AnnouncementDetailModal
         open={isDialogOpen}

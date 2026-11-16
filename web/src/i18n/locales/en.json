@@ -8544,6 +8544,7 @@
     "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "Shown as the heading in the dashboard list. Falls back to the content preview when empty.",
     "End time (Optional)": "End time (Optional)",
     "Keep showing until cleared": "Keep showing until cleared",
-    "Announcement stops appearing after this time. Leave empty to keep it visible.": "Announcement stops appearing after this time. Leave empty to keep it visible."
+    "Announcement stops appearing after this time. Leave empty to keep it visible.": "Announcement stops appearing after this time. Leave empty to keep it visible.",
+    "{{count}} more": "{{count}} more"
   }
 }

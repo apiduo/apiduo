@@ -8544,6 +8544,7 @@
     "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "Hiển thị làm tiêu đề trong danh sách trên bảng điều khiển. Để trống sẽ dùng đoạn trích nội dung.",
     "End time (Optional)": "Thời gian kết thúc (không bắt buộc)",
     "Keep showing until cleared": "Tiếp tục hiển thị cho đến khi xóa",
-    "Announcement stops appearing after this time. Leave empty to keep it visible.": "Thông báo sẽ ngừng hiển thị sau thời điểm này. Để trống để luôn hiển thị."
+    "Announcement stops appearing after this time. Leave empty to keep it visible.": "Thông báo sẽ ngừng hiển thị sau thời điểm này. Để trống để luôn hiển thị.",
+    "{{count}} more": "{{count}} mục nữa"
   }
 }
