@@ -26,8 +26,8 @@ import { useAnnouncements } from '@/features/dashboard/hooks/use-status-data'
 import { getPreviewText } from '@/features/dashboard/lib'
 import type { AnnouncementItem } from '@/features/dashboard/types'
 import {
-  ANNOUNCEMENT_BAR_COLORS,
-  ANNOUNCEMENT_BAR_WIDTHS,
+  ANNOUNCEMENT_LEVEL_BADGES,
+  ANNOUNCEMENT_TEXT_COLORS,
   type AnnouncementType,
 } from '@/lib/colors'
 import { formatDateTimeObject } from '@/lib/time'
@@ -76,39 +76,43 @@ export function AnnouncementsPanel() {
           {list.map((item: AnnouncementItem, idx: number) => {
             const key = item.id ?? `announcement-${idx}`
             const type = (item.type || 'default') as AnnouncementType
+            // 普通公告不打标签：给「没有级别」也贴一个标签，只是多一行噪音
+            const showLevel = type !== 'default'
             return (
               <button
                 key={key}
                 type='button'
                 onClick={() => handleAnnouncementClick(item)}
                 className={cn(
-                  'hover:bg-muted/40 focus-visible:ring-ring flex w-full items-stretch gap-3 px-3 py-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none sm:px-5 sm:py-3.5',
+                  'hover:bg-muted/40 focus-visible:ring-ring w-full px-3 py-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none sm:px-5 sm:py-3.5',
                   idx < list.length - 1 && 'border-border/60 border-b'
                 )}
               >
-                <span
-                  aria-hidden
-                  className={cn(
-                    'shrink-0',
-                    ANNOUNCEMENT_BAR_WIDTHS[type] > 3
-                      ? 'rounded-sm'
-                      : 'rounded-full'
-                  )}
-                  style={{
-                    width: ANNOUNCEMENT_BAR_WIDTHS[type],
-                    background: ANNOUNCEMENT_BAR_COLORS[type],
-                  }}
-                />
-                <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                  <p className='line-clamp-1 text-sm font-medium'>
-                    {item.title?.trim() || getPreviewText(item.content)}
-                  </p>
-                  {item.publishDate && (
-                    <time className='text-muted-foreground font-mono text-xs tabular-nums'>
-                      {formatDateTimeObject(new Date(item.publishDate))}
-                    </time>
-                  )}
-                </div>
+                <p className='line-clamp-1 text-sm font-medium'>
+                  {item.title?.trim() || getPreviewText(item.content)}
+                </p>
+                {(item.publishDate || showLevel) && (
+                  <div className='mt-0.5 flex items-center gap-1.5'>
+                    {item.publishDate && (
+                      <time className='text-muted-foreground font-mono text-xs tabular-nums'>
+                        {formatDateTimeObject(new Date(item.publishDate))}
+                      </time>
+                    )}
+                    {item.publishDate && showLevel && (
+                      <span aria-hidden className='text-[10px] opacity-40'>
+                        ·
+                      </span>
+                    )}
+                    {showLevel && (
+                      <span
+                        className='text-[11.5px] font-semibold'
+                        style={{ color: ANNOUNCEMENT_TEXT_COLORS[type] }}
+                      >
+                        {t(ANNOUNCEMENT_LEVEL_BADGES[type].label)}
+                      </span>
+                    )}
+                  </div>
+                )}
               </button>
             )
           })}

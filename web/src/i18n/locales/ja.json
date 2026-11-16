@@ -7,6 +7,7 @@
     "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.": "画像と動画は利用可能です。ファイル・検索・音声は今すぐ登録できますが、エンドポイントは未接続です。",
     "Catalog health": "目录健康",
     "Gap list": "缺口清单",
+    "Ongoing": "進行中",
     "Sign-in style": "登录页风格",
     "_copy": "_copy",
     "，": "、",
@@ -8532,6 +8533,5 @@
     "Filter this column": "この列を絞り込む",
     "Try the last 24 hours": "直近24時間を表示",
     "Filter by model": "モデルで絞り込む"
-  },
-  "Ongoing": "進行中"
+  }
 }

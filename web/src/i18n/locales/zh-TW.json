@@ -7,6 +7,7 @@
     "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.": "圖片和影片已可用；檔案、搜尋、音訊現在可以先登記，端點接通後即可呼叫。",
     "Catalog health": "目录健康",
     "Gap list": "缺口清单",
+    "Ongoing": "進行中",
     "Sign-in style": "登入頁風格",
     "_copy": "_複製",
     "，": "，",
@@ -8532,6 +8533,5 @@
     "Filter this column": "篩選這一欄",
     "Try the last 24 hours": "試試最近 24 小時",
     "Filter by model": "依模型篩選"
-  },
-  "Ongoing": "進行中"
+  }
 }

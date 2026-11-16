@@ -7,6 +7,7 @@
     "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.": "Les images et vidéos sont disponibles. Fichiers, recherche et audio peuvent être déclarés dès maintenant ; leurs points de terminaison ne sont pas encore connectés.",
     "Catalog health": "目录健康",
     "Gap list": "缺口清单",
+    "Ongoing": "En cours",
     "Sign-in style": "登录页风格",
     "_copy": "_copie",
     "，": ", ",
@@ -8532,6 +8533,5 @@
     "Filter this column": "Filtrer cette colonne",
     "Try the last 24 hours": "Essayer les dernières 24 heures",
     "Filter by model": "Filtrer par modèle"
-  },
-  "Ongoing": "En cours"
+  }
 }

@@ -7,6 +7,7 @@
     "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.": "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.",
     "Catalog health": "Catalog health",
     "Gap list": "Gap list",
+    "Ongoing": "Ongoing",
     "Sign-in style": "登录页风格",
     "_copy": "_copy",
     "，": ", ",
@@ -8532,6 +8533,5 @@
     "Filter this column": "Filter this column",
     "Try the last 24 hours": "Try the last 24 hours",
     "Filter by model": "Filter by model"
-  },
-  "Ongoing": "Ongoing"
+  }
 }

@@ -142,13 +142,13 @@ export function getAnnouncementColorClass(type?: string): string {
 }
 
 /**
- * 色条专用色。
+ * 铃铛圆点专用色。
  *
- * 语义 token 是为文字设计的：要在白底上达到 4.5:1，明度只能压到 0.58 上下，
- * 画成 3px 的细线会发闷。这里把明度统一提亮 0.04–0.06、彩度略增，
- * **只用于这条装饰性色条** —— 文字、图标、铃铛圆点仍用原 token。
+ * 6px 实心色块比文字更吃明度：语义 token 为了让白底文字达标，明度压到 0.58 上下，
+ * 画成小圆点会发闷。这里统一提亮 0.04–0.06。**只用于实心色块**，
+ * 级别文字走 ANNOUNCEMENT_TEXT_COLORS。
  */
-export const ANNOUNCEMENT_BAR_COLORS: Record<AnnouncementType, string> = {
+export const ANNOUNCEMENT_DOT_COLORS: Record<AnnouncementType, string> = {
   default: 'oklch(0.62 0 0)',
   ongoing: 'oklch(0.67 0.15 243)',
   success: 'oklch(0.66 0.15 163)',
@@ -157,15 +157,38 @@ export const ANNOUNCEMENT_BAR_COLORS: Record<AnnouncementType, string> = {
 }
 
 /**
- * 色条宽度。error 单列一档 5px —— 这是视觉权重，不是识别编码：
- * 该级别本来就该比别的更重，颜色已经足够区分。
+ * 公告级别 → 徽标文案与语义变体。
+ *
+ * 详情弹窗用 `variant` 渲染 StatusBadge，列表只取 `label` 作为 i18n key。
+ * 一处定义，避免两处写出不同措辞。
  */
-export const ANNOUNCEMENT_BAR_WIDTHS: Record<AnnouncementType, number> = {
-  default: 3,
-  ongoing: 3,
-  success: 3,
-  warning: 3,
-  error: 5,
+export const ANNOUNCEMENT_LEVEL_BADGES: Record<
+  string,
+  { label: string; variant: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
+> = {
+  default: { label: 'Default', variant: 'neutral' },
+  ongoing: { label: 'Ongoing', variant: 'info' },
+  success: { label: 'Success', variant: 'success' },
+  warning: { label: 'Warning', variant: 'warning' },
+  error: { label: 'Error', variant: 'danger' },
+}
+
+/**
+ * 级别文字色。
+ *
+ * 统一朝向 foreground 混色：亮色主题下 foreground 是深色 ⇒ 变深，暗色主题下是浅色
+ * ⇒ 变亮。一份表达式同时满足两套主题，不需要 dark: 变体。
+ *
+ * 混色比例按各级别原本的对比度反推 —— warning 琥珀天生最弱，混到 74%；
+ * error 红本身够深，只混 10% 以保留警示强度。
+ * 实测（截图像素采样，11.5px 小字）：亮色最低 5.15:1，暗色最低 5.25:1，均过 AA。
+ */
+export const ANNOUNCEMENT_TEXT_COLORS: Record<AnnouncementType, string> = {
+  default: 'var(--muted-foreground)',
+  ongoing: 'color-mix(in oklab, var(--info) 78%, var(--foreground))',
+  success: 'color-mix(in oklab, var(--success) 80%, var(--foreground))',
+  warning: 'color-mix(in oklab, var(--warning) 74%, var(--foreground))',
+  error: 'color-mix(in oklab, var(--destructive) 90%, var(--foreground))',
 }
 
 /**

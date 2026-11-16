@@ -7,6 +7,7 @@
     "Image and video are live. Files, search and audio can be declared now; their endpoints are not connected yet.": "Hình ảnh và video đã hoạt động. Tệp, tìm kiếm và âm thanh có thể khai báo ngay; endpoint chưa được kết nối.",
     "Catalog health": "目录健康",
     "Gap list": "缺口清单",
+    "Ongoing": "Đang diễn ra",
     "Sign-in style": "登录页风格",
     "_copy": "_bản sao",
     "，": ", ",
@@ -8532,6 +8533,5 @@
     "Filter this column": "Lọc cột này",
     "Try the last 24 hours": "Thử 24 giờ qua",
     "Filter by model": "Lọc theo mô hình"
-  },
-  "Ongoing": "Đang diễn ra"
+  }
 }

@@ -22,6 +22,7 @@ import { Dialog } from '@/components/dialog'
 import { RichContent } from '@/components/rich-content'
 import { StatusBadge } from '@/components/status-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ANNOUNCEMENT_LEVEL_BADGES } from '@/lib/colors'
 import { formatDateTimeObject } from '@/lib/time'
 
 interface AnnouncementDetailModalProps {
@@ -41,17 +42,6 @@ interface AnnouncementDetailModalProps {
  * 列表里只靠色条区分级别，弹窗里必须补上文字 —— 否则点进来反而看不出来。
  * 文案复用管理页已有的级别 key。
  */
-const LEVEL_BADGE: Record<
-  string,
-  { label: string; variant: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
-> = {
-  default: { label: 'Default', variant: 'neutral' },
-  ongoing: { label: 'Ongoing', variant: 'info' },
-  success: { label: 'Success', variant: 'success' },
-  warning: { label: 'Warning', variant: 'warning' },
-  error: { label: 'Error', variant: 'danger' },
-}
-
 export function AnnouncementDetailModal({
   open,
   onOpenChange,
@@ -59,7 +49,7 @@ export function AnnouncementDetailModal({
 }: AnnouncementDetailModalProps) {
   const { t } = useTranslation()
   const level = announcement?.type
-    ? LEVEL_BADGE[announcement.type]
+    ? ANNOUNCEMENT_LEVEL_BADGES[announcement.type]
     : undefined
 
   return (

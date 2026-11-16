@@ -41,7 +41,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  ANNOUNCEMENT_BAR_COLORS,
+  ANNOUNCEMENT_DOT_COLORS,
   type AnnouncementType,
 } from '@/lib/colors'
 import { formatDateTimeObject } from '@/lib/time'
@@ -135,7 +135,7 @@ function AnnouncementDot({ type }: { type?: string }) {
     <span
       className='mt-1.5 inline-block size-2 shrink-0 rounded-full'
       // 与仪表盘面板的色条取同一组颜色，避免同一条公告在两处显示成两种色
-      style={{ background: ANNOUNCEMENT_BAR_COLORS[kind] }}
+      style={{ background: ANNOUNCEMENT_DOT_COLORS[kind] }}
     />
   )
 }
