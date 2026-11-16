@@ -154,6 +154,21 @@ export function formatDateTimeObject(date: Date): string {
 }
 
 /**
+ * Format Date object for space-constrained lists: MM-DD HH:mm.
+ *
+ * Falls back to YYYY-MM-DD for dates outside the current year, so a list
+ * never shows an ambiguous month-day. Seconds are dropped on purpose: in a
+ * ~350px panel they cost roughly three characters of title width and carry
+ * no information a reader of a notice needs.
+ */
+export function formatShortDateTime(date: Date): string {
+  const d = dayjs(date)
+  return d.year() === dayjs().year()
+    ? d.format('MM-DD HH:mm')
+    : d.format('YYYY-MM-DD')
+}
+
+/**
  * Format timestamp for chart display based on time granularity
  * @param timestamp Unix timestamp in seconds
  * @param granularity Time granularity: 'hour', 'day', or 'week'

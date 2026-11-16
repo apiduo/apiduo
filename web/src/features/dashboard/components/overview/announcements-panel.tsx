@@ -30,7 +30,7 @@ import {
   ANNOUNCEMENT_TEXT_COLORS,
   type AnnouncementType,
 } from '@/lib/colors'
-import { formatDateTimeObject } from '@/lib/time'
+import { formatShortDateTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useNotificationStore } from '@/stores/notification-store'
 
@@ -95,7 +95,7 @@ export function AnnouncementsPanel() {
                   <div className='mt-0.5 flex items-center gap-1.5'>
                     {item.publishDate && (
                       <time className='text-muted-foreground font-mono text-xs tabular-nums'>
-                        {formatDateTimeObject(new Date(item.publishDate))}
+                        {formatShortDateTime(new Date(item.publishDate))}
                       </time>
                     )}
                     {item.publishDate && showLevel && (
