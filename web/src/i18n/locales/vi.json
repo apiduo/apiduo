@@ -8538,6 +8538,9 @@
     "Phase title": "Tiêu đề giai đoạn",
     "Phase description (optional)": "Mô tả giai đoạn (không bắt buộc)",
     "Remove phase": "Xóa giai đoạn",
-    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Không bắt buộc. Hiển thị dưới dạng dòng thời gian dọc trên bảng điều khiển, lưu theo thứ tự thời gian."
+    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Không bắt buộc. Hiển thị dưới dạng dòng thời gian dọc trên bảng điều khiển, lưu theo thứ tự thời gian.",
+    "Title": "Tiêu đề",
+    "Announcement title": "Tiêu đề thông báo",
+    "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "Hiển thị làm tiêu đề trong danh sách trên bảng điều khiển. Để trống sẽ dùng đoạn trích nội dung."
   }
 }

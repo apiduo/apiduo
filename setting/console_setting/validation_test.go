@@ -86,3 +86,55 @@ func TestValidateAnnouncementsPhases(t *testing.T) {
 		})
 	}
 }
+
+// announcementsWithTitle wraps a raw JSON member (e.g. `"title":"x"`) into one
+// announcement. An empty argument omits the field, which is how announcements
+// created before the editor exposed titles look.
+func announcementsWithTitle(member string) string {
+	const head = `[{"content":"测试公告","publishDate":"2026-11-16T10:00:00+08:00"`
+	if member == "" {
+		return head + `}]`
+	}
+	return head + `,` + member + `}]`
+}
+
+func TestValidateAnnouncementsTitle(t *testing.T) {
+	cases := []struct {
+		name    string
+		member  string
+		wantErr string
+	}{
+		{name: "字段不存在（存量数据）", member: ""},
+		{name: "空字符串", member: `"title":""`},
+		{name: "正常标题", member: `"title":"计费单位调整"`},
+		{name: "正好 60 字", member: `"title":"` + strings.Repeat("字", 60) + `"`},
+		{
+			name:    "超过 60 字",
+			member:  `"title":"` + strings.Repeat("字", 61) + `"`,
+			wantErr: "title cannot exceed 60",
+		},
+		{
+			name:    "不是字符串",
+			member:  `"title":123`,
+			wantErr: "", // 非字符串按“未提供”处理，不阻断整条公告
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateConsoleSettings(announcementsWithTitle(tc.member), "Announcements")
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}

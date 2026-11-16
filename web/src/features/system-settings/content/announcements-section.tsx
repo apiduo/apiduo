@@ -77,6 +77,7 @@ type AnnouncementPhase = {
 
 type Announcement = {
   id: number
+  title?: string
   content: string
   publishDate: string
   type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
@@ -102,6 +103,11 @@ const phaseSchema = z.object({
 })
 
 const announcementSchema = z.object({
+  // 标题可选：留空时列表回落为正文摘要
+  title: z
+    .string()
+    .max(60, 'Title must be less than 60 characters')
+    .optional(),
   content: z
     .string()
     .min(1, 'Content is required')
@@ -176,6 +182,7 @@ export function AnnouncementsSection({
   const form = useForm<AnnouncementFormValues>({
     resolver: zodResolver(announcementSchema),
     defaultValues: {
+      title: '',
       content: '',
       publishDate: new Date().toISOString(),
       type: 'default',
@@ -226,6 +233,7 @@ export function AnnouncementsSection({
   const handleAdd = () => {
     setEditingAnnouncement(null)
     form.reset({
+      title: '',
       content: '',
       publishDate: new Date().toISOString(),
       type: 'default',
@@ -238,6 +246,7 @@ export function AnnouncementsSection({
   const handleEdit = (announcement: Announcement) => {
     setEditingAnnouncement(announcement)
     form.reset({
+      title: announcement.title || '',
       content: announcement.content,
       publishDate: announcement.publishDate,
       type: announcement.type,
@@ -299,6 +308,8 @@ export function AnnouncementsSection({
 
     const payload = {
       ...values,
+      // 空标题不落库：存空串会让列表拿空标题渲染，回落逻辑也就失效了
+      title: values.title?.trim() || undefined,
       phases: phases.length > 0 ? phases : undefined,
     }
 
@@ -513,6 +524,28 @@ export function AnnouncementsSection({
             onSubmit={form.handleSubmit(handleSubmitForm)}
             className='space-y-4'
           >
+            <FormField
+              control={form.control}
+              name='title'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Title')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={t('Announcement title')}
+                      maxLength={60}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Shown as the heading in the dashboard list. Falls back to the content preview when empty.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name='content'

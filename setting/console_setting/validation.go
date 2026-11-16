@@ -201,6 +201,11 @@ func validateAnnouncements(announcementsStr string) error {
 		if exceedsMaxCharacters(content, 500) {
 			return common.NewMessage("Announcement #{{index}} content cannot exceed 500 characters", map[string]any{"index": i + 1})
 		}
+		if title, exists := ann["title"]; exists {
+			if titleStr, ok := title.(string); ok && exceedsMaxCharacters(titleStr, 60) {
+				return common.NewMessage("Announcement #{{index}} title cannot exceed 60 characters", map[string]any{"index": i + 1})
+			}
+		}
 		if extra, exists := ann["extra"]; exists {
 			if extraStr, ok := extra.(string); ok && exceedsMaxCharacters(extraStr, 100) {
 				return common.NewMessage("Announcement #{{index}} note cannot exceed 100 characters", map[string]any{"index": i + 1})

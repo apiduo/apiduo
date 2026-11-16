@@ -8538,6 +8538,9 @@
     "Phase title": "Titre de la phase",
     "Phase description (optional)": "Description de la phase (facultatif)",
     "Remove phase": "Supprimer la phase",
-    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Facultatif. Affiché sous forme de chronologie verticale sur le tableau de bord, enregistré dans l’ordre chronologique."
+    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Facultatif. Affiché sous forme de chronologie verticale sur le tableau de bord, enregistré dans l’ordre chronologique.",
+    "Title": "Titre",
+    "Announcement title": "Titre de l'annonce",
+    "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "Affiché comme titre dans la liste du tableau de bord. Reprend l'aperçu du contenu si vide."
   }
 }

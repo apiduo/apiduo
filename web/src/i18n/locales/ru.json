@@ -8538,6 +8538,9 @@
     "Phase title": "Название этапа",
     "Phase description (optional)": "Описание этапа (необязательно)",
     "Remove phase": "Удалить этап",
-    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Необязательно. Отображается на панели как вертикальная шкала времени и сохраняется в хронологическом порядке."
+    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Необязательно. Отображается на панели как вертикальная шкала времени и сохраняется в хронологическом порядке.",
+    "Title": "Заголовок",
+    "Announcement title": "Заголовок объявления",
+    "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "Отображается как заголовок в списке на панели. Если пусто, используется фрагмент текста."
   }
 }

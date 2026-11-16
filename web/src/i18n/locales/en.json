@@ -8538,6 +8538,9 @@
     "Phase title": "Phase title",
     "Phase description (optional)": "Phase description (optional)",
     "Remove phase": "Remove phase",
-    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Optional. Shown as a vertical timeline on the dashboard, saved in time order."
+    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Optional. Shown as a vertical timeline on the dashboard, saved in time order.",
+    "Title": "Title",
+    "Announcement title": "Announcement title",
+    "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "Shown as the heading in the dashboard list. Falls back to the content preview when empty."
   }
 }
