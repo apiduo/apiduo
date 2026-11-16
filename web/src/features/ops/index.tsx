@@ -396,7 +396,11 @@ export function ServiceHealth() {
                 <table className='w-full text-sm'>
                   <thead>
                     <tr className='text-muted-foreground border-b text-left text-xs'>
-                      <th className='py-2 font-medium'>{t('Key')}</th>
+                      {/* 表头要跟着维度变：写死 "密钥" 时切到按渠道，
+                          第一列是 "#27" 却标着 "密钥"，读起来像数据错了。 */}
+                      <th className='py-2 font-medium'>
+                        {dim === 'channel' ? t('Channel') : t('Model')}
+                      </th>
                       <th className='py-2 text-right font-medium'>
                         {t('Requests')}
                       </th>
