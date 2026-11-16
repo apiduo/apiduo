@@ -36,6 +36,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getSelfSkQuotaData, getSkQuotaData } from '@/features/dashboard/api'
 import { ApiduoGlow } from '@/features/apiduo-appearance'
+import dayjs from '@/lib/dayjs'
 import { TIME_RANGE_PRESETS } from '@/features/dashboard/constants'
 import {
   buildSkStackRows,
@@ -336,9 +337,7 @@ export function SkAnalytics({ scope = 'admin' }: SkAnalyticsProps = {}) {
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `${isSelf ? 'key-usage' : 'sk-analytics'}-${rangeDays}d-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`
+    anchor.download = `${isSelf ? 'key-usage' : 'sk-analytics'}-${rangeDays}d-${dayjs().format('YYYY-MM-DD')}.csv`
     anchor.click()
     URL.revokeObjectURL(url)
   }, [visibleRows, rangeDays, isSelf])

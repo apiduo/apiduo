@@ -169,6 +169,18 @@ export function formatShortDateTime(date: Date): string {
 }
 
 /**
+ * Serialize a Date as RFC3339 with the local UTC offset.
+ *
+ * Not `toISOString()`: that is UTC, so picking "11-17 03:03" in the console
+ * would store "11-16T19:03Z". Same instant, but anyone reading the option row
+ * has to do the eight-hour arithmetic in their head. With the offset attached
+ * the stored value reads exactly like the picker showed it.
+ */
+export function toLocalRFC3339(date: Date): string {
+  return dayjs(date).format('YYYY-MM-DDTHH:mm:ssZ')
+}
+
+/**
  * Format Date object as MM-DD for axes and timelines.
  *
  * A timeline plots phases by day, not by minute: putting `HH:mm` on every node

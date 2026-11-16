@@ -62,6 +62,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
+import { toLocalRFC3339 } from '@/lib/time'
 import { formatTimestampRelative } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
@@ -197,7 +198,7 @@ export function AnnouncementsSection({
     defaultValues: {
       title: '',
       content: '',
-      publishDate: new Date().toISOString(),
+      publishDate: toLocalRFC3339(new Date()),
       expiresAt: '',
       type: 'default',
       extra: '',
@@ -249,7 +250,7 @@ export function AnnouncementsSection({
     form.reset({
       title: '',
       content: '',
-      publishDate: new Date().toISOString(),
+      publishDate: toLocalRFC3339(new Date()),
       expiresAt: '',
       type: 'default',
       extra: '',
@@ -596,7 +597,7 @@ export function AnnouncementsSection({
                     <DateTimePicker
                       value={field.value ? new Date(field.value) : undefined}
                       onChange={(date) =>
-                        field.onChange(date ? date.toISOString() : '')
+                        field.onChange(date ? toLocalRFC3339(date) : '')
                       }
                       placeholder={t('Select publish date')}
                     />
@@ -620,7 +621,7 @@ export function AnnouncementsSection({
                     <DateTimePicker
                       value={field.value ? new Date(field.value) : undefined}
                       onChange={(date) =>
-                        field.onChange(date ? date.toISOString() : '')
+                        field.onChange(date ? toLocalRFC3339(date) : '')
                       }
                       placeholder={t('Keep showing until cleared')}
                     />
@@ -719,7 +720,7 @@ export function AnnouncementsSection({
                   variant='outline'
                   disabled={phaseFields.length >= 8}
                   onClick={() =>
-                    appendPhase({ at: new Date().toISOString(), title: '', desc: '' })
+                    appendPhase({ at: toLocalRFC3339(new Date()), title: '', desc: '' })
                   }
                 >
                   <Plus className='mr-1 h-3.5 w-3.5' />
@@ -802,7 +803,7 @@ function PhaseRow({
           className='w-72 shrink-0'
           value={at ? new Date(at) : undefined}
           onChange={(date) =>
-            setValue(`phases.${index}.at`, date ? date.toISOString() : '', {
+            setValue(`phases.${index}.at`, date ? toLocalRFC3339(date) : '', {
               shouldValidate: true,
             })
           }
