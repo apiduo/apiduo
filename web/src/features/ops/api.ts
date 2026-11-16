@@ -31,7 +31,7 @@ export async function getOpsSeries(params: {
 export async function getOpsBreakdown(params: {
   from: number
   to: number
-  dim: 'model' | 'channel'
+  dim: 'model' | 'channel' | 'group'
 }): Promise<OpsBreakdownResponse> {
   const res = await api.get<Envelope<OpsBreakdownResponse>>(
     '/api/ops/breakdown',

@@ -8527,6 +8527,8 @@
     "Take shift": "Take shift",
     "Incident opened": "インシデントを起票しました",
     "Failed to open incident": "起票に失敗しました",
-    "{{count}} occurrences in this cluster": "このクラスタ内で {{count}} 回"
+    "{{count}} occurrences in this cluster": "このクラスタ内で {{count}} 回",
+    "By group": "グループ別",
+    "Filter this column": "この列を絞り込む"
   }
 }

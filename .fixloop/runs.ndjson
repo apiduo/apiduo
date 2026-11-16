@@ -94,3 +94,7 @@
 {"round":94,"ts":"2026-11-16T19:52:00+08:00","cmd":"本地 clusters 接口","exit_code":1,"failed":1,"fingerprint":"sc2","first_error":"CH 驱动返回 []string，扫描到 string 失败","attribution":"IMPL","decision":"FIX","note":"字段改 []string；extract 本身返回标量，不需要 [1]"}
 {"round":95,"ts":"2026-11-16T20:20:00+08:00","cmd":"插入带状态码数据验证","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"CONTINUE","note":"502x2+503x1 同簇，429 另簇；前端显示 502×3 503×1"}
 {"round":96,"ts":"2026-11-16T20:45:00+08:00","cmd":"部署 0.0.163 并验证线上","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"ALL-GREEN","note":"线上显示 502×5 / 400×1 / 502×1"}
+{"round":97,"ts":"2026-11-16T19:25:00+08:00","cmd":"线上验证错误码徽章","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"CONTINUE","note":"502×5 / 400×1 / 502×1"}
+{"round":98,"ts":"2026-11-16T19:30:00+08:00","cmd":"线上验证开单 toast","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"CONTINUE","note":"出现 toast，但文案是英文 Incident opened #22"}
+{"round":99,"ts":"2026-11-16T20:30:00+08:00","cmd":"查 i18n 未翻译根因","exit_code":1,"failed":1,"fingerprint":"i18n-ns","first_error":"localStorage.i18nextLng=zhCN（非法码）；更关键是新 key 加在 translation 命名空间外","attribution":"IMPL","decision":"FIX","note":"七个语言文件全部移进 translation"}
+{"round":100,"ts":"2026-11-16T20:50:00+08:00","cmd":"线上验证 toast 中文","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"ALL-GREEN","note":"已开单 #23；测试数据已清理"}

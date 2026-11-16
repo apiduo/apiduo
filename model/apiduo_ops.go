@@ -208,10 +208,11 @@ func ScanOpsBreakdown(ctx context.Context, from, to int64, dim string) ([]OpsBre
 		RequestId string
 		ModelName string
 		ChannelId int
+		Group     string
 	}
 	var rows []row
 	q := conn.WithContext(ctx).Model(&Log{}).
-		Select("created_at, type, use_time, use_time_ms, request_id, model_name, channel_id").
+		Select("created_at, type, use_time, use_time_ms, request_id, model_name, channel_id, `group`").
 		Where("created_at >= ? AND created_at < ? AND type IN ?", from, to, []int{LogTypeConsume, LogTypeError})
 	if err := q.Scan(&rows).Error; err != nil {
 		return nil, err
@@ -242,6 +243,11 @@ func ScanOpsBreakdown(ctx context.Context, from, to int64, dim string) ([]OpsBre
 			}
 		case "channel":
 			key = itoa(int64(r.ChannelId))
+		case "group":
+			key = r.Group
+			if key == "" {
+				key = "(default)"
+			}
 		default:
 			return nil, errUnknownDim(dim)
 		}
@@ -722,6 +728,9 @@ func scanOpsBreakdownCH(ctx context.Context, from, to int64, dim string) ([]OpsB
 		groupCol = "model_name"
 	case "channel":
 		groupCol = "toString(channel_id)"
+	case "group":
+		// group 在 ClickHouse 与 MySQL 里都是保留字，不转义会直接语法错误
+		groupCol = "`group`"
 	default:
 		return nil, errUnknownDim(dim)
 	}

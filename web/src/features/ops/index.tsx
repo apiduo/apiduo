@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -65,7 +65,10 @@ export function ServiceHealth() {
   const { t } = useTranslation()
   const qc = useQueryClient()
   const [rangeKey, setRangeKey] = useState<string>('24h')
-  const [dim, setDim] = useState<'model' | 'channel'>('model')
+  const [dim, setDim] = useState<'model' | 'channel' | 'group'>('model')
+  // 维度选定后还要能筛具体值：一个分组下有几十个模型时，
+  // 逐个 눈找太慢，直接按关键字过滤这一列。
+  const [dimFilter, setDimFilter] = useState('')
 
   const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[2]
   const to = Math.floor(Date.now() / 1000)
@@ -118,6 +121,13 @@ export function ServiceHealth() {
     queryFn: () => getOpsBreakdown({ from, to, dim }),
     refetchInterval: 60_000,
   })
+
+  const breakdownRows = useMemo(() => {
+    const rows = breakdown.data?.rows ?? []
+    const needle = dimFilter.trim().toLowerCase()
+    if (!needle) return rows
+    return rows.filter((r) => r.key.toLowerCase().includes(needle))
+  }, [breakdown.data?.rows, dimFilter])
 
   // 两条线量纲不同（比例 vs 毫秒），必须双轴。
   // 合成单轴的话，P95 会把错误率压成一条贴地的直线。
@@ -408,13 +418,22 @@ export function ServiceHealth() {
               </div>
               <Tabs
                 value={dim}
-                onValueChange={(v) => setDim(String(v) as 'model' | 'channel')}
+                onValueChange={(v) =>
+                  setDim(String(v) as 'model' | 'channel' | 'group')
+                }
               >
                 <TabsList>
                   <TabsTrigger value='model'>{t('By model')}</TabsTrigger>
                   <TabsTrigger value='channel'>{t('By channel')}</TabsTrigger>
+                  <TabsTrigger value='group'>{t('By group')}</TabsTrigger>
                 </TabsList>
               </Tabs>
+              <input
+                className='border-input bg-background h-8 w-full rounded-md border px-2 text-xs sm:w-44'
+                placeholder={t('Filter this column')}
+                value={dimFilter}
+                onChange={(e) => setDimFilter(e.target.value)}
+              />
             </CardHeader>
             <CardContent>
               {breakdown.isLoading ? (
@@ -426,7 +445,11 @@ export function ServiceHealth() {
                       {/* 表头要跟着维度变：写死 "密钥" 时切到按渠道，
                           第一列是 "#27" 却标着 "密钥"，读起来像数据错了。 */}
                       <th className='py-2 font-medium'>
-                        {dim === 'channel' ? t('Channel') : t('Model')}
+                        {dim === 'channel'
+                          ? t('Channel')
+                          : dim === 'group'
+                            ? t('Group')
+                            : t('Model')}
                       </th>
                       <th className='py-2 text-right font-medium'>
                         {t('Requests')}
@@ -443,7 +466,7 @@ export function ServiceHealth() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(breakdown.data?.rows ?? []).map((r) => (
+                    {breakdownRows.map((r) => (
                       <tr key={r.key} className='border-b last:border-0'>
                         {/* 渠道维度加 # 前缀：毛利表和值班看板都用 #3 这种写法，
                             同一页里一处裸数字一处带井号，读起来像两个不同的东西。 */}
@@ -481,7 +504,7 @@ export function ServiceHealth() {
                             disabled={openIncident.isPending}
                             onClick={() =>
                               openIncident.mutate({
-                                title: `${dim === 'model' ? t('Model') : t('Channel')} ${r.key} · ${t('failure')} ${pct(r.fail_rate)} · P95 ${r.p95_ms.toFixed(0)}ms`,
+                                title: `${dim === 'model' ? t('Model') : dim === 'group' ? t('Group') : t('Channel')} ${r.key} · ${t('failure')} ${pct(r.fail_rate)} · P95 ${r.p95_ms.toFixed(0)}ms`,
                                 severity: r.fail_rate >= 0.2 ? 1 : 2,
                                 detail: t('Opened from the breakdown table'),
                               })

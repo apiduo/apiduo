@@ -545,3 +545,38 @@ func TestErrorClusterKeepsStatusCode(t *testing.T) {
 	require.Len(t, limited.StatusCodes, 1)
 	require.Equal(t, "429", limited.StatusCodes[0].Code)
 }
+
+// 分组维度判据：group 是计费分组（default/vip/svip），运营要按它看。
+// 它是 ClickHouse 与 MySQL 的保留字，拼接时必须正确转义，
+// 否则 SQL 语法错误会被误当成「这个维度没数据」。
+func TestBreakdownGroupDimension(t *testing.T) {
+	db := setupGrowthScanDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	prev := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = prev })
+
+	base := int64(1_800_000_000)
+	rows := []Log{
+		{CreatedAt: base, Type: 2, ModelName: "gpt-4o", UseTimeMs: 100, Group: "default", RequestId: "g1"},
+		{CreatedAt: base + 1, Type: 2, ModelName: "gpt-4o", UseTimeMs: 100, Group: "default", RequestId: "g2"},
+		{CreatedAt: base + 2, Type: 2, ModelName: "gpt-4o", UseTimeMs: 200, Group: "vip", RequestId: "g3"},
+		{CreatedAt: base + 3, Type: 5, ModelName: "gpt-4o", Group: "vip", RequestId: "g4"},
+	}
+	require.NoError(t, db.Create(&rows).Error)
+
+	out, err := ScanOpsBreakdown(context.Background(), base-60, base+60, "group")
+	require.NoError(t, err)
+	require.Len(t, out, 2, "应分成 default 与 vip 两组")
+
+	byKey := map[string]OpsBreakdownRow{}
+	for _, r := range out {
+		byKey[r.Key] = r
+	}
+	require.Equal(t, 2, byKey["default"].Requests)
+	require.Equal(t, 1, byKey["vip"].Requests)
+	require.Equal(t, 1, byKey["vip"].Failures, "vip 组那一条失败要算进去")
+
+	_, err = ScanOpsBreakdown(context.Background(), base-60, base+60, "bogus")
+	require.Error(t, err, "未知维度必须报错，不能静默返回全量")
+}
