@@ -102,3 +102,6 @@
 {"round":102,"ts":"2026-11-16T20:00:00+08:00","cmd":"本地验证按分组","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"CONTINUE","note":"表头「分组」，default 123091 / 5.4%"}
 {"round":103,"ts":"2026-11-16T20:10:00+08:00","cmd":"本地验证列筛选","exit_code":0,"passed":2,"failed":0,"fingerprint":"","attribution":"","decision":"CONTINUE","note":"def -> default；zzz -> 0 行"}
 {"round":104,"ts":"2026-11-16T20:58:00+08:00","cmd":"线上 CH 验证 group SQL","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"ALL-GREEN","note":"default 47/8，空 group 31/29（失败率 93%）"}
+{"round":105,"ts":"2026-11-16T21:10:00+08:00","cmd":"ScanOpsSeries 补 WHERE 未补参数","exit_code":1,"failed":1,"fingerprint":"sf1","first_error":"series 返回 0 桶，但 breakdown 有 43518 条","attribution":"IMPL","decision":"FIX","note":"CH 的 SQL 有 5 个 ? 只传了 4 个参数，model_name LIKE ? 缺参数"}
+{"round":106,"ts":"2026-11-16T21:20:00+08:00","cmd":"修后验证 series 筛选","exit_code":0,"passed":2,"failed":0,"fingerprint":"","attribution":"","decision":"CONTINUE","note":"不筛 120274 / 筛 qwen 21758，与下钻一致"}
+{"round":107,"ts":"2026-11-16T21:55:00+08:00","cmd":"线上验证模型筛选","exit_code":0,"passed":3,"failed":0,"fingerprint":"","attribution":"","decision":"ALL-GREEN","note":"qwen -> qwen-image-3.0；gpt-4o -> 空（线上确无该模型）"}

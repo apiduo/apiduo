@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"regexp"
 	"sort"
@@ -172,6 +173,20 @@ func itoa(n int64) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// sqlLikeLiteral 把筛选词转成可以直接内联的 SQL 字符串字面量（含引号）。
+//
+// 为什么不用 ? 占位符：这条 SQL 拼了 chNormalizeExpr，里面有 (?:...)。
+// GORM 按 ? 的个数分配参数，会把这个 ? 也算进去，报
+// unsupported query parameter type —— 原代码注释里已经记着这个坑。
+func sqlLikeLiteral(filter string) string {
+	filter = strings.TrimSpace(filter)
+	// ClickHouse 与 MySQL 的字符串字面量都用 \' 转义单引号；
+	// 反斜杠本身也要先转义，否则 foo\' 会变成 foo' + 未闭合。
+	filter = strings.ReplaceAll(filter, "\\", "\\\\")
+	filter = strings.ReplaceAll(filter, "'", "\\'")
+	return "'%" + filter + "%'"
 }
 
 // likeModel 把筛选词包成 LIKE 模式。空字符串返回 "%"（匹配全部），
@@ -896,10 +911,10 @@ func scanErrorClustersCH(ctx context.Context, from, to int64, limit int, modelFi
 		Codes       []string `gorm:"column:codes"`
 	}
 	var rows []row
-	// 这里不能用 fmt.Sprintf 内联参数：modelFilter 是用户输入，内联就是注入面。
-	// 改成 ? 占位符由驱动转义；chNormalizeExpr 里的 (?:...) 是常量拼接，
-	// 不经过占位符解析。
-	query := `
+	// 必须内联，不能交给驱动的 ? 占位符：chNormalizeExpr 里的非捕获组 (?:...)
+	// 含有一个 ?，GORM 会把它数成第 5 个占位符，报 unsupported query parameter type。
+	// 内联意味着 modelFilter 要自己转义 —— 它是用户输入。
+	query := fmt.Sprintf(`
 		SELECT norm AS fingerprint,
 		       any(content) AS sample,
 		       uniqExact(if(request_id = '', concat('anon:', toString(created_at)), request_id)) AS req,
@@ -911,16 +926,16 @@ func scanErrorClustersCH(ctx context.Context, from, to int64, limit int, modelFi
 		       -- 同一条记录可能没有状态码（空串），Go 侧过滤后再计数。
 		       groupArray(extract(content, 'status_code\\s*=\\s*([1-5]\\d{2})')) AS codes
 		FROM (
-			SELECT request_id, user_id, channel_id, created_at, content, ` + chNormalizeExpr + ` AS norm
+			SELECT request_id, user_id, channel_id, created_at, content, `+chNormalizeExpr+` AS norm
 			FROM logs
-			WHERE created_at >= ? AND created_at < ? AND type = 5
-			  AND model_name LIKE ?
+			WHERE created_at >= %d AND created_at < %d AND type = 5
+			  AND model_name LIKE %s
 		)
 		GROUP BY norm
 		ORDER BY req DESC
-		LIMIT ?
-	`
-	err := LOG_DB.WithContext(ctx).Raw(query, from, to, likeModel(modelFilter), limit).Scan(&rows).Error
+		LIMIT %d
+	`, from, to, sqlLikeLiteral(modelFilter), limit)
+	err := LOG_DB.WithContext(ctx).Raw(query).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}

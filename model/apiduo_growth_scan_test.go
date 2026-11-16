@@ -622,3 +622,37 @@ func TestBreakdownModelFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, none)
 }
+
+// 聚类带筛选的判据：这条 SQL 拼了 chNormalizeExpr（含非捕获组 (?:...)），
+// 如果改用 ? 占位符，GORM 会把这个 ? 也数成占位符，报
+// unsupported query parameter type —— 线上 0.0.168 就是这样挂的。
+func TestErrorClustersWithModelFilter(t *testing.T) {
+	db := setupGrowthScanDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	prev := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = prev })
+
+	base := int64(1_800_000_000)
+	rows := []Log{
+		{CreatedAt: base, Type: 5, ModelName: "gpt-4o", Content: "status_code=502, upstream error", RequestId: "c1"},
+		{CreatedAt: base + 1, Type: 5, ModelName: "claude-3", Content: "status_code=503, upstream error", RequestId: "c2"},
+		{CreatedAt: base + 2, Type: 5, ModelName: "gpt-4o", Content: "status_code=502, upstream error", RequestId: "c3"},
+	}
+	require.NoError(t, db.Create(&rows).Error)
+
+	// 不筛：两簇各一条（502 与 503 归一后同簇，但请求数不同）
+	all, err := ScanErrorClusters(context.Background(), base-60, base+60, 10, "")
+	require.NoError(t, err)
+	require.NotEmpty(t, all)
+
+	// 筛 gpt-4o：只剩 502 那簇，且请求数是 2
+	filtered, err := ScanErrorClusters(context.Background(), base-60, base+60, 10, "gpt-4o")
+	require.NoError(t, err)
+	require.Len(t, filtered, 1, "只剩 gpt-4o 的那一簇")
+	require.Equal(t, 2, filtered[0].Requests)
+
+	// 带引号的筛选词不能破坏 SQL
+	_, err = ScanErrorClusters(context.Background(), base-60, base+60, 10, "gpt'--")
+	require.NoError(t, err, "单引号必须被转义，不能语法错误")
+}
