@@ -370,6 +370,15 @@ func ListChangeEvents(from, to int64, limit int) ([]ChangeEvent, error) {
 func nowUnix() int64 { return time.Now().Unix() }
 
 // ErrorCluster 是同一根因下的一组报错。
+// StatusCodeCount 是簇内出现的具体 HTTP 状态码及次数。
+//
+// 归一化后 502 与 503 合并成 SERVERERROR，但运维需要知道到底是哪个：
+// 502 通常是上游网关挂了，503 是上游过载，处置方式不同。
+type StatusCodeCount struct {
+	Code  string `json:"code"`
+	Count int    `json:"count"`
+}
+
 type ErrorCluster struct {
 	Fingerprint string `json:"fingerprint"`
 	Sample      string `json:"sample"`
@@ -378,6 +387,8 @@ type ErrorCluster struct {
 	Channels    int    `json:"channels"`
 	FirstSeen   int64  `json:"first_seen"`
 	LastSeen    int64  `json:"last_seen"`
+	// 具体状态码明细，按次数降序；没有状态码的错误为空
+	StatusCodes []StatusCodeCount `json:"status_codes,omitempty"`
 }
 
 // normalizeErrorMessage 把一条报错压成可用于分组的模板。
@@ -443,6 +454,8 @@ var (
 	// 末两位丢掉。替换成 CLIENTERROR / SERVERERROR 这类不含数字的标记。
 	httpStatusPattern = regexp.MustCompile(`(status_code\s*=\s*|https?\s+)([1-5])\d{2}\b`)
 	numberPattern     = regexp.MustCompile(`\d+(?:\.\d+)?`)
+	// 从错误原文里捞具体状态码；与 CH 的 extract 正则保持一致
+	statusCodeExtract = regexp.MustCompile(`status_code\s*=\s*([1-5]\d{2})`)
 )
 
 // ScanErrorClusters 按归一化消息聚类，按影响请求数倒序。
@@ -482,6 +495,7 @@ func ScanErrorClusters(ctx context.Context, from, to int64, limit int) ([]ErrorC
 		reqSeen  map[string]struct{}
 		users    map[int]struct{}
 		channels map[int]struct{}
+		codes    map[string]int
 		first    int64
 		last     int64
 	}
@@ -498,6 +512,7 @@ func ScanErrorClusters(ctx context.Context, from, to int64, limit int) ([]ErrorC
 				reqSeen:  map[string]struct{}{},
 				users:    map[int]struct{}{},
 				channels: map[int]struct{}{},
+				codes:    map[string]int{},
 				first:    r.CreatedAt,
 				last:     r.CreatedAt,
 			}
@@ -516,6 +531,9 @@ func ScanErrorClusters(ctx context.Context, from, to int64, limit int) ([]ErrorC
 		if r.CreatedAt > a.last {
 			a.last = r.CreatedAt
 		}
+		if m := statusCodeExtract.FindStringSubmatch(r.Content); m != nil {
+			a.codes[m[1]]++
+		}
 	}
 
 	out := make([]ErrorCluster, 0, len(buckets))
@@ -528,6 +546,7 @@ func ScanErrorClusters(ctx context.Context, from, to int64, limit int) ([]ErrorC
 			Channels:    len(a.channels),
 			FirstSeen:   a.first,
 			LastSeen:    a.last,
+			StatusCodes: sortedStatusCodeCounts(a.codes),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -841,13 +860,14 @@ const chNormalizeExpr = `trimBoth(replaceRegexpAll(
 // 20 万行时这是秒级开销，而 CH 可以在列上并行算完再分组。
 func scanErrorClustersCH(ctx context.Context, from, to int64, limit int) ([]ErrorCluster, error) {
 	type row struct {
-		Fingerprint string `gorm:"column:fingerprint"`
-		Sample      string `gorm:"column:sample"`
-		Req         int    `gorm:"column:req"`
-		Users       int    `gorm:"column:users"`
-		Channels    int    `gorm:"column:channels"`
-		FirstSeen   int64  `gorm:"column:first_seen"`
-		LastSeen    int64  `gorm:"column:last_seen"`
+		Fingerprint string   `gorm:"column:fingerprint"`
+		Sample      string   `gorm:"column:sample"`
+		Req         int      `gorm:"column:req"`
+		Users       int      `gorm:"column:users"`
+		Channels    int      `gorm:"column:channels"`
+		FirstSeen   int64    `gorm:"column:first_seen"`
+		LastSeen    int64    `gorm:"column:last_seen"`
+		Codes       []string `gorm:"column:codes"`
 	}
 	var rows []row
 	// 参数内联而不是用 ?：正则里的非捕获组 (?:...) 会被 GORM 当成占位符，
@@ -859,7 +879,10 @@ func scanErrorClustersCH(ctx context.Context, from, to int64, limit int) ([]Erro
 		       uniqExact(user_id) AS users,
 		       uniqExact(channel_id) AS channels,
 		       min(created_at) AS first_seen,
-		       max(created_at) AS last_seen
+		       max(created_at) AS last_seen,
+		       -- 归一化把状态码抹成 SERVERERROR 了，这里从原文把具体码捞出来。
+		       -- 同一条记录可能没有状态码（空串），Go 侧过滤后再计数。
+		       groupArray(extract(content, 'status_code\\s*=\\s*([1-5]\\d{2})')) AS codes
 		FROM (
 			SELECT request_id, user_id, channel_id, created_at, content, `+chNormalizeExpr+` AS norm
 			FROM logs
@@ -888,7 +911,44 @@ func scanErrorClustersCH(ctx context.Context, from, to int64, limit int) ([]Erro
 			Channels:    r.Channels,
 			FirstSeen:   r.FirstSeen,
 			LastSeen:    r.LastSeen,
+			StatusCodes: countStatusCodeSlice(r.Codes),
 		})
 	}
 	return out, nil
+}
+
+// countStatusCodeSlice 统计 ClickHouse groupArray 捞回来的状态码。
+//
+// groupArray 里空串代表这条错误没有状态码（例如内容里根本没写 status_code），
+// 直接跳过——否则会凭空多出一个空码的计数。
+func countStatusCodeSlice(codes []string) []StatusCodeCount {
+	if len(codes) == 0 {
+		return nil
+	}
+	counts := map[string]int{}
+	for _, code := range codes {
+		if code == "" {
+			continue
+		}
+		counts[code]++
+	}
+	return sortedStatusCodeCounts(counts)
+}
+
+// sortedStatusCodeCounts 把 map 转成稳定排序的切片（次数降序、同次数按码升序）。
+func sortedStatusCodeCounts(counts map[string]int) []StatusCodeCount {
+	if len(counts) == 0 {
+		return nil
+	}
+	out := make([]StatusCodeCount, 0, len(counts))
+	for code, n := range counts {
+		out = append(out, StatusCodeCount{Code: code, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Code < out[j].Code
+	})
+	return out
 }

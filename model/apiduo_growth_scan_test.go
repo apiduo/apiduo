@@ -501,3 +501,47 @@ func TestNormalizeKeepsHTTPStatus(t *testing.T) {
 	// 如果顺序反了，会先变成 "status_code=, ..."，保护规则再也匹配不到。
 	require.NotContains(t, a, "502", "具体码被类别替代")
 }
+
+// 错误码判据：归一化把 502 抹成 SERVERERROR 之后，具体码不能一起消失。
+// 运维要看的是"502 还是 503"，只知道"上游 5xx"没法判断是网关故障还是过载。
+func TestErrorClusterKeepsStatusCode(t *testing.T) {
+	db := setupGrowthScanDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	prev := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = prev })
+
+	base := int64(1_800_000_000)
+	rows := []Log{
+		{CreatedAt: base, Type: 5, Content: "status_code=502, upstream error", RequestId: "a1", UserId: 1, ChannelId: 1},
+		{CreatedAt: base + 1, Type: 5, Content: "status_code=502, upstream error", RequestId: "a2", UserId: 1, ChannelId: 1},
+		{CreatedAt: base + 2, Type: 5, Content: "status_code=503, upstream error", RequestId: "a3", UserId: 2, ChannelId: 1},
+		{CreatedAt: base + 3, Type: 5, Content: "status_code=429, rate limited", RequestId: "a4", UserId: 2, ChannelId: 2},
+	}
+	require.NoError(t, db.Create(&rows).Error)
+
+	clusters, err := ScanErrorClusters(context.Background(), base-60, base+60, 10)
+	require.NoError(t, err)
+	require.NotEmpty(t, clusters)
+
+	byFingerprint := map[string]ErrorCluster{}
+	for _, c := range clusters {
+		byFingerprint[c.Fingerprint] = c
+	}
+
+	// 502 与 503 归一后同属一簇（都是 SERVERERROR），但簇内要能分出具体码
+	upstream := byFingerprint["status_code=SERVERERROR, upstream error"]
+	require.Equal(t, 3, upstream.Requests, "502×2 + 503×1 应合成一簇")
+	codes := map[string]int{}
+	for _, sc := range upstream.StatusCodes {
+		codes[sc.Code] = sc.Count
+	}
+	require.Equal(t, 2, codes["502"], "簇内应保留 502 的计数")
+	require.Equal(t, 1, codes["503"], "簇内应保留 503 的计数")
+
+	// 另一个类别单独成簇
+	limited, ok := byFingerprint["status_code=CLIENTERROR, rate limited"]
+	require.True(t, ok, "429 应落在 CLIENTERROR 簇")
+	require.Len(t, limited.StatusCodes, 1)
+	require.Equal(t, "429", limited.StatusCodes[0].Code)
+}

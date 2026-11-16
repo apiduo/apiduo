@@ -93,6 +93,10 @@ function SkStackChart(props: {
   title: string
 }) {
   const { t } = useTranslation()
+  // 悬停联动：鼠标停在下方的图例或任意一段上，同色的其他段一起变暗，
+  // 剩下的那条被"点亮"。没有这一步，用户在一堆近似色里根本分不清
+  // 哪几段属于同一个模型——尤其是「其他」这种占比小的。
+  const [activeModel, setActiveModel] = useState<string | null>(null)
 
   if (props.loading) {
     return (
@@ -125,7 +129,13 @@ function SkStackChart(props: {
         {props.data.models.map((model) => (
           <span
             key={model}
-            className='text-muted-foreground flex items-center gap-1 text-[11px]'
+            onMouseEnter={() => setActiveModel(model)}
+            onMouseLeave={() => setActiveModel(null)}
+            className={`flex cursor-default items-center gap-1 text-[11px] transition-opacity ${
+              activeModel && activeModel !== model
+                ? 'opacity-30'
+                : 'text-muted-foreground opacity-100'
+            }`}
           >
             <span
               className='size-2 shrink-0 rounded-sm'
@@ -161,7 +171,13 @@ function SkStackChart(props: {
                 {row.segments.map((segment) => (
                   <div
                     key={segment.model}
-                    className='h-full first:rounded-l-sm last:rounded-r-sm'
+                    onMouseEnter={() => setActiveModel(segment.model)}
+                    onMouseLeave={() => setActiveModel(null)}
+                    className={`h-full transition-opacity first:rounded-l-sm last:rounded-r-sm ${
+                      activeModel && activeModel !== segment.model
+                        ? 'opacity-30'
+                        : 'opacity-100'
+                    }`}
                     style={{
                       width: `${segment.share}%`,
                       background: props.colors.get(segment.model),

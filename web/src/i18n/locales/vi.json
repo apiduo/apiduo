@@ -8527,5 +8527,6 @@
     "Take shift": "Take shift"
   },
   "Incident opened": "Đã mở sự cố",
-  "Failed to open incident": "Mở sự cố thất bại"
+  "Failed to open incident": "Mở sự cố thất bại",
+  "{{count}} occurrences in this cluster": "{{count}} lần trong cụm này"
 }

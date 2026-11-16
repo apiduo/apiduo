@@ -323,6 +323,26 @@ export function ServiceHealth() {
                               {t('e.g.')} {cl.sample}
                             </p>
                           )}
+                          {/* 归一化后 502/503 会合并成 SERVERERROR，
+                              具体码在这里补回来：处置 502（网关挂）和 503（过载）不是一回事。 */}
+                          {cl.status_codes && cl.status_codes.length > 0 && (
+                            <p className='mt-0.5 flex flex-wrap gap-1'>
+                              {cl.status_codes.map((sc) => (
+                                <span
+                                  key={sc.code}
+                                  className='bg-muted rounded px-1 font-mono text-[10px]'
+                                  title={t('{{count}} occurrences in this cluster', {
+                                    count: sc.count,
+                                  })}
+                                >
+                                  {sc.code}
+                                  <span className='text-muted-foreground'>
+                                    ×{sc.count}
+                                  </span>
+                                </span>
+                              ))}
+                            </p>
+                          )}
                         </td>
                         <td className='py-2 text-right font-mono tabular-nums'>
                           {cl.requests}

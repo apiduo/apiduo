@@ -8527,5 +8527,6 @@
     "Take shift": "接班"
   },
   "Incident opened": "已开单",
-  "Failed to open incident": "开单失败"
+  "Failed to open incident": "开单失败",
+  "{{count}} occurrences in this cluster": "本簇内出现 {{count}} 次"
 }

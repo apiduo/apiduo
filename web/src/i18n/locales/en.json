@@ -8527,5 +8527,6 @@
     "Take shift": "Take shift"
   },
   "Incident opened": "Incident opened",
-  "Failed to open incident": "Failed to open incident"
+  "Failed to open incident": "Failed to open incident",
+  "{{count}} occurrences in this cluster": "{{count}} occurrences in this cluster"
 }

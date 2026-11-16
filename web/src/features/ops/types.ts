@@ -60,6 +60,11 @@ export interface OpsIncidentsResponse {
   items: OpsIncident[]
 }
 
+export interface OpsStatusCodeCount {
+  code: string
+  count: number
+}
+
 export interface OpsErrorCluster {
   fingerprint: string
   sample: string
@@ -68,6 +73,8 @@ export interface OpsErrorCluster {
   channels: number
   first_seen: number
   last_seen: number
+  /** 簇内出现的具体 HTTP 状态码；归一化会把它们合成 SERVERERROR/CLIENTERROR */
+  status_codes?: OpsStatusCodeCount[]
 }
 
 export interface OpsClustersResponse {

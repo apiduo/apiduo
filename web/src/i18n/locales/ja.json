@@ -8527,5 +8527,6 @@
     "Take shift": "Take shift"
   },
   "Incident opened": "インシデントを起票しました",
-  "Failed to open incident": "起票に失敗しました"
+  "Failed to open incident": "起票に失敗しました",
+  "{{count}} occurrences in this cluster": "このクラスタ内で {{count}} 回"
 }
