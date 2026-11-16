@@ -3002,7 +3002,7 @@
     "First API request": "Première requête API",
     "First token": "1er token",
     "First/Last Frame to Video": "Première/Dernière image vers vidéo",
-    "Fix": "去补",
+    "Fix": "Corriger",
     "Fix Abilities": "Réparer la cohérence des canaux",
     "Fix order": "Corriger l’ordre",
     "Fix the Request Header Override JSON first": "Corrigez d'abord le JSON de surcharge des en-têtes",
@@ -8549,6 +8549,11 @@
     "Announcement": "Annonce",
     "Feature update": "Nouveauté",
     "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "Les annonces restent sur le tableau de bord. Les nouveautés n'apparaissent qu'une fois, dans un bandeau en haut.",
-    "{{count}} new feature updates": "{{count}} nouveautés"
+    "{{count}} new feature updates": "{{count}} nouveautés",
+    "New feature": "Nouvelle fonctionnalité",
+    "Improvement": "Amélioration",
+    "Change type (optional)": "Type de changement (facultatif)",
+    "Select change type": "Choisir le type de changement",
+    "Shown as a label on the banner. Leave empty to show no label.": "Affiché comme étiquette dans le bandeau. Laissez vide pour aucune étiquette."
   }
 }

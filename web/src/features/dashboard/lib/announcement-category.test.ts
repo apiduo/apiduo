@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { announcementCategory, isChangelog } from './announcement-category'
+import {
+  announcementCategory,
+  changelogKind,
+  isChangelog,
+  isFreshUpdate,
+} from './announcement-category'
 
 describe('announcementCategory', () => {
   it('缺省视为公告', () => {
@@ -28,5 +33,47 @@ describe('announcementCategory', () => {
     expect(announcementCategory({ category: 'news' })).toBe('announcement')
     expect(announcementCategory({ category: 1 })).toBe('announcement')
     expect(announcementCategory({ category: null })).toBe('announcement')
+  })
+})
+
+describe('changelogKind', () => {
+  it('认得出三种变更类型', () => {
+    expect(changelogKind({ kind: 'feature' })).toBe('feature')
+    expect(changelogKind({ kind: 'improvement' })).toBe('improvement')
+    expect(changelogKind({ kind: 'fix' })).toBe('fix')
+  })
+
+  // 没填就是没分类，不给标签 —— 比默认成「新增」诚实
+  it('缺省与脏值返回 undefined', () => {
+    expect(changelogKind({})).toBeUndefined()
+    expect(changelogKind({ kind: '' })).toBeUndefined()
+    expect(changelogKind({ kind: 'breaking' })).toBeUndefined()
+    expect(changelogKind({ kind: 3 })).toBeUndefined()
+  })
+})
+
+describe('isFreshUpdate', () => {
+  const now = Date.parse('2026-11-17T12:00:00+08:00')
+  const at = (days: number) =>
+    new Date(now - days * 86400_000).toISOString()
+
+  it('7 天内算新', () => {
+    expect(isFreshUpdate({ publishDate: at(0) }, now)).toBe(true)
+    expect(isFreshUpdate({ publishDate: at(6.9) }, now)).toBe(true)
+  })
+
+  it('超过 7 天不算新', () => {
+    expect(isFreshUpdate({ publishDate: at(7) }, now)).toBe(false)
+    expect(isFreshUpdate({ publishDate: at(30) }, now)).toBe(false)
+  })
+
+  // 未来的发布时间还没生效，不该打「新」标记
+  it('未来时间不算新', () => {
+    expect(isFreshUpdate({ publishDate: at(-1) }, now)).toBe(false)
+  })
+
+  it('缺时间或解析不了不算新', () => {
+    expect(isFreshUpdate({}, now)).toBe(false)
+    expect(isFreshUpdate({ publishDate: 'not-a-date' }, now)).toBe(false)
   })
 })

@@ -83,10 +83,13 @@ type Announcement = {
   title?: string
   // 缺省视为公告；changelog 只出现在顶部的功能更新横幅里
   category?: 'announcement' | 'changelog'
+  // 仅功能更新使用：变更类型（新增/优化/修复）
+  kind?: 'feature' | 'improvement' | 'fix'
   content: string
   publishDate: string
   expiresAt?: string
-  type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
+  // 功能更新没有严重程度，这个字段对它为空
+  type?: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
   phases?: AnnouncementPhase[]
 }
@@ -110,6 +113,7 @@ const phaseSchema = z.object({
 
 const announcementSchema = z.object({
   category: z.enum(['announcement', 'changelog']).optional(),
+  kind: z.enum(['feature', 'improvement', 'fix']).optional(),
   // 标题可选：留空时列表回落为正文摘要
   title: z
     .string()
@@ -180,6 +184,12 @@ const typeOptions = [
     badgeVariant: 'danger' as const,
   },
 ]
+const kindOptions = [
+  { value: 'feature', label: 'New feature', color: 'bg-blue-500' },
+  { value: 'improvement', label: 'Improvement', color: 'bg-emerald-500' },
+  { value: 'fix', label: 'Fix', color: 'bg-gray-500' },
+]
+
 
 export function AnnouncementsSection({
   enabled,
@@ -344,7 +354,7 @@ export function AnnouncementsSection({
       ...values,
       ...(changelog
         ? { type: undefined, expiresAt: undefined, phases: undefined }
-        : {}),
+        : { kind: undefined }),
       // 空标题不落库：存空串会让列表拿空标题渲染，回落逻辑也就失效了
       title: values.title?.trim() || undefined,
       // 空失效时间同理：留空就是「不过期」，不需要存一个空串
@@ -599,6 +609,58 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+            {isChangelog && (
+              <FormField
+                control={form.control}
+                name='kind'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Change type (optional)')}</FormLabel>
+                    <Select
+                      items={kindOptions.map((option) => ({
+                        value: option.value,
+                        label: (
+                          <div className='flex items-center gap-2'>
+                            <div
+                              className={`h-3 w-3 rounded-full ${option.color}`}
+                            />
+                            {t(option.label)}
+                          </div>
+                        ),
+                      }))}
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t('Select change type')} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          {kindOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              <div className='flex items-center gap-2'>
+                                <div
+                                  className={`h-3 w-3 rounded-full ${option.color}`}
+                                />
+                                {t(option.label)}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {t(
+                        'Shown as a label on the banner. Leave empty to show no label.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <FormField
               control={form.control}
               name='title'

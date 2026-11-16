@@ -292,3 +292,53 @@ func TestValidateAnnouncementsCategory(t *testing.T) {
 		})
 	}
 }
+
+func announcementsWithKind(member string) string {
+	const head = `[{"content":"测试更新","category":"changelog","publishDate":"2026-11-16T10:00:00+08:00"`
+	if member == "" {
+		return head + `}]`
+	}
+	return head + `,` + member + `}]`
+}
+
+func TestValidateAnnouncementsKind(t *testing.T) {
+	cases := []struct {
+		name    string
+		member  string
+		wantErr string
+	}{
+		{name: "字段不存在", member: ""},
+		{name: "空字符串", member: `"kind":""`},
+		{name: "feature", member: `"kind":"feature"`},
+		{name: "improvement", member: `"kind":"improvement"`},
+		{name: "fix", member: `"kind":"fix"`},
+		{
+			name:    "未知取值",
+			member:  `"kind":"breaking"`,
+			wantErr: "invalid kind",
+		},
+		{
+			name:    "不是字符串",
+			member:  `"kind":2`,
+			wantErr: "invalid kind",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateConsoleSettings(announcementsWithKind(tc.member), "Announcements")
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}

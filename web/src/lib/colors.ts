@@ -162,6 +162,22 @@ export const ANNOUNCEMENT_DOT_COLORS: Record<AnnouncementType, string> = {
  * 详情弹窗用 `variant` 渲染 StatusBadge，列表只取 `label` 作为 i18n key。
  * 一处定义，避免两处写出不同措辞。
  */
+/**
+ * 功能更新的变更类型配色。
+ *
+ * 与公告的 ANNOUNCEMENT_DOT_COLORS 是两套：那套表达严重程度（警告/错误），
+ * 这套表达变更性质（新增/优化/修复）。同一个颜色在两个维度上可以复用 ——
+ * 蓝色既表示「进行中」也表示「新增」，因为读者看到的是不同位置的圆点。
+ */
+export const CHANGELOG_KIND_COLORS: Record<
+  'feature' | 'improvement' | 'fix',
+  string
+> = {
+  feature: 'oklch(0.67 0.15 243)',
+  improvement: 'oklch(0.66 0.15 163)',
+  fix: 'oklch(0.62 0 0)',
+}
+
 export const ANNOUNCEMENT_LEVEL_BADGES: Record<
   string,
   { label: string; variant: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }

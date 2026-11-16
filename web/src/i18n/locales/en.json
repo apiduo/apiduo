@@ -8549,6 +8549,11 @@
     "Announcement": "Announcement",
     "Feature update": "Feature update",
     "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "Announcements stay on the dashboard. Feature updates appear once in a top banner.",
-    "{{count}} new feature updates": "{{count}} new feature updates"
+    "{{count}} new feature updates": "{{count}} new feature updates",
+    "New feature": "New feature",
+    "Improvement": "Improvement",
+    "Change type (optional)": "Change type (optional)",
+    "Select change type": "Select change type",
+    "Shown as a label on the banner. Leave empty to show no label.": "Shown as a label on the banner. Leave empty to show no label."
   }
 }

@@ -55,6 +55,7 @@ TOKEN=nap_xxxxxxxx
   "publishDate": "2026-11-20T02:00:00+08:00", // 必填，RFC3339
   "expiresAt": "2026-11-25T00:00:00+08:00",   // 可选，RFC3339，必须晚于 publishDate
   "type": "warning",                          // 可选：default|ongoing|success|warning|error
+  "kind": "feature",                          // 仅 category=changelog：feature|improvement|fix
   "extra": "补偿方案见工单",                    // 可选，≤100 字
   "phases": [                                 // 可选，最多 8 个
     {
@@ -68,6 +69,20 @@ TOKEN=nap_xxxxxxxx
 
 空字符串等于不设置：`title` / `expiresAt` / `extra` 传空串会被删除，
 而不是存一个空值。`title` 为空时，列表回落显示正文摘要。
+
+### category 与 kind
+
+`category` 决定这条消息出现在哪里：
+
+| 值 | 展示位 | 用得到的字段 |
+|---|---|---|
+| `announcement`（缺省） | 仪表盘公告面板 + 铃铛未读 | `type`、`expiresAt`、`phases` |
+| `changelog` | 页面顶部功能更新横幅，看过即消失 | `kind` |
+
+`kind` 是变更性质（新增 / 优化 / 修复），与公告的 `type`（严重程度）是**两个维度**，
+所以没有复用同一个字段 —— 否则会出现「带警告级别的功能更新」这种语义错乱。
+
+两者都可以不填。`kind` 不填就不显示标签，不会默认成 `feature`。
 
 ### 时区
 

@@ -3002,7 +3002,7 @@
     "First API request": "Yêu cầu API đầu tiên",
     "First token": "Token đầu",
     "First/Last Frame to Video": "Khung đầu/cuối sang video",
-    "Fix": "去补",
+    "Fix": "Sửa",
     "Fix Abilities": "Sửa tính nhất quán kênh",
     "Fix order": "Sửa thứ tự",
     "Fix the Request Header Override JSON first": "Hãy sửa JSON ghi đè header yêu cầu trước",
@@ -8549,6 +8549,11 @@
     "Announcement": "Thông báo",
     "Feature update": "Cập nhật tính năng",
     "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "Thông báo hiển thị thường trực trên bảng điều khiển. Cập nhật tính năng chỉ hiện một lần ở băng rôn trên cùng.",
-    "{{count}} new feature updates": "{{count}} cập nhật tính năng"
+    "{{count}} new feature updates": "{{count}} cập nhật tính năng",
+    "New feature": "Tính năng mới",
+    "Improvement": "Cải thiện",
+    "Change type (optional)": "Loại thay đổi (tùy chọn)",
+    "Select change type": "Chọn loại thay đổi",
+    "Shown as a label on the banner. Leave empty to show no label.": "Hiển thị dưới dạng nhãn trên băng rôn. Để trống nếu không muốn hiện nhãn."
   }
 }

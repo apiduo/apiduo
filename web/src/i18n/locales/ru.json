@@ -3002,7 +3002,7 @@
     "First API request": "Первый API-запрос",
     "First token": "Первый токен",
     "First/Last Frame to Video": "Первый/последний кадр в видео",
-    "Fix": "去补",
+    "Fix": "Исправить",
     "Fix Abilities": "Восстановить согласованность каналов",
     "Fix order": "Исправить порядок",
     "Fix the Request Header Override JSON first": "Сначала исправьте JSON переопределения заголовков",
@@ -8549,6 +8549,11 @@
     "Announcement": "Объявление",
     "Feature update": "Обновление",
     "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "Объявления остаются на панели. Обновления показываются один раз в верхней полосе.",
-    "{{count}} new feature updates": "{{count}} обновлений"
+    "{{count}} new feature updates": "{{count}} обновлений",
+    "New feature": "Новая функция",
+    "Improvement": "Улучшение",
+    "Change type (optional)": "Тип изменения (необязательно)",
+    "Select change type": "Выберите тип изменения",
+    "Shown as a label on the banner. Leave empty to show no label.": "Показывается как метка в полосе. Оставьте пустым, чтобы не показывать."
   }
 }

@@ -214,6 +214,14 @@ func validateAnnouncements(announcementsStr string) error {
 				return common.NewMessage("Announcement #{{index}} has an invalid category", map[string]any{"index": i + 1})
 			}
 		}
+		// kind 是功能更新的变更类型（新增/优化/修复），与公告的 type（严重程度）
+		// 是两个维度，不复用 type 就是为了避免「带警告级别的功能更新」。
+		if kind, exists := ann["kind"]; exists {
+			kindStr, ok := kind.(string)
+			if !ok || (kindStr != "" && kindStr != "feature" && kindStr != "improvement" && kindStr != "fix") {
+				return common.NewMessage("Announcement #{{index}} has an invalid kind", map[string]any{"index": i + 1})
+			}
+		}
 		if extra, exists := ann["extra"]; exists {
 			if extraStr, ok := extra.(string); ok && exceedsMaxCharacters(extraStr, 100) {
 				return common.NewMessage("Announcement #{{index}} note cannot exceed 100 characters", map[string]any{"index": i + 1})

@@ -3002,7 +3002,7 @@
     "First API request": "首个 API 请求",
     "First token": "首字",
     "First/Last Frame to Video": "首尾生视频",
-    "Fix": "去补",
+    "Fix": "修复",
     "Fix Abilities": "修复渠道一致性",
     "Fix order": "修复顺序",
     "Fix the Request Header Override JSON first": "请先修正请求头覆盖的 JSON",
@@ -8549,6 +8549,11 @@
     "Announcement": "公告",
     "Feature update": "功能更新",
     "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "公告常驻仪表盘。功能更新只在顶部横幅提示一次。",
-    "{{count}} new feature updates": "有 {{count}} 项功能更新"
+    "{{count}} new feature updates": "有 {{count}} 项功能更新",
+    "New feature": "新增",
+    "Improvement": "优化",
+    "Change type (optional)": "变更类型（可选）",
+    "Select change type": "选择变更类型",
+    "Shown as a label on the banner. Leave empty to show no label.": "显示为横幅上的标签。留空则不显示标签。"
   }
 }

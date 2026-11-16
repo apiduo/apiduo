@@ -4,8 +4,20 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { getPreviewText } from '@/features/dashboard/lib'
+import {
+  changelogKind,
+  isFreshUpdate,
+  type ChangelogKind,
+} from '@/features/dashboard/lib/announcement-category'
+import { CHANGELOG_KIND_COLORS } from '@/lib/colors'
 import { useNotifications } from '@/hooks/use-notifications'
 import { formatShortDateTime } from '@/lib/time'
+
+const KIND_LABELS: Record<ChangelogKind, string> = {
+  feature: 'New feature',
+  improvement: 'Improvement',
+  fix: 'Fix',
+}
 
 /**
  * 一条 changelog 的标题，没有就用正文摘要。
@@ -76,16 +88,47 @@ export function AnnouncementBanner() {
             const published =
               typeof item.publishDate === 'string' ? item.publishDate : ''
             const body = typeof item.content === 'string' ? item.content : ''
+            const kind = changelogKind(item)
             return (
               <li
                 key={typeof item.id === 'number' ? item.id : index}
-                className='flex gap-3 border-b py-2 last:border-0'
+                className='flex items-start gap-2.5 border-b py-2 last:border-0'
               >
-                <time className='text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap tabular-nums'>
+                {/* 色点表达变更性质：新增蓝、优化绿、修复灰。没分类就不画点，
+                    不替作者选一个。 */}
+                <span
+                  aria-hidden
+                  className='mt-1.5 size-1.5 shrink-0 rounded-full'
+                  style={{
+                    backgroundColor: kind
+                      ? CHANGELOG_KIND_COLORS[kind]
+                      : 'var(--muted-foreground)',
+                    opacity: kind ? 1 : 0.4,
+                  }}
+                />
+                <time className='text-muted-foreground mt-0.5 shrink-0 font-mono text-xs whitespace-nowrap tabular-nums'>
                   {published ? formatShortDateTime(new Date(published)) : ''}
                 </time>
-                <div className='min-w-0'>
-                  <p className='text-sm font-medium'>{changelogTitle(item)}</p>
+                <div className='min-w-0 flex-1'>
+                  <p className='flex flex-wrap items-center gap-x-1.5 text-sm font-medium'>
+                    <span>{changelogTitle(item)}</span>
+                    {kind && (
+                      <span
+                        className='rounded px-1 py-px text-[10px] font-medium'
+                        style={{
+                          color: CHANGELOG_KIND_COLORS[kind],
+                          backgroundColor: `color-mix(in oklab, ${CHANGELOG_KIND_COLORS[kind]} 14%, transparent)`,
+                        }}
+                      >
+                        {t(KIND_LABELS[kind])}
+                      </span>
+                    )}
+                    {isFreshUpdate(item) && (
+                      <span className='bg-primary text-primary-foreground rounded px-1 py-px text-[10px] font-semibold'>
+                        NEW
+                      </span>
+                    )}
+                  </p>
                   {body && (
                     <p className='text-muted-foreground mt-0.5 text-xs whitespace-pre-line'>
                       {body}
