@@ -178,11 +178,13 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		tieredResult = tieredRes
 	}
 
+	// APIDUO:latency-ms:BEGIN
 	// 用毫秒计算，秒字段保留给既有消费方。
 	// 原来用 Unix() 相减，1.9s 与 1.02s 都会记成 1 秒，
 	// P95 落在 1s 时完全看不出差别。
 	useTimeMs := int(time.Since(relayInfo.StartTime).Milliseconds())
 	useTimeSeconds := useTimeMs / 1000
+	// APIDUO:latency-ms:END
 	textInputTokens := usage.InputTokenDetails.TextTokens
 	textOutTokens := usage.OutputTokenDetails.TextTokens
 
@@ -272,7 +274,9 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		Content:          logContent,
 		TokenId:          relayInfo.TokenId,
 		UseTimeSeconds:   int(useTimeSeconds),
+		// APIDUO:latency-ms:BEGIN
 		UseTimeMs:        useTimeMs,
+		// APIDUO:latency-ms:END
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
@@ -321,11 +325,13 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 	fixedPriceBilling := tieredOk && isFixedPriceSettlement(relayInfo, tieredRes)
 
+	// APIDUO:latency-ms:BEGIN
 	// 用毫秒计算，秒字段保留给既有消费方。
 	// 原来用 Unix() 相减，1.9s 与 1.02s 都会记成 1 秒，
 	// P95 落在 1s 时完全看不出差别。
 	useTimeMs := int(time.Since(relayInfo.StartTime).Milliseconds())
 	useTimeSeconds := useTimeMs / 1000
+	// APIDUO:latency-ms:END
 	textInputTokens := usage.PromptTokensDetails.TextTokens
 	textOutTokens := usage.CompletionTokenDetails.TextTokens
 
@@ -416,7 +422,9 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		Content:          logContent,
 		TokenId:          relayInfo.TokenId,
 		UseTimeSeconds:   int(useTimeSeconds),
+		// APIDUO:latency-ms:BEGIN
 		UseTimeMs:        useTimeMs,
+		// APIDUO:latency-ms:END
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,

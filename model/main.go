@@ -442,13 +442,17 @@ func migrateDB() error {
 	/* APIDUO:ops:BEGIN */
 	// 服务质量台只加一张变更事件表。错误与延迟都是从 logs 实时聚合的，
 	// 不落派生表——日志库是 ClickHouse，聚合本来就快。
+	// APIDUO:ops-tables:BEGIN
 	if err := DB.AutoMigrate(&ChangeEvent{}, &OpsIncident{}, &ChannelCost{}, &OpsShift{}); err != nil {
 		return fmt.Errorf("migrate ops tables: %w", err)
 	}
+	// APIDUO:ops-tables:END
+	// APIDUO:cost-cache:BEGIN
 	// 单价配置读进内存：看板每次查成本时不该碰 MySQL。
 	if err := LoadChannelCosts(); err != nil {
 		return fmt.Errorf("load channel costs: %w", err)
 	}
+	// APIDUO:cost-cache:END
 	/* APIDUO:ops:END */
 	return nil
 }
@@ -475,7 +479,9 @@ func migrateClickHouseLogDB() error {
 		common.SysError(common.LogText("log table engine upgrade failed: %s", err.Error()))
 	}
 	// APIDUO:log-final:END
+	// APIDUO:ch-log-columns:BEGIN
 	ensureClickHouseLogColumns()
+	// APIDUO:ch-log-columns:END
 	return syncClickHouseLogTTL(ttlDays)
 }
 
@@ -899,6 +905,7 @@ func PingDB() error {
 	return nil
 }
 
+// APIDUO:ch-log-columns:BEGIN
 // ensureClickHouseLogColumns 给已存在的日志表补上后加的列。
 //
 // CREATE TABLE IF NOT EXISTS 不会修改已有表结构，所以新增列必须显式 ALTER。
@@ -917,3 +924,5 @@ func ensureClickHouseLogColumns() {
 		}
 	}
 }
+
+// APIDUO:ch-log-columns:END

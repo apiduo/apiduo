@@ -155,10 +155,12 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		Content:        []*common.Message{common.NewMessage("Violation fee charged")},
 		TokenId:        relayInfo.TokenId,
 		UseTimeSeconds: int(useTimeSeconds),
-		UseTimeMs:      int(time.Since(relayInfo.StartTime).Milliseconds()),
-		IsStream:       relayInfo.IsStream,
-		Group:          relayInfo.UsingGroup,
-		Other:          other,
+		// APIDUO:latency-ms:BEGIN
+		UseTimeMs: int(time.Since(relayInfo.StartTime).Milliseconds()),
+		// APIDUO:latency-ms:END
+		IsStream: relayInfo.IsStream,
+		Group:    relayInfo.UsingGroup,
+		Other:    other,
 	})
 
 	return true

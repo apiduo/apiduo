@@ -56,19 +56,21 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 }
 
 type Log struct {
-	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
-	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
-	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
-	Content           string `json:"content"`
-	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
-	TokenName         string `json:"token_name" gorm:"index;default:''"`
-	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
-	Quota             int    `json:"quota" gorm:"default:0"`
-	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
-	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
-	UseTime           int    `json:"use_time" gorm:"default:0"`
-	UseTimeMs         int    `json:"use_time_ms" gorm:"default:0"`
+	Id               int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
+	UserId           int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
+	CreatedAt        int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
+	Type             int    `json:"type" gorm:"index:idx_created_at_type"`
+	Content          string `json:"content"`
+	Username         string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
+	TokenName        string `json:"token_name" gorm:"index;default:''"`
+	ModelName        string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
+	Quota            int    `json:"quota" gorm:"default:0"`
+	PromptTokens     int    `json:"prompt_tokens" gorm:"default:0"`
+	CompletionTokens int    `json:"completion_tokens" gorm:"default:0"`
+	UseTime          int    `json:"use_time" gorm:"default:0"`
+	// APIDUO:latency-ms:BEGIN
+	UseTimeMs int `json:"use_time_ms" gorm:"default:0"`
+	// APIDUO:latency-ms:END
 	IsStream          bool   `json:"is_stream"`
 	ChannelId         int    `json:"channel" gorm:"index"`
 	ChannelName       string `json:"channel_name" gorm:"->"`
@@ -355,10 +357,12 @@ type RecordConsumeLogParams struct {
 	Content          []*common.Message `json:"content"`
 	TokenId          int               `json:"token_id"`
 	UseTimeSeconds   int               `json:"use_time_seconds"`
-	UseTimeMs        int               `json:"use_time_ms"`
-	IsStream         bool              `json:"is_stream"`
-	Group            string            `json:"group"`
-	Other            *LogOther         `json:"other"`
+	// APIDUO:latency-ms:BEGIN
+	UseTimeMs int `json:"use_time_ms"`
+	// APIDUO:latency-ms:END
+	IsStream bool      `json:"is_stream"`
+	Group    string    `json:"group"`
+	Other    *LogOther `json:"other"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
@@ -402,9 +406,11 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		ChannelId:        params.ChannelId,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
-		UseTimeMs:        params.UseTimeMs,
-		IsStream:         params.IsStream,
-		Group:            params.Group,
+		// APIDUO:latency-ms:BEGIN
+		UseTimeMs: params.UseTimeMs,
+		// APIDUO:latency-ms:END
+		IsStream: params.IsStream,
+		Group:    params.Group,
 		Ip: func() string {
 			if needRecordIp {
 				return c.ClientIP()
