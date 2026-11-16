@@ -80,6 +80,7 @@ type Announcement = {
   title?: string
   content: string
   publishDate: string
+  expiresAt?: string
   type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
   phases?: AnnouncementPhase[]
@@ -113,6 +114,8 @@ const announcementSchema = z.object({
     .min(1, 'Content is required')
     .max(500, 'Content must be less than 500 characters'),
   publishDate: z.string().min(1, 'Publish date is required'),
+  // 失效时间可选，留空就一直显示
+  expiresAt: z.string().optional(),
   type: z.enum(['default', 'ongoing', 'success', 'warning', 'error']),
   extra: z
     .string()
@@ -124,6 +127,16 @@ const announcementSchema = z.object({
     .max(8, 'An announcement cannot have more than 8 phases')
     .optional(),
 })
+  // 一发布就过期是配置错误，不是「立刻隐藏」；与后端校验同一条规则
+  .refine(
+    (data) =>
+      !data.expiresAt ||
+      new Date(data.expiresAt).getTime() > new Date(data.publishDate).getTime(),
+    {
+      message: 'Expiry must be later than the publish date',
+      path: ['expiresAt'],
+    }
+  )
 
 type AnnouncementFormValues = z.infer<typeof announcementSchema>
 
@@ -185,6 +198,7 @@ export function AnnouncementsSection({
       title: '',
       content: '',
       publishDate: new Date().toISOString(),
+      expiresAt: '',
       type: 'default',
       extra: '',
       phases: [],
@@ -236,6 +250,7 @@ export function AnnouncementsSection({
       title: '',
       content: '',
       publishDate: new Date().toISOString(),
+      expiresAt: '',
       type: 'default',
       extra: '',
       phases: [],
@@ -249,6 +264,7 @@ export function AnnouncementsSection({
       title: announcement.title || '',
       content: announcement.content,
       publishDate: announcement.publishDate,
+      expiresAt: announcement.expiresAt || '',
       type: announcement.type,
       extra: announcement.extra || '',
       phases: announcement.phases ?? [],
@@ -310,6 +326,8 @@ export function AnnouncementsSection({
       ...values,
       // 空标题不落库：存空串会让列表拿空标题渲染，回落逻辑也就失效了
       title: values.title?.trim() || undefined,
+      // 空失效时间同理：留空就是「不过期」，不需要存一个空串
+      expiresAt: values.expiresAt?.trim() || undefined,
       phases: phases.length > 0 ? phases : undefined,
     }
 
@@ -586,6 +604,30 @@ export function AnnouncementsSection({
                   <FormDescription>
                     {t(
                       'Date and time when this announcement should be displayed'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='expiresAt'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('End time (Optional)')}</FormLabel>
+                  <FormControl>
+                    <DateTimePicker
+                      value={field.value ? new Date(field.value) : undefined}
+                      onChange={(date) =>
+                        field.onChange(date ? date.toISOString() : '')
+                      }
+                      placeholder={t('Keep showing until cleared')}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Announcement stops appearing after this time. Leave empty to keep it visible.'
                     )}
                   </FormDescription>
                   <FormMessage />

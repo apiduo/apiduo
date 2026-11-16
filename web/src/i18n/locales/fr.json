@@ -8541,6 +8541,9 @@
     "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "Facultatif. Affiché sous forme de chronologie verticale sur le tableau de bord, enregistré dans l’ordre chronologique.",
     "Title": "Titre",
     "Announcement title": "Titre de l'annonce",
-    "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "Affiché comme titre dans la liste du tableau de bord. Reprend l'aperçu du contenu si vide."
+    "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "Affiché comme titre dans la liste du tableau de bord. Reprend l'aperçu du contenu si vide.",
+    "End time (Optional)": "Heure de fin (facultatif)",
+    "Keep showing until cleared": "Continuer d'afficher jusqu'à effacement",
+    "Announcement stops appearing after this time. Leave empty to keep it visible.": "L'annonce cesse d'apparaître après cette date. Laissez vide pour la garder visible."
   }
 }

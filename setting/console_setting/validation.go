@@ -216,6 +216,18 @@ func validateAnnouncements(announcementsStr string) error {
 				return err
 			}
 		}
+		if expires, exists := ann["expiresAt"]; exists {
+			if expiresStr, ok := expires.(string); ok && expiresStr != "" {
+				expiresAt, err := time.Parse(time.RFC3339, expiresStr)
+				if err != nil {
+					return common.NewMessage("Announcement #{{index}} has an invalid expiry time", map[string]any{"index": i + 1})
+				}
+				// 一发布就过期是配置错误，而不是「立刻隐藏」
+				if publishAt, err := time.Parse(time.RFC3339, publishDateStr); err == nil && !expiresAt.After(publishAt) {
+					return common.NewMessage("Announcement #{{index}} expiry must be later than its publish date", map[string]any{"index": i + 1})
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -286,23 +298,51 @@ func validateFAQ(faqStr string) error {
 	return nil
 }
 
-func getPublishTime(item map[string]any) time.Time {
-	if v, ok := item["publishDate"]; ok {
-		if s, ok2 := v.(string); ok2 {
-			if t, err := time.Parse(time.RFC3339, s); err == nil {
-				return t
-			}
-		}
+// announcementTime parses one RFC3339 time field of an announcement.
+//
+// The bool reports whether the field was present and parseable. Callers treat
+// "absent or broken" as "no constraint" rather than hiding the notice: a typo
+// must not silently remove an active notice from every user's dashboard.
+func announcementTime(item map[string]any, field string) (time.Time, bool) {
+	raw, exists := item[field]
+	if !exists {
+		return time.Time{}, false
 	}
-	return time.Time{}
+	s, ok := raw.(string)
+	if !ok || s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
 }
 
+// GetAnnouncements returns the announcements that are visible right now.
+//
+// The window is [publishDate, expiresAt): a notice stays hidden until its
+// publish time and disappears once it expires. Admins still see everything in
+// the console — they read the raw option value, not this function.
 func GetAnnouncements() []map[string]any {
 	list := getJSONList(GetConsoleSetting().Announcements)
-	sort.SliceStable(list, func(i, j int) bool {
-		return getPublishTime(list[i]).After(getPublishTime(list[j]))
+	now := time.Now()
+	visible := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		if at, ok := announcementTime(item, "publishDate"); ok && at.After(now) {
+			continue
+		}
+		if at, ok := announcementTime(item, "expiresAt"); ok && !at.After(now) {
+			continue
+		}
+		visible = append(visible, item)
+	}
+	sort.SliceStable(visible, func(i, j int) bool {
+		ti, _ := announcementTime(visible[i], "publishDate")
+		tj, _ := announcementTime(visible[j], "publishDate")
+		return ti.After(tj)
 	})
-	return list
+	return visible
 }
 
 func GetFAQ() []map[string]any {

@@ -19,8 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 package console_setting
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // announcementsJSON wraps a phases expression (a raw JSON fragment) into one
@@ -136,5 +138,101 @@ func TestValidateAnnouncementsTitle(t *testing.T) {
 				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
 			}
 		})
+	}
+}
+
+func TestValidateAnnouncementsExpiresAt(t *testing.T) {
+	const published = "2026-11-16T10:00:00+08:00"
+	wrap := func(member string) string {
+		return `[{"content":"测试公告","publishDate":"` + published + `",` + member + `}]`
+	}
+
+	cases := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{name: "字段不存在", body: `[{"content":"测试公告","publishDate":"` + published + `"}]`},
+		{name: "空字符串视为不设置", body: wrap(`"expiresAt":""`)},
+		{name: "晚于发布时间", body: wrap(`"expiresAt":"2026-11-20T00:00:00+08:00"`)},
+		{
+			name:    "早于发布时间",
+			body:    wrap(`"expiresAt":"2026-11-10T00:00:00+08:00"`),
+			wantErr: "expiry must be later than its publish date",
+		},
+		{
+			name:    "与发布时间相同",
+			body:    wrap(`"expiresAt":"` + published + `"`),
+			wantErr: "expiry must be later than its publish date",
+		},
+		{
+			name:    "格式非法",
+			body:    wrap(`"expiresAt":"2026-11-20"`),
+			wantErr: "invalid expiry time",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateConsoleSettings(tc.body, "Announcements")
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestGetAnnouncementsWindow(t *testing.T) {
+	original := consoleSetting.Announcements
+	t.Cleanup(func() { consoleSetting.Announcements = original })
+
+	now := time.Now()
+	ago := func(h int) string { return now.Add(-time.Duration(h) * time.Hour).Format(time.RFC3339) }
+	ahead := func(h int) string { return now.Add(time.Duration(h) * time.Hour).Format(time.RFC3339) }
+
+	consoleSetting.Announcements = fmt.Sprintf(`[
+		{"content":"expired","publishDate":%q,"expiresAt":%q},
+		{"content":"active","publishDate":%q,"expiresAt":%q},
+		{"content":"no-expiry","publishDate":%q},
+		{"content":"scheduled","publishDate":%q},
+		{"content":"broken-date","publishDate":"not-a-time"}
+	]`, ago(48), ago(24), ago(3), ahead(24), ago(2), ahead(6))
+
+	got := GetAnnouncements()
+	titles := make([]string, 0, len(got))
+	for _, item := range got {
+		titles = append(titles, item["content"].(string))
+	}
+
+	// 已过期 → 隐藏；未来发布 → 隐藏；日期解析失败 → 保留（容错）
+	want := []string{"no-expiry", "active", "broken-date"}
+	if len(titles) != len(want) {
+		t.Fatalf("expected %d announcements %v, got %d %v", len(want), want, len(titles), titles)
+	}
+	for i := range want {
+		if titles[i] != want[i] {
+			t.Fatalf("expected order %v, got %v", want, titles)
+		}
+	}
+}
+
+func TestGetAnnouncementsKeepsBrokenExpiry(t *testing.T) {
+	original := consoleSetting.Announcements
+	t.Cleanup(func() { consoleSetting.Announcements = original })
+
+	consoleSetting.Announcements = `[{"content":"typo","publishDate":"2020-01-01T00:00:00Z","expiresAt":"tomorrow"}]`
+
+	got := GetAnnouncements()
+	if len(got) != 1 {
+		t.Fatalf("a broken expiry must not hide the notice, got %d items", len(got))
 	}
 }

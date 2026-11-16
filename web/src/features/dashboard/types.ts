@@ -277,6 +277,8 @@ export interface AnnouncementItem {
   title?: string
   content: string
   publishDate?: string
+  /** 失效时间。到点后后端不再下发，前端只做展示，不需要自己过滤。 */
+  expiresAt?: string
   type?: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
   /** 可选时间线。存量公告没有这个字段，组件遇到就不渲染。 */

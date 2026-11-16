@@ -8541,6 +8541,9 @@
     "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "選填。在儀表板上顯示為縱向時間軸，依時間順序儲存。",
     "Title": "標題",
     "Announcement title": "公告標題",
-    "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "顯示為儀表板公告列表的標題。留空時回落為正文摘要。"
+    "Shown as the heading in the dashboard list. Falls back to the content preview when empty.": "顯示為儀表板公告列表的標題。留空時回落為正文摘要。",
+    "End time (Optional)": "結束時間（選填）",
+    "Keep showing until cleared": "留空則一直顯示",
+    "Announcement stops appearing after this time. Leave empty to keep it visible.": "到達此時間後不再顯示。留空則一直顯示。"
   }
 }
