@@ -8524,9 +8524,9 @@
     "since": "since",
     "Nobody on shift": "Nobody on shift",
     "Handover note for the next shift": "Handover note for the next shift",
-    "Take shift": "Take shift"
-  },
-  "Incident opened": "Đã mở sự cố",
-  "Failed to open incident": "Mở sự cố thất bại",
-  "{{count}} occurrences in this cluster": "{{count}} lần trong cụm này"
+    "Take shift": "Take shift",
+    "Incident opened": "Đã mở sự cố",
+    "Failed to open incident": "Mở sự cố thất bại",
+    "{{count}} occurrences in this cluster": "{{count}} lần trong cụm này"
+  }
 }

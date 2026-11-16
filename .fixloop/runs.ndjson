@@ -89,3 +89,8 @@
 {"round":89,"ts":"2026-11-17T01:15:00+08:00","cmd":"线上写入链路（生产 apiduo.cn 0.0.161）","exit_code":0,"passed":3,"failed":0,"fingerprint":"","attribution":"","decision":"CONCLUDE","note":"开单->认领->结单状态流转正确；接班创建班次成功"}
 {"round":90,"ts":"2026-11-17T01:25:00+08:00","cmd":"首次接班留言写入","exit_code":1,"passed":0,"failed":1,"fingerprint":"shift-note","first_error":"基线无班次时首次接班，handover_note 长度 0，留言被丢弃","attribution":"IMPL","decision":"DEFER","note":"第二次接班 note 正常写入(24字节)，确认仅首次丢失"}
 {"round":91,"ts":"2026-11-17T01:30:00+08:00","cmd":"清理生产测试数据","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"ALL-GREEN","note":"incidents/shifts/costs 回到 0/0/0，与基线一致"}
+{"round":92,"ts":"2026-11-16T18:35:00+08:00","cmd":"开单不生效排查","exit_code":1,"failed":1,"fingerprint":"open-feedback","first_error":"数据库有 5 条 open 记录，但按钮无变化、新条目在页面底部看不到","attribution":"IMPL","decision":"FIX","note":"加 toast，标题带 id"}
+{"round":93,"ts":"2026-11-16T19:20:00+08:00","cmd":"go test TestErrorClusterKeepsStatusCode","exit_code":1,"failed":1,"fingerprint":"sc1","first_error":"ErrorCluster 无 StatusCodes 字段","attribution":"IMPL","decision":"FIX"}
+{"round":94,"ts":"2026-11-16T19:52:00+08:00","cmd":"本地 clusters 接口","exit_code":1,"failed":1,"fingerprint":"sc2","first_error":"CH 驱动返回 []string，扫描到 string 失败","attribution":"IMPL","decision":"FIX","note":"字段改 []string；extract 本身返回标量，不需要 [1]"}
+{"round":95,"ts":"2026-11-16T20:20:00+08:00","cmd":"插入带状态码数据验证","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"CONTINUE","note":"502x2+503x1 同簇，429 另簇；前端显示 502×3 503×1"}
+{"round":96,"ts":"2026-11-16T20:45:00+08:00","cmd":"部署 0.0.163 并验证线上","exit_code":0,"passed":1,"failed":0,"fingerprint":"","attribution":"","decision":"ALL-GREEN","note":"线上显示 502×5 / 400×1 / 502×1"}

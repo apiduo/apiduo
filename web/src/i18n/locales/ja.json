@@ -8524,9 +8524,9 @@
     "since": "since",
     "Nobody on shift": "Nobody on shift",
     "Handover note for the next shift": "Handover note for the next shift",
-    "Take shift": "Take shift"
-  },
-  "Incident opened": "インシデントを起票しました",
-  "Failed to open incident": "起票に失敗しました",
-  "{{count}} occurrences in this cluster": "このクラスタ内で {{count}} 回"
+    "Take shift": "Take shift",
+    "Incident opened": "インシデントを起票しました",
+    "Failed to open incident": "起票に失敗しました",
+    "{{count}} occurrences in this cluster": "このクラスタ内で {{count}} 回"
+  }
 }

@@ -8524,9 +8524,9 @@
     "since": "自",
     "Nobody on shift": "當前無人值班",
     "Handover note for the next shift": "給下一班留句話",
-    "Take shift": "接班"
-  },
-  "Incident opened": "已開單",
-  "Failed to open incident": "開單失敗",
-  "{{count}} occurrences in this cluster": "本叢集內出現 {{count}} 次"
+    "Take shift": "接班",
+    "Incident opened": "已開單",
+    "Failed to open incident": "開單失敗",
+    "{{count}} occurrences in this cluster": "本叢集內出現 {{count}} 次"
+  }
 }

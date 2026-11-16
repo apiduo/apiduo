@@ -8524,9 +8524,9 @@
     "since": "since",
     "Nobody on shift": "Nobody on shift",
     "Handover note for the next shift": "Handover note for the next shift",
-    "Take shift": "Take shift"
-  },
-  "Incident opened": "Инцидент открыт",
-  "Failed to open incident": "Не удалось открыть инцидент",
-  "{{count}} occurrences in this cluster": "{{count}} вхождений в этом кластере"
+    "Take shift": "Take shift",
+    "Incident opened": "Инцидент открыт",
+    "Failed to open incident": "Не удалось открыть инцидент",
+    "{{count}} occurrences in this cluster": "{{count}} вхождений в этом кластере"
+  }
 }
