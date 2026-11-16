@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>公告动效样品册 · 8 种手法的寿命 · apiduo</title>
+<style>
+  :root{
+    --bg:#0b0e12;--surface:#151a20;--surface-2:#1b222a;--line:#242b34;--line-2:#303a45;
+    --ink:#f2f5f8;--ink-2:#b6c0cc;--muted:#78838f;
+    --accent:#6d63ff;--accent-soft:#1e1a3d;
+    --ok:#35c46a;--warn:#f5a524;--err:#ff5f52;--info:#4a9eff;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+    font-size:13px;-webkit-font-smoothing:antialiased}
+
+  .head{padding:44px 40px 26px;border-bottom:1px solid var(--line);max-width:1240px;margin:0 auto}
+  .head .eyebrow{font-size:10.5px;letter-spacing:.18em;color:#5f6b78;font-family:var(--mono);margin-bottom:14px}
+  .head h1{margin:0 0 14px;font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+  .head h1 em{font-style:normal;color:var(--accent)}
+  .head p{margin:0;max-width:800px;font-size:14px;line-height:1.8;color:var(--ink-2)}
+  .head .toolbar{display:flex;gap:8px;align-items:center;margin-top:20px;flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line-2);background:var(--surface);color:var(--ink-2);
+    font-family:inherit;font-size:12px;padding:6px 13px;border-radius:7px;cursor:pointer;white-space:nowrap;
+    transition:border-color .12s,color .12s,background .12s}
+  .btn:hover{border-color:#4a5766;color:#fff}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.p:hover{background:#5c52f0}
+  .btn.on{background:var(--accent-soft);border-color:var(--accent);color:#b9b3ff}
+
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;
+    max-width:1240px;margin:0 auto;padding:26px 40px 20px}
+  .cell{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    display:flex;flex-direction:column;transition:border-color .16s}
+  .cell:hover{border-color:var(--line-2)}
+  .cell .stage{height:200px;background:#0f1419;position:relative;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;padding:20px}
+  .cell .meta{padding:14px 16px 16px;border-top:1px solid var(--line)}
+  .cell .nm{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600}
+  .cell .nm .idx{font-family:var(--mono);font-size:10px;color:#5f6b78;border:1px solid var(--line);
+    border-radius:4px;padding:0 5px;line-height:16px}
+  .cell .nm .life{margin-left:auto;font-size:10px;font-weight:600;border-radius:4px;padding:1px 6px;line-height:16px}
+  .life.perm{background:#0f2a1b;color:var(--ok);border:1px solid #1d4a2e}
+  .life.decay{background:#2a2210;color:var(--warn);border:1px solid #4a3c14}
+  .life.once{background:#2a1412;color:var(--err);border:1px solid #4a201c}
+  .cell .kv{display:flex;gap:9px;margin-top:8px;font-size:11.5px;line-height:1.6;color:var(--muted)}
+  .cell .kv .k{flex:0 0 40px;color:#5f6b78;font-family:var(--mono);font-size:10.5px;padding-top:2px}
+  .cell .kv .v{flex:1;color:var(--ink-2)}
+  .cell .kv .v b{color:var(--ink);font-weight:600}
+  .cell .replay{margin-top:11px;width:100%}
+
+  /* ========== demo 1：横幅滑入 ========== */
+  .d-banner{width:100%;border-radius:8px;overflow:hidden;border:1px solid #2a3540;background:#141a21}
+  .d-banner .top{display:flex;align-items:center;gap:6px;padding:6px 9px;border-bottom:1px solid #222b34;
+    font-size:10px;color:#5f6b78;background:#11161c}
+  .d-banner .top .dot{width:5px;height:5px;border-radius:99px;background:#2f3a45}
+  .d-banner .bar{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;background:#1d1418;
+    border-top:2px solid var(--err);font-size:11px;line-height:1.55;color:#ffb3ad;
+    transform-origin:top center}
+  .d-banner .bar .tg{flex:0 0 auto;font-size:9px;font-weight:800;border:1px solid currentColor;
+    border-radius:3px;padding:0 4px;line-height:14px;margin-top:1px}
+  .d-banner .bar .x{margin-left:auto;opacity:.5;cursor:pointer}
+  .d-banner .body{padding:10px;display:flex;flex-direction:column;gap:6px}
+  .d-banner .line{height:6px;border-radius:3px;background:#1d242c}
+  .d-banner .line.s{width:58%}
+  @keyframes barIn{
+    0%{opacity:0;transform:translateY(-14px) scaleY(.7)}
+    60%{opacity:1;transform:translateY(2px) scaleY(1.02)}
+    100%{opacity:1;transform:translateY(0) scaleY(1)}
+  }
+  .d-banner.play .bar{animation:barIn .42s cubic-bezier(.16,1,.3,1) both}
+
+  /* ========== demo 2：stagger ========== */
+  .d-stagger{width:100%;display:flex;flex-direction:column;gap:7px}
+  .d-stagger .row{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;background:#141a21;
+    border:1px solid #222b34;border-radius:7px}
+  .d-stagger .row .d{width:5px;height:5px;border-radius:99px;background:var(--accent);flex:0 0 auto;margin-top:5px}
+  .d-stagger .row .t{font-size:10.5px;color:#cfd8e3;line-height:1.5;flex:1}
+  .d-stagger .row .t small{display:block;color:#5f6b78;font-size:9.5px;margin-top:2px;font-family:var(--mono)}
+  @keyframes rowIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .d-stagger.play .row{animation:rowIn .34s cubic-bezier(.22,1,.36,1) both}
+  .d-stagger.play .row:nth-child(1){animation-delay:0s}
+  .d-stagger.play .row:nth-child(2){animation-delay:.06s}
+  .d-stagger.play .row:nth-child(3){animation-delay:.12s}
+
+  /* ========== demo 3：未读呼吸 ========== */
+  .d-pulse{display:flex;align-items:center;gap:14px}
+  .d-pulse .bell{position:relative;width:44px;height:44px;border-radius:12px;background:#141a21;
+    border:1px solid #2a3540;display:flex;align-items:center;justify-content:center;font-size:17px}
+  .d-pulse .bd{position:absolute;top:-4px;right:-4px;min-width:17px;height:17px;border-radius:99px;
+    background:var(--err);color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;
+    justify-content:center;padding:0 4px}
+  .d-pulse .ring{position:absolute;inset:-4px;border-radius:14px;border:1.5px solid var(--err);opacity:0}
+  @keyframes ringOut{0%{opacity:.55;transform:scale(1)}100%{opacity:0;transform:scale(1.5)}}
+  .d-pulse.play .ring{animation:ringOut 1.6s cubic-bezier(.22,1,.36,1) infinite}
+  .d-pulse .hint{font-size:10.5px;color:#5f6b78;line-height:1.6;max-width:150px}
+
+  /* ========== demo 4：数字滚动 ========== */
+  .d-count{text-align:center}
+  .d-count .n{font-size:56px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.03em;
+    line-height:1;font-family:var(--mono)}
+  .d-count .n span{color:var(--accent)}
+  .d-count .cap{font-size:11px;color:var(--muted);margin-top:8px}
+  .d-count .sub{font-size:10px;color:#5f6b78;margin-top:3px;font-family:var(--mono)}
+
+  /* ========== demo 5：mesh gradient ========== */
+  .d-mesh{position:relative;width:100%;height:132px;border-radius:9px;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;border:1px solid #2a3540}
+  .d-mesh .bg{position:absolute;inset:-40%;filter:blur(26px);opacity:.62;
+    background:
+      radial-gradient(38% 42% at 28% 32%, #6d63ff 0%, transparent 70%),
+      radial-gradient(34% 38% at 72% 62%, #1a7fb8 0%, transparent 70%),
+      radial-gradient(30% 34% at 52% 88%, #7a3ec9 0%, transparent 70%);}
+  .d-mesh.play .bg{animation:meshDrift 9s ease-in-out infinite alternate}
+  @keyframes meshDrift{
+    0%{transform:translate3d(-3%,-2%,0) scale(1)}
+    100%{transform:translate3d(4%,3%,0) scale(1.14)}
+  }
+  .d-mesh .txt{position:relative;text-align:center;z-index:1}
+  .d-mesh .txt b{display:block;font-size:15px;font-weight:700;letter-spacing:-.01em;text-shadow:0 1px 12px rgba(0,0,0,.5)}
+  .d-mesh .txt span{font-size:10px;color:#cfd8e3;font-family:var(--mono)}
+
+  /* ========== demo 6：滚动 reveal ========== */
+  .d-reveal{width:100%;height:132px;overflow:auto;border-radius:9px;border:1px solid #2a3540;
+    background:#141a21;padding:10px;scroll-behavior:smooth}
+  .d-reveal .item{opacity:.18;transform:translateY(8px);transition:opacity .4s,transform .4s;padding:9px 10px;
+    border-radius:6px;font-size:10.5px;color:#cfd8e3;margin-bottom:6px;background:#1a222a}
+  .d-reveal .item.in{opacity:1;transform:translateY(0)}
+  .d-reveal .item b{display:block;font-size:10.5px;color:#fff;margin-bottom:2px}
+  .d-reveal .item span{color:#5f6b78;font-size:9.5px;font-family:var(--mono)}
+
+  /* ========== demo 7：角色动画（Lottie 位） ========== */
+  .d-toon{display:flex;align-items:center;gap:14px;width:100%}
+  .d-toon .card{flex:1;background:#141a21;border:1px solid #2a3540;border-radius:9px;padding:12px;
+    position:relative;overflow:hidden}
+  .d-toon .card .ttl{font-size:11.5px;font-weight:600;margin-bottom:5px}
+  .d-toon .card .sub{font-size:10px;color:var(--muted);line-height:1.55}
+  .d-toon .bob{position:absolute;right:16px;top:12px;width:42px;height:42px}
+  .d-toon .bob .head{width:30px;height:30px;border-radius:50%;background:linear-gradient(160deg,#8b83ff,#4f46e5);
+    margin:10px auto 0;position:relative;box-shadow:0 4px 14px rgba(109,99,255,.35)}
+  .d-toon .bob .eye{position:absolute;width:3px;height:3px;border-radius:99px;background:#0b0e12;top:12px}
+  .d-toon .bob .eye.l{left:8px}.d-toon .bob .eye.r{right:8px}
+  .d-toon .bob .arm{position:absolute;width:7px;height:2.5px;border-radius:2px;background:#8b83ff;
+    top:16px;right:-3px;transform-origin:left center}
+  @keyframes wave{0%,100%{transform:rotate(0)}50%{transform:rotate(-38deg)}}
+  @keyframes bobIn{0%{transform:scale(.3) rotate(-12deg);opacity:0}
+    65%{transform:scale(1.12) rotate(4deg);opacity:1}100%{transform:scale(1) rotate(0);opacity:1}}
+  .d-toon.play .bob{animation:bobIn .62s cubic-bezier(.16,1,.3,1) both}
+  .d-toon.play .bob .arm{animation:wave 1.8s ease-in-out .5s infinite}
+
+  /* ========== demo 8：确认收束 ========== */
+  .d-collapse{width:100%}
+  .d-collapse .card{background:#141a21;border:1px solid #2a3540;border-radius:9px;overflow:hidden;
+    max-height:130px}
+  .d-collapse .ch{padding:9px 11px;border-bottom:1px solid #222b34;font-size:11px;font-weight:600;
+    display:flex;align-items:center;gap:7px}
+  .d-collapse .ch .tg{font-size:9px;font-weight:800;border:1px solid var(--warn);color:var(--warn);
+    border-radius:3px;padding:0 4px;line-height:14px}
+  .d-collapse .cb{padding:10px 11px;font-size:10.5px;color:var(--ink-2);line-height:1.6}
+  .d-collapse .cf{padding:8px 11px;border-top:1px solid #222b34;display:flex;justify-content:flex-end}
+  .d-collapse .cf button{appearance:none;border:0;background:var(--accent);color:#fff;font-family:inherit;
+    font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer}
+  @keyframes collapse{0%{max-height:130px;opacity:1;transform:translateY(0)}
+    55%{max-height:130px;opacity:.5;transform:translateY(4px) scale(.98)}
+    100%{max-height:0;opacity:0;transform:translateY(-6px) scale(.96)}}
+  .d-collapse.play .card{animation:collapse .44s cubic-bezier(.4,0,.2,1) forwards}
+  .d-collapse .after{display:none;text-align:center;font-size:10.5px;color:#5f6b78;line-height:1.6}
+  .d-collapse.play .after{display:block}
+
+  /* ========== 底部结论 ========== */
+  .concl{max-width:1240px;margin:0 auto;padding:16px 40px 70px}
+  .concl h2{margin:22px 0 12px;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .concl h2:first-child{margin-top:0}
+  .cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  .box{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:15px 17px}
+  .box h3{margin:0 0 10px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:7px}
+  .box h3 .dot{width:7px;height:7px;border-radius:99px}
+  .box.y h3 .dot{background:var(--ok)}.box.m h3 .dot{background:var(--warn)}.box.n h3 .dot{background:var(--err)}
+  .box ul{margin:0;padding-left:16px;font-size:11.5px;line-height:1.8;color:var(--ink-2)}
+  .box li{margin-bottom:5px}
+  .box li b{color:var(--ink);font-weight:600}
+  .refs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px}
+  .ref{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+  .ref .t{font-size:12px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .ref .t .tag{font-size:9.5px;font-weight:600;border-radius:3px;padding:0 5px;line-height:15px;
+    background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+  .ref .d{font-size:11px;color:var(--ink-2);line-height:1.7}
+  .ref .d b{color:#fff;font-weight:600}
+
+  .foot{max-width:1240px;margin:0 auto;padding:0 40px 60px;font-size:11px;color:#4a5560;
+    font-family:var(--mono);line-height:1.9}
+
+  @media(max-width:1000px){
+    .grid,.cols,.refs{grid-template-columns:1fr}
+    .head,.concl,.foot{padding-left:20px;padding-right:20px}
+    .grid{padding-left:20px;padding-right:20px}
+  }
+  .frozen,.frozen *{animation:none!important}
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .d-reveal .item{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="eyebrow">ANNOUNCEMENT MOTION LAB · 2026-11</div>
+  <h1>公告能有多酷炫，取决于它<em>被看第几次</em></h1>
+  <p>
+    同一个动效，放在发布会页是资产，放在每天开八次的控制台是负债。
+    下面 8 种手法都是业内真实在用的，每种标了<b style="color:#fff">寿命</b> ——
+    第一次有效、第三次开始烦、还是永远不衰减。点卡片重播。
+  </p>
+  <div class="toolbar">
+    <button class="btn p" id="play-all">全部重播</button>
+    <button class="btn" id="reduce">模拟「减少动效」</button>
+    <span style="font-size:11px;color:#5f6b78;margin-left:6px">
+      真实实现里这一条对应 <span style="font-family:var(--mono)">prefers-reduced-motion</span>
+    </span>
+  </div>
+</div>
+
+<div class="grid" id="grid">
+
+  <!-- 1 -->
+  <div class="cell" data-demo="banner">
+    <div class="stage">
+      <div class="d-banner">
+        <div class="top"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span style="margin-left:6px">apiduo</span></div>
+        <div class="bar">
+          <span class="tg">紧急</span>
+          <div>计费单位调整为按 token 精确计费 · <u>查看规则</u></div>
+          <span class="x">✕</span>
+        </div>
+        <div class="body">
+          <div class="line"></div><div class="line s"></div><div class="line"></div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="nm"><span class="idx">01</span>横幅滑入<span class="life decay">递减</span></div>
+      <div class="kv"><span class="k">用于</span><span class="v">紧急公告、必须立刻看到的变更</span></div>
+      <div class="kv"><span class="k">参数</span><span class="v"><b>420ms</b> cubic-bezier(.16,1,.3,1)，带 2px 回弹</span></div>
+      <div class="kv"><span class="k">寿命</span><span class="v">第 2 次开始无感。回弹超过 2px 就会显得廉价</span></div>
+      <button class="btn replay">重播</button>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="cell" data-demo="stagger">
+    <div class="stage">
+      <div class="d-stagger">
+        <div class="row"><span class="d"></span><div class="t">11/20 计划维护，期间请求可能重试<small>11-19 20:00 起</small></div></div>
+        <div class="row"><span class="d"></span><div class="t">DeepSeek-V4 上线，首周 8 折<small>11-14 00:00 起</small></div></div>
+        <div class="row"><span class="d"></span><div class="t">发票申请截止日提前到 12/20<small>11-12 10:00 起</small></div></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="nm"><span class="idx">02</span>列表逐条入场<span class="life decay">递减</span></div>
+      <div class="kv"><span class="k">用于</span><span class="v">新公告首次渲染、公告中心首屏</span></div>
+      <div class="kv"><span class="k">参数</span><span class="v">每条 <b>60ms</b> 错开，单条 340ms，位移 10px</span></div>
+      <div class="kv"><span class="k">寿命</span><span class="v">超过 5 条就变慢动作。刷新时重放是错频</span></div>
+      <button class="btn replay">重播</button>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="cell" data-demo="pulse">
+    <div class="stage">
+      <div class="d-pulse">
+        <div class="bell">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#cfd8e3"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="bd">3</span><span class="ring"></span></div>
+        <div class="hint">未读时呼吸，已读后彻底静止 —— 这是它唯一的合法性来源</div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="nm"><span class="idx">03</span>未读呼吸环<span class="life perm">永久</span></div>
+      <div class="kv"><span class="k">用于</span><span class="v">铃铛未读角标、面板里的未读点</span></div>
+      <div class="kv"><span class="k">参数</span><span class="v"><b>1.6s</b> 循环，缩放 1 → 1.5，透明度 .55 → 0</span></div>
+      <div class="kv"><span class="k">寿命</span><span class="v">不衰减，因为它编码的是<b>状态</b>而非装饰</span></div>
+      <button class="btn replay">重播</button>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="cell" data-demo="count">
+    <div class="stage">
+      <div class="d-count">
+        <div class="n"><span id="cnt">3</span></div>
+        <div class="cap">条新公告</div>
+        <div class="sub">last checked 00:12</div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="nm"><span class="idx">04</span>数字滚动<span class="life once">一次</span></div>
+      <div class="kv"><span class="k">用于</span><span class="v">首次加载的汇总数、「共 3 条未读」</span></div>
+      <div class="kv"><span class="k">参数</span><span class="v"><b>600ms</b>，ease-out，整数步进不加小数</span></div>
+      <div class="kv"><span class="k">寿命</span><span class="v">只该出现一次。每次刷新都滚就是噪音</span></div>
+      <button class="btn replay">重播</button>
+    </div>
+  </div>
+
+  <!-- 5 -->
+  <div class="cell" data-demo="mesh">
+    <div class="stage">
+      <div class="d-mesh">
+        <div class="bg"></div>
+        <div class="txt"><b>v0.9.4 已全量</b><span>baseline · 2026-11-17</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="nm"><span class="idx">05</span>流彩背景<span class="life once">一次</span></div>
+      <div class="kv"><span class="k">用于</span><span class="v">发布公告详情页头部、Launch 页</span></div>
+      <div class="kv"><span class="k">参数</span><span class="v"><b>9s</b> 往返，三层 radial + blur 26px，GPU 合成</span></div>
+      <div class="kv"><span class="k">寿命</span><span class="v">一辈子只该看几次。常驻会抢正文的注意力</span></div>
+      <button class="btn replay">重播</button>
+    </div>
+  </div>
+
+  <!-- 6 -->
+  <div class="cell" data-demo="reveal">
+    <div class="stage">
+      <div class="d-reveal">
+        <div class="item in"><b>端点能力表独立</b><span>新增 pkg/endpoint</span></div>
+        <div class="item in"><b>X-Request-Id 必填</b><span>破坏性</span></div>
+        <div class="item in"><b>配置热回滚</b><span>秒级</span></div>
+        <div class="item in"><b>batch 重复计费修复</b><span>fix</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="nm"><span class="idx">06</span>滚动揭示<span class="life decay">递减</span></div>
+      <div class="kv"><span class="k">用于</span><span class="v">长变更清单、发布页逐条展开</span></div>
+      <div class="kv"><span class="k">参数</span><span class="v">IntersectionObserver，<b>400ms</b>，只播一次</span></div>
+      <div class="kv"><span class="k">寿命</span><span class="v">回看时内容已经「出现过」，不该再动</span></div>
+      <button class="btn replay">重播</button>
+    </div>
+  </div>
+
+  <!-- 7 -->
+  <div class="cell" data-demo="toon">
+    <div class="stage">
+      <div class="d-toon">
+        <div class="card">
+          <div class="ttl">有啥新东西</div>
+          <div class="sub">v0.9.4 上线了端点能力表<br>和热回滚。</div>
+          <div class="bob"><div class="head"><span class="eye l"></span><span class="eye r"></span>
+            <div class="arm"></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="nm"><span class="idx">07</span>角色动画<span class="life once">一次</span></div>
+      <div class="kv"><span class="k">用于</span><span class="v">重大版本、面向 C 端的品牌化公告</span></div>
+      <div class="kv"><span class="k">参数</span><span class="v">入场 <b>620ms</b> 带过冲，之后 1.8s 循环微动作</span></div>
+      <div class="kv"><span class="k">寿命</span><span class="v">Telkomsel 的 by.U 用了这招：<b>只播一次</b>，之后转轻柔循环</span></div>
+      <button class="btn replay">重播</button>
+    </div>
+  </div>
+
+  <!-- 8 -->
+  <div class="cell" data-demo="collapse">
+    <div class="stage">
+      <div class="d-collapse">
+        <div class="card">
+          <div class="ch"><span class="tg">警告</span>11/20 计划维护</div>
+          <div class="cb">02:00–04:00 滚动维护，部分请求返回 503。</div>
+          <div class="cf"><button>我知道了</button></div>
+        </div>
+        <div class="after">已收束 · 不再提示<br><span style="font-family:var(--mono)">collapsed</span></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="nm"><span class="idx">08</span>确认后收束<span class="life perm">永久</span></div>
+      <div class="kv"><span class="k">用于</span><span class="v">「我知道了」「今日不再提示」</span></div>
+      <div class="kv"><span class="k">参数</span><span class="v"><b>440ms</b> cubic-bezier(.4,0,.2,1)，退场快于进场</span></div>
+      <div class="kv"><span class="k">寿命</span><span class="v">不衰减。它是<b>反馈</b>，告诉用户操作生效了</span></div>
+      <button class="btn replay">重播</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="concl">
+  <h2>业内现在长什么样 · 六种做法</h2>
+  <div class="refs">
+    <div class="ref">
+      <div class="t">Linear<span class="tag">视觉标杆</span></div>
+      <div class="d">每周 changelog 当杂志文章写：<b>满幅产品截图 + 动图 + 编辑口吻</b>。
+        动效只用 GIF 展示功能本身，页面本身不炫技。2026 年最常被抄的一家。</div>
+    </div>
+    <div class="ref">
+      <div class="t">Stripe<span class="tag">API 场景</span></div>
+      <div class="d">每条变更固定五段：描述 / 旧行为 / 新行为 / 迁移步骤 / 受影响端点。
+        <b>零动效，纪律即产品</b>。做网关、做 API 的产品应该先抄这个，再谈视觉。</div>
+    </div>
+    <div class="ref">
+      <div class="t">Figma / Vercel<span class="tag">带证据</span></div>
+      <div class="d">Figma 每条配注释过的 UI 图；Vercel 每条带作者头像和署名。
+        <b>「谁改的 + 改成什么样」</b>比动效更能建立可信度。</div>
+    </div>
+    <div class="ref">
+      <div class="t">by.U（Telkomsel）<span class="tag">动效范例</span></div>
+      <div class="d">更新弹窗用 Lottie 角色动画：入场 1.5s 带过冲，之后转挥手/眨眼的<b>轻柔循环</b>。
+        结论是「循环要轻，不然会烦」—— 和我上面 07 的判断一致。</div>
+    </div>
+    <div class="ref">
+      <div class="t">Supabase<span class="tag">活动型</span></div>
+      <div class="d">Launch Week 把五天的发布做成一个事件页，倒计时、逐日解锁、卡片翻转。
+        <b>它炫的是「事件」，不是「公告」</b>—— 一年只有四次。</div>
+    </div>
+    <div class="ref">
+      <div class="t">Notion / Raycast<span class="tag">克制</span></div>
+      <div class="d">Notion 用 emoji 标题 + 大白话；Raycast 纯 Markdown 三段式。
+        <b>这俩证明：公告的竞争力在内容和节奏，不在动效。</b></div>
+    </div>
+  </div>
+
+  <h2>落到 apiduo：哪几招能用</h2>
+  <div class="cols">
+    <div class="box y">
+      <h3><span class="dot"></span>直接用</h3>
+      <ul>
+        <li><b>03 未读呼吸</b> —— 铃铛角标，状态型，不衰减</li>
+        <li><b>08 确认收束</b> —— 「我知道了」必须有反馈</li>
+        <li><b>01 横幅滑入</b> —— 只在紧急公告且首次出现时</li>
+        <li><b>06 滚动揭示</b> —— 发布公告长清单，只播一次</li>
+      </ul>
+    </div>
+    <div class="box m">
+      <h3><span class="dot"></span>挑场合</h3>
+      <ul>
+        <li><b>02 列表错开</b> —— 只在首屏，超过 5 条改成立即显示</li>
+        <li><b>04 数字滚动</b> —— 只在首次加载，刷新不重播</li>
+        <li><b>05 流彩背景</b> —— 只给发布公告详情页头部，面板里绝对不用</li>
+      </ul>
+    </div>
+    <div class="box n">
+      <h3><span class="dot"></span>别用在公告上</h3>
+      <ul>
+        <li><b>光标跟随光斑</b> —— 用户在工作，不在逛展</li>
+        <li><b>逐字打字机</b> —— 公告不是聊天，等待没有意义</li>
+        <li><b>3D 翻转卡片</b> —— 翻过来还是同一段文字</li>
+        <li><b>循环粒子背景</b> —— 抢走正文可读性，且烧 GPU</li>
+        <li><b>自动播放视频</b> —— 控制台里突然出声是事故</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>一条硬规则</h2>
+  <div class="box" style="border-color:#303a45">
+    <div style="font-size:12.5px;line-height:1.9;color:var(--ink-2)">
+      动效只能编码<b style="color:#fff">「状态发生了变化」</b>，不能编码<b style="color:#fff">「这里有个东西」</b>。<br>
+      「有新公告了」是状态变化 → 动。<br>
+      「这是一条公告」不是状态变化 → 不动。<br>
+      按这条筛，上面 8 种里只剩 03、08、以及首次出现的 01 —— 其余的都要有触发条件。
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  尺寸：单卡片 200px 舞台 / 1240px 容器 · 全部动画只碰 opacity 与 transform<br>
+  reduced-motion 下全部关闭，列表直接可见 · 未使用任何外部库与字体
+</div>
+
+<script>
+const cells = [...document.querySelectorAll('.cell')];
+const $ = id => document.getElementById(id);
+
+function play(cell){
+  const demo = cell.querySelector('[class^="d-"]');
+  if (!demo) return;
+  demo.classList.remove('play');
+  void demo.offsetWidth;   // 强制重排，保证动画可重放
+  demo.classList.add('play');
+  if (cell.dataset.demo === 'count') countUp(cell);
+  if (cell.dataset.demo === 'reveal') revealReset(cell);
+}
+
+/* 04 数字滚动：整数步进，600ms ease-out */
+function countUp(cell){
+  const el = cell.querySelector('#cnt');
+  if (!el) return;
+  const target = 3, dur = 600, t0 = performance.now();
+  const tick = now => {
+    const p = Math.min((now - t0) / dur, 1);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(target * eased);
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  el.textContent = '0';
+  requestAnimationFrame(tick);
+}
+
+/* 06 滚动揭示：先复位，再逐条进入 */
+function revealReset(cell){
+  const box = cell.querySelector('.d-reveal');
+  const items = [...box.querySelectorAll('.item')];
+  items.forEach(i => i.classList.remove('in'));
+  box.scrollTop = 0;
+  items.forEach((item, i) => setTimeout(() => item.classList.add('in'), 180 + i * 160));
+}
+
+cells.forEach(cell => {
+  cell.querySelector('.replay').addEventListener('click', () => play(cell));
+});
+
+$('play-all').addEventListener('click', () => {
+  cells.forEach((c, i) => setTimeout(() => play(c), i * 120));
+});
+
+/* 模拟 reduced-motion */
+let reduced = false;
+$('reduce').addEventListener('click', e => {
+  reduced = !reduced;
+  e.target.classList.toggle('on', reduced);
+  e.target.textContent = reduced ? '恢复动效' : '模拟「减少动效」';
+  document.body.style.setProperty('--noop', '0');
+  cells.forEach(c => {
+    const demo = c.querySelector('[class^="d-"]');
+    if (reduced) { demo.classList.remove('play'); demo.classList.add('frozen'); }
+    else { demo.classList.remove('frozen'); }
+  });
+  if (reduced) {
+    // 直接呈现终态
+    document.querySelectorAll('.d-reveal .item').forEach(i => i.classList.add('in'));
+  }
+});
+
+/* 首屏自动播一次，让读者知道卡片在动 */
+window.addEventListener('load', () => {
+  cells.slice(0, 2).forEach((c, i) => setTimeout(() => play(c), 200 + i * 260));
+});
+</script>
+</body>
+</html>

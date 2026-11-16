@@ -1,0 +1,1731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>公告中心 · 发布 / 触达 / 确认 · apiduo 产品原型</title>
+<style>
+  :root{
+    --bg:#ffffff;--surface:#fbfbfc;--surface-2:#f4f4f6;--line:#e7e7ea;--line-strong:#d6d6db;
+    --ink:#17171c;--ink-2:#4a4a55;--muted:#8b8b96;--accent:#4f46e5;--accent-soft:#eef0ff;
+    --ok:#0f7a52;--ok-soft:#e6f4ed;--err:#c02a20;--err-soft:#fdeceb;--warn:#9a6200;--warn-soft:#fdf3e0;
+    --info:#1f5f9e;--info-soft:#eaf2fa;
+    --radius:10px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+
+  /* ---------- sidebar ---------- */
+  .side{width:214px;flex:0 0 214px;background:#15151a;color:#c9c9d1;padding:14px 10px;font-size:12.5px;
+    display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:auto}
+  .side .brand{display:flex;align-items:center;gap:8px;padding:6px 8px 16px;color:#fff;font-weight:600;font-size:13.5px}
+  .side .dot{width:7px;height:7px;border-radius:99px;background:#6d63ff}
+  .side .grp{padding:14px 10px 5px;color:#63636f;font-size:10.5px;letter-spacing:.06em}
+  .side button{appearance:none;border:0;background:transparent;width:100%;text-align:left;display:flex;align-items:center;gap:7px;
+    padding:7px 10px;border-radius:7px;color:#a7a7b4;font-family:inherit;font-size:12.5px;cursor:pointer;margin-bottom:1px}
+  .side button:hover{background:#1f1f27;color:#e6e6ec}
+  .side button.on{background:#26262f;color:#fff}
+  .side button .n{margin-left:auto;font-size:10px;color:#7b7b88;font-variant-numeric:tabular-nums}
+  .side button.on .n{color:#b9b9c6}
+  .side button .n.hot{background:#3a2020;color:#ff9d95;border-radius:99px;padding:0 5px;line-height:14px}
+  .side .foot{margin-top:auto;padding:12px 10px 4px;color:#5d5d6a;font-size:10.5px;line-height:1.7;border-top:1px solid #26262f;word-break:break-word}
+
+  /* ---------- shell ---------- */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+  .head{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .head h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .ctx{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 8px;font-size:11.5px;color:var(--ink-2)}
+  .ctx b{font-weight:600;color:var(--ink)}
+  .ctx .k{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .body{padding:18px 22px 56px;overflow:auto}
+  .view[hidden]{display:none}
+
+  /* ---------- generic ---------- */
+  .note{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--ink-2);line-height:1.7}
+  .note b{color:var(--ink);font-weight:600}
+  .note .k{flex:0 0 auto;width:3px;align-self:stretch;border-radius:2px;background:var(--accent)}
+  .note.warn .k{background:var(--warn)}.note.danger .k{background:var(--err)}.note.ok .k{background:var(--ok)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .card+.card{margin-top:14px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:12.5px;font-weight:600}
+  .card-h .desc{color:var(--muted);font-size:11.5px}
+  .card-h .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .card-b{padding:14px}
+  .card-b.tight{padding:0}
+  .grid2{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,1fr);gap:14px;align-items:start}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:middle}
+  th{color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.02em;background:var(--surface);white-space:nowrap}
+  table.fixed{table-layout:fixed}
+  table.fixed td{overflow:hidden}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#fcfcfd}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono);font-size:11.5px}
+  .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:99px;font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap}
+  .pill.k{background:#1d1d24;color:#fff}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.b{background:var(--surface-2);color:var(--ink-2)}
+  .pill.mute{background:var(--surface-2);color:var(--muted)}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.err{background:var(--err-soft);color:var(--err)}
+  .pill.info{background:var(--info-soft);color:var(--info)}
+  .btn{appearance:none;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-family:inherit;
+    font-size:11.5px;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;transition:border-color .09s,color .09s}
+  .btn:hover{border-color:var(--ink-2);color:var(--ink)}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.p:hover{background:#443bc9;color:#fff}
+  .btn.sm{padding:3px 8px;font-size:11px}
+  .btn.danger{border-color:#e7b9b6;color:var(--err);background:#fff}
+  .btn.danger:hover{background:var(--err-soft);border-color:var(--err)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:2px;flex-wrap:wrap}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--ink-2);font-size:12px;padding:5px 10px;border-radius:7px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;border:1px solid var(--line)}
+  .mini{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .mini .m{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:11px 13px;flex:1 1 150px}
+  .mini .m .l{font-size:11px;color:var(--muted);margin-bottom:5px}
+  .mini .m .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.2}
+  .mini .m .d{font-size:10.5px;margin-top:4px;color:var(--muted)}
+  .up{color:var(--ok)}.down{color:var(--err)}.flat{color:var(--muted)}.warnc{color:var(--warn)}
+  .kvrow{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px dashed var(--line);font-size:12px}
+  .kvrow:last-child{border-bottom:0}
+  .kvrow .k{flex:0 0 92px;color:var(--muted);font-size:11.5px}
+  .kvrow .v{flex:1;min-width:0;color:var(--ink-2);line-height:1.6}
+  .field{margin-bottom:14px}
+  .field>label{display:block;font-size:11.5px;font-weight:600;color:var(--ink);margin-bottom:5px}
+  .field .hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.55}
+  .field .err{font-size:11px;color:var(--err);margin-top:4px}
+  input[type=text],input[type=url],input[type=datetime-local],textarea,select{
+    width:100%;font-family:inherit;font-size:12.5px;color:var(--ink);background:#fff;border:1px solid var(--line-strong);
+    border-radius:7px;padding:7px 9px;outline:none;transition:border-color .09s,box-shadow .09s}
+  input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  input:disabled,textarea:disabled{background:var(--surface-2);color:var(--muted);cursor:not-allowed}
+  textarea{resize:vertical;line-height:1.7;min-height:96px}
+  .count{float:right;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:400}
+  .count.over{color:var(--err);font-weight:600}
+  .chk{display:flex;align-items:flex-start;gap:8px;padding:7px 0;font-size:12px;color:var(--ink-2);cursor:pointer}
+  .chk input{margin:2px 0 0;accent-color:var(--accent);flex:0 0 auto}
+  .chk b{color:var(--ink);font-weight:600;display:block}
+  .chk span.s{font-size:11px;color:var(--muted);display:block;margin-top:2px;line-height:1.5}
+  .chk.dis{opacity:.5;cursor:not-allowed}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .quick{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+  .quick button{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+    font-family:inherit;font-size:10.5px;padding:2px 7px;border-radius:99px;cursor:pointer}
+  .quick button:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+
+  /* ---------- workbench ---------- */
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar .search{flex:1 1 220px;min-width:180px;position:relative}
+  .toolbar .search input{padding-left:28px}
+  .toolbar .search::before{content:"/";position:absolute;left:10px;top:8px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .toolbar select{width:auto;min-width:110px}
+  .statustabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:0;flex-wrap:wrap}
+  .statustabs button{appearance:none;border:0;background:transparent;font-family:inherit;font-size:12.5px;color:var(--muted);
+    padding:9px 11px;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px;display:flex;align-items:center;gap:6px}
+  .statustabs button.on{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+  .statustabs .cnt{background:var(--surface-2);color:var(--ink-2);font-size:10px;font-weight:600;padding:0 5px;border-radius:99px;line-height:15px}
+  .statustabs button.on .cnt{background:var(--accent-soft);color:var(--accent)}
+  .lvl{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .lvl i{width:6px;height:6px;border-radius:99px;display:inline-block;flex:0 0 auto}
+  .lvl.critical{color:var(--err)}.lvl.critical i{background:var(--err)}
+  .lvl.warning{color:var(--warn)}.lvl.warning i{background:var(--warn)}
+  .lvl.success{color:var(--ok)}.lvl.success i{background:var(--ok)}
+  .lvl.info{color:var(--info)}.lvl.info i{background:var(--info)}
+  .titem{display:flex;align-items:flex-start;gap:9px}
+  .titem .tt{font-weight:600;font-size:12.5px;line-height:1.45;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .titem .ts{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+  .titem .pin{font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:3px;padding:0 4px;line-height:15px;flex:0 0 auto;margin-top:1px}
+  .win{font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+  .win .t{font-family:var(--mono);font-size:10.5px;color:var(--ink);white-space:nowrap}
+  .win .r{color:var(--muted);font-size:10.5px}
+  .reads{display:flex;align-items:center;gap:6px}
+  .bar{flex:1;height:4px;background:var(--surface-2);border-radius:99px;overflow:hidden;min-width:34px}
+  .bar>i{display:block;height:100%;background:var(--accent);border-radius:99px}
+  .bar.low>i{background:var(--warn)}
+  .reads .p{font-size:11px;font-variant-numeric:tabular-nums;color:var(--ink-2);font-weight:600;min-width:34px;text-align:right}
+  .places{display:flex;gap:4px;flex-wrap:wrap}
+  .places span{font-size:10px;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);
+    border-radius:4px;padding:0 4px;line-height:16px;white-space:nowrap}
+  .places span.hi{background:var(--err-soft);border-color:#f2cfcb;color:var(--err)}
+  .rowacts{display:flex;gap:4px;justify-content:flex-end;flex-wrap:nowrap}
+  .iconbtn{appearance:none;border:1px solid transparent;background:transparent;color:var(--muted);font-family:inherit;
+    font-size:11px;padding:2px 6px;border-radius:5px;cursor:pointer;white-space:nowrap}
+  .iconbtn:hover{background:var(--surface-2);color:var(--ink);border-color:var(--line)}
+  .emptystate{padding:44px 20px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.8}
+  .emptystate b{display:block;color:var(--ink);font-size:13px;margin-bottom:4px;font-weight:600}
+
+  /* ---------- editor ---------- */
+  .ed{display:grid;grid-template-columns:minmax(0,1fr) minmax(400px,.92fr);gap:0;align-items:start}
+  .ed-l{padding:16px 18px 80px;border-right:1px solid var(--line);min-width:0}
+  .ed-r{padding:16px 18px 60px;background:var(--surface);min-width:0;position:sticky;top:0}
+  .ed-h{display:flex;align-items:center;gap:10px;padding:11px 18px;border-bottom:1px solid var(--line);
+    background:var(--surface);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+  .ed-h .t{font-size:12.5px;font-weight:600}
+  .ed-h .d{font-size:11.5px;color:var(--muted)}
+  .ed-foot{position:fixed;left:214px;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
+    padding:10px 22px;display:flex;align-items:center;gap:8px;z-index:20;flex-wrap:wrap}
+  .ed-foot .l{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .ed-foot .r{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .group{border:1px solid var(--line);border-radius:9px;margin-bottom:16px;overflow:hidden}
+  .group>h3{margin:0;font-size:11.5px;font-weight:600;padding:8px 12px;background:var(--surface);
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px;color:var(--ink)}
+  .group>h3 .s{font-weight:400;color:var(--muted);font-size:11px;margin-left:auto}
+  .group .gb{padding:12px}
+
+  /* preview frame */
+  .pv-tabs{display:flex;gap:2px;margin-bottom:12px;flex-wrap:wrap}
+  .pv-stage{background:#ececed;border:1px solid var(--line-strong);border-radius:10px;padding:14px;min-height:380px}
+  .pv-label{font-size:10.5px;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .pv-label .k{font-family:var(--mono)}
+  .console{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:12px}
+  .console .topbar{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);
+    font-size:11px;color:var(--muted);background:#fdfdfe}
+  .console .topbar .logo{width:14px;height:14px;border-radius:4px;background:var(--accent);color:#fff;
+    font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .console .topbar .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .console .topbar .bell{width:16px;height:16px;border-radius:50%;background:var(--err);color:#fff;font-size:9px;
+    font-weight:700;display:flex;align-items:center;justify-content:center}
+  /* banner */
+  .banner{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-bottom:1px solid var(--line);line-height:1.6}
+  .banner.critical{background:var(--err-soft);color:#7a1a14}
+  .banner.warning{background:var(--warn-soft);color:#6d4500}
+  .banner.success{background:var(--ok-soft);color:#14532d}
+  .banner.info{background:var(--info-soft);color:#1e3a5f}
+  .banner .tag{flex:0 0 auto;font-size:9.5px;font-weight:700;border:1px solid currentColor;border-radius:3px;
+    padding:0 4px;line-height:15px;margin-top:1px;letter-spacing:.02em}
+  .banner .txt{flex:1;min-width:0;font-size:11.5px}
+  .banner .txt b{font-weight:600}
+  .banner .x{flex:0 0 auto;font-size:10.5px;color:inherit;opacity:.6;cursor:pointer;padding:2px 4px}
+  /* card / panel */
+  .panelbox{margin:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .panelbox .ph{display:flex;align-items:center;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:600}
+  .panelbox .ph .d{font-weight:400;color:var(--muted);font-size:10.5px;margin-left:auto}
+  .ai{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border-bottom:1px solid var(--line)}
+  .ai:last-child{border-bottom:0}
+  .ai .l{flex:0 0 auto;margin-top:2px}
+  .ai .c{flex:1;min-width:0}
+  .ai .h{font-size:11.5px;font-weight:600;line-height:1.45;color:var(--ink);display:flex;align-items:center;gap:5px}
+  .ai .b{font-size:11px;color:var(--ink-2);line-height:1.55;margin-top:2px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .ai .m{display:flex;gap:8px;margin-top:4px;font-size:10px;color:var(--muted);align-items:center;flex-wrap:wrap}
+  .ai .unread{width:5px;height:5px;border-radius:99px;background:var(--accent);flex:0 0 auto}
+  .ai.pinned{background:#fbfaff}
+  /* popover */
+  .pop{width:320px;border:1px solid var(--line-strong);border-radius:10px;background:#fff;overflow:hidden;
+    box-shadow:0 8px 24px rgba(20,20,30,.12)}
+  .pop .ph2{display:flex;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:600}
+  .pop .ph2 .r{margin-left:auto;font-size:10.5px;color:var(--accent);cursor:pointer;font-weight:500}
+  .pop .pl{max-height:260px;overflow:auto}
+  /* dialog */
+  .dlg{background:#fff;border:1px solid var(--line-strong);border-radius:10px;overflow:hidden;
+    box-shadow:0 12px 32px rgba(20,20,30,.14)}
+  .dlg .dh{padding:13px 14px 10px;border-bottom:1px solid var(--line)}
+  .dlg .dh .lvl{margin-bottom:5px}
+  .dlg .dh h4{margin:0;font-size:14px;font-weight:600;line-height:1.45}
+  .dlg .dh .mt{font-size:10.5px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+  .dlg .db{padding:12px 14px;font-size:12px;line-height:1.8;color:var(--ink-2);max-height:190px;overflow:auto}
+  .dlg .db p{margin:0 0 9px}
+  .dlg .db p:last-child{margin-bottom:0}
+  .dlg .db code{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:3px;padding:0 4px}
+  .dlg .db ul{margin:0 0 9px;padding-left:18px}
+  .dlg .db li{margin-bottom:3px}
+  .dlg .df{display:flex;gap:7px;align-items:center;padding:10px 14px;border-top:1px solid var(--line);background:var(--surface)}
+  .dlg .df .l{font-size:10.5px;color:var(--muted);margin-right:auto}
+
+  /* checklist */
+  .check{list-style:none;margin:0;padding:0}
+  .check li{display:flex;gap:7px;align-items:flex-start;padding:5px 0;font-size:11.5px;line-height:1.55;color:var(--ink-2)}
+  .check li .s{flex:0 0 auto;width:13px;font-family:var(--mono);font-size:10px;text-align:center;
+    border-radius:3px;line-height:15px;margin-top:1px}
+  .check li.pass .s{background:var(--ok-soft);color:var(--ok)}
+  .check li.fail .s{background:var(--err-soft);color:var(--err)}
+  .check li.warn .s{background:var(--warn-soft);color:var(--warn)}
+  .check li.fail{color:var(--err)}
+  .check li .m{color:var(--muted);font-size:10.5px}
+
+  /* consumer view */
+  .cx{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+  .desk{background:#ececed;border:1px solid var(--line-strong);border-radius:10px;padding:14px}
+  .desk .frame{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .desk .page{padding:12px}
+  .desk .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+  .desk .ph3{height:64px;border:1px solid var(--line);border-radius:7px;background:linear-gradient(180deg,#fbfbfc,#f7f7f9);
+    display:flex;align-items:center;padding:0 10px;font-size:11px;color:var(--muted)}
+  .rule{display:flex;gap:8px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+  .rule:last-child{border-bottom:0}
+  .rule .n{flex:0 0 18px;height:18px;border-radius:4px;background:var(--accent-soft);color:var(--accent);
+    font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .rule b{color:var(--ink);font-weight:600}
+
+  /* diagnosis */
+  .bad{color:var(--err);font-weight:600}
+  .fix{color:var(--ok);font-weight:600}
+  .flow{display:grid;grid-template-columns:1fr 46px 1fr;gap:0;align-items:stretch;margin:0}
+  .flow .col{border:1px solid var(--line);border-radius:9px;background:#fff;overflow:hidden}
+  .flow .col>h4{margin:0;padding:8px 11px;font-size:11.5px;font-weight:600;border-bottom:1px solid var(--line);background:var(--surface)}
+  .flow .col.now>h4{color:var(--err)}
+  .flow .col.new>h4{color:var(--ok)}
+  .flow .st{padding:8px 11px;border-bottom:1px dashed var(--line);font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+  .flow .st:last-child{border-bottom:0}
+  .flow .st b{color:var(--ink);font-weight:600;display:block;margin-bottom:1px;font-size:11px}
+  .flow .st .x{color:var(--err);font-size:10.5px}
+  .flow .arrow{display:flex;align-items:center;justify-content:center;color:var(--muted);font-family:var(--mono);font-size:11px}
+
+  /* state machine */
+  .sm{display:flex;align-items:center;gap:0;flex-wrap:wrap;padding:6px 0}
+  .sm .node{border:1px solid var(--line-strong);border-radius:7px;padding:6px 11px;font-size:11.5px;background:#fff;
+    display:flex;flex-direction:column;gap:1px;min-width:96px}
+  .sm .node b{font-weight:600;font-size:11.5px}
+  .sm .node span{font-size:10px;color:var(--muted);font-family:var(--mono)}
+  .sm .node.d{border-color:#c9c9d2;background:var(--surface)}
+  .sm .node.a{border-color:#a9b6f5;background:var(--accent-soft)}
+  .sm .node.g{border-color:#b8dcc8;background:var(--ok-soft)}
+  .sm .node.w{border-color:#e9d3a8;background:var(--warn-soft)}
+  .sm .ar{font-family:var(--mono);font-size:10.5px;color:var(--muted);padding:0 8px;text-align:center;line-height:1.4}
+  .sm .ar em{display:block;font-style:normal;font-size:9.5px}
+
+  code.inline{font-family:var(--mono);font-size:11.5px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:3px;padding:0 4px}
+  pre.code{margin:0;padding:11px 12px;background:#1a1a20;color:#d5d5de;border-radius:8px;
+    font-family:var(--mono);font-size:11px;line-height:1.75;overflow:auto}
+  pre.code .c{color:#6f7280}
+  pre.code .k{color:#a5b4ff}
+  pre.code .s{color:#9fd8a8}
+  pre.code .n{color:#f0c58a}
+  h3.sec{margin:22px 0 10px;font-size:13px;font-weight:600}
+  h3.sec:first-child{margin-top:0}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:10px}
+  .legend b{color:var(--ink-2);font-weight:600}
+  @media(max-width:1180px){
+    .ed{grid-template-columns:1fr}
+    .ed-l{border-right:0;border-bottom:1px solid var(--line);padding-bottom:16px}
+    .ed-r{position:static}
+    .cx{grid-template-columns:1fr}
+    .grid2,.grid3{grid-template-columns:1fr}
+    .ed-foot{left:0}
+  }
+  @media(max-width:820px){
+    .side{display:none}
+    .titem .ts{max-width:200px}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="dot"></span>apiduo · 公告中心</div>
+    <div class="grp">运营侧</div>
+    <button data-nav="workbench" class="on">公告工作台<span class="n" id="nav-count">10</span></button>
+    <button data-nav="editor">公告编辑器<span class="n" id="nav-editing">—</span></button>
+    <div class="grp">用户侧</div>
+    <button data-nav="consumer">站内触达<span class="n hot">3</span></button>
+    <div class="grp">设计说明</div>
+    <button data-nav="audit">现状诊断</button>
+    <button data-nav="spec">字段 · 状态机 · 迁移</button>
+    <div class="foot">
+      原型 v0.1 · 2026-11-17<br>
+      基线 v1 · option JSON 存储
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="head">
+      <h1 id="view-title">公告工作台</h1>
+      <span class="sub" id="view-sub">一次公告 = 谁看到 + 说什么 + 何时失效 + 是否送达</span>
+      <div class="spacer"></div>
+      <div class="ctx"><span class="k">env</span><b>staging</b></div>
+      <div class="ctx"><span class="k">as</span><b>root</b></div>
+      <div class="ctx"><span class="k">now</span><b id="now-clock">2026-11-17 00:20</b></div>
+    </div>
+
+    <div class="body">
+      <!-- ==================== 1. WORKBENCH ==================== -->
+      <section class="view" id="view-workbench">
+        <div class="note">
+          <span class="k"></span>
+          <div><b>状态不是人工设置的字段，而是 <code class="inline">now</code> 与生效窗口的函数。</b>
+          「进行中 / 定时 / 已过期」由后端在读取时派生，人只能决定三件事：发布、下线、归档。
+          现行实现只有一个 <code class="inline">publishDate</code>，既当排序键又当发布时间，未来时间也不过期过滤，
+          所以「定时发布」实际上不存在。</div>
+        </div>
+
+        <div class="statustabs" id="status-tabs"></div>
+
+        <div class="toolbar" style="margin-top:12px">
+          <div class="search"><input type="text" id="q" placeholder="搜索标题或正文"></div>
+          <select id="f-level">
+            <option value="">全部级别</option>
+            <option value="critical">紧急</option>
+            <option value="warning">警告</option>
+            <option value="success">成功</option>
+            <option value="info">信息</option>
+          </select>
+          <select id="f-place">
+            <option value="">全部展示位</option>
+            <option value="banner">全站横幅</option>
+            <option value="dashboard">控制台面板</option>
+            <option value="popover">铃铛通知</option>
+            <option value="login">登录页</option>
+          </select>
+          <div class="spacer"></div>
+          <button class="btn" id="btn-refresh">刷新</button>
+          <button class="btn p" id="btn-new">＋ 新建公告</button>
+        </div>
+
+        <div class="card">
+          <div class="card-b tight">
+            <table class="fixed">
+              <thead>
+                <tr>
+                  <th style="width:74px">级别</th>
+                  <th>公告</th>
+                  <th style="width:78px">状态</th>
+                  <th style="width:182px">生效窗口</th>
+                  <th style="width:104px">受众</th>
+                  <th style="width:118px">已读 / 确认</th>
+                  <th style="width:136px">展示位</th>
+                  <th style="width:84px"></th>
+                </tr>
+              </thead>
+              <tbody id="wb-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid3" style="margin-top:14px">
+          <div class="card"><div class="card-b">
+            <div class="kvrow"><span class="k">今日送达</span><span class="v"><b>1,842</b> 次曝光 / <b>612</b> 人</span></div>
+            <div class="kvrow"><span class="k">待确认</span><span class="v"><b class="warnc">47</b> 人未确认计费变更</span></div>
+            <div class="kvrow"><span class="k">横幅占用</span><span class="v"><b>1 / 1</b> · 全局只允许一条</span></div>
+          </div></div>
+          <div class="card"><div class="card-b">
+            <div class="kvrow"><span class="k">草稿堆积</span><span class="v"><b>4</b> 条 · 最长 <b>23 天</b>未发</span></div>
+            <div class="kvrow"><span class="k">过期未归档</span><span class="v"><b>3</b> 条 · 已自动从面板移除</span></div>
+            <div class="kvrow"><span class="k">平均阅读率</span><span class="v"><b>64%</b> · 面板位 / <b>91%</b> 横幅位</span></div>
+          </div></div>
+          <div class="card"><div class="card-b">
+            <div class="kvrow"><span class="k">写入方式</span><span class="v">单条 API · <code class="inline">UPDATE ... WHERE version=?</code></span></div>
+            <div class="kvrow"><span class="k">并发冲突</span><span class="v">返回 <b>409</b>，带回当前版本供对比</span></div>
+            <div class="kvrow"><span class="k">读路径</span><span class="v">按受众索引，不扫全表</span></div>
+          </div></div>
+        </div>
+      </section>
+
+      <!-- ==================== 2. EDITOR ==================== -->
+      <section class="view" id="view-editor" hidden>
+        <div class="ed-h" style="margin:-18px -22px 0;border-bottom:1px solid var(--line)">
+          <button class="iconbtn" id="ed-back" title="返回工作台">←</button>
+          <span class="t" id="ed-title">新建公告</span>
+          <span class="d" id="ed-meta">未保存 · 草稿</span>
+          <div class="spacer"></div>
+          <span class="pill b" id="ed-version">v1</span>
+        </div>
+
+        <div class="ed" style="margin:0 -22px">
+          <div class="ed-l">
+            <div class="group">
+              <h3>读者看到的第一层<span class="s">决定列表里能否被辨认</span></h3>
+              <div class="gb">
+                <div class="field">
+                  <label>标题 <span class="count" id="c-title">0 / 60</span></label>
+                  <input type="text" id="f-title" maxlength="80" placeholder="例：计费单位调整为按 token 精确计费">
+                  <div class="hint">现行实现没有标题字段，列表用 <code class="inline">getPreviewText(content, 60)</code>
+                    截正文首句当标题 —— 这是长公告辨识度差的直接原因。</div>
+                </div>
+                <div class="field" style="margin-bottom:0">
+                  <label>级别</label>
+                  <div class="seg" id="f-level-seg" style="width:100%">
+                    <button data-lvl="info" class="on" style="flex:1">信息</button>
+                    <button data-lvl="success" style="flex:1">成功</button>
+                    <button data-lvl="warning" style="flex:1">警告</button>
+                    <button data-lvl="critical" style="flex:1">紧急</button>
+                  </div>
+                  <div class="hint">4 档而非 5 档：现行 <code class="inline">default</code> 与 <code class="inline">ongoing</code>
+                    语义重叠，<code class="inline">error</code> 实际就是「紧急」。级别决定展示位与默认置顶。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <h3>正文<span class="s">Markdown · 白名单渲染</span></h3>
+              <div class="gb">
+                <div class="field">
+                  <label>内容 <span class="count" id="c-content">0 / 2000</span></label>
+                  <textarea id="f-content" rows="7" placeholder="支持 Markdown。链接、加粗、行内代码、列表之外的一律转义。"></textarea>
+                  <div class="hint">现行校验是黑名单（<code class="inline">dangerousChars</code> 里 6 个字符串），
+                    <code class="inline">&lt;img onerror&gt;</code> 不在其中。白名单更短也更难绕。</div>
+                </div>
+                <div class="field" style="margin-bottom:0">
+                  <label>补充说明 <span class="count" id="c-extra">0 / 200</span></label>
+                  <input type="text" id="f-extra" placeholder="可选。弹窗底部的一行灰字">
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <h3>生效窗口<span class="s">状态的唯一来源</span></h3>
+              <div class="gb">
+                <div class="form-row">
+                  <div class="field" style="margin-bottom:10px">
+                    <label>开始</label>
+                    <input type="datetime-local" id="f-start">
+                  </div>
+                  <div class="field" style="margin-bottom:10px">
+                    <label>结束</label>
+                    <input type="datetime-local" id="f-end">
+                  </div>
+                </div>
+                <div class="quick" style="margin-top:-4px">
+                  <button data-quick="now">立即可见</button>
+                  <button data-quick="1h">1 小时后</button>
+                  <button data-quick="tomorrow">明早 09:00</button>
+                  <button data-quick="d1">持续 1 天</button>
+                  <button data-quick="d7">持续 7 天</button>
+                  <button data-quick="forever">长期有效</button>
+                </div>
+                <label class="chk" style="margin-top:6px">
+                  <input type="checkbox" id="f-forever">
+                  <span><b>长期有效</b><span class="s">不设结束时间。仅在信息类公告上允许，紧急与警告类建议设结束时间。</span></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="group">
+              <h3>谁看到<span class="s">服务端过滤，前端不判断</span></h3>
+              <div class="gb">
+                <div class="field">
+                  <label>受众</label>
+                  <select id="f-audience">
+                    <option value="all">全部登录用户（约 3,120 人）</option>
+                    <option value="group:vip">分组 vip（412 人）</option>
+                    <option value="group:default">分组 default（2,708 人）</option>
+                    <option value="role:admin">管理员（9 人）</option>
+                    <option value="paid">有充值记录的用户（846 人）</option>
+                  </select>
+                  <div class="hint">现行实现无受众字段，一条计费变更公告会推给包括只试用过一次的全部用户。</div>
+                </div>
+                <div class="field" style="margin-bottom:0">
+                  <label>展示位</label>
+                  <label class="chk"><input type="checkbox" id="p-dashboard" checked>
+                    <span><b>控制台面板</b><span class="s">仪表盘右栏，列表形态，可滚动</span></span></label>
+                  <label class="chk"><input type="checkbox" id="p-popover" checked>
+                    <span><b>铃铛通知</b><span class="s">顶栏铃铛，未读计数</span></span></label>
+                  <label class="chk"><input type="checkbox" id="p-banner">
+                    <span><b>全站横幅</b><span class="s">最高优先级，全局同时只允许一条；勾选会挤掉正在占用横幅的公告</span></span></label>
+                  <label class="chk"><input type="checkbox" id="p-login">
+                    <span><b>登录页</b><span class="s">未登录可见，仅限维护类</span></span></label>
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <h3>行动与确认<span class="s">公告不是只读文本</span></h3>
+              <div class="gb">
+                <div class="form-row">
+                  <div class="field" style="margin-bottom:10px">
+                    <label>按钮文案</label>
+                    <input type="text" id="f-cta-label" placeholder="例：查看新计费规则">
+                  </div>
+                  <div class="field" style="margin-bottom:10px">
+                    <label>按钮链接</label>
+                    <input type="url" id="f-cta-url" placeholder="https://… 或 /console/topup">
+                  </div>
+                </div>
+                <label class="chk"><input type="checkbox" id="f-pinned">
+                  <span><b>置顶</b><span class="s">在面板列表顶部固定，最多 2 条同时置顶</span></span></label>
+                <label class="chk" id="ack-wrap"><input type="checkbox" id="f-ack" disabled>
+                  <span><b>要求确认</b><span class="s">用户必须点「我已阅读」才消失。仅紧急级别可用 —— 用于计费、条款、删除类变更。</span></span></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="ed-r">
+            <div class="pv-tabs seg" id="pv-tabs">
+              <button data-pv="panel" class="on">控制台面板</button>
+              <button data-pv="banner">全站横幅</button>
+              <button data-pv="popover">铃铛</button>
+              <button data-pv="dialog">详情弹窗</button>
+            </div>
+
+            <div class="pv-label"><span class="k">PREVIEW</span><span id="pv-hint">渲染的是真实组件结构，不是示意框</span></div>
+            <div class="pv-stage" id="pv-stage"></div>
+
+            <div class="card" style="margin-top:14px">
+              <div class="card-h"><h2>发布前检查</h2><span class="desc" id="chk-sum">9 项</span></div>
+              <div class="card-b"><ul class="check" id="chk-list"></ul></div>
+            </div>
+
+            <div class="note warn" style="margin:14px 0 0">
+              <span class="k"></span>
+              <div><b>切换级别的副作用。</b>级别会改写展示位默认值：选「紧急」自动勾选横幅并禁用「登录页」；
+              选「信息」自动取消「要求确认」。原型里已经这么做，避免发一条「信息」却弹窗要求用户确认。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ed-foot">
+          <div class="l"><span id="foot-state">草稿未保存</span><span class="mono" id="foot-time"></span></div>
+          <div class="r">
+            <button class="btn" id="btn-preview-as">以普通用户预览</button>
+            <button class="btn" id="btn-draft">保存草稿</button>
+            <button class="btn" id="btn-schedule">定时发布</button>
+            <button class="btn p" id="btn-publish">立即发布</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== 3. CONSUMER ==================== -->
+      <section class="view" id="view-consumer" hidden>
+        <div class="note">
+          <span class="k"></span>
+          <div><b>同一份数据，三个入口，一套已读。</b>
+          现行实现的已读状态存在 <code class="inline">localStorage</code>，key 优先取 <code class="inline">id</code>；
+          公告被编辑后 id 不变，因此改过的公告不会重新提醒。且打开铃铛即把当前 20 条全部标记已读 —— 看见列表被当成了看过内容。</div>
+        </div>
+
+        <div class="cx">
+          <div>
+            <div class="desk">
+              <div class="frame">
+                <div class="topbar" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted);background:#fdfdfe">
+                  <span class="logo">A</span><span>apiduo</span>
+                  <span style="margin-left:16px">仪表盘</span><span>令牌</span><span>日志</span><span>钱包</span>
+                  <span class="r"><span>余额 ¥128.40</span><span class="bell">3</span><span style="width:16px;height:16px;border-radius:50%;background:#e4e4ef"></span></span>
+                </div>
+                <div id="cx-banner"></div>
+                <div class="page">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                    <b style="font-size:12px">今日概览</b>
+                    <span style="font-size:10.5px;color:var(--muted)">请求 12,480 · 消耗 ¥6.12</span>
+                  </div>
+                  <div class="grid">
+                    <div class="ph3">用量趋势</div><div class="ph3">渠道状态</div>
+                  </div>
+                  <div style="margin-top:10px" id="cx-panel"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:14px">
+              <div class="card-h"><h2>三个入口的职责边界</h2><span class="desc">同一份数据，不同紧迫度</span></div>
+              <div class="card-b">
+                <div class="kvrow"><span class="k">全站横幅</span><span class="v">只给 <b>紧急</b>。全局最多 1 条，可关闭但 24 小时内不再弹。占用横幅时必须挤掉前一条，不允许并行。</span></div>
+                <div class="kvrow"><span class="k">铃铛通知</span><span class="v">最近 <b>20</b> 条进行中的公告。未读计数。<b>打开不等于是已读</b>，点进详情才算。</span></div>
+                <div class="kvrow"><span class="k">控制台面板</span><span class="v">置顶区 + 最近 <b>5</b> 条。底部固定「查看历史公告」，过期的在这里可查，不再占主列表。</span></div>
+                <div class="kvrow"><span class="k">登录页</span><span class="v">只给维护类。未登录可见，因此不得包含用户余额、内部渠道名等个体信息。</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <div class="card-h"><h2>已读判定</h2><span class="desc">服务端为准</span></div>
+              <div class="card-b">
+                <div class="rule"><span class="n">1</span><div><b>已读</b> = 详情弹窗打开且停留 ≥ 1 秒。仅仅让列表进入视口不算。</div></div>
+                <div class="rule"><span class="n">2</span><div><b>确认</b> = 显式点「我已阅读」。只有勾了「要求确认」的公告才有这一步。</div></div>
+                <div class="rule"><span class="n">3</span><div>状态写 <code class="inline">announcement_reads</code>，<b>跨设备一致</b>。localStorage 只做乐观更新，失败回落。</div></div>
+                <div class="rule"><span class="n">4</span><div>公告内容被编辑 → <code class="inline">version</code> +1 → 已读记录按 <b>(announcement_id, version)</b> 存，改过的公告重新变未读。</div></div>
+                <div class="rule"><span class="n">5</span><div>未登录用户不记录已读，只在本地记忆 24 小时。</div></div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:14px">
+              <div class="card-h"><h2>用户可用动作</h2></div>
+              <div class="card-b">
+                <div class="kvrow"><span class="k">知道了</span><span class="v">关闭详情，标记已读</span></div>
+                <div class="kvrow"><span class="k">今日不再提示</span><span class="v">仅横幅。按自然日，第二天恢复</span></div>
+                <div class="kvrow"><span class="k">查看历史公告</span><span class="v">面板底部入口，按时间倒序，含已过期</span></div>
+                <div class="kvrow"><span class="k">标记全部已读</span><span class="v">铃铛页脚。不包含「要求确认」的公告</span></div>
+              </div>
+              <div class="card-b" style="border-top:1px solid var(--line);background:var(--surface)">
+                <button class="btn sm" id="cx-reopen">重放未读态</button>
+                <button class="btn sm" id="cx-readall">标记全部已读</button>
+                <span style="font-size:10.5px;color:var(--muted);margin-left:6px" id="cx-state"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== 4. AUDIT ==================== -->
+      <section class="view" id="view-audit" hidden>
+        <div class="note danger">
+          <span class="k"></span>
+          <div><b>结论：现状的问题不在展示层，在数据结构。</b>
+          一条公告压成了「content + publishDate + type + extra」，四要素里缺三个 —— 受众、失效时间、送达回执。
+          改卡片样式不会让它变好，只会在一个没有状态的对象上继续堆样式。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>十条硬伤</h2><span class="desc">每条都能在代码里指认，不是体感</span></div>
+          <div class="card-b tight">
+            <table>
+              <thead><tr>
+                <th style="width:26px">#</th><th style="width:196px">问题</th><th>代码位置</th>
+                <th style="width:246px">用户可见后果</th><th style="width:196px">本方案的解法</th>
+              </tr></thead>
+              <tbody>
+                <tr><td class="num">1</td><td>只有 <code class="inline">publishDate</code>，语义双关</td>
+                  <td class="mono">setting/console_setting/validation.go:251</td>
+                  <td>既排序又当发布时间。写未来时间<b class="bad">立刻可见</b>，「定时发布」不存在</td>
+                  <td>拆成 <code class="inline">starts_at</code> / <code class="inline">ends_at</code></td></tr>
+                <tr><td class="num">2</td><td>无有效期，读取时不过滤时间</td>
+                  <td class="mono">misc.go:137 → GetAnnouncements()</td>
+                  <td>过期公告永久占列表，只能手工删；删了<b class="bad">历史一起没了</b></td>
+                  <td>派生 <code class="inline">expired</code> 状态，主列表隐藏、历史可查</td></tr>
+                <tr><td class="num">3</td><td>没有标题字段</td>
+                  <td class="mono">announcements-panel.tsx:94</td>
+                  <td>用 <code class="inline">getPreviewText(content,60)</code> 截正文当标题，长公告认不出是哪条</td>
+                  <td>新增 <code class="inline">title</code>，必填 ≤ 60</td></tr>
+                <tr><td class="num">4</td><td>已读存 localStorage，key 优先 id</td>
+                  <td class="mono">use-notifications.ts getAnnouncementKey</td>
+                  <td>换设备全部重来；<b class="bad">编辑后的公告不再提醒</b></td>
+                  <td>落库，按 <code class="inline">(id, version)</code> 计</td></tr>
+                <tr><td class="num">5</td><td>打开铃铛即全部标已读，只取前 20 条</td>
+                  <td class="mono">use-notifications.ts handleOpenPopover</td>
+                  <td>看见列表≠看过内容；第 21 条起<b class="bad">静默丢失</b></td>
+                  <td>进详情才算已读；未读按需分页</td></tr>
+                <tr><td class="num">6</td><td>编辑态在内存，一次全量 JSON 提交</td>
+                  <td class="mono">announcements-section.tsx handleSaveAll</td>
+                  <td>刷新丢改动；两人同编<b class="bad">后写覆盖先写</b></td>
+                  <td>单条写入 + <code class="inline">version</code> 乐观锁，冲突 409</td></tr>
+                <tr><td class="num">7</td><td>没有受众</td>
+                  <td class="mono">ConsoleSetting.Announcements</td>
+                  <td>计费变更推给全部 3,120 人，包括只试用过一次的</td>
+                  <td><code class="inline">audience</code> 四种口径，服务端过滤</td></tr>
+                <tr><td class="num">8</td><td>校验是 6 个字符串黑名单，编辑器无预览</td>
+                  <td class="mono">validation.go:16 dangerousChars</td>
+                  <td><code class="inline">&lt;img onerror&gt;</code> 不在名单里；<b class="bad">所见非所得</b></td>
+                  <td>白名单渲染 + 双栏实时预览</td></tr>
+                <tr><td class="num">9</td><td>列表没有状态列</td>
+                  <td class="mono">announcements-section.tsx 列定义</td>
+                  <td>运维不知道哪条在生效、哪条已过期</td>
+                  <td>状态列 + 状态 tab + 计数</td></tr>
+                <tr><td class="num">10</td><td>公告与 <code class="inline">/api/notice</code> 双轨</td>
+                  <td class="mono">router/api-router.go:38</td>
+                  <td>同一件事两个入口，用户不知道看哪个</td>
+                  <td>notice 退化为 <code class="inline">level=critical + banner</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <h3 class="sec">同一条公告，今天走的路径 vs 优化后</h3>
+        <div class="flow">
+          <div class="col now">
+            <h4>现状：四个断点</h4>
+            <div class="st"><b>写</b>全表内存编辑 → 一次 JSON 覆盖写 <span class="x">断：并发即丢</span></div>
+            <div class="st"><b>发</b>publishDate 只影响排序 <span class="x">断：定时不存在</span></div>
+            <div class="st"><b>达</b>推送全站，无受众 <span class="x">断：不该看的人看到了</span></div>
+            <div class="st"><b>读</b>打开铃铛即全部已读 <span class="x">断：读数不可信</span></div>
+            <div class="st"><b>审</b>无版本、无操作人 <span class="x">断：改错了查不到</span></div>
+          </div>
+          <div class="arrow">→</div>
+          <div class="col new">
+            <h4>优化后：五个闭环</h4>
+            <div class="st"><b>写</b>单条草稿 + 发布前 9 项检查</div>
+            <div class="st"><b>发</b>状态由窗口派生，定时 = 未来窗口</div>
+            <div class="st"><b>达</b>受众过滤 + 展示位选择</div>
+            <div class="st"><b>读</b>进详情才算已读，跨设备一致</div>
+            <div class="st"><b>审</b>version + 操作人 + 变更差异</div>
+          </div>
+        </div>
+
+        <div class="note ok" style="margin-top:14px">
+          <span class="k"></span>
+          <div><b>为什么先修数据结构而不是先修界面。</b>第 1、2、7、10 条都是数据模型问题，
+          在第 6 条（全量覆盖写）之上任何界面改进都会被下一次覆盖抹掉。界面是结果，不是起点。</div>
+        </div>
+      </section>
+
+      <!-- ==================== 5. SPEC ==================== -->
+      <section class="view" id="view-spec" hidden>
+        <h3 class="sec">1. 字段模型</h3>
+        <div class="card"><div class="card-b tight">
+          <table>
+            <thead><tr><th style="width:150px">字段</th><th style="width:120px">类型</th><th>约束与语义</th><th style="width:210px">与现状的差异</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">id</td><td>uint64</td><td>主键，只增不复用</td><td>现状 id 由前端 <code class="inline">max+1</code> 生成，删一条再建会重号</td></tr>
+              <tr><td class="mono">title</td><td>string</td><td>必填，1–60 字，纯文本</td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">content</td><td>text</td><td>1–2000 字，Markdown 子集</td><td>上限从 500 放宽，白名单渲染</td></tr>
+              <tr><td class="mono">extra</td><td>string</td><td>0–200 字，弹窗底部灰字</td><td>上限从 100 放宽</td></tr>
+              <tr><td class="mono">level</td><td>enum</td><td><code class="inline">info · success · warning · critical</code></td><td>5 档收成 4 档</td></tr>
+              <tr><td class="mono">starts_at</td><td>datetime</td><td>必填</td><td><b class="fix">从 publishDate 拆出</b></td></tr>
+              <tr><td class="mono">ends_at</td><td>datetime?</td><td>null = 长期有效</td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">audience</td><td>json</td><td><code class="inline">{"kind":"all"|"group"|"role"|"paid","values":[]}</code></td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">placements</td><td>json[]</td><td><code class="inline">banner · dashboard · popover · login</code></td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">pinned</td><td>bool</td><td>面板顶部固定，同级别最多 2 条</td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">cta_label / cta_url</td><td>string</td><td>成对出现或都为空；URL 限 http(s) 与站内相对路径</td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">require_ack</td><td>bool</td><td>仅 <code class="inline">critical</code> 可置 true</td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">state</td><td>enum</td><td><code class="inline">draft · published · revoked · archived</code>（人工闸门）</td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">version</td><td>uint32</td><td>每次内容变更 +1，用于乐观锁与已读失效</td><td><b class="fix">新增</b></td></tr>
+              <tr><td class="mono">created_by / updated_by</td><td>uint</td><td>用户 id</td><td><b class="fix">新增</b></td></tr>
+            </tbody>
+          </table>
+        </div></div>
+
+        <div class="note" style="margin-top:12px">
+          <span class="k"></span>
+          <div><b>派生状态不落库。</b><code class="inline">scheduled / active / expired</code> 是
+          <code class="inline">state = published && now vs [starts_at, ends_at)</code> 的结果，每次读取时算。
+          落库要定时任务扫表改状态，任务一停状态就错 —— 用时间函数没有这个问题。</div>
+        </div>
+
+        <h3 class="sec">2. 状态机</h3>
+        <div class="card"><div class="card-b">
+          <div class="sm">
+            <div class="node d"><b>草稿</b><span>draft</span></div>
+            <div class="ar">发布 →<em>写 published</em></div>
+            <div class="node w"><b>定时</b><span>now &lt; starts_at</span></div>
+            <div class="ar">到点 →<em>无需动作</em></div>
+            <div class="node a"><b>进行中</b><span>窗口内</span></div>
+            <div class="ar">到点 →<em>无需动作</em></div>
+            <div class="node g"><b>已过期</b><span>now ≥ ends_at</span></div>
+            <div class="ar">30 天后 →<em>定时任务</em></div>
+            <div class="node d"><b>已归档</b><span>archived</span></div>
+          </div>
+          <div style="margin-top:12px">
+            <div class="kvrow"><span class="k">下线</span><span class="v">任意时刻 → <code class="inline">state = revoked</code>，立刻从所有展示位消失，记录保留。用于「发错了」。</span></div>
+            <div class="kvrow"><span class="k">删除</span><span class="v">只允许删草稿。已发布的不能删，只能下线或归档 —— 否则用户侧的历史会断。</span></div>
+            <div class="kvrow"><span class="k">编辑</span><span class="v">进行中可改，改完 <code class="inline">version</code> +1，已读记录失效；但 <code class="inline">critical</code> 且已进过横幅的，改标题需二次确认。</span></div>
+            <div class="kvrow"><span class="k">横幅互斥</span><span class="v">发布 <code class="inline">banner + critical</code> 时若已有占用，要么拒绝，要么在确认框里显示被挤掉的标题与剩余时间。</span></div>
+          </div>
+        </div></div>
+
+        <h3 class="sec">3. 接口草案</h3>
+        <div class="grid2">
+          <div class="card">
+            <div class="card-h"><h2>运营端</h2><span class="desc">需 admin</span></div>
+            <div class="card-b" style="padding:0">
+<pre class="code"><span class="c"># 列表：状态下推给服务端派生，前端不猜</span>
+<span class="k">GET</span> /api/console/announcements
+    ?state=active,scheduled&level=critical
+    &amp;q=计费&amp;page=1&amp;size=20
+<span class="c">→ { items:[…], counts:{active:3,scheduled:2,…} }</span>
+
+<span class="c"># 单条写入：替换全量 JSON 覆盖</span>
+<span class="k">POST</span>   /api/console/announcements      <span class="c"># 新建草稿</span>
+<span class="k">PUT</span>    /api/console/announcements/:id  <span class="c"># 带 version</span>
+<span class="k">DELETE</span> /api/console/announcements/:id  <span class="c"># 仅 draft</span>
+
+<span class="c"># 状态动作，与内容编辑分开</span>
+<span class="k">POST</span> /api/console/announcements/:id/publish
+<span class="k">POST</span> /api/console/announcements/:id/revoke
+<span class="k">POST</span> /api/console/announcements/:id/archive
+
+<span class="c"># 统计</span>
+<span class="k">GET</span> /api/console/announcements/:id/stats
+<span class="c">→ { exposed, read, acked, by_placement:{banner:812,…} }</span></pre>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>用户端</h2><span class="desc">按受众过滤</span></div>
+            <div class="card-b" style="padding:0">
+<pre class="code"><span class="c"># 一次拿全：横幅 + 面板 + 未读计数</span>
+<span class="k">GET</span> /api/status
+<span class="c">→ announcements:{
+    banner:{…}|null,        # 全局最多 1 条
+    pinned:[…],             # ≤2
+    recent:[…],             # ≤5
+    unread_count:3,
+    ack_required:1
+  }</span>
+
+<span class="c"># 已读 / 确认，幂等</span>
+<span class="k">POST</span> /api/announcements/:id/read
+<span class="k">POST</span> /api/announcements/:id/ack
+
+<span class="c"># 历史（含过期，分页）</span>
+<span class="k">GET</span> /api/announcements/history?page=1
+
+<span class="c"># 横幅「今日不再提示」不需要接口：
+<span class="c"># 客户端按自然日存，次日自动恢复</span></span></pre>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="sec">4. 迁移路径</h3>
+        <div class="card"><div class="card-b tight">
+          <table>
+            <thead><tr><th style="width:56px">阶段</th><th style="width:190px">内容</th><th>要点</th><th style="width:150px">兼容处理</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="pill a">P0</span></td>
+                <td>建表 + 字段 + 单条读写 + 受众过滤</td>
+                <td>一次性把 <code class="inline">console_setting.announcements</code> 的数据搬进新表：
+                  <code class="inline">publishDate → starts_at</code>，<code class="inline">ends_at = null</code>，
+                  <code class="inline">title</code> 取正文首句前 60 字，<code class="inline">type</code> 按映射表降级到 4 档。
+                  <code class="inline">announcements_enabled</code> 保留为全局总闸。</td>
+                <td>旧 option 只读不写，保留一个版本周期</td>
+              </tr>
+              <tr>
+                <td><span class="pill a">P1</span></td>
+                <td>状态派生 + 状态机 + 工作台界面</td>
+                <td>过期自动移出主列表；<code class="inline">revoked</code> 立即下线；横幅互斥校验在发布接口里做，不在前端做。</td>
+                <td>旧字段继续返回，前端按新结构优先</td>
+              </tr>
+              <tr>
+                <td><span class="pill a">P2</span></td>
+                <td>已读落库 + 确认流 + 统计</td>
+                <td><code class="inline">announcement_reads(announcement_id, version, user_id, read_at, acked_at)</code>，
+                  唯一键前三列。localStorage 降级为乐观缓存，请求失败时回退本地、不报错。</td>
+                <td>旧 localStorage 数据一次性上报迁移（可选）</td>
+              </tr>
+              <tr>
+                <td><span class="pill b">P3</span></td>
+                <td><code class="inline">/api/notice</code> 下线</td>
+                <td>转成 <code class="inline">level=critical, placements=[banner]</code> 的系统公告；保留 302 到 status 接口一个周期。</td>
+                <td>双写一版，观察后再移除</td>
+              </tr>
+            </tbody>
+          </table>
+        </div></div>
+
+        <h3 class="sec">5. 明确不做</h3>
+        <div class="grid2">
+          <div class="card"><div class="card-b">
+            <div class="kvrow"><span class="k">富文本编辑器</span><span class="v">不做。Markdown 子集 + 白名单渲染已够表达，
+              引入富文本会把 XSS 面从「渲染」扩大到「编辑与粘贴」。</span></div>
+            <div class="kvrow"><span class="k">多语言公告</span><span class="v">不做。现阶段运营只有中文读者；
+              要做就做 <code class="inline">content_i18n</code> 一张附表，而不是在正文里堆多语言段落。</span></div>
+            <div class="kvrow"><span class="k">定时撤回</span><span class="v">不做。<code class="inline">ends_at</code> 已经覆盖
+              「到点自动消失」；「到点自动删除」没有真实需求，且会破坏历史。</span></div>
+          </div></div>
+          <div class="card"><div class="card-b">
+            <div class="kvrow"><span class="k">A/B 测试</span><span class="v">不做。公告总量是每月个位数，样本量撑不起分组实验。</span></div>
+            <div class="kvrow"><span class="k">邮件/短信外发</span><span class="v">不做。站内触达先跑通；外发涉及退订合规，
+              应独立立项，不要塞进公告表。</span></div>
+            <div class="kvrow"><span class="k">已读强制拦截</span><span class="v">不做。除「要求确认」的紧急公告外，
+              任何遮挡式弹窗都会把用户推离主流程。</span></div>
+          </div></div>
+        </div>
+
+        <div class="note ok" style="margin-top:14px">
+          <span class="k"></span>
+          <div><b>取舍原则。</b>每加一个字段，都要能回答「没有它会产生什么后果」。
+          标题解决辨认，窗口解决过期，受众解决误达，version 解决覆盖，已读落库解决读数不可信。
+          回答不了的字段（排序权重、阅读时长、曝光位次）一律不进表。</div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   数据：日期基准 2026-11-17 00:20
+   ============================================================ */
+const NOW = new Date('2026-11-17T00:20:00+08:00');
+
+const LV = {
+  critical:{label:'紧急', cls:'critical', pill:'err'},
+  warning:{label:'警告', cls:'warning', pill:'warn'},
+  success:{label:'成功', cls:'success', pill:'ok'},
+  info:{label:'信息', cls:'info', pill:'info'}
+};
+
+const AUD = {
+  all:{label:'全部用户', count:3120},
+  'group:vip':{label:'分组 vip', count:412},
+  'group:default':{label:'分组 default', count:2708},
+  'role:admin':{label:'管理员', count:9},
+  paid:{label:'有充值', count:846}
+};
+
+const PLACE = {
+  banner:{label:'横幅', cls:'hi'},
+  dashboard:{label:'面板', cls:''},
+  popover:{label:'铃铛', cls:''},
+  login:{label:'登录', cls:''}
+};
+
+let SEQ = 100;
+const DATA = [
+  {
+    id:1, level:'critical', pinned:true, require_ack:true, state:'published', version:2,
+    title:'计费单位调整为按 token 精确计费',
+    content:'自 **2026-11-20 00:00** 起，全部模型按实际 token 数计费，不再按请求数向上取整。\n\n- 输入 / 输出分别计价，价格表在「模型价格」页同步更新\n- 历史账单不重算\n- 余额不足时请求将直接返回 `402`，不再允许透支一次请求\n\n如有疑问请在工单中标注「计费」。',
+    extra:'本次调整对 99% 的调用方账单影响小于 3%。',
+    starts:new Date('2026-11-16T10:00:00+08:00'),
+    ends:new Date('2026-12-01T00:00:00+08:00'),
+    audience:'all', placements:['banner','dashboard','popover'],
+    ctaLabel:'查看新计费规则', ctaUrl:'/console/pricing',
+    read:2043, ack:3073, updatedBy:'root', updated:new Date('2026-11-16T10:04:00+08:00')
+  },
+  {
+    id:2, level:'warning', pinned:false, require_ack:false, state:'published', version:1,
+    title:'11/20 02:00–04:00 计划维护，期间请求可能重试',
+    content:'为升级日志库，`2026-11-20 02:00` 至 `04:00`（UTC+8）进行滚动维护。\n\n维护期间：\n\n- 网关不停止服务，但部分请求会返回 `503`，建议客户端按指数退避重试\n- 控制台的用量图表延迟约 10 分钟\n- 已提交的异步任务不受影响',
+    extra:'维护完成后会在本页更新状态。',
+    starts:new Date('2026-11-19T20:00:00+08:00'),
+    ends:new Date('2026-11-20T06:00:00+08:00'),
+    audience:'all', placements:['dashboard','popover'],
+    ctaLabel:'', ctaUrl:'',
+    read:0, ack:0, updatedBy:'ops-lin', updated:new Date('2026-11-15T18:22:00+08:00')
+  },
+  {
+    id:3, level:'success', pinned:false, require_ack:false, state:'published', version:1,
+    title:'DeepSeek-V4 上线，首周 8 折',
+    content:'DeepSeek-V4 已在 `deepseek` 分组可用，上下文 128K，支持结构化输出。\n\n首周（至 11/24）按 0.8 倍率计费，无需改代码，把 `model` 改成 `deepseek-v4` 即可。',
+    extra:'',
+    starts:new Date('2026-11-14T00:00:00+08:00'),
+    ends:new Date('2026-11-24T23:59:59+08:00'),
+    audience:'all', placements:['dashboard','popover'],
+    ctaLabel:'查看模型卡片', ctaUrl:'/console/models',
+    read:1180, ack:0, updatedBy:'ops-lin', updated:new Date('2026-11-14T00:12:00+08:00')
+  },
+  {
+    id:4, level:'warning', pinned:false, require_ack:false, state:'published', version:3,
+    title:'Claude 上游限流，请调整重试策略',
+    content:'Claude 官方对 5 分钟窗口内的高并发请求实施限流，返回 `429`。\n\n建议：\n\n- 客户端重试间隔改为指数退避，起始 1 秒\n- 单 key 并发不超过 8\n- 批量任务错峰到非整点',
+    extra:'此公告已过期，限流已缓解。',
+    starts:new Date('2026-11-05T09:00:00+08:00'),
+    ends:new Date('2026-11-12T00:00:00+08:00'),
+    audience:'group:vip', placements:['dashboard','popover'],
+    ctaLabel:'', ctaUrl:'',
+    read:388, ack:0, updatedBy:'root', updated:new Date('2026-11-05T11:40:00+08:00')
+  },
+  {
+    id:5, level:'success', pinned:false, require_ack:false, state:'published', version:1,
+    title:'MCP 工具调用支持结构化输出',
+    content:'`tools/call` 现在可以声明 `outputSchema`，返回带 `structuredContent`。\n\n客户端不实现也无影响，仍可只读 text content。',
+    extra:'',
+    starts:new Date('2026-10-28T00:00:00+08:00'),
+    ends:new Date('2026-11-11T00:00:00+08:00'),
+    audience:'all', placements:['dashboard'],
+    ctaLabel:'', ctaUrl:'',
+    read:902, ack:0, updatedBy:'root', updated:new Date('2026-10-28T09:31:00+08:00')
+  },
+  {
+    id:6, level:'critical', pinned:false, require_ack:false, state:'revoked', version:1,
+    title:'图像生成队列积压，出图延迟约 15 分钟',
+    content:'方舟侧队列积压，图像生成任务排队时间上升至 15 分钟。\n\n已联系上游，恢复后本条公告会下线。',
+    extra:'已于 11/12 14:20 恢复，公告下线。',
+    starts:new Date('2026-11-12T13:05:00+08:00'),
+    ends:new Date('2026-11-12T14:20:00+08:00'),
+    audience:'all', placements:['banner','dashboard','popover'],
+    ctaLabel:'', ctaUrl:'',
+    read:664, ack:0, updatedBy:'ops-lin', updated:new Date('2026-11-12T14:21:00+08:00')
+  },
+  {
+    id:7, level:'info', pinned:false, require_ack:false, state:'draft', version:1,
+    title:'API Key 前缀变更说明',
+    content:'新签发的 key 前缀会从 `sk-` 改为 `sk-ad-`，旧 key 继续可用。\n\n（草稿：待确认是否随下个版本一起发）',
+    extra:'',
+    starts:new Date('2026-11-17T00:00:00+08:00'),
+    ends:null,
+    audience:'all', placements:['dashboard'],
+    ctaLabel:'', ctaUrl:'',
+    read:0, ack:0, updatedBy:'root', updated:new Date('2026-11-13T16:02:00+08:00')
+  },
+  {
+    id:8, level:'info', pinned:false, require_ack:false, state:'draft', version:1,
+    title:'12 月发票申请截止日',
+    content:'纸质发票申请截止 12/20，电子发票不受影响。',
+    extra:'',
+    starts:new Date('2026-11-17T00:00:00+08:00'),
+    ends:null,
+    audience:'paid', placements:['dashboard','popover'],
+    ctaLabel:'去申请', ctaUrl:'/console/invoice',
+    read:0, ack:0, updatedBy:'finance-wu', updated:new Date('2026-10-25T10:11:00+08:00')
+  },
+  {
+    id:9, level:'success', pinned:false, require_ack:false, state:'published', version:1,
+    title:'双十一充值返券活动结束提醒',
+    content:'活动将于 **11/19 23:59** 结束，未使用的返券 12/31 前有效。',
+    extra:'',
+    starts:new Date('2026-11-18T09:00:00+08:00'),
+    ends:new Date('2026-11-19T23:59:00+08:00'),
+    audience:'paid', placements:['dashboard','popover'],
+    ctaLabel:'查看返券', ctaUrl:'/console/topup',
+    read:0, ack:0, updatedBy:'ops-lin', updated:new Date('2026-11-16T15:30:00+08:00')
+  },
+  {
+    id:10, level:'info', pinned:false, require_ack:false, state:'published', version:2,
+    title:'控制台新版仪表盘已全量',
+    content:'用量趋势、渠道状态、余额提醒合并到一屏。旧版入口保留到下月底。',
+    extra:'',
+    starts:new Date('2026-10-20T00:00:00+08:00'),
+    ends:new Date('2026-11-15T00:00:00+08:00'),
+    audience:'all', placements:['dashboard','popover'],
+    ctaLabel:'', ctaUrl:'',
+    read:2410, ack:0, updatedBy:'root', updated:new Date('2026-10-22T09:00:00+08:00')
+  }
+];
+
+/* ============================================================
+   状态派生
+   ============================================================ */
+function derive(a) {
+  if (a.state === 'draft') return 'draft';
+  if (a.state === 'revoked') return 'revoked';
+  if (a.state === 'archived') return 'archived';
+  if (NOW < a.starts) return 'scheduled';
+  if (a.ends && NOW >= a.ends) return 'expired';
+  return 'active';
+}
+const STATE_META = {
+  draft:{label:'草稿', pill:'mute'},
+  scheduled:{label:'定时', pill:'warn'},
+  active:{label:'进行中', pill:'ok'},
+  expired:{label:'已过期', pill:'b'},
+  revoked:{label:'已下线', pill:'err'},
+  archived:{label:'已归档', pill:'mute'}
+};
+
+/* ============================================================
+   工具
+   ============================================================ */
+const D = d => d instanceof Date ? d : new Date(d);
+const pad2 = n => String(n).padStart(2,'0');
+const fmt = d => { d = D(d); return `${d.getMonth()+1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const fmtFull = d => { d = D(d); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+function rel(dd){
+  const d = D(dd);
+  const ms = d - NOW, m = Math.round(ms/60000);
+  const abs = Math.abs(m);
+  let s;
+  if (abs < 60) s = abs + ' 分钟';
+  else if (abs < 1440) s = Math.round(abs/60) + ' 小时';
+  else s = Math.round(abs/1440) + ' 天';
+  return ms >= 0 ? s + '后' : s + '前';
+}
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function mdLite(src){
+  return esc(src)
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
+    .replace(/^- (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g,'<ul>$1</ul>')
+    .split('\n\n').map(p => /^<(ul|p)/.test(p) ? p : '<p>' + p + '</p>').join('');
+}
+const plain = s => s.replace(/<[^>]*>/g,'').replace(/[#*`_]/g,'').replace(/^\s*[-+]\s+/gm,'').replace(/\s+/g,' ').trim();
+
+/* ============================================================
+   视图导航
+   ============================================================ */
+const VIEWS = {
+  workbench:{title:'公告工作台', sub:'一次公告 = 谁看到 + 说什么 + 何时失效 + 是否送达'},
+  editor:{title:'公告编辑器', sub:'双栏实时预览 · 发布前 9 项检查'},
+  consumer:{title:'站内触达', sub:'横幅 / 铃铛 / 面板 / 登录页，四个入口一套已读'},
+  audit:{title:'现状诊断', sub:'十条可指认的硬伤，以及它们共同的根因'},
+  spec:{title:'字段 · 状态机 · 迁移', sub:'数据结构先行，界面是结果'}
+};
+function nav(v){
+  document.querySelectorAll('.view').forEach(el => el.hidden = true);
+  document.getElementById('view-' + v).hidden = false;
+  document.querySelectorAll('.side button').forEach(b => b.classList.toggle('on', b.dataset.nav === v));
+  document.getElementById('view-title').textContent = VIEWS[v].title;
+  document.getElementById('view-sub').textContent = VIEWS[v].sub;
+  window.scrollTo({top:0});
+}
+document.querySelectorAll('.side button').forEach(b => b.onclick = () => nav(b.dataset.nav));
+
+/* ============================================================
+   工作台
+   ============================================================ */
+let filter = 'all';
+let q = '';
+let fLevel = '';
+let fPlace = '';
+
+function counts(){
+  const c = {all:DATA.length, draft:0, scheduled:0, active:0, expired:0, revoked:0};
+  DATA.forEach(a => { const s = derive(a); c[s] = (c[s]||0)+1; });
+  return c;
+}
+
+function renderTabs(){
+  const c = counts();
+  const tabs = [
+    ['all','全部'],['active','进行中'],['scheduled','定时'],
+    ['draft','草稿'],['expired','已过期'],['revoked','已下线']
+  ];
+  document.getElementById('status-tabs').innerHTML = tabs.map(([k,label]) =>
+    `<button data-f="${k}" class="${filter===k?'on':''}">${label}<span class="cnt">${c[k]||0}</span></button>`
+  ).join('');
+  document.querySelectorAll('#status-tabs button').forEach(b => {
+    b.onclick = () => { filter = b.dataset.f; renderTabs(); renderWB(); };
+  });
+}
+
+function renderWB(){
+  const rows = DATA.filter(a => {
+    if (filter !== 'all' && derive(a) !== filter) return false;
+    if (fLevel && a.level !== fLevel) return false;
+    if (fPlace && !a.placements.includes(fPlace)) return false;
+    if (q) {
+      const hay = (a.title + ' ' + plain(a.content)).toLowerCase();
+      if (!hay.includes(q.toLowerCase())) return false;
+    }
+    return true;
+  }).sort((x,y) => {
+    const order = {active:0, scheduled:1, draft:2, expired:3, revoked:4, archived:5};
+    const d = order[derive(x)] - order[derive(y)];
+    if (d) return d;
+    return (y.pinned?1:0) - (x.pinned?1:0) || y.starts - x.starts;
+  });
+
+  const body = document.getElementById('wb-body');
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="8"><div class="emptystate">
+      <b>没有符合筛选的公告</b>当前条件：状态 ${filter==='all'?'全部':STATE_META[filter].label}
+      ${fLevel?'· 级别 '+LV[fLevel].label:''}${q?'· 关键词「'+esc(q)+'」':''}
+      <div style="margin-top:10px"><button class="btn sm" onclick="resetFilter()">清除筛选</button></div></div></td></tr>`;
+    return;
+  }
+
+  body.innerHTML = rows.map(a => {
+    const s = derive(a);
+    const lv = LV[a.level];
+    const au = AUD[a.audience] || {label:a.audience, count:1};
+    const pct = au.count ? Math.round(a.read / au.count * 100) : 0;
+    const ackTxt = a.require_ack ? a.ack.toLocaleString() : '';
+    const winTxt = a.ends
+      ? `<div class="t">${fmt(a.starts)} → ${fmt(a.ends)}</div><div class="r">${s==='active'?rel(a.ends)+' 失效':(s==='scheduled'?rel(a.starts)+' 生效':'持续 '+Math.round((a.ends-a.starts)/86400000)+' 天')}</div>`
+      : `<div class="t">${fmt(a.starts)} → 长期</div><div class="r">不设结束时间</div>`;
+    return `<tr>
+      <td><span class="lvl ${lv.cls}"><i></i>${lv.label}</span></td>
+      <td>
+        <div class="titem">
+          ${a.pinned?'<span class="pin">置顶</span>':''}
+          <div style="min-width:0">
+            <div class="tt">${esc(a.title)}</div>
+            <div class="ts">${esc(plain(a.content).slice(0,72))}…</div>
+          </div>
+        </div>
+      </td>
+      <td><span class="pill ${STATE_META[s].pill}">${STATE_META[s].label}</span>
+        <div style="font-size:9.5px;color:var(--muted);font-family:var(--mono);margin-top:2px">v${a.version}</div></td>
+      <td><div class="win">${winTxt}</div></td>
+      <td><span style="font-size:11.5px;white-space:nowrap">${au.label}</span>
+        <div style="font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums">${au.count.toLocaleString()} 人</div></td>
+      <td>
+        <div class="reads">
+          <div class="bar ${pct<40?'low':''}"><i style="width:${Math.min(pct,100)}%"></i></div>
+          <span class="p">${pct}%</span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap">${a.require_ack?"需确认 "+ackTxt:"确认 —"}</div>
+      </td>
+      <td><div class="places">${a.placements.map(p => `<span class="${PLACE[p].cls}">${PLACE[p].label}</span>`).join('')}</div></td>
+      <td><div class="rowacts">
+        <button class="iconbtn" onclick="openEditor(${a.id})" title="编辑">编辑</button>
+        <button class="iconbtn" onclick="quickAct(${a.id})" title="更多">···</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+function resetFilter(){
+  filter='all'; q=''; fLevel=''; fPlace='';
+  document.getElementById('q').value = '';
+  document.getElementById('f-level').value = '';
+  document.getElementById('f-place').value = '';
+  renderTabs(); renderWB();
+}
+function quickAct(id){
+  const a = DATA.find(x => x.id === id);
+  const s = derive(a);
+  if (s === 'draft') { openEditor(id); return; }
+  if (s === 'revoked' || s === 'expired' || s === 'archived') {
+    alert(`「${a.title}」当前为${STATE_META[s].label}，只能查看或复制为新公告。\n\n已发布的公告不允许删除 —— 删了用户侧历史会断。`);
+    return;
+  }
+  const next = s === 'active' ? '下线（立刻从所有展示位消失，记录保留）' : '取消定时（回到草稿）';
+  if (confirm(`「${a.title}」\n\n要执行：${next}？`)) {
+    a.state = s === 'active' ? 'revoked' : 'draft';
+    a.updated = NOW;
+    renderTabs(); renderWB();
+  }
+}
+document.getElementById('q').oninput = e => { q = e.target.value; renderWB(); };
+document.getElementById('f-level').onchange = e => { fLevel = e.target.value; renderWB(); };
+document.getElementById('f-place').onchange = e => { fPlace = e.target.value; renderWB(); };
+document.getElementById('btn-refresh').onclick = () => { renderTabs(); renderWB(); };
+document.getElementById('btn-new').onclick = () => openEditor(null);
+
+/* ============================================================
+   编辑器
+   ============================================================ */
+const $ = id => document.getElementById(id);
+let editing = null;       // 正在编辑的对象（副本）
+let pvMode = 'panel';
+
+const F = {
+  title:$('f-title'), content:$('f-content'), extra:$('f-extra'),
+  start:$('f-start'), end:$('f-end'), forever:$('f-forever'),
+  audience:$('f-audience'), pinned:$('f-pinned'), ack:$('f-ack'),
+  ctaLabel:$('f-cta-label'), ctaUrl:$('f-cta-url'),
+  pDash:$('p-dashboard'), pPop:$('p-popover'), pBan:$('p-banner'), pLogin:$('p-login')
+};
+let level = 'info';
+
+const pad = n => String(n).padStart(2,'0');
+const toLocalInput = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+function collect(){
+  return {
+    title: F.title.value.trim(),
+    content: F.content.value,
+    extra: F.extra.value.trim(),
+    level,
+    starts: F.start.value ? new Date(F.start.value) : null,
+    ends: F.forever.checked ? null : (F.end.value ? new Date(F.end.value) : null),
+    forever: F.forever.checked,
+    audience: F.audience.value,
+    placements: ['dashboard','popover','banner','login'].filter(k => ({
+      dashboard:F.pDash.checked, popover:F.pPop.checked, banner:F.pBan.checked, login:F.pLogin.checked
+    })[k]),
+    pinned: F.pinned.checked,
+    ack: F.ack.checked,
+    ctaLabel: F.ctaLabel.value.trim(),
+    ctaUrl: F.ctaUrl.value.trim()
+  };
+}
+
+function openEditor(id){
+  const src = id ? DATA.find(a => a.id === id) : null;
+  editing = src
+    ? {...src, placements:[...src.placements]}
+    : {
+        id:null, level:'info', pinned:false, require_ack:false, state:'draft', version:0,
+        title:'', content:'', extra:'',
+        starts:new Date(NOW), ends:null, audience:'all', placements:['dashboard','popover'],
+        ctaLabel:'', ctaUrl:'', read:0, ack:0, updatedBy:'root', updated:null
+      };
+
+  level = editing.level;
+  F.title.value = editing.title;
+  F.content.value = editing.content;
+  F.extra.value = editing.extra;
+  F.start.value = toLocalInput(editing.starts || NOW);
+  F.forever.checked = !editing.ends;
+  F.end.value = editing.ends ? toLocalInput(editing.ends) : '';
+  F.end.disabled = !editing.ends;
+  F.audience.value = editing.audience;
+  F.pinned.checked = editing.pinned;
+  F.ack.checked = !!editing.require_ack;
+  F.ctaLabel.value = editing.ctaLabel || '';
+  F.ctaUrl.value = editing.ctaUrl || '';
+  F.pDash.checked = editing.placements.includes('dashboard');
+  F.pPop.checked = editing.placements.includes('popover');
+  F.pBan.checked = editing.placements.includes('banner');
+  F.pLogin.checked = editing.placements.includes('login');
+
+  $('ed-title').textContent = id ? '编辑公告' : '新建公告';
+  $('ed-meta').textContent = id ? `#${editing.id} · v${editing.version} · 最近更新 ${fmt(editing.updated)} by ${editing.updatedBy}` : '未保存 · 草稿';
+  $('ed-version').textContent = 'v' + (editing.version || 0);
+  $('nav-editing').textContent = id ? '#' + id : '新建';
+  $('foot-state').textContent = id ? '已加载，未修改' : '草稿未保存';
+  $('foot-time').textContent = '';
+
+  syncLevelUI();
+  syncCounter();
+  renderPreview();
+  renderChecks();
+  nav('editor');
+}
+$('ed-back').onclick = () => nav('workbench');
+
+function syncLevelUI(){
+  document.querySelectorAll('#f-level-seg button').forEach(b => b.classList.toggle('on', b.dataset.lvl === level));
+  F.ack.disabled = level !== 'critical';
+  if (level !== 'critical') F.ack.checked = false;
+  $('ack-wrap').classList.toggle('dis', level !== 'critical');
+}
+document.querySelectorAll('#f-level-seg button').forEach(b => {
+  b.onclick = () => {
+    level = b.dataset.lvl;
+    // 级别改写展示位默认值
+    if (level === 'critical') { F.pBan.checked = true; F.pLogin.checked = false; }
+    if (level === 'info') { F.ack.checked = false; F.pBan.checked = false; }
+    syncLevelUI(); renderPreview(); renderChecks();
+  };
+});
+
+function syncCounter(){
+  const set = (el, val, max) => {
+    el.textContent = `${val} / ${max}`;
+    el.classList.toggle('over', val > max);
+  };
+  set($('c-title'), F.title.value.length, 60);
+  set($('c-content'), F.content.value.length, 2000);
+  set($('c-extra'), F.extra.value.length, 200);
+}
+
+let dirty = false;
+['f-title','f-content','f-extra','f-start','f-end','f-audience','f-cta-label','f-cta-url']
+  .forEach(id => {
+    const el = $(id);
+    el.addEventListener('input', () => { dirty = true; syncCounter(); renderPreview(); renderChecks(); markDirty(); });
+    el.addEventListener('change', () => { renderPreview(); renderChecks(); });
+  });
+['f-pinned','f-ack','p-dashboard','p-popover','p-banner','p-login'].forEach(id => {
+  $(id).addEventListener('change', () => {
+    dirty = true;
+    if (id === 'f-ack' && F.ack.checked) { level = 'critical'; syncLevelUI(); }
+    renderPreview(); renderChecks(); markDirty();
+  });
+});
+F.forever.addEventListener('change', () => {
+  F.end.disabled = F.forever.checked;
+  if (F.forever.checked) F.end.value = '';
+  dirty = true; renderPreview(); renderChecks(); markDirty();
+});
+function markDirty(){
+  $('foot-state').textContent = '有未保存的修改';
+  $('foot-state').style.color = 'var(--warn)';
+}
+
+document.querySelectorAll('.quick button').forEach(b => {
+  b.onclick = () => {
+    const k = b.dataset.quick, now = new Date(NOW);
+    const setStart = d => { F.start.value = toLocalInput(d); };
+    const setEnd = d => { F.forever.checked = false; F.end.disabled = false; F.end.value = toLocalInput(d); };
+    if (k === 'now') setStart(now);
+    if (k === '1h') setStart(new Date(now.getTime() + 3600e3));
+    if (k === 'tomorrow') { const d = new Date(now); d.setDate(d.getDate()+1); d.setHours(9,0,0,0); setStart(d); }
+    if (k === 'd1') setEnd(new Date((F.start.value ? new Date(F.start.value) : now).getTime() + 86400e3));
+    if (k === 'd7') setEnd(new Date((F.start.value ? new Date(F.start.value) : now).getTime() + 7*86400e3));
+    if (k === 'forever') { F.forever.checked = true; F.end.value = ''; F.end.disabled = true; }
+    dirty = true; renderPreview(); renderChecks(); markDirty();
+  };
+});
+
+/* ---------- 预览 ---------- */
+document.querySelectorAll('#pv-tabs button').forEach(b => {
+  b.onclick = () => {
+    pvMode = b.dataset.pv;
+    document.querySelectorAll('#pv-tabs button').forEach(x => x.classList.toggle('on', x.dataset.pv === pvMode));
+    renderPreview();
+  };
+});
+
+function previewBanner(v){
+  const lv = LV[v.level] || LV.info;
+  return `<div class="console">
+    <div class="topbar"><span class="logo">A</span><span>apiduo</span>
+      <span class="r"><span class="bell">1</span></span></div>
+    <div class="banner ${v.level}">
+      <span class="tag">${lv.label}</span>
+      <div class="txt"><b>${esc(v.title || '（未填写标题）')}</b>
+        ${v.ctaLabel ? ` · <span style="text-decoration:underline;cursor:pointer">${esc(v.ctaLabel)}</span>` : ''}</div>
+      <span class="x">✕</span>
+    </div>
+    <div class="page" style="padding:10px">
+      <div style="height:26px;background:var(--surface-2);border-radius:5px;margin-bottom:8px"></div>
+      <div style="height:64px;border:1px solid var(--line);border-radius:6px"></div>
+    </div>
+  </div>
+  <div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.6">
+    横幅不是公告列表的放大版：只显示标题 + 一个行动点。正文留在弹窗里。</div>`;
+}
+
+function previewPanel(v){
+  const t = v.title || '（未填写标题）';
+  const body = plain(v.content).slice(0, 90) || '（未填写正文）';
+  const items = [];
+  if (v.pinned) items.push({pinned:true, v, t, body});
+  else items.push({pinned:false, v, t, body});
+  items.push({pinned:false,
+    v:{level:'success', starts:new Date('2026-11-14T00:00:00+08:00'), ctaLabel:'查看模型卡片'},
+    t:'DeepSeek-V4 上线，首周 8 折',
+    body:'DeepSeek-V4 已在 deepseek 分组可用，上下文 128K，支持结构化输出。'});
+  items.push({pinned:false,
+    v:{level:'warning', starts:new Date('2026-11-19T20:00:00+08:00'), ctaLabel:''},
+    t:'11/20 02:00–04:00 计划维护，期间请求可能重试',
+    body:'为升级日志库，2026-11-20 02:00 至 04:00（UTC+8）进行滚动维护。'});
+  return `<div class="console">
+    <div class="topbar"><span class="logo">A</span><span>apiduo</span>
+      <span class="r"><span>仪表盘</span><span class="bell">1</span></span></div>
+    <div class="panelbox">
+      <div class="ph">公告<span class="d">最新平台动态</span></div>
+      ${items.map(it => {
+        const lv = LV[it.v.level];
+        return `<div class="ai ${it.pinned?'pinned':''}">
+        <span class="l lvl ${lv.cls}" style="font-size:0"><i></i></span>
+        <div class="c">
+          <div class="h"><span class="unread"></span>${it.pinned?'<span class="pin">置顶</span>':''}${esc(it.t)}</div>
+          <div class="b">${esc(it.body)}</div>
+          <div class="m">
+            <span class="pill ${lv.pill}" style="font-size:9.5px;padding:0 4px">${lv.label}</span>
+            <span>${fmt(it.v.starts || NOW)}</span>
+            ${it.v.ctaLabel?`<span style="color:var(--accent)">${esc(it.v.ctaLabel)}</span>`:''}
+          </div>
+        </div>
+      </div>`;
+      }).join('')}
+      <div style="padding:7px 10px;text-align:center;font-size:10.5px;color:var(--accent);border-top:1px solid var(--line)">
+        查看历史公告（12）</div>
+    </div>
+  </div>
+  <div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.6">
+    面板给三层信息：级别（左点）、标题（粗）、正文两行截断。多一条置顶示例是为了看间距。</div>`;
+}
+
+function previewPopover(v){
+  return `<div class="pop">
+    <div class="ph2">通知<span class="r">标记全部已读</span></div>
+    <div class="pl">
+      <div class="ai pinned">
+        <span class="l lvl ${LV[v.level].cls}" style="font-size:0"><i></i></span>
+        <div class="c">
+          <div class="h"><span class="unread"></span>${esc(v.title || '（未填写标题）')}</div>
+          <div class="b">${esc(plain(v.content).slice(0,80) || '（未填写正文）')}</div>
+          <div class="m"><span class="pill ${LV[v.level].pill}" style="font-size:9.5px;padding:0 4px">${LV[v.level].label}</span>
+            <span>${fmt(v.starts || NOW)}</span>
+            ${v.ack?'<span style="color:var(--err)">需确认</span>':''}</div>
+        </div>
+      </div>
+      <div class="ai" style="opacity:.55">
+        <span class="l lvl info" style="font-size:0"><i></i></span>
+        <div class="c"><div class="h">控制台新版仪表盘已全量</div>
+          <div class="b">用量趋势、渠道状态、余额提醒合并到一屏。旧版入口保留到下月底。</div>
+          <div class="m"><span>11/15 已读</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.6">
+    未读点只出现在未读项左侧。<b>已读项不消失</b>，只是变淡 —— 用户回看时找不到东西比反复提醒更烦。</div>`;
+}
+
+function previewDialog(v){
+  const lv = LV[v.level];
+  return `<div class="dlg">
+    <div class="dh">
+      <span class="lvl ${lv.cls}"><i></i>${lv.label}</span>
+      <h4>${esc(v.title || '（未填写标题）')}</h4>
+      <div class="mt">${fmtFull(v.starts || NOW)}${v.ends?' — '+fmtFull(v.ends):' 起 · 长期有效'}</div>
+    </div>
+    <div class="db">${mdLite(v.content || '（未填写正文）')}
+      ${v.extra?`<p style="color:var(--muted);font-size:11px;margin-top:10px">${esc(v.extra)}</p>`:''}
+    </div>
+    <div class="df">
+      <span class="l">${v.ack?'此公告要求确认':'阅读后自动标记已读'}</span>
+      ${v.ctaLabel?`<button class="btn sm">${esc(v.ctaLabel)}</button>`:''}
+      <button class="btn sm p">${v.ack?'我已阅读':'知道了'}</button>
+    </div>
+  </div>
+  <div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.6">
+    弹窗是<b>唯一</b>标记已读的地方。停留 ≥1 秒后才写入。</div>`;
+}
+
+function renderPreview(){
+  const v = collect();
+  const stage = $('pv-stage');
+  const hint = $('pv-hint');
+  if (pvMode === 'panel') { stage.innerHTML = previewPanel(v); hint.textContent = '仪表盘右栏 · 置顶 + 最近 5 条'; }
+  if (pvMode === 'banner') { stage.innerHTML = previewBanner(v); hint.textContent = '全站顶栏 · 全局仅 1 条'; }
+  if (pvMode === 'popover') { stage.innerHTML = previewPopover(v); hint.textContent = '顶栏铃铛 · 最近 20 条'; }
+  if (pvMode === 'dialog') { stage.innerHTML = previewDialog(v); hint.textContent = '详情 · 已读与确认的唯一入口'; }
+}
+
+/* ---------- 发布前检查 ---------- */
+function renderChecks(){
+  const v = collect();
+  const now = new Date(NOW);
+  const hasBadHtml = /<(script|iframe|style|object|embed|form)\b|on[a-z]+\s*=|javascript:/i.test(v.content);
+  const ctaHalf = (!!v.ctaLabel) !== (!!v.ctaUrl);
+  const list = [
+    {ok: v.title.length >= 1 && v.title.length <= 60, label:'标题 1–60 字',
+      msg: v.title.length ? `当前 ${v.title.length} 字` : '未填写 —— 列表里无法辨认'},
+    {ok: v.content.trim().length >= 1 && v.content.length <= 2000, label:'正文 1–2000 字',
+      msg: `${v.content.length} 字`},
+    {ok: !hasBadHtml, label:'正文不含白名单外标签', msg: hasBadHtml ? '检测到 script/iframe/style/事件属性' : '通过'},
+    {ok: !!v.starts, label:'开始时间已设置', msg: v.starts ? fmtFull(v.starts) : '未设置'},
+    {ok: !v.ends || !v.starts || v.ends > v.starts, label:'结束时间晚于开始', msg: v.ends ? fmtFull(v.ends) : '长期有效'},
+    {ok: !!v.audience, label:'受众已选择', msg: AUD[v.audience].label + '（' + AUD[v.audience].count + ' 人）'},
+    {ok: v.placements.length > 0, label:'至少一个展示位', msg: v.placements.length ? v.placements.map(p=>PLACE[p].label).join(' / ') : '一个都没勾，发布后无人可见'},
+    {ok: !ctaHalf, label:'行动按钮成对', msg: ctaHalf ? '文案与链接必须同时填写或同时留空' : (v.ctaLabel || '未设置')},
+    {ok: !(v.level === 'critical' && !v.ack), label:'紧急级别建议要求确认', warn:true,
+      msg: v.level === 'critical' ? (v.ack ? '已开启' : '未开启 —— 计费/条款类变更建议开启') : '非紧急级别，不适用'}
+  ];
+
+  $('chk-sum').textContent = `${list.filter(x=>x.ok).length} / ${list.length} 通过`;
+  $('chk-list').innerHTML = list.map(x => {
+    const cls = x.ok ? 'pass' : (x.warn ? 'warn' : 'fail');
+    const sym = x.ok ? '✓' : (x.warn ? '!' : '✕');
+    return `<li class="${cls}"><span class="s">${sym}</span><span>${x.label}<br><span class="m">${x.msg}</span></span></li>`;
+  }).join('');
+
+  const blocking = list.filter(x => !x.ok && !x.warn).length;
+  $('btn-publish').disabled = blocking > 0;
+  $('btn-schedule').disabled = blocking > 0;
+  $('btn-publish').title = blocking ? `${blocking} 项检查未通过` : '';
+}
+
+/* ---------- 保存与发布 ---------- */
+function saveState(next, msg){
+  const v = collect();
+  if (editing.id) {
+    const target = DATA.find(a => a.id === editing.id);
+    Object.assign(target, {
+      title:v.title, content:v.content, extra:v.extra, level:v.level,
+      starts:v.starts || NOW, ends:v.ends, audience:v.audience,
+      placements:v.placements, pinned:v.pinned, require_ack:v.ack,
+      ctaLabel:v.ctaLabel, ctaUrl:v.ctaUrl,
+      version: target.version + (next === 'draft' ? 0 : 1),
+      state: next, updated: new Date(NOW), updatedBy:'root'
+    });
+  } else {
+    DATA.unshift({
+      id: ++SEQ, title:v.title, content:v.content, extra:v.extra, level:v.level,
+      starts:v.starts || NOW, ends:v.ends, audience:v.audience,
+      placements:v.placements, pinned:v.pinned, require_ack:v.ack,
+      ctaLabel:v.ctaLabel, ctaUrl:v.ctaUrl,
+      version:1, state:next, read:0, ack:0, updated:new Date(NOW), updatedBy:'root'
+    });
+  }
+  dirty = false;
+  $('foot-state').textContent = msg;
+  $('foot-state').style.color = 'var(--ok)';
+  $('foot-time').textContent = fmtFull(new Date(NOW));
+  document.getElementById('nav-count').textContent = DATA.length;
+  renderTabs(); renderWB();
+  setTimeout(() => nav('workbench'), 620);
+}
+$('btn-draft').onclick = () => { if (!F.title.value.trim()) { alert('草稿至少要有标题，否则下次打开认不出是哪条。'); return; } saveState('draft','已保存为草稿'); };
+$('btn-schedule').onclick = () => { saveState('published','已排入定时，到点自动生效'); };
+$('btn-publish').onclick = () => {
+  const v = collect();
+  if (v.level === 'critical' && v.placements.includes('banner')) {
+    const occupier = DATA.find(a => a.id !== editing.id && derive(a) === 'active' && a.placements.includes('banner'));
+    if (occupier) {
+      if (!confirm(`横幅已被占用：\n\n「${occupier.title}」\n剩余 ${Math.round((occupier.ends - NOW)/60000)} 分钟\n\n发布后它会被立刻挤下横幅（仍保留在面板与铃铛）。继续？`)) return;
+      occupier.placements = occupier.placements.filter(p => p !== 'banner');
+    }
+  }
+  saveState('published', v.starts > NOW ? '已发布（定时）' : '已发布，立刻生效');
+};
+$('btn-preview-as').onclick = () => {
+  pvMode = 'dialog';
+  document.querySelectorAll('#pv-tabs button').forEach(x => x.classList.toggle('on', x.dataset.pv === 'dialog'));
+  renderPreview();
+  $('pv-stage').scrollIntoView({behavior:'smooth', block:'center'});
+};
+
+/* ============================================================
+   用户端
+   ============================================================ */
+let cxRead = new Set([3]);       // 已读 id
+let cxBanner = true;
+
+function renderConsumer(){
+  const banner = DATA.find(a => derive(a) === 'active' && a.level === 'critical' && a.placements.includes('banner'));
+  const live = DATA.filter(a => derive(a) === 'active' && a.placements.includes('dashboard'))
+    .sort((x,y) => (y.pinned?1:0)-(x.pinned?1:0) || y.starts-x.starts);
+  const pinned = live.filter(a => a.pinned);
+  const rest = live.filter(a => !a.pinned).slice(0, 4);
+
+  // banner
+  const bx = document.getElementById('cx-banner');
+  if (banner && cxBanner) {
+    const lv = LV[banner.level];
+    bx.innerHTML = `<div class="banner ${banner.level}" style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;font-size:11px;line-height:1.55">
+      <span class="tag">${lv.label}</span>
+      <div class="txt"><b>${esc(banner.title)}</b>${banner.ctaLabel?' · <span style="text-decoration:underline;cursor:pointer">'+esc(banner.ctaLabel)+'</span>':''}</div>
+      <span class="x" id="cx-bx-close">✕</span></div>`;
+    document.getElementById('cx-bx-close').onclick = () => { cxBanner = false; renderConsumer(); };
+  } else {
+    bx.innerHTML = '';
+  }
+
+  const item = (a, isPinned) => {
+    const unread = !cxRead.has(a.id);
+    return `<div class="ai ${isPinned?'pinned':''}" data-id="${a.id}" style="cursor:pointer">
+      <span class="l lvl ${LV[a.level].cls}" style="font-size:0"><i></i></span>
+      <div class="c">
+        <div class="h">${unread?'<span class="unread"></span>':''}${isPinned?'<span class="pin">置顶</span>':''}${esc(a.title)}</div>
+        <div class="b">${esc(plain(a.content).slice(0,88))}</div>
+        <div class="m"><span class="pill ${LV[a.level].pill}" style="font-size:9.5px;padding:0 4px">${LV[a.level].label}</span>
+          <span>${fmt(a.starts)}</span>
+          ${a.require_ack&&!cxRead.has(a.id)?'<span style="color:var(--err)">需确认</span>':''}
+          ${!unread?'<span>已读</span>':''}</div>
+      </div></div>`;
+  };
+
+  document.getElementById('cx-panel').innerHTML = `<div class="panelbox" style="margin:0">
+    <div class="ph">公告<span class="d">最新平台动态</span></div>
+    ${pinned.map(a=>item(a,true)).join('')}
+    ${rest.map(a=>item(a,false)).join('')}
+    ${!live.length?'<div class="emptystate" style="padding:22px"><b>当前没有公告</b>这本身是可接受的状态，不需要占位文案。</div>':''}
+    <div style="padding:7px 10px;text-align:center;font-size:10.5px;color:var(--accent);border-top:1px solid var(--line)">
+      查看历史公告（${DATA.filter(a=>derive(a)==='expired').length}）</div>
+  </div>`;
+
+  document.querySelectorAll('#cx-panel .ai').forEach(el => {
+    el.onclick = () => openDialog(+el.dataset.id);
+  });
+
+  document.getElementById('cx-state').textContent =
+    `未读 ${live.filter(a=>!cxRead.has(a.id)).length} 条 · 已读 ${cxRead.size} 条`;
+}
+document.getElementById('cx-reopen').onclick = () => { cxRead = new Set(); cxBanner = true; renderConsumer(); };
+document.getElementById('cx-readall').onclick = () => {
+  DATA.filter(a => derive(a)==='active').forEach(a => { if (!a.require_ack) cxRead.add(a.id); });
+  renderConsumer();
+};
+
+function openDialog(id){
+  const a = DATA.find(x => x.id === id);
+  const lv = LV[a.level];
+  const unread = !cxRead.has(id);
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(18,18,26,.34);display:flex;align-items:center;justify-content:center;z-index:99;padding:20px';
+  overlay.innerHTML = `<div style="width:520px;max-width:100%">
+    <div class="dlg">
+      <div class="dh">
+        <span class="lvl ${lv.cls}"><i></i>${lv.label}</span>
+        <h4>${esc(a.title)}</h4>
+        <div class="mt">${fmtFull(a.starts)}${a.ends?' — '+fmtFull(a.ends):' 起 · 长期有效'} · v${a.version}</div>
+      </div>
+      <div class="db">${mdLite(a.content)}
+        ${a.extra?`<p style="color:var(--muted);font-size:11px;margin-top:10px">${esc(a.extra)}</p>`:''}
+      </div>
+      <div class="df">
+        <span class="l">${a.require_ack?'此公告要求确认':'停留 1 秒后自动标记已读'}</span>
+        ${a.ctaLabel?`<button class="btn sm">${esc(a.ctaLabel)}</button>`:''}
+        <button class="btn sm p" id="dlg-ok">${a.require_ack?'我已阅读':'知道了'}</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+  document.getElementById('dlg-ok').onclick = () => {
+    cxRead.add(id);
+    renderConsumer();
+    close();
+  };
+}
+
+/* ============================================================
+   初始化
+   ============================================================ */
+renderTabs();
+renderWB();
+renderConsumer();
+document.getElementById('nav-count').textContent = DATA.length;
+document.getElementById('now-clock').textContent = fmtFull(NOW).slice(0,16);
+const _p = new URLSearchParams(location.search);
+const _v = _p.get('view'), _id = _p.get('id');
+if (_v === 'editor') openEditor(_id ? +_id : null);
+else if (_v) nav(_v);
+</script>
+</body>
+</html>

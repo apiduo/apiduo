@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>apiduo 公告中心 · 赛博可爱版</title>
+<style>
+  :root{
+    --bg:#0a0a12;--bg-2:#0e0e1a;
+    --glass:rgba(23,23,40,.62);
+    --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);
+    --ink:#f4f4ff;--ink-2:#b8b8d0;--muted:#7a7a96;
+    --p1:#7c5cff;--p2:#ff6ec7;--p3:#4ee1e6;
+    --warn:#ffd166;--danger:#ff5f7e;--ok:#4ade9b;
+    --r-lg:28px;--r-md:20px;--r-sm:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+    --round:ui-rounded,"SF Pro Rounded","Hiragino Maru Gothic ProN",-apple-system,"PingFang SC",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg);color:var(--ink);font-family:var(--round);
+    font-size:14px;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+    min-height:100vh;
+  }
+  /* 背景：光晕 + 网格 */
+  body::before{
+    content:"";position:fixed;inset:-20%;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(38% 32% at 18% 8%, rgba(124,92,255,.26) 0%, transparent 62%),
+      radial-gradient(34% 30% at 82% 12%, rgba(255,110,199,.18) 0%, transparent 60%),
+      radial-gradient(42% 36% at 50% 96%, rgba(78,225,230,.14) 0%, transparent 66%);
+    animation:drift 22s ease-in-out infinite alternate;
+  }
+  @keyframes drift{
+    0%{transform:translate3d(-1.5%,-1%,0) scale(1)}
+    100%{transform:translate3d(2%,1.5%,0) scale(1.06)}
+  }
+  body::after{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size:44px 44px;
+    mask-image:radial-gradient(70% 60% at 50% 30%, #000 0%, transparent 100%);
+  }
+  .page{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:0 28px 80px}
+
+  /* ---------------- 顶栏 ---------------- */
+  .top{display:flex;align-items:center;gap:14px;padding:22px 0 26px}
+  .logo{display:flex;align-items:center;gap:11px;font-weight:800;font-size:16px;letter-spacing:-.02em}
+  .logo .mk{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--p1),var(--p2) 60%,var(--p3));
+    box-shadow:0 6px 22px rgba(124,92,255,.45), inset 0 1px 0 rgba(255,255,255,.4);
+    font-size:15px;font-weight:900;color:#fff}
+  .logo .sub{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.16em;
+    padding-left:10px;margin-left:2px;border-left:1px solid var(--line-2)}
+  .top .sp{flex:1}
+  .search{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:999px;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);
+    transition:border-color .16s,box-shadow .16s;min-width:190px}
+  .search:focus-within{border-color:rgba(124,92,255,.7);box-shadow:0 0 0 4px rgba(124,92,255,.14)}
+  .search svg{flex:0 0 auto;opacity:.55}
+  .search input{appearance:none;border:0;background:transparent;outline:none;color:var(--ink);
+    font-family:inherit;font-size:12.5px;width:100%}
+  .search input::placeholder{color:var(--muted)}
+  .bell{position:relative;width:38px;height:38px;border-radius:999px;display:grid;place-items:center;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);cursor:pointer;
+    transition:border-color .16s,transform .16s}
+  .bell:hover{border-color:var(--line-2);transform:translateY(-1px)}
+  .bell .bd{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;border-radius:999px;
+    background:linear-gradient(135deg,var(--danger),#ff8a5c);color:#fff;font-size:9.5px;font-weight:800;
+    display:grid;place-items:center;padding:0 4px;box-shadow:0 0 0 2.5px var(--bg)}
+  .bell .ring{position:absolute;inset:-3px;border-radius:999px;border:1.5px solid var(--danger);opacity:0}
+  .bell.live .ring{animation:ring 2s cubic-bezier(.22,1,.36,1) infinite}
+  @keyframes ring{0%{opacity:.6;transform:scale(1)}100%{opacity:0;transform:scale(1.65)}}
+  .ava{width:38px;height:38px;border-radius:999px;background:linear-gradient(135deg,#2a2a44,#1a1a2c);
+    border:1px solid var(--line-2);display:grid;place-items:center;font-size:12px;font-weight:700;color:#cfcfe8}
+
+  /* ---------------- 问候 + 小机器人 ---------------- */
+  .hello{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+  .hello .bot{width:64px;height:64px;flex:0 0 auto;animation:bob 3.4s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-6px) rotate(1.5deg)}}
+  .hello h1{margin:0;font-size:20px;font-weight:800;letter-spacing:0}
+  .hello p{margin:4px 0 0;font-size:12.5px;color:var(--muted);font-weight:500}
+  .hello .sp{flex:1}
+  .chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;
+    font-size:11.5px;font-weight:700;background:var(--glass);border:1px solid var(--line);
+    color:var(--ink-2);backdrop-filter:blur(14px);white-space:nowrap}
+  .chip .dt{width:6px;height:6px;border-radius:99px;background:var(--ok);
+    box-shadow:0 0 8px var(--ok)}
+
+  /* ---------------- HERO ---------------- */
+  .hero{position:relative;border-radius:var(--r-lg);padding:32px 34px;overflow:hidden;
+    background:linear-gradient(160deg,rgba(30,26,58,.9) 0%, rgba(18,18,32,.92) 58%, rgba(14,20,30,.94) 100%);
+    border:1px solid rgba(255,255,255,.1);
+    box-shadow:0 24px 70px -28px rgba(124,92,255,.55), inset 0 1px 0 rgba(255,255,255,.09);
+    margin-bottom:20px}
+  .hero .glow{position:absolute;inset:-30% -10% auto -10%;height:120%;pointer-events:none;
+    background:
+      radial-gradient(38% 46% at 22% 26%, rgba(124,92,255,.55) 0%, transparent 68%),
+      radial-gradient(34% 42% at 78% 18%, rgba(255,110,199,.38) 0%, transparent 66%),
+      radial-gradient(30% 38% at 52% 96%, rgba(78,225,230,.28) 0%, transparent 70%);
+    filter:blur(6px);animation:glowShift 14s ease-in-out infinite alternate}
+  @keyframes glowShift{
+    0%{transform:translate3d(-2%,-1%,0) scale(1);opacity:.9}
+    100%{transform:translate3d(3%,2%,0) scale(1.1);opacity:1}
+  }
+  .hero>.in{position:relative;z-index:1}
+  .hero .row1{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:18px}
+  .tag{display:inline-flex;align-items:center;gap:6px;height:27px;padding:0 11px;border-radius:999px;
+    font-size:11px;font-weight:800;letter-spacing:.02em}
+  .tag.hot{background:rgba(255,95,126,.16);color:#ff97ad;border:1px solid rgba(255,95,126,.42)}
+  .tag.soft{background:rgba(255,255,255,.06);color:var(--ink-2);border:1px solid var(--line-2)}
+  .tag.live{background:rgba(74,222,155,.14);color:#7ef0ba;border:1px solid rgba(74,222,155,.36)}
+  .hero h2{margin:0 0 14px;font-size:38px;line-height:1.28;font-weight:800;letter-spacing:-.004em;
+    max-width:820px;text-wrap:balance}
+  .hero .body{font-size:14.5px;line-height:1.85;color:var(--ink-2);max-width:660px;font-weight:500}
+  .hero .acts{display:flex;align-items:center;gap:10px;margin-top:26px;flex-wrap:wrap}
+  .btn{appearance:none;border:0;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;
+    padding:11px 20px;border-radius:13px;transition:transform .16s cubic-bezier(.34,1.56,.64,1),box-shadow .16s,background .16s}
+  .btn:active{transform:scale(.96)}
+  .btn.p{background:linear-gradient(135deg,var(--p1),var(--p2));color:#fff;
+    box-shadow:0 8px 26px -8px rgba(124,92,255,.9), inset 0 1px 0 rgba(255,255,255,.32)}
+  .btn.p:hover{box-shadow:0 12px 34px -8px rgba(255,110,199,.85), inset 0 1px 0 rgba(255,255,255,.4)}
+  .btn.g{background:rgba(255,255,255,.07);color:var(--ink);border:1px solid var(--line-2)}
+  .btn.g:hover{background:rgba(255,255,255,.12)}
+  .hero .deadline{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11.5px;
+    color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+  .hero .deadline b{color:var(--ink-2);font-family:var(--mono);font-size:12px}
+  .hero .bot-pos{position:absolute;right:34px;top:30px;width:86px;height:86px;opacity:.92;
+    animation:bob 4.2s ease-in-out infinite .4s}
+
+  /* ---------------- 分区头 ---------------- */
+  .sec{display:flex;align-items:center;gap:10px;margin:34px 0 14px}
+  .sec h3{margin:0;font-size:14px;font-weight:800;letter-spacing:-.01em}
+  .sec .n{font-family:var(--mono);font-size:11px;color:var(--muted);background:rgba(255,255,255,.05);
+    border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-weight:700}
+  .sec .sp{flex:1}
+  .seg{display:inline-flex;background:rgba(255,255,255,.05);border:1px solid var(--line);
+    border-radius:999px;padding:3px}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--muted);font-family:inherit;
+    font-size:11.5px;font-weight:700;padding:5px 13px;border-radius:999px;cursor:pointer;
+    transition:color .14s,background .14s}
+  .seg button.on{background:rgba(255,255,255,.1);color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+
+  /* ---------------- 卡片网格 ---------------- */
+  .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  .card{position:relative;border-radius:var(--r-md);padding:20px;cursor:pointer;
+    background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(16px);
+    transition:transform .22s cubic-bezier(.34,1.4,.64,1),border-color .2s,box-shadow .22s;
+    overflow:hidden}
+  .card::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
+    background:linear-gradient(90deg,var(--c1),var(--c2));opacity:.9}
+  .card:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.2);
+    box-shadow:0 18px 40px -18px rgba(124,92,255,.6)}
+  .card .h{display:flex;align-items:flex-start;gap:9px;margin-bottom:9px}
+  .card .t{font-size:13.5px;font-weight:800;line-height:1.55;letter-spacing:0;flex:1}
+  .card .unread{width:7px;height:7px;border-radius:99px;flex:0 0 auto;margin-top:6px;
+    background:linear-gradient(135deg,var(--p2),var(--p1));box-shadow:0 0 10px rgba(255,110,199,.9)}
+  .card .b{font-size:12px;line-height:1.75;color:var(--ink-2);font-weight:500;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .card .m{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:10.5px;
+    color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+  .card .m .lv{display:inline-flex;align-items:center;gap:5px}
+  .card .m .lv i{width:5px;height:5px;border-radius:99px;background:var(--c1)}
+  .card .m .sp{flex:1}
+  .card .m .go{opacity:0;transform:translateX(-4px);transition:opacity .18s,transform .18s;
+    color:var(--ink-2);font-weight:700}
+  .card:hover .m .go{opacity:1;transform:translateX(0)}
+
+  /* ---------------- 下方两栏 ---------------- */
+  .lower{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:16px;margin-top:16px}
+  .panel{border-radius:var(--r-md);padding:22px;background:var(--glass);
+    border:1px solid var(--line);backdrop-filter:blur(16px)}
+  .panel h4{margin:0 0 16px;font-size:12px;font-weight:800;color:var(--muted);
+    letter-spacing:.12em;display:flex;align-items:center;gap:8px}
+  .panel h4 .dot{width:6px;height:6px;border-radius:99px;
+    background:linear-gradient(135deg,var(--p3),var(--p1))}
+
+  /* 迷你时间轴 */
+  .tl{position:relative;padding-left:78px}
+  .tl::before{content:"";position:absolute;left:57px;top:6px;bottom:6px;width:2px;
+    background:linear-gradient(180deg,var(--p1),rgba(124,92,255,.15));border-radius:2px}
+  .tl .it{position:relative;padding:0 0 18px}
+  .tl .it:last-child{padding-bottom:0}
+  .tl .it .tm{position:absolute;left:-78px;width:48px;text-align:right;font-family:var(--mono);
+    font-size:10.5px;color:var(--muted);font-weight:600;padding-top:1px}
+  .tl .it .nd{position:absolute;left:-24px;top:3px;width:11px;height:11px;border-radius:99px;
+    background:var(--bg-2);border:2px solid rgba(124,92,255,.45)}
+  .tl .it.on .nd{background:linear-gradient(135deg,var(--p1),var(--p2));border-color:transparent;
+    box-shadow:0 0 0 4px rgba(124,92,255,.2),0 0 14px rgba(124,92,255,.8)}
+  .tl .it .tx{font-size:12.5px;font-weight:700;line-height:1.55}
+  .tl .it .ds{font-size:11px;color:var(--muted);margin-top:3px;font-weight:600;line-height:1.6}
+  .tl .it.on .tx{color:#fff}
+
+  /* 统计 */
+  .stats{display:flex;flex-direction:column;gap:0}
+  .st{display:flex;align-items:baseline;gap:10px;padding:13px 0;border-bottom:1px dashed var(--line)}
+  .st:last-child{border-bottom:0;padding-bottom:0}
+  .st .k{font-size:11.5px;color:var(--muted);font-weight:700;flex:1}
+  .st .v{font-size:26px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+    background:linear-gradient(135deg,#fff,var(--p3));-webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent}
+  .st .v.warm{background:linear-gradient(135deg,#fff,var(--p2));-webkit-background-clip:text;background-clip:text}
+
+  /* ---------------- 弹窗 ---------------- */
+  .ov{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;
+    padding:24px;background:rgba(6,6,12,.66);backdrop-filter:blur(10px)}
+  .ov.on{display:flex}
+  .dlg{width:560px;max-width:100%;border-radius:26px;overflow:hidden;position:relative;
+    background:linear-gradient(165deg,rgba(30,28,54,.98),rgba(16,16,28,.99));
+    border:1px solid rgba(255,255,255,.14);
+    box-shadow:0 40px 90px -30px rgba(124,92,255,.7), inset 0 1px 0 rgba(255,255,255,.12);
+    animation:pop .42s cubic-bezier(.34,1.5,.64,1) both}
+  @keyframes pop{from{opacity:0;transform:translateY(18px) scale(.95)}to{opacity:1;transform:none}}
+  .dlg .glow{position:absolute;inset:-40% -20% auto -20%;height:130%;pointer-events:none;
+    background:radial-gradient(42% 50% at 26% 12%,rgba(124,92,255,.4) 0%,transparent 70%),
+      radial-gradient(34% 44% at 82% 6%,rgba(255,110,199,.3) 0%,transparent 68%);
+    filter:blur(4px)}
+  .dlg .in{position:relative;z-index:1;padding:26px 28px}
+  .dlg .row1{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+  .dlg h3{margin:0 0 10px;font-size:22px;font-weight:800;line-height:1.4;letter-spacing:-.004em}
+  .dlg .mt{font-size:10.5px;color:var(--muted);font-family:var(--mono);font-weight:600;margin-bottom:18px}
+  .dlg .bd{font-size:13px;line-height:1.9;color:var(--ink-2);max-height:230px;overflow:auto;font-weight:500}
+  .dlg .bd p{margin:0 0 10px}
+  .dlg .bd ul{margin:0 0 10px;padding-left:18px}
+  .dlg .bd li{margin-bottom:4px}
+  .dlg .bd code{font-family:var(--mono);font-size:11.5px;background:rgba(255,255,255,.08);
+    border:1px solid var(--line);border-radius:5px;padding:0 5px;color:#dcd8ff}
+  .dlg .ft{display:flex;align-items:center;gap:10px;margin-top:22px;padding-top:18px;
+    border-top:1px solid var(--line)}
+  .dlg .ft .l{font-size:10.5px;color:var(--muted);margin-right:auto;font-weight:600}
+  .x{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;cursor:pointer;
+    background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--ink-2);
+    position:absolute;right:16px;top:16px;z-index:2;transition:background .16s,transform .16s}
+  .x:hover{background:rgba(255,255,255,.12);transform:rotate(90deg)}
+
+  /* ---------------- 页脚 ---------------- */
+  .foot{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    font-size:11px;color:var(--muted);font-weight:600;line-height:1.8}
+  .foot .sp{flex:1}
+  .foot code{font-family:var(--mono);font-size:10.5px;background:rgba(255,255,255,.05);
+    border:1px solid var(--line);border-radius:4px;padding:0 4px}
+
+  /* ---------------- 入场 ---------------- */
+  @keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .in-anim{animation:up .52s cubic-bezier(.22,1,.36,1) both}
+  .d1{animation-delay:.04s}.d2{animation-delay:.1s}.d3{animation-delay:.16s}
+  .d4{animation-delay:.22s}.d5{animation-delay:.28s}.d6{animation-delay:.34s}
+  .d7{animation-delay:.4s}.d8{animation-delay:.46s}
+
+  @media(max-width:1080px){
+    .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .lower{grid-template-columns:1fr}
+    .hero h2{font-size:30px}
+    .hero .bot-pos{display:none}
+  }
+  @media(max-width:720px){
+    .page{padding:0 18px 60px}
+    .grid{grid-template-columns:1fr}
+    .hero{padding:24px}
+    .hero h2{font-size:25px}
+    .search{display:none}
+    .hero .deadline{margin-left:0;width:100%;margin-top:14px}
+  }
+  /* ?static=1：跳过入场动画，供截图与评审直接看终态 */
+  body.static .in-anim{animation:none!important;opacity:1!important;transform:none!important}
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .in-anim{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- 顶栏 -->
+  <div class="top in-anim d1">
+    <div class="logo">
+      <span class="mk">A</span>
+      apiduo
+      <span class="sub">ANNOUNCEMENTS</span>
+    </div>
+    <div class="sp"></div>
+    <label class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input placeholder="搜索公告">
+    </label>
+    <div class="bell live" title="3 条未读">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#cfcfe8" stroke-width="1.9"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span class="bd">3</span><span class="ring"></span>
+    </div>
+    <div class="ava">root</div>
+  </div>
+
+  <!-- 问候 -->
+  <div class="hello in-anim d2">
+    <!-- 小机器人：圆角方头 + 眼睛 + 天线 -->
+    <svg class="bot" viewBox="0 0 64 64" fill="none">
+      <defs>
+        <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#8b7bff"/><stop offset="1" stop-color="#ff7ecb"/>
+        </linearGradient>
+        <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#2b2b46"/><stop offset="1" stop-color="#1a1a2c"/>
+        </linearGradient>
+      </defs>
+      <line x1="32" y1="9" x2="32" y2="16" stroke="#7c5cff" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="32" cy="7.5" r="3.4" fill="url(#bg1)">
+        <animate attributeName="opacity" values="1;.45;1" dur="2.4s" repeatCount="indefinite"/>
+      </circle>
+      <rect x="11" y="16" width="42" height="36" rx="14" fill="url(#bg2)" stroke="url(#bg1)" stroke-width="2"/>
+      <ellipse cx="25" cy="31" rx="3.1" ry="4" fill="#f4f4ff">
+        <animate attributeName="ry" values="4;4;.7;4;4" keyTimes="0;.44;.5;.56;1" dur="4.6s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="39" cy="31" rx="3.1" ry="4" fill="#f4f4ff">
+        <animate attributeName="ry" values="4;4;.7;4;4" keyTimes="0;.44;.5;.56;1" dur="4.6s" repeatCount="indefinite"/>
+      </ellipse>
+      <ellipse cx="18" cy="39" rx="3.2" ry="2" fill="#ff6ec7" opacity=".45"/>
+      <ellipse cx="46" cy="39" rx="3.2" ry="2" fill="#ff6ec7" opacity=".45"/>
+      <path d="M28.5 40.5q3.5 3 7 0" stroke="#7c5cff" stroke-width="2.1" stroke-linecap="round" fill="none"/>
+      <rect x="6" y="28" width="4" height="10" rx="2" fill="#3a3a5c"/>
+      <rect x="54" y="28" width="4" height="10" rx="2" fill="#3a3a5c"/>
+    </svg>
+    <div>
+      <h1>晚上好，帅哥</h1>
+      <p>3 条新公告，其中 1 条需要你确认</p>
+    </div>
+    <div class="sp"></div>
+    <span class="chip"><span class="dt"></span>服务正常 · 00:54</span>
+  </div>
+
+  <!-- HERO -->
+  <div class="hero in-anim d3">
+    <div class="glow"></div>
+    <div class="in">
+      <div class="row1">
+        <span class="tag hot">紧急</span>
+        <span class="tag live">生效中</span>
+        <span class="tag soft">需确认</span>
+      </div>
+      <h2>计费单位调整为按 token 精确计费</h2>
+      <div class="body">
+        自 11 月 20 日 00:00 起，全部模型按实际 token 数计费，不再按请求数向上取整。
+        输入与输出分别计价，历史账单不重算。影响 99% 调用方的账单幅度小于 3%。
+      </div>
+      <div class="acts">
+        <button class="btn p" onclick="openDlg(0)">查看规则</button>
+        <button class="btn g" onclick="ackHero(this)">我知道了</button>
+        <span class="deadline">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/></svg>
+          <b>13 天</b> 后失效
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 进行中 -->
+  <div class="sec in-anim d4">
+    <h3>进行中</h3>
+    <span class="n">3</span>
+    <div class="sp"></div>
+    <div class="seg">
+      <button class="on">全部</button>
+      <button>未读</button>
+      <button>需确认</button>
+    </div>
+  </div>
+
+  <div class="grid" id="grid">
+    <!-- 卡片 1 -->
+    <div class="card in-anim d5" style="--c1:#ffd166;--c2:#ff9f43" onclick="openDlg(1)">
+      <div class="h">
+        <div class="t">11/20 02:00–04:00 计划维护</div>
+        <span class="unread"></span>
+      </div>
+      <div class="b">为升级日志库做滚动维护，部分请求会返回 503。建议客户端按指数退避重试，异步任务不受影响。</div>
+      <div class="m">
+        <span class="lv"><i></i>警告</span>
+        <span>11-19 20:00 起</span>
+        <span class="sp"></span>
+        <span class="go">详情 →</span>
+      </div>
+    </div>
+    <!-- 卡片 2 -->
+    <div class="card in-anim d6" style="--c1:#4ade9b;--c2:#4ee1e6" onclick="openDlg(2)">
+      <div class="h">
+        <div class="t">DeepSeek-V4 上线，首周 8 折</div>
+        <span class="unread"></span>
+      </div>
+      <div class="b">上下文 128K，支持结构化输出。无需改代码，把 model 改成 deepseek-v4 即可，按 0.8 倍率计费。</div>
+      <div class="m">
+        <span class="lv"><i></i>成功</span>
+        <span>11-14 00:00 起</span>
+        <span class="sp"></span>
+        <span class="go">详情 →</span>
+      </div>
+    </div>
+    <!-- 卡片 3 -->
+    <div class="card in-anim d7" style="--c1:#7c5cff;--c2:#4ee1e6" onclick="openDlg(3)">
+      <div class="h">
+        <div class="t">控制台新版仪表盘已全量</div>
+      </div>
+      <div class="b">用量趋势、渠道状态、余额提醒合并到一屏。旧版入口保留到下月底，随时可以切回去。</div>
+      <div class="m">
+        <span class="lv"><i></i>信息</span>
+        <span>11-10 00:00 起</span>
+        <span class="sp"></span>
+        <span class="go">详情 →</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 下方两栏 -->
+  <div class="lower">
+    <div class="panel in-anim d7">
+      <h4><span class="dot"></span>发布时间线</h4>
+      <div class="tl">
+        <div class="it">
+          <span class="tm">11-10</span><span class="nd"></span>
+          <div class="tx">代码冻结</div>
+          <div class="ds">切出 rc.1 分支，依赖锁定，回归全绿</div>
+        </div>
+        <div class="it">
+          <span class="tm">11-15</span><span class="nd"></span>
+          <div class="tx">灰度 5%</div>
+          <div class="ds">vip 分组先可见，可在设置里回退</div>
+        </div>
+        <div class="it on">
+          <span class="tm">11-17</span><span class="nd"></span>
+          <div class="tx">全量生效</div>
+          <div class="ds">X-Request-Id 必填 · 模型名归一</div>
+        </div>
+        <div class="it">
+          <span class="tm">11-20</span><span class="nd"></span>
+          <div class="tx">观察期结束</div>
+          <div class="ds">监控窗口关闭，新口径固化</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel in-anim d8">
+      <h4><span class="dot"></span>本周概况</h4>
+      <div class="stats">
+        <div class="st"><span class="k">公告送达</span><span class="v">1,842</span></div>
+        <div class="st"><span class="k">平均阅读率</span><span class="v warm">64%</span></div>
+        <div class="st"><span class="k">待确认</span><span class="v warm">47</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot in-anim d8">
+    <span>赛博可爱版 · 沿用前几轮的结论：状态派生 <code>now vs [starts_at, ends_at)</code>，动效只编码状态变化</span>
+    <span class="sp"></span>
+    <span>v0.9.4 · staging</span>
+  </div>
+
+</div>
+
+<!-- 详情弹窗 -->
+<div class="ov" id="ov" onclick="if(event.target===this)closeDlg()">
+  <div class="dlg" role="dialog" aria-modal="true">
+    <div class="glow"></div>
+    <div class="x" onclick="closeDlg()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+        stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </div>
+    <div class="in">
+      <div class="row1" id="d-tags"></div>
+      <h3 id="d-title"></h3>
+      <div class="mt" id="d-meta"></div>
+      <div class="bd" id="d-body"></div>
+      <div class="ft">
+        <span class="l" id="d-hint"></span>
+        <button class="btn g" onclick="closeDlg()">稍后</button>
+        <button class="btn p" onclick="ackDlg()">我知道了</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA = [
+  {
+    tags:[['hot','紧急'],['live','生效中'],['soft','需确认']],
+    title:'计费单位调整为按 token 精确计费',
+    meta:'2026-11-16 10:00 起 · 12-01 00:00 止 · v2',
+    body:`<p>自 <b>11 月 20 日 00:00</b> 起，全部模型按实际 token 数计费，不再按请求数向上取整。</p>
+      <ul>
+        <li>输入 / 输出分别计价，价格表在「模型价格」页同步更新</li>
+        <li>历史账单不重算</li>
+        <li>余额不足时请求将直接返回 <code>402</code>，不再允许透支一次请求</li>
+      </ul>
+      <p>如有疑问请在工单中标注「计费」。</p>`,
+    ack:true
+  },
+  {
+    tags:[['soft','警告']],
+    title:'11/20 02:00–04:00 计划维护',
+    meta:'2026-11-19 20:00 起 · 11-20 06:00 止',
+    body:`<p>为升级日志库，<code>2026-11-20 02:00</code> 至 <code>04:00</code>（UTC+8）进行滚动维护。</p>
+      <ul>
+        <li>网关不停止服务，但部分请求会返回 <code>503</code>，建议按指数退避重试</li>
+        <li>控制台的用量图表延迟约 10 分钟</li>
+        <li>已提交的异步任务不受影响</li>
+      </ul>`,
+    ack:false
+  },
+  {
+    tags:[['soft','成功']],
+    title:'DeepSeek-V4 上线，首周 8 折',
+    meta:'2026-11-14 00:00 起 · 11-24 23:59 止',
+    body:`<p>DeepSeek-V4 已在 <code>deepseek</code> 分组可用，上下文 128K，支持结构化输出。</p>
+      <p>首周（至 11/24）按 0.8 倍率计费，无需改代码，把 <code>model</code> 改成 <code>deepseek-v4</code> 即可。</p>`,
+    ack:false
+  },
+  {
+    tags:[['soft','信息']],
+    title:'控制台新版仪表盘已全量',
+    meta:'2026-11-10 00:00 起 · 11-18 00:00 止',
+    body:`<p>用量趋势、渠道状态、余额提醒合并到一屏。</p>
+      <p>旧版入口保留到下月底，在设置里可以随时切回。</p>`,
+    ack:false
+  }
+];
+
+const $ = id => document.getElementById(id);
+
+function openDlg(i){
+  const d = DATA[i];
+  $('d-tags').innerHTML = d.tags.map(([c,t]) => `<span class="tag ${c}">${t}</span>`).join('');
+  $('d-title').textContent = d.title;
+  $('d-meta').textContent = d.meta;
+  $('d-body').innerHTML = d.body;
+  $('d-hint').textContent = d.ack ? '此公告要求确认' : '停留 1 秒后自动标记已读';
+  $('ov').classList.add('on');
+  document.body.style.overflow = 'hidden';
+}
+function closeDlg(){
+  $('ov').classList.remove('on');
+  document.body.style.overflow = '';
+}
+function ackDlg(){
+  const btn = $('ov').querySelector('.btn.p');
+  btn.textContent = '已确认 ✓';
+  btn.style.background = 'linear-gradient(135deg,#2f8f63,#4ade9b)';
+  setTimeout(closeDlg, 520);
+}
+function ackHero(btn){
+  btn.textContent = '已确认 ✓';
+  btn.style.color = '#7ef0ba';
+  btn.style.borderColor = 'rgba(74,222,155,.4)';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDlg(); });
+const _q = new URLSearchParams(location.search);
+if (_q.get('static') === '1') document.body.classList.add('static');
+if (_q.get('dlg') !== null) openDlg(Number(_q.get('dlg')) || 0);
+
+/* 分段筛选（示意，只切换选中态） */
+document.querySelectorAll('.seg button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.seg button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+  };
+});
+</script>
+</body>
+</html>

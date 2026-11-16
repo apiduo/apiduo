@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>发布公告 · 垂直时间轴 · apiduo 产品原型</title>
+<style>
+  :root{
+    --bg:#fff;--surface:#fbfbfc;--surface-2:#f4f4f6;--line:#e7e7ea;--line-2:#d6d6db;
+    --ink:#17171c;--ink-2:#4a4a55;--muted:#8b8b96;
+    --accent:#4f46e5;--accent-soft:#eef0ff;
+    --ok:#0f7a52;--ok-soft:#e6f4ed;
+    --err:#c02a20;--err-soft:#fdeceb;
+    --warn:#9a6200;--warn-soft:#fdf3e0;
+    --radius:10px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+
+  .top{height:50px;display:flex;align-items:center;gap:12px;padding:0 22px;background:#fff;
+    border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .top .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px}
+  .top .mark{width:18px;height:18px;border-radius:5px;background:var(--accent);color:#fff;
+    font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .top .nav{display:flex;gap:2px;margin-left:14px}
+  .top .nav button{appearance:none;border:0;background:transparent;font-family:inherit;font-size:12.5px;
+    color:var(--muted);padding:6px 10px;border-radius:6px;cursor:pointer}
+  .top .nav button:hover{background:var(--surface-2);color:var(--ink)}
+  .top .nav button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .top .sp{flex:1}
+  .top .btn{appearance:none;border:1px solid var(--line-2);background:#fff;color:var(--ink-2);
+    font-family:inherit;font-size:11.5px;padding:5px 11px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .top .btn:hover{border-color:var(--ink-2);color:var(--ink)}
+  .top a.btn{text-decoration:none;display:inline-flex;align-items:center}
+
+  .wrap{max-width:1200px;margin:0 auto;padding:24px 24px 80px}
+
+  .rel{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;margin-bottom:16px}
+  .rel .meta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:10px}
+  .rel h1{margin:0;font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1.15;font-family:var(--mono)}
+  .rel h1 .stage{font-family:inherit;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:9px;vertical-align:middle}
+  .rel .sub{margin-top:8px;font-size:13px;color:var(--ink-2);line-height:1.7;max-width:840px}
+  .pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;
+    font-size:11px;font-weight:600;line-height:1.6;white-space:nowrap}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.err{background:var(--err-soft);color:var(--err)}
+  .pill.b{background:var(--surface-2);color:var(--ink-2)}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);
+    background:var(--surface);flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:12.5px;font-weight:600}
+  .card-h .d{font-size:11.5px;color:var(--muted)}
+  .card-h .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+  .scrub{display:flex;align-items:center;gap:14px;padding:11px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .scrub .lab{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .scrub input[type=range]{flex:1;min-width:180px;accent-color:var(--accent);cursor:pointer;height:4px}
+  .scrub .cur{font-size:12px;font-weight:600;min-width:140px;text-align:right;font-variant-numeric:tabular-nums}
+  .scrub .cur small{display:block;font-weight:400;font-size:10.5px;color:var(--muted);margin-top:1px}
+
+  .svgwrap{padding:8px 10px 18px;overflow:auto}
+  svg.tl{display:block;width:100%;height:auto;min-width:660px;aspect-ratio:1120/1080}
+  svg.tl text{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",system-ui,sans-serif}
+
+  .notes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grp{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+    transition:box-shadow .16s,border-color .16s}
+  .grp.hl{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .grp>h3{margin:0;padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid var(--line);
+    background:var(--surface);display:flex;align-items:center;gap:8px}
+  .grp>h3 .n{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400}
+  .grp ul{margin:0;padding:0;list-style:none}
+  .grp li{padding:9px 14px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.7;color:var(--ink-2);
+    display:flex;gap:9px;align-items:flex-start}
+  .grp li:last-child{border-bottom:0}
+  .grp li code{font-family:var(--mono);font-size:11.5px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:3px;padding:0 4px;white-space:nowrap}
+  .grp li .b{flex:0 0 auto;width:4px;height:4px;border-radius:99px;background:var(--line-2);margin-top:8px}
+  .grp li b{color:var(--ink);font-weight:600}
+  .grp.breaking{border-color:#ecc9c6}
+  .grp.breaking>h3{background:var(--err-soft);color:var(--err);border-bottom-color:#f2cfcb}
+  .grp.breaking li .b{background:var(--err)}
+  .grp.span2{grid-column:span 2}
+
+  /* 说明抽屉 */
+  .sheet{position:fixed;top:0;right:0;bottom:0;width:520px;background:#fff;border-left:1px solid var(--line-2);
+    transform:translateX(100%);transition:transform .26s cubic-bezier(.22,1,.36,1);z-index:40;
+    overflow:auto;padding:24px 26px 70px;font-size:12.5px;line-height:1.75;color:var(--ink-2);
+    box-shadow:-8px 0 32px rgba(20,20,30,.08)}
+  .sheet.open{transform:translateX(0)}
+  .sheet h3{margin:0 0 4px;font-size:15px;color:var(--ink);font-weight:600}
+  .sheet .lead{color:var(--muted);font-size:12px;margin-bottom:18px}
+  .sheet h4{margin:22px 0 8px;font-size:12px;color:var(--ink);font-weight:600;
+    padding-top:16px;border-top:1px solid var(--line)}
+  .sheet h4:first-of-type{border-top:0;padding-top:0;margin-top:0}
+  .sheet p{margin:0 0 9px}
+  .sheet ul{margin:0 0 10px;padding-left:18px}
+  .sheet li{margin-bottom:6px}
+  .sheet code{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:3px;padding:0 4px}
+  .sheet table{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px}
+  .sheet th,.sheet td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  .sheet th{background:var(--surface);font-weight:600;color:var(--ink)}
+  .sheet .warn{background:#fffaf2;border:1px solid #f0e0c4;border-radius:7px;padding:10px 12px;margin:10px 0}
+  .sheet .warn b{color:var(--warn)}
+  .sheet .ok{background:#f4fbf7;border:1px solid #cfe8db;border-radius:7px;padding:10px 12px;margin:10px 0}
+  .sheet .ok b{color:var(--ok)}
+  .sheet .close{position:absolute;top:16px;right:20px;cursor:pointer;color:var(--muted);font-size:16px}
+  .sheet .close:hover{color:var(--ink)}
+
+  @media(max-width:900px){
+    .notes{grid-template-columns:1fr}
+    .grp.span2{grid-column:span 1}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="brand"><span class="mark">A</span>apiduo</span>
+  <span class="nav">
+    <button>发布公告</button>
+    <button class="on">垂直时间轴</button>
+    <button>历史版本</button>
+  </span>
+  <span class="sp"></span>
+  <button class="btn" id="btn-sheet">设计说明</button>
+</div>
+
+<div class="wrap">
+
+  <div class="rel">
+    <div class="meta">
+      <span class="pill ok">已全量</span>
+      <span class="pill b">stable</span>
+      <span class="pill err">含 1 项破坏性变更</span>
+      <span style="font-size:11.5px;color:var(--muted);font-family:var(--mono)">2026-11-17 02:00 UTC+8</span>
+    </div>
+    <h1>v0.9.4<span class="stage">代号 · baseline</span></h1>
+    <div class="sub">
+      六个阶段，从左冻结到观察结束。左侧是内部动作，右侧是对外影响 —— 只看右侧也能判断这次发布要不要动自己的代码。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">
+      <h2>发布时间轴 · 垂直</h2>
+      <span class="d">左 = 内部动作，右 = 对外影响；横线为「现在」</span>
+      <span class="r"><span class="pill a" id="phase-pill">T-0 全量</span></span>
+    </div>
+    <div class="scrub">
+      <span class="lab">拖动查看阶段</span>
+      <input type="range" id="scrub" min="0" max="5" step="1" value="4">
+      <span class="cur" id="scrub-cur">11-17 02:00<small>T-0 · 全量</small></span>
+    </div>
+    <div class="svgwrap">
+      <svg class="tl" id="tl" viewBox="0 0 1120 1000" role="img"
+           aria-label="垂直发布时间轴：主脊自上而下，左侧为内部动作，右侧为对外影响"></svg>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="grp breaking">
+      <h3>破坏性变更<span class="n">3 项 · 需操作</span></h3>
+      <ul>
+        <li><span class="b"></span><div><b><code>X-Request-Id</code> 改为必填。</b>未携带将返回 <code>400</code>。</div></li>
+        <li><span class="b"></span><div><b>Anthropic 模型名归一。</b>日期后缀不再透传，请用别名。</div></li>
+        <li><span class="b"></span><div><b>端点能力表默认拒绝。</b>未声明的端点返回 <code>403</code>。</div></li>
+      </ul>
+    </div>
+    <div class="grp">
+      <h3>新增与改进<span class="n">4 项</span></h3>
+      <ul>
+        <li><span class="b"></span><div><b><code>/v1/files</code> 端点。</b>渠道模型名单即白名单。</div></li>
+        <li><span class="b"></span><div><b>端点级负向能力表。</b>未声明默认放行。</div></li>
+        <li><span class="b"></span><div>灰度与全量合并为一条公告的生效窗口。</div></li>
+        <li><span class="b"></span><div>配置类变更支持热回滚，秒级。</div></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<aside class="sheet" id="sheet">
+  <span class="close" id="sheet-close">✕</span>
+  <h3>垂直时间轴 · 设计说明</h3>
+  <div class="lead">同一份发布数据，换方向不是换皮，是换了一套取舍。</div>
+
+  <h4>1. 垂直换来了什么</h4>
+  <table>
+    <thead><tr><th>维度</th><th>水平鱼骨</th><th>垂直时间轴</th></tr></thead>
+    <tbody>
+      <tr><td>节点容量</td><td>4–6 个，再多主脊会挤</td><td>8–12 个，纵向可续</td></tr>
+      <tr><td>单条文案</td><td>短，约 8–12 字</td><td>长，约 18–24 字</td></tr>
+      <tr><td>一眼看完</td><td>能，适合投影</td><td>不能，需要滚动</td></tr>
+      <tr><td>阅读方向</td><td>左 → 右</td><td>上 → 下（中文习惯）</td></tr>
+      <tr><td>「现在在哪」</td><td>竖直参考线，不显眼</td><td>整条横线，最显眼</td></tr>
+    </tbody>
+  </table>
+  <p>这一版放了 <b>6 个阶段</b>。同样的 6 个节点塞进水平鱼骨，主脊宽度要 1400px 以上，
+  投影时会缩到看不清 —— 这是垂直版存在的实际理由。</p>
+
+  <h4>2. 左右分栏替代上下分扇</h4>
+  <p>垂直后，上下扇变成左右栏，语义反而更直白：</p>
+  <ul>
+    <li><b>左侧 = 内部动作</b>：切分支、灰度放量、指标对齐</li>
+    <li><b>右侧 = 对外影响</b>：谁能看见、要不要改代码、能不能回退</li>
+  </ul>
+  <p>外部读者可以整列跳过左边。这比水平版的「只看下半张图」更容易执行 ——
+  水平时眼睛要上下扫，垂直时只需读一列。</p>
+
+  <h4>3. 「现在」是一条横线</h4>
+  <p>垂直时间轴里，当前时刻用一条贯穿左右的横线表达，配合滑块上下移动。
+  这比水平版的竖线更醒目，因为横线切断了整张图，视觉上无法忽略。</p>
+  <p>横线之上的节点实心、之下空心 —— <b>不用读文字就能知道走到哪了</b>。
+  发布当天读者只关心这一件事。</p>
+
+  <h4>4. 骨为什么要斜向下</h4>
+  <p>垂直版最容易画错的地方：把子项水平列在主脊两侧，结果变成「时间轴 + 目录」，失去鱼骨的发散感。</p>
+  <p>这里让骨从节点先水平外移 26px，再以 45° 斜向下 125px。<b>斜向下而不是向上</b>，
+  是因为每个节点占据的是「它自己到下一个节点之间」的空间；向上会侵占上一个节点的区域。</p>
+
+  <h4>5. 什么时候用哪一版</h4>
+  <div class="ok">
+    <b>水平鱼骨</b>：变更项少（≤4）、需要投影或嵌在大屏里、要一眼看完。<br>
+    <b>垂直时间轴</b>：阶段多（≥5）、文案长、读者在手机上或滚动阅读、需要强调「现在」。
+  </div>
+  <div class="warn">
+    <b>不要两版都上。</b>同一份发布同时提供两种视图，读者会怀疑数据不一致。
+    选一种，用 <code>?t=</code> 这类参数控制阶段，不要用两套版式。
+  </div>
+
+  <h4>6. 落地方式</h4>
+  <p>和鱼骨版共用同一份结构化数据：</p>
+  <p><code>{ version, phases:[{t, at, actions[], impacts[], breaking[]}] }</code></p>
+  <p>两个渲染器读同一个对象，样式层各自处理。不要为垂直版单独维护一份内容 ——
+  那必然漂移，最后图上和清单上说的是两件事。</p>
+</aside>
+
+<script>
+/* ============================================================
+   数据：6 个阶段
+   ============================================================ */
+const PHASES = [
+  {
+    key:'T-7', at:'11-10 18:00', label:'代码冻结',
+    actions:['切出 rc.1 分支','依赖版本锁定','回归用例全绿'],
+    impacts:['无客户可见变更','发布说明开始起草']
+  },
+  {
+    key:'T-5', at:'11-12 10:00', label:'文档与 SDK',
+    actions:['文档站更新','SDK 打包 rc.1','示例工程回归'],
+    impacts:['文档可预览，标注「即将生效」','SDK 未发布到包管理器']
+  },
+  {
+    key:'T-2', at:'11-15 14:00', label:'灰度 5%',
+    actions:['5% 租户放量','canary 指标对齐','回滚演练一次'],
+    impacts:['vip 分组先可见','可在设置里回退','计费口径未变']
+  },
+  {
+    key:'T-1', at:'11-16 20:00', label:'灰度 50%',
+    actions:['50% 租户放量','错误率与延迟比对','工单关键词监控'],
+    impacts:['半数租户可见','观察工单无异常','准备全量脚本']
+  },
+  {
+    key:'T-0', at:'11-17 02:00', label:'全量',
+    actions:['剩余租户全量','文档与 SDK 正式发布','公告推送'],
+    impacts:['X-Request-Id 必填','模型名归一','端点能力表默认拒绝'],
+    breaking:true
+  },
+  {
+    key:'T+3', at:'11-20 02:00', label:'观察结束',
+    actions:['监控窗口关闭','回滚入口下线'],
+    impacts:['新口径固化','旧模型名兼容保留一版']
+  }
+];
+
+/* ============================================================
+   几何
+   ============================================================ */
+const W = 1120, H = 1080;
+const CX = 560;              // 主脊 x
+const Y0 = 118, GAP = 146;   // 首节点 y 与间距
+const DY = 124, DX = 200;    // 骨斜段的偏移
+const STEM = 78;             // 骨先水平外移，需大于节点标签半宽
+
+const nodeY = i => Y0 + i * GAP;
+
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+const _q = new URLSearchParams(location.search);
+let cur = 4;
+if (_q.get('t') !== null) {
+  const t = Number(_q.get('t'));
+  if (t >= 0 && t < PHASES.length) cur = t;
+}
+
+/* ============================================================
+   绘制
+   ============================================================ */
+function itemPos(x0, y0, x1, y1, t){
+  return {x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t};
+}
+
+function build(){
+  let s = '';
+  const topY = nodeY(0) - 46;
+  const botY = nodeY(PHASES.length - 1) + 46;
+
+  /* ---- 顶部两栏标题 ---- */
+  s += `<text x="382" y="64" font-size="11" font-weight="600" fill="#b0b0b9"
+    letter-spacing=".18em" text-anchor="middle">内部动作</text>`;
+  s += `<text x="738" y="64" font-size="11" font-weight="600" fill="#b0b0b9"
+    letter-spacing=".18em" text-anchor="middle">对外影响</text>`;
+  s += `<line x1="120" y1="78" x2="1000" y2="78" stroke="#f0f0f3" stroke-width="1"/>`;
+
+  /* ---- 主脊 ---- */
+  s += `<defs>
+    <marker id="arwd" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#17171c"/>
+    </marker>
+  </defs>`;
+  // 分段：节点处断开 [y-8, y+52]，标签因此不被竖线穿过
+  const segs = [];
+  segs.push([topY, nodeY(0) - 8]);
+  for (let i = 1; i < PHASES.length; i++) segs.push([nodeY(i - 1) + 52, nodeY(i) - 8]);
+  segs.forEach(([a, b], i) => {
+    const last = i === segs.length - 1;
+    s += `<line x1="${CX}" y1="${a}" x2="${CX}" y2="${b}"
+      stroke="#17171c" stroke-width="2.5"${last ? ' marker-end="url(#arwd)"' : ''}/>`;
+  });
+  s += `<circle cx="${CX}" cy="${topY}" r="3.5" fill="#17171c"/>`;
+  s += `<text x="${CX + 14}" y="${topY + 4}" font-size="11" fill="#8b8b96">发布准备</text>`;
+
+  /* ---- 节点 ---- */
+  PHASES.forEach((p, i) => {
+    const y = nodeY(i);
+    const reached = i <= cur;
+    const isNow = i === cur;
+
+    // 节点标记：末节点用方块表示流程终点
+    if (i === PHASES.length - 1) {
+      s += `<rect x="${CX - 5}" y="${y - 5}" width="10" height="10" rx="1.5"
+        fill="${reached ? '#17171c' : '#fff'}"
+        stroke="${reached ? '#17171c' : '#d6d6db'}" stroke-width="2"/>`;
+    } else {
+      s += `<circle cx="${CX}" cy="${y}" r="${isNow ? 7 : 4.5}"
+        fill="${isNow ? '#4f46e5' : reached ? '#17171c' : '#fff'}"
+        stroke="${isNow ? '#4f46e5' : reached ? '#17171c' : '#d6d6db'}" stroke-width="2"/>`;
+    }
+
+    // 节点标签（主脊下方居中两行）
+    s += `<text x="${CX}" y="${y + 26}" font-size="12" font-weight="600" paint-order="stroke"
+      stroke="#fff" stroke-width="4" stroke-linejoin="round"
+      text-anchor="middle" fill="${isNow ? '#4f46e5' : reached ? '#17171c' : '#9a9aa6'}">${p.key} · ${p.label}</text>`;
+    s += `<text x="${CX}" y="${y + 43}" font-size="10.5" font-family="ui-monospace,Menlo,monospace"
+      text-anchor="middle" fill="${reached ? '#8b8b96' : '#bfbfc7'}">${p.at}</text>`;
+
+    // 左右骨
+    [{side:'L', items:p.actions, danger:false, color: reached ? '#4a4a55' : '#b6b6c0'},
+     {side:'R', items:p.impacts, danger:!!p.breaking, color: p.breaking ? '#c02a20' : reached ? '#4a4a55' : '#b6b6c0'}
+    ].forEach(bone => {
+      const dir = bone.side === 'L' ? -1 : 1;
+      const ax = CX + dir * 12;
+      const bx = CX + dir * (12 + STEM);
+      const ex = CX + dir * (12 + STEM + DX);
+      const ey = y + DY;
+      const op = reached ? 1 : 0.62;
+      const lineCol = bone.danger ? (reached ? '#c02a20' : '#e0a8a4')
+        : isNow ? '#4f46e5' : reached ? '#17171c' : '#c2c2cc';
+      const sw = isNow ? 2 : 1.3;
+
+      s += `<g opacity="${op}">`;
+      s += `<polyline points="${ax},${y} ${bx},${y} ${ex},${ey}" fill="none"
+        stroke="${lineCol}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+      // 子项沿斜段
+      const its = bone.items;
+      const ts = its.length === 1 ? [0.58] : its.length === 2 ? [0.42, 0.74] : [0.28, 0.52, 0.76];
+      its.forEach((it, ii) => {
+        const pt = itemPos(bx, y, ex, ey, ts[ii]);
+        s += `<line x1="${pt.x}" y1="${pt.y}" x2="${pt.x - dir * 7}" y2="${pt.y}"
+          stroke="${lineCol}" stroke-width="1.1"/>`;
+        s += `<text x="${pt.x - dir * 11}" y="${pt.y + 4}" font-size="12" paint-order="stroke"
+          stroke="#fff" stroke-width="3.5" stroke-linejoin="round"
+          text-anchor="${bone.side === 'L' ? 'end' : 'start'}"
+          fill="${bone.danger ? (reached ? '#c02a20' : '#d99') : bone.color}">${esc(it)}</text>`;
+      });
+      s += `</g>`;
+    });
+  });
+
+  /* ---- 现在横线 ---- */
+  const ny = nodeY(cur);
+  s += `<line x1="96" y1="${ny}" x2="896" y2="${ny}" stroke="#4f46e5" stroke-width="1.5"
+    stroke-dasharray="5 5" opacity=".55"/>`;
+  s += `<rect x="898" y="${ny - 12}" width="52" height="20" rx="10" fill="#4f46e5"/>`;
+  s += `<text x="924" y="${ny + 2}" font-size="10.5" font-weight="700" fill="#fff"
+    text-anchor="middle">现在</text>`;
+
+  /* ---- 图例 ---- */
+  const ly = H - 24;
+  s += `<g font-size="11" fill="#8b8b96">
+    <circle cx="120" cy="${ly - 4}" r="4.5" fill="#17171c"/>
+    <text x="132" y="${ly}">已发生</text>
+    <circle cx="192" cy="${ly - 4}" r="6" fill="#4f46e5"/>
+    <text x="204" y="${ly}">当前阶段</text>
+    <line x1="268" y1="${ly - 4}" x2="288" y2="${ly - 4}" stroke="#c02a20" stroke-width="1.6"/>
+    <text x="294" y="${ly}">破坏性变更</text>
+    <circle cx="370" cy="${ly - 4}" r="4.5" fill="#fff" stroke="#d6d6db" stroke-width="2"/>
+    <text x="382" y="${ly}">未到达</text>
+    <line x1="440" y1="${ly - 4}" x2="460" y2="${ly - 4}" stroke="#4f46e5" stroke-width="1.5" stroke-dasharray="5 5"/>
+    <text x="466" y="${ly}">现在</text>
+    <rect x="524" y="${ly - 9}" width="10" height="10" rx="1.5" fill="#17171c"/>
+    <text x="540" y="${ly}">流程终点</text>
+  </g>`;
+
+  return s;
+}
+
+function render(){
+  const svg = document.getElementById('tl');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = build();
+  document.getElementById('phase-pill').textContent = `${PHASES[cur].key} ${PHASES[cur].label}`;
+  document.getElementById('scrub-cur').innerHTML =
+    `${PHASES[cur].at}<small>${PHASES[cur].key} · ${PHASES[cur].label}</small>`;
+}
+
+/* ============================================================
+   交互
+   ============================================================ */
+const scrub = document.getElementById('scrub');
+scrub.max = PHASES.length - 1;
+scrub.value = cur;
+scrub.addEventListener('input', e => { cur = Number(e.target.value); render(); });
+
+document.getElementById('btn-sheet').onclick = () => document.getElementById('sheet').classList.toggle('open');
+document.getElementById('sheet-close').onclick = () => document.getElementById('sheet').classList.remove('open');
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('sheet').classList.remove('open');
+  if (e.key === 'ArrowDown' && cur < PHASES.length - 1) { cur++; scrub.value = cur; render(); }
+  if (e.key === 'ArrowUp' && cur > 0) { cur--; scrub.value = cur; render(); }
+  if (e.key === 'ArrowRight' && cur < PHASES.length - 1) { cur++; scrub.value = cur; render(); }
+  if (e.key === 'ArrowLeft' && cur > 0) { cur--; scrub.value = cur; render(); }
+});
+
+render();
+if (_q.get('sheet') === '1') document.getElementById('sheet').classList.add('open');
+</script>
+</body>
+</html>

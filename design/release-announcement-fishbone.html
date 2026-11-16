@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>发布公告 · 时间鱼骨图 · apiduo 产品原型</title>
+<style>
+  :root{
+    --bg:#fff;--surface:#fbfbfc;--surface-2:#f4f4f6;--line:#e7e7ea;--line-2:#d6d6db;
+    --ink:#17171c;--ink-2:#4a4a55;--muted:#8b8b96;
+    --accent:#4f46e5;--accent-soft:#eef0ff;
+    --ok:#0f7a52;--ok-soft:#e6f4ed;
+    --err:#c02a20;--err-soft:#fdeceb;
+    --warn:#9a6200;--warn-soft:#fdf3e0;
+    --radius:10px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+
+  /* ---------- 顶栏 ---------- */
+  .top{height:50px;display:flex;align-items:center;gap:12px;padding:0 22px;background:#fff;
+    border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .top .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px}
+  .top .mark{width:18px;height:18px;border-radius:5px;background:var(--accent);color:#fff;
+    font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .top .nav{display:flex;gap:2px;margin-left:14px}
+  .top .nav button{appearance:none;border:0;background:transparent;font-family:inherit;font-size:12.5px;
+    color:var(--muted);padding:6px 10px;border-radius:6px;cursor:pointer}
+  .top .nav button:hover{background:var(--surface-2);color:var(--ink)}
+  .top .nav button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .top .sp{flex:1}
+  .top .btn{appearance:none;border:1px solid var(--line-2);background:#fff;color:var(--ink-2);
+    font-family:inherit;font-size:11.5px;padding:5px 11px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .top .btn:hover{border-color:var(--ink-2);color:var(--ink)}
+
+  .wrap{max-width:1240px;margin:0 auto;padding:26px 24px 80px}
+
+  /* ---------- 版本头 ---------- */
+  .rel{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px 26px;margin-bottom:16px}
+  .rel .meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .rel h1{margin:0;font-size:42px;font-weight:700;letter-spacing:-.03em;line-height:1.1;
+    font-family:var(--mono)}
+  .rel h1 .stage{font-family:inherit;font-size:15px;font-weight:600;color:var(--muted);
+    letter-spacing:0;margin-left:10px;vertical-align:middle}
+  .rel .sub{margin-top:10px;font-size:14px;color:var(--ink-2);line-height:1.7;max-width:760px}
+  .rel .facts{display:flex;gap:26px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+  .rel .facts .f{font-size:11.5px;color:var(--muted)}
+  .rel .facts .f b{display:block;font-size:13px;color:var(--ink);font-weight:600;margin-top:3px;
+    font-variant-numeric:tabular-nums}
+  .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;
+    font-size:11px;font-weight:600;line-height:1.6;white-space:nowrap}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.err{background:var(--err-soft);color:var(--err)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.b{background:var(--surface-2);color:var(--ink-2)}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+
+  /* ---------- 鱼骨卡 ---------- */
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);
+    background:var(--surface);flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:12.5px;font-weight:600}
+  .card-h .d{font-size:11.5px;color:var(--muted)}
+  .card-h .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .card-b{padding:16px}
+  .card-b.tight{padding:0}
+
+  /* 时间滑块 */
+  .scrub{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--line);
+    background:#fff;flex-wrap:wrap}
+  .scrub .lab{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .scrub input[type=range]{flex:1;min-width:180px;accent-color:var(--accent);cursor:pointer;height:4px}
+  .scrub .cur{font-size:12px;font-weight:600;min-width:132px;text-align:right;font-variant-numeric:tabular-nums}
+  .scrub .cur small{display:block;font-weight:400;font-size:10.5px;color:var(--muted);margin-top:1px}
+
+  .fishwrap{padding:6px 10px 14px;overflow:auto}
+  svg.fish{display:block;width:100%;height:auto;min-width:760px}
+  svg.fish text{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",system-ui,sans-serif}
+
+  /* ---------- 变更清单 ---------- */
+  .notes{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+  .grp{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:14px;
+    transition:box-shadow .16s,border-color .16s}
+  .grp.hl{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .grp>h3{margin:0;padding:10px 14px;font-size:12px;font-weight:600;border-bottom:1px solid var(--line);
+    background:var(--surface);display:flex;align-items:center;gap:8px}
+  .grp>h3 .n{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--muted);font-weight:400}
+  .grp ul{margin:0;padding:0;list-style:none}
+  .grp li{padding:10px 14px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.7;color:var(--ink-2);
+    display:flex;gap:10px;align-items:flex-start}
+  .grp li:last-child{border-bottom:0}
+  .grp li code{font-family:var(--mono);font-size:11.5px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:3px;padding:0 4px;white-space:nowrap}
+  .grp li .b{flex:0 0 auto;width:4px;height:4px;border-radius:99px;background:var(--line-2);margin-top:8px}
+  .grp li b{color:var(--ink);font-weight:600}
+  .grp.breaking{border-color:#ecc9c6}
+  .grp.breaking>h3{background:var(--err-soft);color:var(--err);border-bottom-color:#f2cfcb}
+  .grp.breaking li .b{background:var(--err)}
+
+  .side{position:sticky;top:66px}
+  .side .box{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .side .box h4{margin:0 0 10px;font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.04em}
+  .side .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);
+    font-size:12px}
+  .side .kv:last-child{border-bottom:0}
+  .side .kv .k{color:var(--muted)}
+  .side .kv .v{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+  .side .lk{display:flex;align-items:center;gap:7px;padding:6px 0;font-size:12px;color:var(--ink-2);cursor:pointer}
+  .side .lk:hover{color:var(--accent)}
+  .side .lk .dot{width:5px;height:5px;border-radius:99px;background:var(--line-2)}
+  .side .lk:hover .dot{background:var(--accent)}
+
+  .note{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-radius:8px;padding:10px 12px;font-size:11.5px;color:var(--ink-2);line-height:1.7}
+  .note .k{flex:0 0 auto;width:3px;align-self:stretch;border-radius:2px;background:var(--accent)}
+  .note.warn{background:#fffaf2;border-color:#f0e0c4}
+  .note.warn .k{background:var(--warn)}
+
+  /* ---------- 说明抽屉 ---------- */
+  .sheet{position:fixed;top:0;right:0;bottom:0;width:540px;background:#fff;border-left:1px solid var(--line-2);
+    transform:translateX(100%);transition:transform .26s cubic-bezier(.22,1,.36,1);z-index:40;
+    overflow:auto;padding:24px 26px 70px;font-size:12.5px;line-height:1.75;color:var(--ink-2);
+    box-shadow:-8px 0 32px rgba(20,20,30,.08)}
+  .sheet.open{transform:translateX(0)}
+  .sheet h3{margin:0 0 4px;font-size:15px;color:var(--ink);font-weight:600}
+  .sheet .lead{color:var(--muted);font-size:12px;margin-bottom:18px}
+  .sheet h4{margin:22px 0 8px;font-size:12px;color:var(--ink);font-weight:600;
+    padding-top:16px;border-top:1px solid var(--line)}
+  .sheet h4:first-of-type{border-top:0;padding-top:0;margin-top:0}
+  .sheet p{margin:0 0 9px}
+  .sheet ul{margin:0 0 10px;padding-left:18px}
+  .sheet li{margin-bottom:6px}
+  .sheet code{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:3px;padding:0 4px}
+  .sheet table{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:10px}
+  .sheet th,.sheet td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  .sheet th{background:var(--surface);font-weight:600;color:var(--ink)}
+  .sheet .warn{background:#fffaf2;border:1px solid #f0e0c4;border-radius:7px;padding:10px 12px;margin:10px 0}
+  .sheet .warn b{color:var(--warn)}
+  .sheet .ok{background:#f4fbf7;border:1px solid #cfe8db;border-radius:7px;padding:10px 12px;margin:10px 0}
+  .sheet .ok b{color:var(--ok)}
+  .sheet .close{position:absolute;top:16px;right:20px;cursor:pointer;color:var(--muted);font-size:16px}
+  .sheet .close:hover{color:var(--ink)}
+
+  @media(max-width:1080px){
+    .notes{grid-template-columns:1fr}
+    .side{position:static}
+  }
+  @media(max-width:720px){
+    .rel h1{font-size:32px}
+    .wrap{padding:18px 14px 60px}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="brand"><span class="mark">A</span>apiduo</span>
+  <span class="nav">
+    <button class="on">发布公告</button>
+    <button>历史版本</button>
+    <button>订阅</button>
+  </span>
+  <span class="sp"></span>
+  <button class="btn" id="btn-sheet">设计说明</button>
+</div>
+
+<div class="wrap">
+
+  <!-- 版本头 -->
+  <div class="rel">
+    <div class="meta">
+      <span class="pill ok">已全量</span>
+      <span class="pill b">stable</span>
+      <span class="pill err">含 1 项破坏性变更</span>
+      <span style="font-size:11.5px;color:var(--muted);font-family:var(--mono)">2026-11-17 02:00 UTC+8</span>
+    </div>
+    <h1>v0.9.4<span class="stage">代号 · baseline</span></h1>
+    <div class="sub">
+      把端点能力表从渠道配置里抽出来，改成独立的负向表；同时统一了请求头的必填口径。
+      全部用户已在 11-17 02:00 完成全量，观察期至 11-20。
+    </div>
+    <div class="facts">
+      <div class="f">灰度开始<b>11-15 14:00</b></div>
+      <div class="f">全量完成<b>11-17 02:00</b></div>
+      <div class="f">观察期结束<b>11-20 02:00</b></div>
+      <div class="f">影响面<b>全部用户 · 3 项需操作</b></div>
+      <div class="f">回滚窗口<b>至 11-18 02:00</b></div>
+    </div>
+  </div>
+
+  <!-- 鱼骨图 -->
+  <div class="card">
+    <div class="card-h">
+      <h2>发布时间线 · 鱼骨图</h2>
+      <span class="d">上扇 = 内部动作，下扇 = 对外影响</span>
+      <span class="r"><span class="pill a" id="phase-pill">T-0 全量</span></span>
+    </div>
+    <div class="scrub">
+      <span class="lab">拖动查看阶段</span>
+      <input type="range" id="scrub" min="0" max="3" step="1" value="2">
+      <span class="cur" id="scrub-cur">11-17 02:00<small>T-0 · 全量</small></span>
+    </div>
+    <div class="fishwrap">
+      <svg class="fish" id="fish" viewBox="0 0 1240 620" role="img"
+           aria-label="发布时间线鱼骨图：主脊为时间轴，上扇为内部动作，下扇为对外影响"></svg>
+    </div>
+  </div>
+
+  <!-- 变更清单 -->
+  <div class="notes">
+    <div>
+      <div class="grp breaking" id="g-breaking">
+        <h3>破坏性变更<span class="n">3 项 · 需操作</span></h3>
+        <ul>
+          <li><span class="b"></span><div><b><code>X-Request-Id</code> 改为必填。</b>
+            未携带该头的请求将返回 <code>400</code>，不再自动生成。SDK 已内置，自行拼装的客户端需补。</div></li>
+          <li><span class="b"></span><div><b>Anthropic 模型名统一归一。</b>
+            <code>claude-3-5-sonnet-*</code> 系列的日期后缀不再透传，<code>model</code> 字符串请使用别名。
+            透传旧名仍可用一个版本，但计费按归一后的模型计价。</div></li>
+          <li><span class="b"></span><div><b>端点能力表默认拒绝。</b>
+            渠道未声明的端点将返回 <code>403</code>。自建渠道需要在渠道配置里显式声明能力。</div></li>
+        </ul>
+      </div>
+
+      <div class="grp" id="g-feat">
+        <h3>新增<span class="n">2 项</span></h3>
+        <ul>
+          <li><span class="b"></span><div><b><code>/v1/files</code> 端点。</b>
+            支持 <code>purpose</code> 声明，渠道侧的模型名单即白名单，不再依赖 <code>other_settings</code>。</div></li>
+          <li><span class="b"></span><div><b>端点级负向能力表。</b>
+            新增 <code>pkg/endpoint</code> 注册表，未声明的端点默认放行，声明后按表拒绝。</div></li>
+        </ul>
+      </div>
+
+      <div class="grp" id="g-improve">
+        <h3>改进<span class="n">2 项</span></h3>
+        <ul>
+          <li><span class="b"></span><div><b>灰度流程收敛到一次发布。</b>
+            灰度与全量不再各发一次公告，用同一条公告的生效窗口表达。</div></li>
+          <li><span class="b"></span><div><b>回滚不再重建实例。</b>
+            配置类变更支持热回滚，耗时从分钟级降到秒级。</div></li>
+        </ul>
+      </div>
+
+      <div class="grp" id="g-fix">
+        <h3>修复<span class="n">1 项</span></h3>
+        <ul>
+          <li><span class="b"></span><div>修复了 <code>batch</code> 接口在并发超过 8 时偶发重复计费的问题。</div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="box">
+        <h4>时间窗</h4>
+        <div class="kv"><span class="k">T-7 冻结</span><span class="v">11-10</span></div>
+        <div class="kv"><span class="k">T-2 灰度</span><span class="v">11-15 14:00</span></div>
+        <div class="kv"><span class="k">T-0 全量</span><span class="v">11-17 02:00</span></div>
+        <div class="kv"><span class="k">T+3 观察</span><span class="v">11-20 02:00</span></div>
+      </div>
+      <div class="box">
+        <h4>出问题怎么办</h4>
+        <div style="font-size:12px;line-height:1.75;color:var(--ink-2)">
+          11-18 02:00 前可整版回滚，配置热回滚，不重建实例。
+          <b style="color:var(--ink)">破坏性变更不随回滚撤销</b> —— 已下发的请求头校验会保留。
+        </div>
+      </div>
+      <div class="box">
+        <h4>本页目录</h4>
+        <div class="lk" data-go="g-breaking"><span class="dot"></span>破坏性变更（3）</div>
+        <div class="lk" data-go="g-feat"><span class="dot"></span>新增（2）</div>
+        <div class="lk" data-go="g-improve"><span class="dot"></span>改进（2）</div>
+        <div class="lk" data-go="g-fix"><span class="dot"></span>修复（1）</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<aside class="sheet" id="sheet">
+  <span class="close" id="sheet-close">✕</span>
+  <h3>为什么是鱼骨，而不是甘特图</h3>
+  <div class="lead">这份原型的核心判断：鱼骨图在这件事上成立，但只在特定前提成立。</div>
+
+  <h4>1. 鱼骨图原本不是画时间的</h4>
+  <p>石川图的结构是「结果 ← 多类原因」，主脊从结果倒推，骨头是原因分类（人 / 机 / 料 / 法 / 环）。
+  它没有刻度，分支位置是示意，不是比例。</p>
+  <p>把时间放上主脊，等于换了一个约定：<b>骨头的锚点位置同时表示「什么时候」</b>。
+  这个改写只在一种情况下成立 —— 各阶段是离散的、数量有限的（4 到 6 个节点）。
+  如果时间节点是连续的，或者需要精确到小时的等比例刻度，它立刻失效，那时候应该用甘特图或时间轴。</p>
+
+  <div class="warn">
+    <b>判断标准。</b>问一句：某个节点比其他节点晚了两天，图上要不要体现这个差距？
+    要 → 甘特图。不要，只想表达先后 → 鱼骨图。
+  </div>
+
+  <h4>2. 上下两扇解决的是发布公告最难写的事</h4>
+  <p>发布公告的读者分两类：内部想知道「我们做了什么」，外部想知道「我会不会受影响」。
+  常规写法是把这两件事混在一段列表里，读者要自己筛。</p>
+  <p>鱼骨图的上下分扇天然把这两类分开：</p>
+  <ul>
+    <li><b>上扇 = 动作</b>：切分支、灰度、全量 —— 内部视角</li>
+    <li><b>下扇 = 影响</b>：谁能看见、要不要改代码、有没有回退按钮 —— 外部视角</li>
+  </ul>
+  <p>这不是为了好看，是为了让外部读者只看下半张图。</p>
+
+  <h4>3. 破坏性变更必须单独出图例</h4>
+  <p>所有骨头一个颜色，等于声明「这些事同等重要」。实际不是：
+  3 项破坏性变更和 1 项 bugfix 放同一张图里，读者会按顺序读完，然后漏掉那 3 项。</p>
+  <p>所以破坏性的骨用红色，并在图头用一枚 <code>含 1 项破坏性变更</code> 的标签前置声明。
+  标签比颜色更可靠 —— 灰度打印或色盲读者也能分辨。</p>
+
+  <h4>4. 时间滑块的作用被低估了</h4>
+  <p>静态鱼骨图只能表达「有这几个阶段」。加上滑块后，同一个图形可以回答三个问题：</p>
+  <ul>
+    <li>现在走到哪了（当前阶段高亮，未到达的骨变淡）</li>
+    <li>这个阶段之前发生过什么</li>
+    <li>下一阶段要发生什么</li>
+  </ul>
+  <p>公告的访问高峰在发布前后 24 小时，那时读者最需要的就是「现在到哪了」。</p>
+
+  <div class="ok">
+    <b>落地建议。</b>鱼骨图由结构化数据渲染，不要让人在后台手绘：
+    <code>{ version, phases:[{t, at, actions[], impacts[], breaking[]}] }</code>。
+    图、清单、时间窗、订阅邮件四处共用这一份数据，避免图改了文字没改。
+  </div>
+
+  <h4>5. 不这么做的时候</h4>
+  <ul>
+    <li>只有 1–2 个变更项：不要画图，三行列表更清楚。</li>
+    <li>纯修复版本（patch）：没有时间窗，直接列 bug 编号。</li>
+    <li>需要精确时刻表（比如对齐某个外部截止时间）：甘特图或带刻度的横轴。</li>
+    <li>节点超过 7 个：主脊会挤，改成纵向时间轴。</li>
+  </ul>
+
+  <h4>6. 与前一版公告设计的关系</h4>
+  <p>这份是「公告的一种内容形态」，不是新的存储模型。它复用上一轮的
+  <code>announcements</code> 表，只是把 <code>content</code> 换成了结构化的发布数据：</p>
+  <table>
+    <thead><tr><th>上一轮字段</th><th>发布公告里的含义</th></tr></thead>
+    <tbody>
+      <tr><td><code>title</code></td><td><code>v0.9.4 发布：端点能力表独立</code></td></tr>
+      <tr><td><code>level</code></td><td>含破坏性变更 → <code>warning</code></td></tr>
+      <tr><td><code>starts_at</code></td><td>全量完成时刻，公告即刻可见</td></tr>
+      <tr><td><code>ends_at</code></td><td>观察期结束，到时自动从面板移除</td></tr>
+      <tr><td><code>placements</code></td><td><code>dashboard + popover</code>，不进横幅</td></tr>
+      <tr><td>新增 <code>release</code></td><td><code>{version, phases[], breaking[]}</code> 子结构</td></tr>
+    </tbody>
+  </table>
+  <p>也就是说：<b>鱼骨只是渲染器，不是新的对象类型。</b>公告仍然只有一张表，
+  发布公告是其中 <code>kind = release</code> 的一种。</p>
+</aside>
+
+<script>
+/* ============================================================
+   阶段数据
+   ============================================================ */
+const PHASES = [
+  {
+    key:'T-7', at:'11-10 18:00', label:'代码冻结', short:'冻结',
+    actions:['切出 rc.1 分支','依赖版本锁定','回归用例全绿'],
+    impacts:['无客户可见变更','文档开始起草']
+  },
+  {
+    key:'T-2', at:'11-15 14:00', label:'灰度', short:'灰度',
+    actions:['5% 租户放量','canary 指标对齐','回滚演练一次'],
+    impacts:['vip 分组先可见','可在设置里回退','不影响计费口径']
+  },
+  {
+    key:'T-0', at:'11-17 02:00', label:'全量', short:'全量',
+    actions:['剩余租户全量','文档与 SDK 同步','公告发布'],
+    impacts:['X-Request-Id 必填','模型名归一','端点能力表默认拒绝'],
+    breaking:true
+  },
+  {
+    key:'T+3', at:'11-20 02:00', label:'观察结束', short:'观察',
+    actions:['监控窗口关闭','回滚入口下线'],
+    impacts:['新口径固化','旧名兼容保留一版']
+  }
+];
+
+/* 每根骨挂在哪个阶段 */
+const BONES = [
+  {phase:0, side:'up',   title:'冻结'},
+  {phase:1, side:'up',   title:'灰度'},
+  {phase:2, side:'up',   title:'全量'},
+  {phase:3, side:'up',   title:'收口'},
+  {phase:0, side:'down', title:'无影响'},
+  {phase:1, side:'down', title:'灰度可见'},
+  {phase:2, side:'down', title:'破坏性', danger:true},
+  {phase:3, side:'down', title:'固化'}
+];
+
+/* ============================================================
+   布局常量
+   ============================================================ */
+const W = 1240, H = 620;
+const SPINE_Y = 310;
+const SPINE_X0 = 150, SPINE_X1 = 1170;
+const ANCHORS = [330, 570, 810, 1050];   // 四个阶段在主脊上的位置
+const STEM = 34;        // 先垂直出的高度，让上下扇在锚点处分叉
+const DX = 138, DY = 148;  // 斜段偏移
+
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+let cur = 2;   // 当前阶段索引
+const _q = new URLSearchParams(location.search);
+if (_q.get('t') !== null) {
+  const t = Number(_q.get('t'));
+  if (t >= 0 && t <= 3) cur = t;
+}
+
+/* ============================================================
+   绘制
+   ============================================================ */
+function boneGeometry(b){
+  const xa = ANCHORS[b.phase];
+  const dir = b.side === 'up' ? -1 : 1;
+  const y0 = SPINE_Y + dir * 8;
+  const y1 = SPINE_Y + dir * (8 + STEM);
+  const y2 = y1 + dir * DY;
+  const x2 = xa - DX;
+  return {xa, y0, y1, y2, x2, dir};
+}
+
+function itemPos(g, t){
+  return {
+    x: g.xa + (g.x2 - g.xa) * t,
+    y: g.y1 + (g.y2 - g.y1) * t
+  };
+}
+
+function buildSVG(){
+  const p = PHASES;
+  let s = '';
+
+  /* --- 主脊 --- */
+  s += `<defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#17171c"/>
+    </marker>
+    <marker id="arwa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4f46e5"/>
+    </marker>
+  </defs>`;
+
+  s += `<line x1="${SPINE_X0}" y1="${SPINE_Y}" x2="${SPINE_X1 - 12}" y2="${SPINE_Y}"
+    stroke="#17171c" stroke-width="2.5" marker-end="url(#arw)"/>`;
+  s += `<text x="${SPINE_X1 - 6}" y="${SPINE_Y - 12}" font-size="12.5" font-weight="600"
+    fill="#17171c" text-anchor="end">v0.9.4 生效</text>`;
+
+  /* 主脊左端的小起点 */
+  s += `<circle cx="${SPINE_X0}" cy="${SPINE_Y}" r="4" fill="#17171c"/>`;
+  s += `<text x="${SPINE_X0 - 6}" y="${SPINE_Y - 14}" font-size="11" fill="#8b8b96" text-anchor="start">发布准备</text>`;
+
+  /* --- 阶段刻度 --- */
+  ANCHORS.forEach((x, i) => {
+    const on = i <= cur;
+    const isNow = i === cur;
+    s += `<line x1="${x}" y1="${SPINE_Y - 5}" x2="${x}" y2="${SPINE_Y + 5}"
+      stroke="${on ? '#17171c' : '#d6d6db'}" stroke-width="2"/>`;
+    s += `<circle cx="${x}" cy="${SPINE_Y}" r="${isNow ? 6 : 4}"
+      fill="${isNow ? '#4f46e5' : on ? '#17171c' : '#fff'}"
+      stroke="${isNow ? '#4f46e5' : on ? '#17171c' : '#d6d6db'}" stroke-width="2"/>`;
+    s += `<text x="${x + 15}" y="${SPINE_Y + 23}" font-size="10.5" font-family="ui-monospace,Menlo,monospace"
+      fill="${isNow ? '#4f46e5' : '#8b8b96'}" text-anchor="start" font-weight="${isNow ? 700 : 400}">${p[i].key}</text>`;
+    s += `<text x="${x + 15}" y="${SPINE_Y + 41}" font-size="11" fill="${on ? '#4a4a55' : '#b0b0b9'}"
+      text-anchor="start">${p[i].at}</text>`;
+  });
+
+  /* 当前时刻的竖直参考线 */
+  const nx = ANCHORS[cur];
+  s += `<line x1="${nx}" y1="${SPINE_Y - 8}" x2="${nx}" y2="${SPINE_Y + 8}" stroke="#4f46e5" stroke-width="0"/>`;
+
+  /* --- 骨 --- */
+  BONES.forEach((b, bi) => {
+    const g = boneGeometry(b);
+    const ph = p[b.phase];
+    const reached = b.phase <= cur;
+    const active = b.phase === cur;
+    const items = b.side === 'up' ? ph.actions : ph.impacts;
+
+    const col = b.danger ? '#c02a20' : reached ? '#17171c' : '#c9c9d2';
+    const fade = reached ? 1 : 0.45;
+    const boneCol = active ? (b.danger ? '#c02a20' : '#4f46e5') : col;
+    const sw = active ? 2 : 1.4;
+
+    /* 骨线：锚点 → 垂直短段 → 斜段 */
+    s += `<g class="bone" data-phase="${b.phase}" data-side="${b.side}" data-danger="${!!b.danger}" opacity="${fade}">`;
+    s += `<polyline points="${g.xa},${SPINE_Y} ${g.xa},${g.y1} ${g.x2},${g.y2}"
+      fill="none" stroke="${boneCol}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+    /* 骨端类别名 */
+    const labelY = b.side === 'up' ? g.y2 - 12 : g.y2 + 22;
+    s += `<text x="${g.x2}" y="${labelY}" font-size="12.5" font-weight="600" paint-order="stroke"
+      stroke="#fff" stroke-width="4" stroke-linejoin="round"
+      fill="${b.danger ? '#c02a20' : reached ? '#17171c' : '#8b8b96'}"
+      text-anchor="middle">${esc(b.title)}</text>`;
+
+    /* 子项 */
+    const ts = items.length === 1 ? [0.62] : items.length === 2 ? [0.44, 0.76] : [0.3, 0.55, 0.8];
+    items.forEach((it, ii) => {
+      const pt = itemPos(g, ts[ii]);
+      /* 小刺 */
+      s += `<line x1="${pt.x}" y1="${pt.y}" x2="${pt.x + 7}" y2="${pt.y}" stroke="${boneCol}" stroke-width="1.2"/>`;
+      s += `<text x="${pt.x + 12}" y="${pt.y + 4}" font-size="12" paint-order="stroke"
+        stroke="#fff" stroke-width="3.5" stroke-linejoin="round"
+        fill="${b.danger ? '#c02a20' : reached ? '#4a4a55' : '#9a9aa6'}">${esc(it)}</text>`;
+    });
+    s += `</g>`;
+  });
+
+  /* --- 破坏性提示框 --- */
+  const bx = ANCHORS[2] - DX - 30, by = SPINE_Y + 8 + STEM + DY + 62;
+  s += `<g opacity="${cur >= 2 ? 1 : 0.4}">
+    <rect x="${bx - 6}" y="${by - 16}" width="250" height="30" rx="5" fill="#fdeceb" stroke="#ecc9c6"/>
+    <text x="${bx + 4}" y="${by + 4}" font-size="11.5" font-weight="600" fill="#c02a20">
+      3 项需客户改代码</text>
+  </g>`;
+
+  /* --- 图例 --- */
+  const lx = 150, ly = H - 34;
+  s += `<g font-size="11" fill="#8b8b96">
+    <line x1="${lx}" y1="${ly}" x2="${lx + 20}" y2="${ly}" stroke="#17171c" stroke-width="2"/>
+    <text x="${lx + 26}" y="${ly + 4}">已发生</text>
+    <line x1="${lx + 88}" y1="${ly}" x2="${lx + 108}" y2="${ly}" stroke="#4f46e5" stroke-width="2"/>
+    <text x="${lx + 114}" y="${ly + 4}">当前阶段</text>
+    <line x1="${lx + 186}" y1="${ly}" x2="${lx + 206}" y2="${ly}" stroke="#c02a20" stroke-width="2"/>
+    <text x="${lx + 212}" y="${ly + 4}">破坏性变更</text>
+    <line x1="${lx + 302}" y1="${ly}" x2="${lx + 322}" y2="${ly}" stroke="#c9c9d2" stroke-width="1.4"/>
+    <text x="${lx + 328}" y="${ly + 4}">未到达</text>
+  </g>`;
+
+  return s;
+}
+
+function render(){
+  const svg = document.getElementById('fish');
+  svg.innerHTML = buildSVG();
+
+  document.getElementById('phase-pill').textContent = `${PHASES[cur].key} ${PHASES[cur].label}`;
+  document.getElementById('scrub-cur').innerHTML =
+    `${PHASES[cur].at}<small>${PHASES[cur].key} · ${PHASES[cur].label}</small>`;
+
+  /* 骨头交互 */
+  svg.querySelectorAll('.bone').forEach(g => {
+    g.style.cursor = 'pointer';
+    g.addEventListener('mouseenter', () => {
+      if (g.dataset.side === 'down' && g.dataset.danger === 'true') hl('g-breaking');
+    });
+    g.addEventListener('mouseleave', () => clearHl());
+    g.addEventListener('click', () => {
+      const target = g.dataset.danger === 'true' ? 'g-breaking'
+        : g.dataset.phase === '0' || g.dataset.phase === '1' ? 'g-improve' : 'g-feat';
+      scrollTo(target);
+    });
+  });
+}
+
+function hl(id){
+  document.querySelectorAll('.grp').forEach(g => g.classList.remove('hl'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('hl');
+}
+function clearHl(){ document.querySelectorAll('.grp').forEach(g => g.classList.remove('hl')); }
+function scrollTo(id){
+  const el = document.getElementById(id);
+  if (!el) return;
+  hl(id);
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  setTimeout(() => el.classList.remove('hl'), 1600);
+}
+
+/* ============================================================
+   交互
+   ============================================================ */
+const scrub = document.getElementById('scrub');
+scrub.value = cur;
+scrub.addEventListener('input', e => {
+  cur = Number(e.target.value);
+  render();
+});
+
+document.querySelectorAll('.side .lk').forEach(el => {
+  el.addEventListener('click', () => scrollTo(el.dataset.go));
+});
+
+document.getElementById('btn-sheet').onclick = () => document.getElementById('sheet').classList.toggle('open');
+document.getElementById('sheet-close').onclick = () => document.getElementById('sheet').classList.remove('open');
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('sheet').classList.remove('open');
+  if (e.key === 'ArrowRight' && cur < PHASES.length - 1) { cur++; scrub.value = cur; render(); }
+  if (e.key === 'ArrowLeft' && cur > 0) { cur--; scrub.value = cur; render(); }
+});
+
+render();
+if (_q.get('sheet') === '1') document.getElementById('sheet').classList.add('open');
+</script>
+</body>
+</html>
