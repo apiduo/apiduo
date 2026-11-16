@@ -32,6 +32,7 @@ type apiduoModule struct {
 // 「谁先注册」交给编译器；而这个顺序要能在代码里一眼读到。
 var apiduoModules = []apiduoModule{
 	{"agent-key", registerApiduoAgentKeys},
+	{"announcement", registerApiduoAnnouncement},
 	{"appearance", registerApiduoAppearance},
 	{"dynamic-nav", registerApiduoDynamicNav},
 	{"sk-analytics", registerApiduoSkAnalytics},
@@ -74,6 +75,20 @@ func registerApiduoAgentKeys(g *gin.RouterGroup) {
 			agentKeyRoute.POST("", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("access-token"), controller.CreateAgentKey)
 			agentKeyRoute.DELETE("/:id", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("access-token"), controller.RevokeAgentKey)
 		}
+	}
+}
+
+// 公告管理：根级运营动作，与 /api/option 同一风险等级，因此仍用 RootAuth。
+// 单独开资源而不是复用 option:write —— agent key 会长期持有这个 scope，
+// 给它 option:write 等于把 OAuth 密钥和支付配置一起交出去。
+func registerApiduoAnnouncement(g *gin.RouterGroup) {
+	group := g.Group("/announcements")
+	group.Use(middleware.RootAuth())
+	{
+		group.GET("", controller.ListAnnouncements)
+		group.POST("", controller.CreateAnnouncement)
+		group.PATCH("/:id", controller.UpdateAnnouncement)
+		group.DELETE("/:id", controller.DeleteAnnouncement)
 	}
 }
 
