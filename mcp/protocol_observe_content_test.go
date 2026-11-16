@@ -2,12 +2,13 @@ package mcp
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
-	"github.com/stretchr/testify/require"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -17,9 +18,13 @@ import (
 // 服务质量的「错误聚类」根因列显示的就是这个工具名，毫无诊断价值。
 // 真正的错误在 other.admin_info.upstream_error 里，但聚类是按 content 分组的。
 func TestWriteObservationPutsErrorInContent(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	// 用独立的库名：file::memory:?cache=shared 是所有测试共享的，
+	// 本地能过只是因为别的测试先建了 users 表，CI 里单跑就挂。
+	name := "observe-" + strings.ReplaceAll(t.Name(), "/", "-")
+	db, err := gorm.Open(sqlite.Open("file:"+name+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	// Log 之外还要建 User：createLog 在某些路径会按 user_id 反查用户名
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.User{}))
 	prev := model.LOG_DB
 	model.LOG_DB = db
 	t.Cleanup(func() { model.LOG_DB = prev })

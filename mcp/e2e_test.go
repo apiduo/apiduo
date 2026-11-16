@@ -648,8 +648,11 @@ func TestObservationRowHasRequestId(t *testing.T) {
 	if row.Quota != 0 {
 		t.Errorf("观察行 quota 必须为 0，否则统计与 relay 的计费行重复，实际 %d", row.Quota)
 	}
-	if row.Type != logTypeConsume {
-		t.Errorf("成功样本应为消费类型，实际 %d", row.Type)
+	// 成功样本用独立的观察类型，不与真实消费日志混在一起：
+	// 一次成功的 MCP 调用在库里本来就有 relay 那行计费记录，
+	// 这行再记 type=2 会让日志页同一笔请求显示两遍。
+	if row.Type != logTypeMCPObservation {
+		t.Errorf("成功样本应为观察类型 %d，实际 %d", logTypeMCPObservation, row.Type)
 	}
 }
 
