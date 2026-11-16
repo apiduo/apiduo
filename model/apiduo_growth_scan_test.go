@@ -468,3 +468,36 @@ func TestRecordChangeIsNonBlocking(t *testing.T) {
 		return n > 0
 	}, 3*time.Second, 50*time.Millisecond, "异步写入应最终落库")
 }
+
+// 归一化判据：HTTP 状态码是分类信息，不能被当普通数字抹掉。
+// 线上实测：status_code=502 与 503 被合并成同一条
+// "status_code=, upstream error, please retry later"，两个不同根因合成一簇。
+func TestNormalizeKeepsHTTPStatus(t *testing.T) {
+	a := normalizeErrorMessage("status_code=502, upstream error, please retry later")
+	b := normalizeErrorMessage("status_code=503, upstream error, please retry later")
+
+	// 保留错误类别（4xx/5xx）而不是具体码：
+	// 502 与 503 通常是同一根因（上游挂了，随机返回），合成一簇是对的；
+	// 但 4xx（我们的参数错）与 5xx（上游的错）必须分开——这两类
+	// 要分别找不同的人处理。
+	require.Equal(t, "status_code=SERVERERROR, upstream error, please retry later", a)
+	require.Equal(t, a, b, "502 与 503 同属 5xx，应合并")
+
+	// 4xx 与 5xx 必须区分
+	e := normalizeErrorMessage("status_code=404, model not found")
+	f := normalizeErrorMessage("status_code=502, model not found")
+	require.NotEqual(t, e, f, "404 与 502 是两个不同类别")
+
+	// 样本里同时出现 502 与 503 时，归一后也应当区分
+	c := normalizeErrorMessage("status_code=500, upstream error")
+	d := normalizeErrorMessage("status_code=404, upstream error")
+	require.NotEqual(t, c, d, "500 与 404 不同类")
+
+	// 不带状态码的错误不受影响
+	require.Equal(t, "upstream error, please retry later",
+		normalizeErrorMessage("upstream error, please retry later"))
+
+	// 依赖关系：状态码保护要发生在数字抹除之前。
+	// 如果顺序反了，会先变成 "status_code=, ..."，保护规则再也匹配不到。
+	require.NotContains(t, a, "502", "具体码被类别替代")
+}

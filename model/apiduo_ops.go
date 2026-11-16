@@ -400,6 +400,33 @@ func normalizeErrorMessage(s string) string {
 	// 「数字+单位」保留单位形状：30s 与 45s 是同一个根因，
 	// 但如果直接把数字抹掉会剩一个孤零零的 s，读起来像脏数据。
 	s = durationPattern.ReplaceAllString(s, "N${2}")
+	// HTTP 状态码归一成类别（4xx/5xx）而不是抹掉或保留原值：
+	// 抹掉会让 404 和 502 混成一簇（一个是我们的参数错、一个是上游故障，
+	// 要找不同的人）；保留原值又会把 502/503 碎成两簇（同一根因）。
+	// 类别既保住可操作性，又不碎片化。
+	// 类别名不能含数字：后面还有一道「残余数字」规则，
+	// "5xx" 里的 5 会被它吃掉，最后只剩 "xx"（线上就是这样翻车的）。
+	// 类别名一个数字都不能带：后面还有一道「残余数字」规则，
+	// "5xx" 里的 5、"5ERRORCLASS" 里的 5 都会被它吃掉，只剩 "xx" / "ERRORCLASS"。
+	// 线上第一次上线就是这样翻车的——status_code 全变成了空。
+	s = httpStatusPattern.ReplaceAllStringFunc(s, func(m string) string {
+		cut := strings.LastIndexAny(m, "= ")
+		if cut < 0 || len(m)-cut-1 != 3 {
+			return m
+		}
+		var class string
+		switch m[cut+1] {
+		case '2':
+			class = "OKSTATUS"
+		case '3':
+			class = "REDIRECTSTATUS"
+		case '4':
+			class = "CLIENTERROR"
+		default:
+			class = "SERVERERROR"
+		}
+		return m[:cut+1] + class
+	})
 	// 剩余所有独立数字（含小数）
 	s = numberPattern.ReplaceAllString(s, "")
 	s = strings.Join(strings.Fields(s), " ")
@@ -412,7 +439,10 @@ var (
 	longDigitPattern = regexp.MustCompile(`\b[0-9a-f]{12,}\b`)
 	moneyPattern     = regexp.MustCompile(`\$\s*\d+(?:\.\d+)?`)
 	durationPattern  = regexp.MustCompile(`(\d+(?:\.\d+)?)\s*(ms|s|sec|m|min|h|hour)\b`)
-	numberPattern    = regexp.MustCompile(`\d+(?:\.\d+)?`)
+	// 匹配 status_code=502 / http 503 / HTTP 500：前缀进组 1、类别进组 2、
+	// 末两位丢掉。替换成 CLIENTERROR / SERVERERROR 这类不含数字的标记。
+	httpStatusPattern = regexp.MustCompile(`(status_code\s*=\s*|https?\s+)([1-5])\d{2}\b`)
+	numberPattern     = regexp.MustCompile(`\d+(?:\.\d+)?`)
 )
 
 // ScanErrorClusters 按归一化消息聚类，按影响请求数倒序。
@@ -793,11 +823,15 @@ const chNormalizeExpr = `trimBoth(replaceRegexpAll(
         replaceRegexpAll(
           replaceRegexpAll(
             replaceRegexpAll(
-              replaceRegexpAll(lower(content), '\\(request id: [^)]*\\)', '(request id: )'),
-              '\\d{1,3}(?:\\.\\d{1,3}){3}:\\d+', '..:'),
-            '\\b[0-9a-f]{12,}\\b', ''),
-          '\\$\\s*\\d+(?:\\.\\d+)?', '$'),
-        '(\\d+(?:\\.\\d+)?)\\s*(ms|s|sec|m|min|h|hour)\\b', 'N\\2'),
+              replaceRegexpAll(
+                replaceRegexpAll(
+                  replaceRegexpAll(lower(content), '\\(request id: [^)]*\\)', '(request id: )'),
+                  '\\d{1,3}(?:\\.\\d{1,3}){3}:\\d+', '..:'),
+                '\\b[0-9a-f]{12,}\\b', ''),
+              '\\$\\s*\\d+(?:\\.\\d+)?', '$'),
+            '(\\d+(?:\\.\\d+)?)\\s*(ms|s|sec|m|min|h|hour)\\b', 'N\\2'),
+          '(status_code\\s*=\\s*|https?\\s+)5\\d{2}\\b', '\\1SERVERERROR'),
+        '(status_code\\s*=\\s*|https?\\s+)4\\d{2}\\b', '\\1CLIENTERROR'),
       '\\d+(?:\\.\\d+)?', ''),
     '\\s+', ' '))`
 
