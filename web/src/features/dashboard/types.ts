@@ -257,6 +257,21 @@ export interface ProcessedUserChartData {
 // Announcement Types
 // ============================================================================
 
+/**
+ * 发布公告时间线上的一个阶段。
+ *
+ * `at` 用 RFC3339，与 `publishDate` 同一格式；后端 `validateAnnouncementPhases`
+ * 按这个格式校验。前端只显示到分钟，完整时刻保留在数据里。
+ *
+ * 阶段不需要单独存「已完成 / 进行中」，这两态由 `at` 与当前时间比较得出 ——
+ * 存状态就要有人定时改它，定时任务一停状态就错。
+ */
+export interface AnnouncementPhase {
+  at: string
+  title: string
+  desc?: string
+}
+
 export interface AnnouncementItem {
   id?: number
   title?: string
@@ -264,6 +279,8 @@ export interface AnnouncementItem {
   publishDate?: string
   type?: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
+  /** 可选时间线。存量公告没有这个字段，组件遇到就不渲染。 */
+  phases?: AnnouncementPhase[]
 }
 
 // ============================================================================

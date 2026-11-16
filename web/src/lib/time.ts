@@ -169,6 +169,17 @@ export function formatShortDateTime(date: Date): string {
 }
 
 /**
+ * Format Date object as MM-DD for axes and timelines.
+ *
+ * A timeline plots phases by day, not by minute: putting `HH:mm` on every node
+ * adds eighteen characters of noise and hides the only thing that matters,
+ * which is the order and spacing of the phases.
+ */
+export function formatMonthDay(date: Date): string {
+  return dayjs(date).format('MM-DD')
+}
+
+/**
  * Format timestamp for chart display based on time granularity
  * @param timestamp Unix timestamp in seconds
  * @param granularity Time granularity: 'hour', 'day', or 'week'

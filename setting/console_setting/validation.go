@@ -206,6 +206,50 @@ func validateAnnouncements(announcementsStr string) error {
 				return common.NewMessage("Announcement #{{index}} note cannot exceed 100 characters", map[string]any{"index": i + 1})
 			}
 		}
+		if phases, exists := ann["phases"]; exists {
+			if err := validateAnnouncementPhases(phases, i+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateAnnouncementPhases checks the optional timeline of one announcement.
+//
+// A phase is {at: RFC3339, title, desc?}. The list is capped at 8 because the
+// dashboard renders it inside a 288px panel — beyond that the reader can no
+// longer see the whole sequence, which is the only thing a timeline is for.
+func validateAnnouncementPhases(raw any, index int) error {
+	phaseList, ok := raw.([]any)
+	if !ok {
+		return common.NewMessage("Announcement #{{index}} phases must be an array", map[string]any{"index": index})
+	}
+	if len(phaseList) > 8 {
+		return common.NewMessage("Announcement #{{index}} cannot have more than 8 phases", map[string]any{"index": index})
+	}
+	for j, item := range phaseList {
+		phase, ok := item.(map[string]any)
+		if !ok {
+			return common.NewMessage("Announcement #{{index}} phase #{{phase}} must be an object", map[string]any{"index": index, "phase": j + 1})
+		}
+		at, ok := phase["at"].(string)
+		if !ok || at == "" {
+			return common.NewMessage("Announcement #{{index}} phase #{{phase}} is missing the at field", map[string]any{"index": index, "phase": j + 1})
+		}
+		if _, err := time.Parse(time.RFC3339, at); err != nil {
+			return common.NewMessage("Announcement #{{index}} phase #{{phase}} has an invalid at format", map[string]any{"index": index, "phase": j + 1})
+		}
+		title, ok := phase["title"].(string)
+		if !ok || title == "" {
+			return common.NewMessage("Announcement #{{index}} phase #{{phase}} is missing the title field", map[string]any{"index": index, "phase": j + 1})
+		}
+		if exceedsMaxCharacters(title, 60) {
+			return common.NewMessage("Announcement #{{index}} phase #{{phase}} title cannot exceed 60 characters", map[string]any{"index": index, "phase": j + 1})
+		}
+		if desc, ok := phase["desc"].(string); ok && exceedsMaxCharacters(desc, 200) {
+			return common.NewMessage("Announcement #{{index}} phase #{{phase}} description cannot exceed 200 characters", map[string]any{"index": index, "phase": j + 1})
+		}
 	}
 	return nil
 }

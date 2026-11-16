@@ -25,6 +25,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { ANNOUNCEMENT_LEVEL_BADGES } from '@/lib/colors'
 import { formatDateTimeObject } from '@/lib/time'
 
+import type { AnnouncementPhase } from '../../types'
+import { AnnouncementTimeline } from './announcement-timeline'
+
 interface AnnouncementDetailModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -35,6 +38,7 @@ interface AnnouncementDetailModalProps {
     publishDate?: string
     extra?: string
     type?: string
+    phases?: AnnouncementPhase[]
   } | null
 }
 
@@ -81,6 +85,12 @@ export function AnnouncementDetailModal({
             <div>
               <h4 className='mb-2 font-medium'>{t('Content')}</h4>
               <RichContent breaks content={announcement.content} />
+            </div>
+          )}
+          {announcement?.phases && announcement.phases.length > 0 && (
+            <div>
+              <h4 className='mb-2 font-medium'>{t('Timeline')}</h4>
+              <AnnouncementTimeline phases={announcement.phases} />
             </div>
           )}
           {announcement?.extra && (
