@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>公告面板 · ZenMux 风格对照</title>
+<style>
+  /* 取自 web/src/styles/theme.css 的真实 token */
+  :root{
+    --radius: 1rem;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.49 0 0);
+    --border: oklch(0.93 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --success: oklch(0.596 0.145 163.225);
+    --warning: oklch(0.681 0.162 75.834);
+    --info: oklch(0.588 0.158 241.966);
+    --page: #f5f5f4;
+  }
+  .dark{
+    --background: oklch(0.235 0 0);
+    --foreground: oklch(0.965 0 0);
+    --card: oklch(0.285 0 0);
+    --muted: oklch(0.305 0 0);
+    --muted-foreground: oklch(0.78 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --destructive: oklch(0.704 0.191 22.216);
+    --success: oklch(0.696 0.17 162.48);
+    --warning: oklch(0.769 0.188 70.08);
+    --info: oklch(0.613 0.14 239.919);
+    --page: #1a1a1a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:32px 28px 60px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",system-ui,sans-serif;
+    background:var(--page);color:var(--foreground);
+    -webkit-font-smoothing:antialiased;
+  }
+  .head{max-width:1320px;margin:0 auto 26px}
+  .head h1{margin:0 0 6px;font-size:22px;font-weight:700;letter-spacing:-.01em}
+  .head p{margin:0;font-size:13px;color:var(--muted-foreground);line-height:1.6}
+  .grid{
+    max-width:1320px;margin:0 auto;
+    display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:start;
+  }
+  .col{min-width:0}  /* nowrap 标题会让 1fr 撑破网格 */
+  .col > .lbl{
+    font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted-foreground);margin:0 0 8px 2px;
+  }
+  .col > .lbl b{color:var(--foreground);font-weight:600;text-transform:none;letter-spacing:0;font-size:12px}
+  /* 暗色面板需要一个容器背景，否则会贴在亮色页面上 */
+  .darkwrap{
+    margin-top:14px;padding:14px;border-radius:20px;background:#1a1a1a;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .darkwrap::before{
+    content:'暗色';font-size:10px;font-weight:600;letter-spacing:.08em;
+    color:#7a7a7a;padding-left:2px;
+  }
+
+  /* ---------- 面板骨架：与 PanelWrapper 一致 ---------- */
+  .panel{
+    border:1px solid var(--border);border-radius:var(--radius);
+    background:var(--card);overflow:hidden;min-width:0;
+    box-shadow:0 1px 2px 0 rgb(0 0 0 / 0.03);
+  }
+  .dark .panel{box-shadow:none}
+  .phead{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
+    padding:12px 20px;border-bottom:1px solid var(--border);
+  }
+  .ptitle{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;line-height:1.2}
+  .ico{
+    width:22px;height:22px;border-radius:6px;display:grid;place-items:center;flex:0 0 auto;
+    background:color-mix(in oklab,var(--warning) 16%,transparent);
+    color:var(--warning);
+  }
+  .ico svg{width:13px;height:13px}
+  .pdesc{font-size:12px;color:var(--muted-foreground);margin-top:4px;line-height:1.3;font-weight:400}
+  .unread{
+    font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;
+    background:var(--foreground);color:var(--background);flex:0 0 auto;
+    font-variant-numeric:tabular-nums;margin-top:1px;
+  }
+  .list{height:auto}  /* 原为 h-72=288px，此处放开以便看全五种级别 */
+
+  /* ---------- 条目共用骨架 ---------- */
+  .item{
+    display:block;width:100%;text-align:left;border:0;background:transparent;
+    cursor:pointer;font-family:inherit;color:inherit;
+    padding:12px 20px;position:relative;
+  }
+  .item + .item{border-top:1px solid var(--border)}
+  .item:hover{background:color-mix(in oklab,var(--muted) 55%,transparent)}
+  .item:focus-visible{outline:2px solid var(--info);outline-offset:-2px}
+  .t{
+    margin:0;font-size:14px;font-weight:500;line-height:1.45;
+    color:var(--foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .meta{display:flex;align-items:center;gap:8px;margin-top:3px}
+  .time{
+    font-size:11.5px;color:var(--muted-foreground);line-height:1.4;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* ---------- A：文字标签（右对齐） ---------- */
+  .a .t{padding-right:52px}
+  .a .lv{
+    position:absolute;top:12px;right:20px;font-size:11.5px;font-weight:600;
+    line-height:1.45;letter-spacing:.01em;
+  }
+  .lv.error{color:color-mix(in oklab,var(--destructive) 90%,var(--foreground))}
+  .lv.warning{color:color-mix(in oklab,var(--warning) 74%,var(--foreground))}
+  .lv.success{color:color-mix(in oklab,var(--success) 80%,var(--foreground))}
+  .lv.ongoing{color:color-mix(in oklab,var(--info) 78%,var(--foreground))}
+  .lv.default{color:var(--muted-foreground);font-weight:500}
+  .a .dot{
+    display:inline-block;width:5px;height:5px;border-radius:50%;
+    margin-right:5px;vertical-align:middle;position:relative;top:-1px;
+  }
+  .dot.error{background:var(--destructive)}
+  .dot.warning{background:var(--warning)}
+  .dot.success{background:var(--success)}
+  .dot.ongoing{background:var(--info)}
+  .dot.default{background:var(--muted-foreground);opacity:.75}
+
+  /* ---------- B：胶囊标签（元信息行） ---------- */
+  .b .pill{
+    display:inline-flex;align-items:center;gap:4px;
+    font-size:11px;font-weight:600;line-height:1;padding:3.5px 8px;border-radius:999px;
+  }
+  .pill.error{background:color-mix(in oklab,var(--destructive) 12%,transparent);color:var(--destructive)}
+  .pill.warning{background:color-mix(in oklab,var(--warning) 16%,transparent);color:color-mix(in oklab,var(--warning) 78%,var(--foreground))}
+  .pill.success{background:color-mix(in oklab,var(--success) 12%,transparent);color:var(--success)}
+  .pill.ongoing{background:color-mix(in oklab,var(--info) 12%,transparent);color:var(--info)}
+  .pill.default{background:var(--muted);color:var(--muted-foreground)}
+
+  /* ---------- D：级别并入元信息行 ---------- */
+  .d .metaline{display:flex;align-items:center;gap:6px;margin-top:3px}
+  .d .sep{color:var(--muted-foreground);opacity:.45;font-size:10px}
+  .d .lv2{font-size:11.5px;font-weight:600;line-height:1.4}
+
+  /* ---------- C：现状色条 ---------- */
+  .c .item{display:flex;align-items:stretch;gap:12px}
+  .c .bar{flex:0 0 auto;border-radius:999px}
+  .c .bar.error{width:5px;background:oklch(0.64 0.22 27);border-radius:2px}
+  .c .bar.warning{width:3px;background:oklch(0.72 0.165 76)}
+  .c .bar.success{width:3px;background:oklch(0.66 0.15 163)}
+  .c .bar.ongoing{width:3px;background:oklch(0.67 0.15 243)}
+  .c .bar.default{width:3px;background:oklch(0.62 0 0)}
+  .c .body{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+
+  /* 说明 */
+  .notes{max-width:1320px;margin:34px auto 0;display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .note{font-size:12.5px;line-height:1.72;color:var(--muted-foreground);margin:0}
+  .note b{color:var(--foreground);font-weight:600}
+  .note code{
+    font-family:ui-monospace,monospace;font-size:11.5px;
+    background:var(--muted);padding:1px 5px;border-radius:4px;color:var(--foreground);
+  }
+  @media (max-width:1000px){
+    .grid,.notes{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="head">
+  <h1>公告面板 · 三种级别表达</h1>
+  <p>同一套面板骨架（<code style="font-family:ui-monospace,monospace">rounded-[16px] · 1px border · bg-card</code>），只换级别怎么标。左为亮色，下为暗色。</p>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="notes">
+  <p class="note"><b>A · 文字标签。</b>ZenMux 的做法。级别是<b>文字</b>不是色块，只在「默认」级别前面加一个 5px 圆点。颜色只用于文字本身，占面积极小，所以不存在「太暗」的问题。标题右侧固定留 52px，五行文字全部左对齐。</p>
+  <p class="note"><b>B · 胶囊标签。</b>级别有底色，扫读最快，但每条公告变成「两块颜色」。在 h-72 的滚动区里，视觉噪音明显高于 A。<code>warning</code> 的琥珀在浅底上对比不足，文字色需要往深混。</p>
+  <p class="note"><b>D · 级别并入元信息行。</b>标题独占一行，<code>时间 · 级别</code> 在下。<b>两行都左对齐，右侧完全干净</b>，标题短的时候也不会出现 A 那种大片空白。代价是级别的视觉权重降低 —— 在公告面板里这是对的：用户扫标题就够了。</p>
+  <p class="note"><b>C · 现状色条。</b>左侧竖条。实测每条高度 A 63.8px / B 65.8px / C 66.8px，<b>三者都只放得下 4.3–4.5 条</b>，换标签形态并不能省出空间。2–5px 的细线在任何主题下都偏弱，加粗到 5px 又抢走标题的注意力。<b>ZenMux 全站没有用色块表达状态</b>，它的强调色只出现在链接和主按钮上。</p>
+</div>
+
+<script>
+const ITEMS = [
+  { lv: 'error',   label: '错误',   title: '计费单位调整为按 token 精确计费', date: '2026-11-14 00:00' },
+  { lv: 'warning', label: '警告',   title: '11/20 02:00–04:00 计划维护，请求可能重试', date: '2026-11-13 09:00' },
+  { lv: 'success', label: '成功',   title: 'DeepSeek-V4 已上线，支持 1M 上下文', date: '2026-11-12 10:00' },
+  { lv: 'ongoing', label: '进行中', title: '渠道限流策略调整，灰度中', date: '2026-11-11 00:00' },
+  { lv: 'default', label: '默认',   title: '新增 Gemini 3 Pro 渠道，价格见模型页', date: '2026-11-10 00:00' },
+];
+
+const svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>';
+
+function panel(kind) {
+  const rows = ITEMS.map((it) => {
+    if (kind === 'a') {
+      return `<button class="item">
+        <p class="t">${it.title}</p>
+        <div class="meta"><span class="time">${it.date}</span></div>
+        <span class="lv ${it.lv}"><span class="dot ${it.lv}"></span>${it.label}</span>
+      </button>`;
+    }
+    if (kind === 'b') {
+      return `<button class="item">
+        <p class="t">${it.title}</p>
+        <div class="meta"><span class="pill ${it.lv}">${it.label}</span><span class="time">${it.date}</span></div>
+      </button>`;
+    }
+    if (kind === 'd') {
+      return `<button class="item">
+        <p class="t">${it.title}</p>
+        <div class="metaline">
+          <span class="time">${it.date}</span>
+          <span class="sep">·</span>
+          <span class="lv2 ${it.lv}">${it.label}</span>
+        </div>
+      </button>`;
+    }
+    return `<button class="item">
+      <span class="bar ${it.lv}"></span>
+      <div class="body">
+        <p class="t">${it.title}</p>
+        <div class="meta"><span class="time">${it.date}</span></div>
+      </div>
+    </button>`;
+  }).join('');
+
+  return `<div class="panel ${kind}">
+    <div class="phead">
+      <div>
+        <div class="ptitle"><span class="ico">${svg}</span>公告</div>
+        <div class="pdesc">最新平台动态与通知</div>
+      </div>
+      <span class="unread">2</span>
+    </div>
+    <div class="list">${rows}</div>
+  </div>`;
+}
+
+const COLS = [
+  { kind: 'a', label: 'A', sub: '文字标签 · ZenMux', dark: false },
+  { kind: 'b', label: 'B', sub: '胶囊标签', dark: false },
+  { kind: 'c', label: 'C', sub: '现状色条', dark: false },
+  { kind: 'd', label: 'D', sub: '级别并入元信息行', dark: false },
+];
+
+const html = COLS.map((c) => `<div class="col">
+  <p class="lbl">${c.label} <b>${c.sub}</b></p>
+  ${panel(c.kind)}
+  <div class="darkwrap"><div class="dark">${panel(c.kind)}</div></div>
+</div>`).join('');
+
+document.getElementById('grid').innerHTML = html;
+</script>
+</body>
+</html>
