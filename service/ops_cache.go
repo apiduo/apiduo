@@ -66,24 +66,24 @@ func cachedOps[T any](key string, fn func() (T, error)) (T, error) {
 // 下面四个是具体入口：缓存 key 必须包含全部查询参数，
 // 否则改了时间窗却拿到旧结果——这类 bug 不会报错，只会让人看到错的数据。
 
-func CachedOpsSeries(ctx context.Context, from, to, bucket int64) ([]model.OpsSeriesPoint, error) {
-	key := fmt.Sprintf("series:%d:%d:%d", from, to, bucket)
+func CachedOpsSeries(ctx context.Context, from, to, bucket int64, modelFilter string) ([]model.OpsSeriesPoint, error) {
+	key := fmt.Sprintf("series:%d:%d:%d:%s", from, to, bucket, modelFilter)
 	return cachedOps(key, func() ([]model.OpsSeriesPoint, error) {
-		return model.ScanOpsSeries(ctx, from, to, bucket)
+		return model.ScanOpsSeries(ctx, from, to, bucket, modelFilter)
 	})
 }
 
-func CachedOpsBreakdown(ctx context.Context, from, to int64, dim string) ([]model.OpsBreakdownRow, error) {
-	key := fmt.Sprintf("breakdown:%d:%d:%s", from, to, dim)
+func CachedOpsBreakdown(ctx context.Context, from, to int64, dim, modelFilter string) ([]model.OpsBreakdownRow, error) {
+	key := fmt.Sprintf("breakdown:%d:%d:%s:%s", from, to, dim, modelFilter)
 	return cachedOps(key, func() ([]model.OpsBreakdownRow, error) {
-		return model.ScanOpsBreakdown(ctx, from, to, dim)
+		return model.ScanOpsBreakdown(ctx, from, to, dim, modelFilter)
 	})
 }
 
-func CachedErrorClusters(ctx context.Context, from, to int64, limit int) ([]model.ErrorCluster, error) {
-	key := fmt.Sprintf("clusters:%d:%d:%d", from, to, limit)
+func CachedErrorClusters(ctx context.Context, from, to int64, limit int, modelFilter string) ([]model.ErrorCluster, error) {
+	key := fmt.Sprintf("clusters:%d:%d:%d:%s", from, to, limit, modelFilter)
 	return cachedOps(key, func() ([]model.ErrorCluster, error) {
-		return model.ScanErrorClusters(ctx, from, to, limit)
+		return model.ScanErrorClusters(ctx, from, to, limit, modelFilter)
 	})
 }
 

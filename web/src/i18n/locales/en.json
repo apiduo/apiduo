@@ -8530,6 +8530,7 @@
     "{{count}} occurrences in this cluster": "{{count}} occurrences in this cluster",
     "By group": "By group",
     "Filter this column": "Filter this column",
-    "Try the last 24 hours": "Try the last 24 hours"
+    "Try the last 24 hours": "Try the last 24 hours",
+    "Filter by model": "Filter by model"
   }
 }

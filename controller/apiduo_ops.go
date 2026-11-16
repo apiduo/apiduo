@@ -19,7 +19,7 @@ func GetOpsSeries(c *gin.Context) {
 	if bucket <= 0 {
 		bucket = 600
 	}
-	points, err := service.CachedOpsSeries(c.Request.Context(), from, to, bucket)
+	points, err := service.CachedOpsSeries(c.Request.Context(), from, to, bucket, c.Query("model"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -42,7 +42,7 @@ func GetOpsSeries(c *gin.Context) {
 func GetOpsBreakdown(c *gin.Context) {
 	from, to := opsRange(c)
 	dim := c.DefaultQuery("dim", "model")
-	rows, err := service.CachedOpsBreakdown(c.Request.Context(), from, to, dim)
+	rows, err := service.CachedOpsBreakdown(c.Request.Context(), from, to, dim, c.Query("model"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -182,7 +182,7 @@ func CloseOpsIncident(c *gin.Context) {
 func GetOpsClusters(c *gin.Context) {
 	from, to := opsRange(c)
 	limit, _ := strconv.Atoi(c.Query("limit"))
-	clusters, err := service.CachedErrorClusters(c.Request.Context(), from, to, limit)
+	clusters, err := service.CachedErrorClusters(c.Request.Context(), from, to, limit, c.Query("model"))
 	if err != nil {
 		common.ApiError(c, err)
 		return

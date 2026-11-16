@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -68,17 +68,17 @@ export function ServiceHealth() {
   // 24 小时窗口会把刚发生的变化稀释成一条几乎水平的线。
   const [rangeKey, setRangeKey] = useState<string>('1h')
   const [dim, setDim] = useState<'model' | 'channel' | 'group'>('model')
-  // 维度选定后还要能筛具体值：一个分组下有几十个模型时，
-  // 逐个 눈找太慢，直接按关键字过滤这一列。
-  const [dimFilter, setDimFilter] = useState('')
+  // 全局模型筛选：填了之后曲线、聚类、下钻都只看这个模型。
+  // 和"筛这一列"不同——那个只过滤表格行，这个影响所有区块。
+  const [modelFilter, setModelFilter] = useState('')
 
   const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[0]
   const to = Math.floor(Date.now() / 1000)
   const from = to - range.span
 
   const series = useQuery({
-    queryKey: ['ops-series', rangeKey],
-    queryFn: () => getOpsSeries({ from, to, bucket: range.bucket }),
+    queryKey: ['ops-series', rangeKey, modelFilter],
+    queryFn: () => getOpsSeries({ from, to, bucket: range.bucket, model: modelFilter }),
     refetchInterval: 60_000,
   })
 
@@ -95,8 +95,8 @@ export function ServiceHealth() {
   })
 
   const clusters = useQuery({
-    queryKey: ['ops-clusters', rangeKey],
-    queryFn: () => getOpsClusters({ from, to }),
+    queryKey: ['ops-clusters', rangeKey, modelFilter],
+    queryFn: () => getOpsClusters({ from, to, model: modelFilter }),
     refetchInterval: 60_000,
   })
 
@@ -119,17 +119,12 @@ export function ServiceHealth() {
   })
 
   const breakdown = useQuery({
-    queryKey: ['ops-breakdown', rangeKey, dim],
-    queryFn: () => getOpsBreakdown({ from, to, dim }),
+    queryKey: ['ops-breakdown', rangeKey, dim, modelFilter],
+    queryFn: () => getOpsBreakdown({ from, to, dim, model: modelFilter }),
     refetchInterval: 60_000,
   })
 
-  const breakdownRows = useMemo(() => {
-    const rows = breakdown.data?.rows ?? []
-    const needle = dimFilter.trim().toLowerCase()
-    if (!needle) return rows
-    return rows.filter((r) => r.key.toLowerCase().includes(needle))
-  }, [breakdown.data?.rows, dimFilter])
+  const breakdownRows = breakdown.data?.rows ?? []
 
   // 两条线量纲不同（比例 vs 毫秒），必须双轴。
   // 合成单轴的话，P95 会把错误率压成一条贴地的直线。
@@ -156,6 +151,14 @@ export function ServiceHealth() {
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>{t('Service health')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        {/* 全局模型筛选：填了就只看这个模型，曲线/聚类/下钻一起变。
+            空着表示不筛。 */}
+        <input
+          className='border-input bg-background h-9 w-40 rounded-md border px-2 text-xs'
+          placeholder={t('Filter by model')}
+          value={modelFilter}
+          onChange={(e) => setModelFilter(e.target.value)}
+        />
         <Tabs value={rangeKey} onValueChange={(v) => setRangeKey(String(v))}>
           <TabsList>
             {RANGES.map((r) => (
@@ -442,12 +445,7 @@ export function ServiceHealth() {
                   <TabsTrigger value='group'>{t('By group')}</TabsTrigger>
                 </TabsList>
               </Tabs>
-              <input
-                className='border-input bg-background h-8 w-full rounded-md border px-2 text-xs sm:w-44'
-                placeholder={t('Filter this column')}
-                value={dimFilter}
-                onChange={(e) => setDimFilter(e.target.value)}
-              />
+
             </CardHeader>
             <CardContent>
               {breakdown.isLoading ? (
@@ -480,7 +478,7 @@ export function ServiceHealth() {
                     </tr>
                   </thead>
                   <tbody>
-                    {breakdownRows.map((r) => (
+                    {(breakdownRows).map((r) => (
                       <tr key={r.key} className='border-b last:border-0'>
                         {/* 渠道维度加 # 前缀：毛利表和值班看板都用 #3 这种写法，
                             同一页里一处裸数字一处带井号，读起来像两个不同的东西。 */}

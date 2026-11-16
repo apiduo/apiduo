@@ -237,7 +237,7 @@ func TestScanOpsSeries(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&logs).Error)
 
-	got, err := ScanOpsSeries(context.Background(), base, base+2*bucket, bucket)
+	got, err := ScanOpsSeries(context.Background(), base, base+2*bucket, bucket, "")
 	require.NoError(t, err)
 	require.Len(t, got, 2, "两个桶各一行，空桶不补")
 
@@ -271,7 +271,7 @@ func TestScanOpsBreakdown(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&logs).Error)
 
-	byModel, err := ScanOpsBreakdown(context.Background(), from, to, "model")
+	byModel, err := ScanOpsBreakdown(context.Background(), from, to, "model", "")
 	require.NoError(t, err)
 	require.Len(t, byModel, 2)
 	require.Equal(t, "gpt-4o", byModel[0].Key, "按请求量倒序")
@@ -279,7 +279,7 @@ func TestScanOpsBreakdown(t *testing.T) {
 	require.Equal(t, 1, byModel[0].Failures)
 	require.Equal(t, 9000.0, byModel[0].P95ms, "慢的那个模型要能看出慢")
 
-	byChannel, err := ScanOpsBreakdown(context.Background(), from, to, "channel")
+	byChannel, err := ScanOpsBreakdown(context.Background(), from, to, "channel", "")
 	require.NoError(t, err)
 	require.Len(t, byChannel, 2)
 	keys := map[string]bool{}
@@ -290,7 +290,7 @@ func TestScanOpsBreakdown(t *testing.T) {
 
 	// 未知维度必须报错，不能静默返回全量——
 	// 那会让调用方以为筛选生效了。
-	_, err = ScanOpsBreakdown(context.Background(), from, to, "eval")
+	_, err = ScanOpsBreakdown(context.Background(), from, to, "eval", "")
 	require.Error(t, err)
 }
 
@@ -382,7 +382,7 @@ func TestScanErrorClusters(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&logs).Error)
 
-	got, err := ScanErrorClusters(context.Background(), base-10, base+100, 20)
+	got, err := ScanErrorClusters(context.Background(), base-10, base+100, 20, "")
 	require.NoError(t, err)
 	require.Len(t, got, 2, "两个根因两个簇")
 
@@ -418,7 +418,7 @@ func TestOpsSeriesPrefersMilliseconds(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&logs).Error)
 
-	got, err := ScanOpsSeries(context.Background(), base, base+600, 600)
+	got, err := ScanOpsSeries(context.Background(), base, base+600, 600, "")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, 1250.0, got[0].P50ms, "中位应取毫秒值")
@@ -520,7 +520,7 @@ func TestErrorClusterKeepsStatusCode(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&rows).Error)
 
-	clusters, err := ScanErrorClusters(context.Background(), base-60, base+60, 10)
+	clusters, err := ScanErrorClusters(context.Background(), base-60, base+60, 10, "")
 	require.NoError(t, err)
 	require.NotEmpty(t, clusters)
 
@@ -565,7 +565,7 @@ func TestBreakdownGroupDimension(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&rows).Error)
 
-	out, err := ScanOpsBreakdown(context.Background(), base-60, base+60, "group")
+	out, err := ScanOpsBreakdown(context.Background(), base-60, base+60, "group", "")
 	require.NoError(t, err)
 	require.Len(t, out, 2, "应分成 default 与 vip 两组")
 
@@ -577,6 +577,48 @@ func TestBreakdownGroupDimension(t *testing.T) {
 	require.Equal(t, 1, byKey["vip"].Requests)
 	require.Equal(t, 1, byKey["vip"].Failures, "vip 组那一条失败要算进去")
 
-	_, err = ScanOpsBreakdown(context.Background(), base-60, base+60, "bogus")
+	_, err = ScanOpsBreakdown(context.Background(), base-60, base+60, "bogus", "")
 	require.Error(t, err, "未知维度必须报错，不能静默返回全量")
+}
+
+// 模型筛选判据：填入模型名后，所有聚合（曲线/下钻/聚类）只看这个模型。
+// 这条对应"我只关心 gpt-4o 今天怎么了"——不筛的话其他模型的量会把信号淹没。
+func TestBreakdownModelFilter(t *testing.T) {
+	db := setupGrowthScanDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	prev := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = prev })
+
+	base := int64(1_800_000_000)
+	rows := []Log{
+		{CreatedAt: base, Type: 2, ModelName: "gpt-4o", UseTimeMs: 100, ChannelId: 1, RequestId: "m1"},
+		{CreatedAt: base + 1, Type: 2, ModelName: "gpt-4o", UseTimeMs: 100, ChannelId: 1, RequestId: "m2"},
+		{CreatedAt: base + 2, Type: 5, ModelName: "gpt-4o", ChannelId: 1, RequestId: "m3"},
+		{CreatedAt: base + 3, Type: 2, ModelName: "claude-3", UseTimeMs: 900, ChannelId: 2, RequestId: "m4"},
+	}
+	require.NoError(t, db.Create(&rows).Error)
+
+	// 不筛：按渠道分组应看到两个渠道
+	all, err := ScanOpsBreakdown(context.Background(), base-60, base+60, "channel", "")
+	require.NoError(t, err)
+	require.Len(t, all, 2)
+
+	// 筛 gpt-4o：只剩渠道 1，且失败数正确
+	filtered, err := ScanOpsBreakdown(context.Background(), base-60, base+60, "channel", "gpt-4o")
+	require.NoError(t, err)
+	require.Len(t, filtered, 1)
+	require.Equal(t, "1", filtered[0].Key)
+	require.Equal(t, 2, filtered[0].Requests)
+	require.Equal(t, 1, filtered[0].Failures)
+
+	// 前缀匹配也要能用（用户通常只记得开头）
+	prefix, err := ScanOpsBreakdown(context.Background(), base-60, base+60, "channel", "gpt-")
+	require.NoError(t, err)
+	require.Len(t, prefix, 1)
+
+	// 不存在的模型：空结果而不是报错
+	none, err := ScanOpsBreakdown(context.Background(), base-60, base+60, "channel", "no-such-model")
+	require.NoError(t, err)
+	require.Empty(t, none)
 }

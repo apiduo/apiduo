@@ -21,6 +21,7 @@ export async function getOpsSeries(params: {
   from: number
   to: number
   bucket: number
+  model?: string
 }): Promise<OpsSeriesResponse> {
   const res = await api.get<Envelope<OpsSeriesResponse>>('/api/ops/series', {
     params,
@@ -32,6 +33,7 @@ export async function getOpsBreakdown(params: {
   from: number
   to: number
   dim: 'model' | 'channel' | 'group'
+  model?: string
 }): Promise<OpsBreakdownResponse> {
   const res = await api.get<Envelope<OpsBreakdownResponse>>(
     '/api/ops/breakdown',
@@ -84,6 +86,7 @@ export async function closeOpsIncident(
 export async function getOpsClusters(params: {
   from: number
   to: number
+  model?: string
 }): Promise<OpsClustersResponse> {
   const res = await api.get<Envelope<OpsClustersResponse>>('/api/ops/clusters', {
     params,

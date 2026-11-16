@@ -8530,6 +8530,7 @@
     "{{count}} occurrences in this cluster": "{{count}} lần trong cụm này",
     "By group": "Theo nhóm",
     "Filter this column": "Lọc cột này",
-    "Try the last 24 hours": "Thử 24 giờ qua"
+    "Try the last 24 hours": "Thử 24 giờ qua",
+    "Filter by model": "Lọc theo mô hình"
   }
 }

@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"regexp"
 	"sort"
@@ -36,7 +35,7 @@ const opsSeriesMaxSpan = int64(8 * 86400)
 // 分位在 Go 里算而不是 SQL：SQLite 没有 percentile 函数，
 // ClickHouse 有但两个库都要能跑，与其写两套不如取原始 use_time。
 // 失败按 request_id 去重——日志是按「渠道尝试」写的，重试会留多行。
-func ScanOpsSeries(ctx context.Context, from, to, bucket int64) ([]OpsSeriesPoint, error) {
+func ScanOpsSeries(ctx context.Context, from, to, bucket int64, modelFilter string) ([]OpsSeriesPoint, error) {
 	if bucket <= 0 {
 		bucket = 600
 	}
@@ -46,7 +45,7 @@ func ScanOpsSeries(ctx context.Context, from, to, bucket int64) ([]OpsSeriesPoin
 	// 日志库是 ClickHouse 时走原生聚合：让数据库算分位，
 	// 只回聚合行。否则把几十万行取回 Go，CPU 全花在排序上。
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
-		return scanOpsSeriesCH(ctx, from, to, bucket)
+		return scanOpsSeriesCH(ctx, from, to, bucket, modelFilter)
 	}
 	conn := LOG_DB
 	if conn == nil {
@@ -64,6 +63,7 @@ func ScanOpsSeries(ctx context.Context, from, to, bucket int64) ([]OpsSeriesPoin
 	err := conn.WithContext(ctx).Model(&Log{}).
 		Select("created_at, type, use_time, use_time_ms, request_id").
 		Where("created_at >= ? AND created_at < ? AND type IN ?", from, to, []int{LogTypeConsume, LogTypeError}).
+		Where("model_name LIKE ?", likeModel(modelFilter)).
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err
@@ -174,6 +174,19 @@ func itoa(n int64) string {
 	return string(buf[i:])
 }
 
+// likeModel 把筛选词包成 LIKE 模式。空字符串返回 "%"（匹配全部），
+// 这样调用方不必在 SQL 里写条件分支。
+//
+// 用 %x% 而不是 x%：用户往往只记得模型名的中段（qwen-image-3.0 里的 image），
+// 前缀匹配会漏。这个站一天几十条请求，全表扫也无所谓。
+func likeModel(filter string) string {
+	filter = strings.TrimSpace(filter)
+	if filter == "" {
+		return "%"
+	}
+	return "%" + filter + "%"
+}
+
 // OpsBreakdownRow 是按某一维度聚合后的一行。
 type OpsBreakdownRow struct {
 	Key      string  `json:"key"`
@@ -188,12 +201,12 @@ type OpsBreakdownRow struct {
 //
 // 维度只能是白名单枚举：直接把 dim 拼进 GROUP BY 会变成注入点，
 // 而且写错时容易静默返回全量，让调用方以为筛选生效了。
-func ScanOpsBreakdown(ctx context.Context, from, to int64, dim string) ([]OpsBreakdownRow, error) {
+func ScanOpsBreakdown(ctx context.Context, from, to int64, dim, modelFilter string) ([]OpsBreakdownRow, error) {
 	if to-from > opsSeriesMaxSpan {
 		to = from + opsSeriesMaxSpan
 	}
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
-		return scanOpsBreakdownCH(ctx, from, to, dim)
+		return scanOpsBreakdownCH(ctx, from, to, dim, modelFilter)
 	}
 	conn := LOG_DB
 	if conn == nil {
@@ -213,7 +226,8 @@ func ScanOpsBreakdown(ctx context.Context, from, to int64, dim string) ([]OpsBre
 	var rows []row
 	q := conn.WithContext(ctx).Model(&Log{}).
 		Select("created_at, type, use_time, use_time_ms, request_id, model_name, channel_id, `group`").
-		Where("created_at >= ? AND created_at < ? AND type IN ?", from, to, []int{LogTypeConsume, LogTypeError})
+		Where("created_at >= ? AND created_at < ? AND type IN ?", from, to, []int{LogTypeConsume, LogTypeError}).
+		Where("model_name LIKE ?", likeModel(modelFilter))
 	if err := q.Scan(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -465,7 +479,7 @@ var (
 )
 
 // ScanErrorClusters 按归一化消息聚类，按影响请求数倒序。
-func ScanErrorClusters(ctx context.Context, from, to int64, limit int) ([]ErrorCluster, error) {
+func ScanErrorClusters(ctx context.Context, from, to int64, limit int, modelFilter string) ([]ErrorCluster, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
@@ -473,7 +487,7 @@ func ScanErrorClusters(ctx context.Context, from, to int64, limit int) ([]ErrorC
 		to = from + opsSeriesMaxSpan
 	}
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
-		return scanErrorClustersCH(ctx, from, to, limit)
+		return scanErrorClustersCH(ctx, from, to, limit, modelFilter)
 	}
 	conn := LOG_DB
 	if conn == nil {
@@ -491,6 +505,7 @@ func ScanErrorClusters(ctx context.Context, from, to int64, limit int) ([]ErrorC
 	err := conn.WithContext(ctx).Model(&Log{}).
 		Select("created_at, user_id, channel_id, request_id, content").
 		Where("created_at >= ? AND created_at < ? AND type = ?", from, to, LogTypeError).
+		Where("model_name LIKE ?", likeModel(modelFilter)).
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err
@@ -675,7 +690,7 @@ func ScanChannelMargins(ctx context.Context, from, to int64) ([]ChannelMarginRow
 // 20 万行时单次 260ms、占几百 MB 临时内存。几个并发就能把 CPU 吃满，
 // relay 转发跟着劣化（实测 P95 从 141ms 涨到 496ms）。
 // ClickHouse 有 quantile，让它算完只回聚合行，代价从「行数」变成「桶数」。
-func scanOpsSeriesCH(ctx context.Context, from, to, bucket int64) ([]OpsSeriesPoint, error) {
+func scanOpsSeriesCH(ctx context.Context, from, to, bucket int64, modelFilter string) ([]OpsSeriesPoint, error) {
 	conn := LOG_DB
 	type row struct {
 		Bucket int64   `gorm:"column:bucket"`
@@ -693,9 +708,10 @@ func scanOpsSeriesCH(ctx context.Context, from, to, bucket int64) ([]OpsSeriesPo
 		       if(countIf(type = 2) = 0, 0, quantile(0.95)(if(type = 2, if(use_time_ms > 0, use_time_ms, use_time * 1000), NULL))) AS p95
 		FROM logs
 		WHERE created_at >= ? AND created_at < ? AND type IN (2, 5)
+		  AND model_name LIKE ?
 		GROUP BY bucket
 		ORDER BY bucket
-	`, bucket, bucket, from, to).Scan(&rows).Error
+	`, bucket, bucket, from, to, likeModel(modelFilter)).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -721,7 +737,7 @@ func scanOpsSeriesCH(ctx context.Context, from, to, bucket int64) ([]OpsSeriesPo
 
 // scanOpsBreakdownCH 按维度下推聚合。
 // 与 series 同理：分组后只需回几十行，不必把原始日志搬进 Go。
-func scanOpsBreakdownCH(ctx context.Context, from, to int64, dim string) ([]OpsBreakdownRow, error) {
+func scanOpsBreakdownCH(ctx context.Context, from, to int64, dim, modelFilter string) ([]OpsBreakdownRow, error) {
 	var groupCol string
 	switch dim {
 	case "model":
@@ -750,8 +766,9 @@ func scanOpsBreakdownCH(ctx context.Context, from, to int64, dim string) ([]OpsB
 		       if(countIf(type = 2) = 0, 0, quantile(0.95)(if(type = 2, if(use_time_ms > 0, use_time_ms, use_time * 1000), NULL))) AS p95
 		FROM logs
 		WHERE created_at >= ? AND created_at < ? AND type IN (2, 5)
+		  AND model_name LIKE ?
 		GROUP BY k
-	`, from, to).Scan(&rows).Error
+	`, from, to, likeModel(modelFilter)).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -867,7 +884,7 @@ const chNormalizeExpr = `trimBoth(replaceRegexpAll(
 //
 // 归一化用了 7 次正则替换，在 Go 里对每一行都做一遍；
 // 20 万行时这是秒级开销，而 CH 可以在列上并行算完再分组。
-func scanErrorClustersCH(ctx context.Context, from, to int64, limit int) ([]ErrorCluster, error) {
+func scanErrorClustersCH(ctx context.Context, from, to int64, limit int, modelFilter string) ([]ErrorCluster, error) {
 	type row struct {
 		Fingerprint string   `gorm:"column:fingerprint"`
 		Sample      string   `gorm:"column:sample"`
@@ -879,9 +896,10 @@ func scanErrorClustersCH(ctx context.Context, from, to int64, limit int) ([]Erro
 		Codes       []string `gorm:"column:codes"`
 	}
 	var rows []row
-	// 参数内联而不是用 ?：正则里的非捕获组 (?:...) 会被 GORM 当成占位符，
-	// 报 unsupported query parameter type。三个参数都是内部整数，无注入面。
-	query := fmt.Sprintf(`
+	// 这里不能用 fmt.Sprintf 内联参数：modelFilter 是用户输入，内联就是注入面。
+	// 改成 ? 占位符由驱动转义；chNormalizeExpr 里的 (?:...) 是常量拼接，
+	// 不经过占位符解析。
+	query := `
 		SELECT norm AS fingerprint,
 		       any(content) AS sample,
 		       uniqExact(if(request_id = '', concat('anon:', toString(created_at)), request_id)) AS req,
@@ -893,15 +911,16 @@ func scanErrorClustersCH(ctx context.Context, from, to int64, limit int) ([]Erro
 		       -- 同一条记录可能没有状态码（空串），Go 侧过滤后再计数。
 		       groupArray(extract(content, 'status_code\\s*=\\s*([1-5]\\d{2})')) AS codes
 		FROM (
-			SELECT request_id, user_id, channel_id, created_at, content, `+chNormalizeExpr+` AS norm
+			SELECT request_id, user_id, channel_id, created_at, content, ` + chNormalizeExpr + ` AS norm
 			FROM logs
-			WHERE created_at >= %d AND created_at < %d AND type = 5
+			WHERE created_at >= ? AND created_at < ? AND type = 5
+			  AND model_name LIKE ?
 		)
 		GROUP BY norm
 		ORDER BY req DESC
-		LIMIT %d
-	`, from, to, limit)
-	err := LOG_DB.WithContext(ctx).Raw(query).Scan(&rows).Error
+		LIMIT ?
+	`
+	err := LOG_DB.WithContext(ctx).Raw(query, from, to, likeModel(modelFilter), limit).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
