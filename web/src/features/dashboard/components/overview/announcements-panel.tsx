@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Megaphone } from 'lucide-react'
-import { memo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge } from '@/components/ui/icon-badge'
@@ -25,34 +25,31 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAnnouncements } from '@/features/dashboard/hooks/use-status-data'
 import { getPreviewText } from '@/features/dashboard/lib'
 import type { AnnouncementItem } from '@/features/dashboard/types'
-import { getAnnouncementColorClass } from '@/lib/colors'
+import {
+  ANNOUNCEMENT_BAR_COLORS,
+  ANNOUNCEMENT_BAR_WIDTHS,
+  type AnnouncementType,
+} from '@/lib/colors'
 import { formatDateTimeObject } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { useNotificationStore } from '@/stores/notification-store'
 
 import { PanelWrapper } from '../ui/panel-wrapper'
 import { AnnouncementDetailModal } from './announcement-detail-dialog'
 
-const AnnouncementStatusDot = memo(function AnnouncementStatusDot(props: {
-  type?: string
-}) {
-  return (
-    <span
-      className={cn(
-        'mt-1.5 inline-block size-2 shrink-0 rounded-full',
-        getAnnouncementColorClass(props.type)
-      )}
-    />
-  )
-})
-
 export function AnnouncementsPanel() {
   const { t } = useTranslation()
   const { items: list, loading } = useAnnouncements()
+  const { markAnnouncementsRead } = useNotificationStore()
   const [selectedAnnouncement, setSelectedAnnouncement] =
     useState<AnnouncementItem | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   const handleAnnouncementClick = (item: AnnouncementItem) => {
+    // 与铃铛共用同一套已读 key（`id:<id>`），点开后未读数立刻下来
+    if (item.id !== undefined && item.id !== null) {
+      markAnnouncementsRead([`id:${item.id}`])
+    }
     setSelectedAnnouncement(item)
     setIsDialogOpen(true)
   }
@@ -78,33 +75,39 @@ export function AnnouncementsPanel() {
         <div>
           {list.map((item: AnnouncementItem, idx: number) => {
             const key = item.id ?? `announcement-${idx}`
+            const type = (item.type || 'default') as AnnouncementType
             return (
               <button
                 key={key}
                 type='button'
                 onClick={() => handleAnnouncementClick(item)}
                 className={cn(
-                  'group hover:bg-muted/40 w-full px-3 py-3 text-left transition-colors sm:px-5 sm:py-3.5',
+                  'hover:bg-muted/40 focus-visible:ring-ring flex w-full items-stretch gap-3 px-3 py-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none sm:px-5 sm:py-3.5',
                   idx < list.length - 1 && 'border-border/60 border-b'
                 )}
               >
-                <div className='flex items-start gap-2.5'>
-                  <AnnouncementStatusDot type={item.type} />
-                  <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                    <p className='line-clamp-1 text-sm font-medium'>
-                      {getPreviewText(item.content)}
-                    </p>
-                    <div className='flex items-center justify-between'>
-                      {item.publishDate && (
-                        <time className='text-muted-foreground/60 text-xs'>
-                          {formatDateTimeObject(new Date(item.publishDate))}
-                        </time>
-                      )}
-                      <span className='text-muted-foreground/40 text-xs opacity-0 transition-opacity group-hover:opacity-100'>
-                        {t('Click for details')}
-                      </span>
-                    </div>
-                  </div>
+                <span
+                  aria-hidden
+                  className={cn(
+                    'shrink-0',
+                    ANNOUNCEMENT_BAR_WIDTHS[type] > 3
+                      ? 'rounded-sm'
+                      : 'rounded-full'
+                  )}
+                  style={{
+                    width: ANNOUNCEMENT_BAR_WIDTHS[type],
+                    background: ANNOUNCEMENT_BAR_COLORS[type],
+                  }}
+                />
+                <div className='flex min-w-0 flex-1 flex-col gap-1'>
+                  <p className='line-clamp-1 text-sm font-medium'>
+                    {item.title?.trim() || getPreviewText(item.content)}
+                  </p>
+                  {item.publishDate && (
+                    <time className='text-muted-foreground font-mono text-xs tabular-nums'>
+                      {formatDateTimeObject(new Date(item.publishDate))}
+                    </time>
+                  )}
                 </div>
               </button>
             )

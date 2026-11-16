@@ -142,6 +142,33 @@ export function getAnnouncementColorClass(type?: string): string {
 }
 
 /**
+ * 色条专用色。
+ *
+ * 语义 token 是为文字设计的：要在白底上达到 4.5:1，明度只能压到 0.58 上下，
+ * 画成 3px 的细线会发闷。这里把明度统一提亮 0.04–0.06、彩度略增，
+ * **只用于这条装饰性色条** —— 文字、图标、铃铛圆点仍用原 token。
+ */
+export const ANNOUNCEMENT_BAR_COLORS: Record<AnnouncementType, string> = {
+  default: 'oklch(0.62 0 0)',
+  ongoing: 'oklch(0.67 0.15 243)',
+  success: 'oklch(0.66 0.15 163)',
+  warning: 'oklch(0.72 0.165 76)',
+  error: 'oklch(0.64 0.22 27)',
+}
+
+/**
+ * 色条宽度。error 单列一档 5px —— 这是视觉权重，不是识别编码：
+ * 该级别本来就该比别的更重，颜色已经足够区分。
+ */
+export const ANNOUNCEMENT_BAR_WIDTHS: Record<AnnouncementType, number> = {
+  default: 3,
+  ongoing: 3,
+  success: 3,
+  warning: 3,
+  error: 5,
+}
+
+/**
  * Semantic colors for tags and badges
  */
 const TAG_COLORS = [

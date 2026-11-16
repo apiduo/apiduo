@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { RichContent } from '@/components/rich-content'
+import { StatusBadge } from '@/components/status-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDateTimeObject } from '@/lib/time'
 
@@ -32,7 +33,23 @@ interface AnnouncementDetailModalProps {
     tag?: string
     publishDate?: string
     extra?: string
+    type?: string
   } | null
+}
+
+/**
+ * 列表里只靠色条区分级别，弹窗里必须补上文字 —— 否则点进来反而看不出来。
+ * 文案复用管理页已有的级别 key。
+ */
+const LEVEL_BADGE: Record<
+  string,
+  { label: string; variant: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
+> = {
+  default: { label: 'Default', variant: 'neutral' },
+  ongoing: { label: 'Ongoing', variant: 'info' },
+  success: { label: 'Success', variant: 'success' },
+  warning: { label: 'Warning', variant: 'warning' },
+  error: { label: 'Error', variant: 'danger' },
 }
 
 export function AnnouncementDetailModal({
@@ -41,6 +58,10 @@ export function AnnouncementDetailModal({
   announcement,
 }: AnnouncementDetailModalProps) {
   const { t } = useTranslation()
+  const level = announcement?.type
+    ? LEVEL_BADGE[announcement.type]
+    : undefined
+
   return (
     <Dialog
       open={open}
@@ -57,6 +78,15 @@ export function AnnouncementDetailModal({
     >
       <ScrollArea className='max-h-[min(58vh,520px)] pr-4'>
         <div className='space-y-4'>
+          {level && (
+            <div>
+              <StatusBadge
+                label={t(level.label)}
+                variant={level.variant}
+                copyable={false}
+              />
+            </div>
+          )}
           {announcement?.content && (
             <div>
               <h4 className='mb-2 font-medium'>{t('Content')}</h4>
