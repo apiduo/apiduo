@@ -132,6 +132,29 @@ curl -X POST http://your-host/api/announcements \
   }'
 ```
 
+### 发一条功能更新
+
+功能更新不进公告面板，只在页面顶部横幅提示一次，看过即消失。
+
+```bash
+curl -X POST http://your-host/api/announcements \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "changelog",
+    "kind": "feature",
+    "title": "公告支持阶段时间线",
+    "content": "公告可以挂一条垂直时间线，标出当前进行到哪一步。",
+    "publishDate": "2026-11-17T04:59:53+08:00"
+  }'
+```
+
+`kind` 三种取值：`feature`（新增）、`improvement`（优化）、`fix`（修复）。
+可省略，省略后横幅里不显示类型标签 —— 不会默认成「新增」。
+
+不要给功能更新填 `type` / `expiresAt` / `phases`：它们对 changelog 没有意义，
+后端会忽略，但读库的人会困惑。发布 7 天内的更新在横幅里带 `NEW` 标记。
+
 ### 改一条（只传要改的）
 
 ```bash
