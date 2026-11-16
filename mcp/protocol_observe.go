@@ -169,6 +169,18 @@ func writeObservation(o callObservation) {
 	if o.Tool != "" {
 		content = "mcp " + o.Tool
 	}
+	// 失败时把真正的错误原因写进 content。
+	//
+	// 错误聚类按 content 归一化分组，只写工具名的话同一工具的所有失败
+	// 会糊成一簇，根因列显示的是 "mcp image.generate" 这种毫无诊断价值的东西
+	// （线上 43 条 image.generate 失败就是这样，真正的错误躺在 other 里没人看得见）。
+	if !o.OK && o.ErrorMsg != "" {
+		if o.Tool != "" {
+			content = "mcp " + o.Tool + ": " + o.ErrorMsg
+		} else {
+			content = o.ErrorMsg
+		}
+	}
 	row := &model.Log{
 		UserId:    o.UserId,
 		Username:  o.Username,

@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -515,10 +516,11 @@ func ScanErrorClusters(ctx context.Context, from, to int64, limit int, modelFilt
 		ChannelId int
 		RequestId string
 		Content   string
+		Other     string
 	}
 	var rows []row
 	err := conn.WithContext(ctx).Model(&Log{}).
-		Select("created_at, user_id, channel_id, request_id, content").
+		Select("created_at, user_id, channel_id, request_id, content, other").
 		Where("created_at >= ? AND created_at < ? AND type = ?", from, to, LogTypeError).
 		Where("model_name LIKE ?", likeModel(modelFilter)).
 		Scan(&rows).Error
@@ -537,7 +539,7 @@ func ScanErrorClusters(ctx context.Context, from, to int64, limit int, modelFilt
 	}
 	buckets := map[string]*acc{}
 	for i, r := range rows {
-		fp := normalizeErrorMessage(r.Content)
+		fp := normalizeErrorMessage(effectiveErrorText(r.Content, r.Other))
 		if fp == "" {
 			fp = "(empty message)"
 		}
@@ -927,9 +929,18 @@ func scanErrorClustersCH(ctx context.Context, from, to int64, limit int, modelFi
 		       groupArray(extract(content, 'status_code\\s*=\\s*([1-5]\\d{2})')) AS codes
 		FROM (
 			SELECT request_id, user_id, channel_id, created_at, content, `+chNormalizeExpr+` AS norm
-			FROM logs
-			WHERE created_at >= %d AND created_at < %d AND type = 5
-			  AND model_name LIKE %s
+			FROM (
+				-- MCP 观察日志早期只把工具名写进 content，真实错误在 other 里。
+				-- 这里补回来，让历史数据也能按真实原因分簇。别名 content 会覆盖外层。
+				SELECT request_id, user_id, channel_id, created_at,
+				       if(content LIKE 'mcp %%'
+				          AND JSONExtractString(other, 'admin_info', 'upstream_error') != '',
+				          concat(content, ': ', JSONExtractString(other, 'admin_info', 'upstream_error')),
+				          content) AS content
+				FROM logs
+				WHERE created_at >= %d AND created_at < %d AND type = 5
+				  AND model_name LIKE %s
+			)
 		)
 		GROUP BY norm
 		ORDER BY req DESC
@@ -958,6 +969,30 @@ func scanErrorClustersCH(ctx context.Context, from, to int64, limit int, modelFi
 		})
 	}
 	return out, nil
+}
+
+// effectiveErrorText 复原用于聚类的文本。
+//
+// MCP 层的观察日志早期只把工具名写进 content，真正的错误放在
+// other.admin_info.upstream_error。聚类按 content 分组，于是同一工具的
+// 所有失败糊成一簇（线上 43 条 image.generate 就是这样）。
+// 这里从 other 把错误补回来，历史数据也能正确分簇。
+func effectiveErrorText(content, other string) string {
+	if !strings.HasPrefix(content, "mcp ") || other == "" {
+		return content
+	}
+	var parsed struct {
+		AdminInfo struct {
+			UpstreamError string `json:"upstream_error"`
+		} `json:"admin_info"`
+	}
+	if err := json.Unmarshal([]byte(other), &parsed); err != nil {
+		return content
+	}
+	if parsed.AdminInfo.UpstreamError == "" {
+		return content
+	}
+	return content + ": " + parsed.AdminInfo.UpstreamError
 }
 
 // countStatusCodeSlice 统计 ClickHouse groupArray 捞回来的状态码。

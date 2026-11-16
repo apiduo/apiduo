@@ -656,3 +656,37 @@ func TestErrorClustersWithModelFilter(t *testing.T) {
 	_, err = ScanErrorClusters(context.Background(), base-60, base+60, 10, "gpt'--")
 	require.NoError(t, err, "单引号必须被转义，不能语法错误")
 }
+
+// 历史数据兜底判据：早期的 MCP 观察日志 content 只写工具名，
+// 真正的错误在 other.admin_info.upstream_error 里。
+// 聚类要从 other 补回来，否则这批记录永远是一簇无信息量的「mcp image.generate」。
+func TestErrorClusterRecoversMCPUpstreamError(t *testing.T) {
+	db := setupGrowthScanDB(t)
+	require.NoError(t, db.AutoMigrate(&Log{}))
+	prev := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = prev })
+
+	base := int64(1_800_000_000)
+	rows := []Log{
+		{CreatedAt: base, Type: 5, ModelName: "qwen-image-3.0", RequestId: "o1",
+			Content: "mcp image.generate",
+			Other:   `{"admin_info":{"tool":"image.generate","upstream_error":"upstream 502 (POST /images/generations): upstream error"}}`},
+		{CreatedAt: base + 1, Type: 5, ModelName: "qwen-image-3.0", RequestId: "o2",
+			Content: "mcp image.generate",
+			Other:   `{"admin_info":{"tool":"image.generate","upstream_error":"prompt 长度 32001 超过上限"}}`},
+	}
+	require.NoError(t, db.Create(&rows).Error)
+
+	out, err := ScanErrorClusters(context.Background(), base-60, base+60, 10, "")
+	require.NoError(t, err)
+	require.Len(t, out, 2, "两条不同原因的失败必须分成两簇，不能糊成一簇")
+
+	fps := []string{out[0].Fingerprint, out[1].Fingerprint}
+	joined := fps[0] + " | " + fps[1]
+	// 归一化会把独立数字抹掉（502 变成 upstream），这是既有设计；
+	// 只要能区分出「上游错误」和「参数超限」两类，就已经有诊断价值了。
+	require.Contains(t, joined, "upstream", "上游错误那条要从 other 补出原因")
+	require.Contains(t, joined, "prompt", "长度超限那条也要补出来")
+	require.NotContains(t, joined, "mcp image.generate mcp image.generate")
+}
