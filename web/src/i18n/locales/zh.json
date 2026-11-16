@@ -3038,7 +3038,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For a stronger password": "让密码更强",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "高级自定义渠道仅对 /v1/responses 且不做协议转换的路由生效。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
@@ -8525,5 +8525,7 @@
     "Nobody on shift": "当前无人值班",
     "Handover note for the next shift": "给下一班留句话",
     "Take shift": "接班"
-  }
+  },
+  "Incident opened": "已开单",
+  "Failed to open incident": "开单失败"
 }

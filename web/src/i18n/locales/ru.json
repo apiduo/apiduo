@@ -3038,7 +3038,7 @@
     "footer.columns.related.links.oneApi": "Один API",
     "footer.columns.related.title": "Связанные проекты",
     "footer.defaultCopyright": "Все права защищены.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
+    "footer.newapi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
     "For a stronger password": "Чтобы сделать пароль надёжнее",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "Для расширенных пользовательских каналов это действует только для маршрутов /v1/responses без преобразования протокола.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Для каналов, добавленных после 10 мая 2025 г., не нужно удалять \".\" из имён моделей при развёртывании",
@@ -8525,5 +8525,7 @@
     "Nobody on shift": "Nobody on shift",
     "Handover note for the next shift": "Handover note for the next shift",
     "Take shift": "Take shift"
-  }
+  },
+  "Incident opened": "Инцидент открыт",
+  "Failed to open incident": "Не удалось открыть инцидент"
 }

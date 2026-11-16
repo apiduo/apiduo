@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
   CartesianGrid,
   ComposedChart,
@@ -103,7 +104,13 @@ export function ServiceHealth() {
   const openIncident = useMutation({
     mutationFn: (body: { title: string; severity: number; detail: string }) =>
       createOpsIncident(body),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['ops-incidents'] }),
+    onSuccess: (inc) => {
+      void qc.invalidateQueries({ queryKey: ['ops-incidents'] })
+      // 必须给反馈：新条目落在页面底部的值班看板里，而按钮就在手边，
+      // 不提示的话用户看到按钮毫无变化，会以为没点上，然后重复点。
+      toast.success(t('Incident opened') + (inc?.id ? ` #${inc.id}` : ''))
+    },
+    onError: () => toast.error(t('Failed to open incident')),
   })
 
   const breakdown = useQuery({
@@ -696,7 +703,8 @@ function IncidentBoard() {
 
   const create = useMutation({
     mutationFn: () => createOpsIncident({ title, severity: 2 }),
-    onSuccess: () => {
+    onSuccess: (inc) => {
+      toast.success(t('Incident opened') + (inc?.id ? ` #${inc.id}` : ''))
       setTitle('')
       invalidate()
     },
