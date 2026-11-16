@@ -1,6 +1,9 @@
 package common
 
-import "github.com/QuantumNous/new-api/constant"
+import (
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
+)
 
 // EndpointInfo 描述单个端点的默认请求信息
 // path: 上游路径
@@ -32,6 +35,13 @@ var defaultEndpointInfoMap = map[constant.EndpointType]EndpointInfo{
 
 // GetDefaultEndpointInfo 返回指定端点类型的默认信息以及是否存在
 func GetDefaultEndpointInfo(et constant.EndpointType) (EndpointInfo, bool) {
+	// APIDUO:endpoint-registry:BEGIN The table also knows the request shape of
+	// the endpoints it owns; asking it first keeps one entry authoritative even
+	// when the endpoint is not in the built-in map.
+	if info, ok := endpoint.DefaultInfo(et); ok {
+		return EndpointInfo{Path: info.Path, Method: info.Method}, true
+	}
+	// APIDUO:endpoint-registry:END
 	info, ok := defaultEndpointInfoMap[et]
 	return info, ok
 }

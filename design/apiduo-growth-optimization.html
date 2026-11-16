@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>apiduo 数据看板与用户运营优化方案</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", sans-serif;
+    background: #f8f9fa; color: #2d3748; line-height: 1.7; font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px 64px; }
+
+  .header {
+    background: linear-gradient(135deg, #1a3a5c 0%, #2b6cb0 100%);
+    border-radius: 12px; padding: 44px 40px; color: #fff; margin-bottom: 28px;
+  }
+  .header h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.3px; margin-bottom: 10px; }
+  .header .sub { font-size: 15px; opacity: 0.86; max-width: 760px; line-height: 1.65; }
+  .header .meta { margin-top: 22px; font-size: 12.5px; opacity: 0.62; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 26px; }
+  .stat { background: rgba(255,255,255,0.11); border-radius: 8px; padding: 14px 16px; }
+  .stat .v { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; }
+  .stat .l { font-size: 11.5px; opacity: 0.76; margin-top: 3px; }
+
+  .card {
+    background: #fff; border-radius: 12px; padding: 32px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px;
+  }
+  .card h2 {
+    font-size: 20px; color: #1a3a5c; font-weight: 600;
+    padding-bottom: 14px; border-bottom: 2px solid #edf2f7; margin-bottom: 22px;
+  }
+  .card h3 { font-size: 16px; color: #1a3a5c; font-weight: 600; margin: 24px 0 12px; }
+  .card h3:first-of-type { margin-top: 0; }
+  p { margin-bottom: 12px; }
+  p:last-child { margin-bottom: 0; }
+
+  .tldr { background: #f0f6fc; border-left: 4px solid #2b6cb0; border-radius: 0 8px 8px 0; padding: 20px 24px; margin-bottom: 22px; }
+  .tldr ul { margin-left: 18px; }
+  .tldr li { margin-bottom: 9px; line-height: 1.65; }
+  .tldr li:last-child { margin-bottom: 0; }
+  .tldr strong { color: #1a3a5c; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0 6px; font-size: 13px; }
+  th { background: #f7fafc; color: #1a3a5c; text-align: left; padding: 11px 12px; font-weight: 600; border-bottom: 2px solid #e2e8f0; font-size: 12.5px; }
+  td { padding: 10px 12px; border-bottom: 1px solid #edf2f7; vertical-align: top; }
+  tr:hover td { background: #fafbfc; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #f7fafc; padding: 2px 6px; border-radius: 4px; }
+
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 11px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .b-red { background: #fde8e8; color: #c53030; }
+  .b-orange { background: #fef3e2; color: #b7791f; }
+  .b-yellow { background: #fefce8; color: #92722a; }
+  .b-green { background: #e6f6ea; color: #2e7d32; }
+  .b-blue { background: #e6f0fa; color: #2b6cb0; }
+  .b-gray { background: #edf2f7; color: #4a5568; }
+
+  .callout { border-radius: 8px; padding: 16px 20px; margin: 18px 0; font-size: 13.5px; }
+  .callout.error { background: #fdf2f2; border-left: 4px solid #cc2222; }
+  .callout.warn { background: #fffaf0; border-left: 4px solid #f5a623; }
+  .callout.ok { background: #f0f9f2; border-left: 4px solid #2e7d32; }
+  .callout strong { color: #1a3a5c; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .box { background: #f8fafc; border-radius: 8px; padding: 16px 18px; font-size: 13px; }
+  .box .t { font-weight: 600; color: #1a3a5c; margin-bottom: 8px; font-size: 13.5px; }
+  .box ul { margin-left: 16px; } .box li { margin-bottom: 6px; }
+
+  code.block { display: block; background: #1a202c; color: #e2e8f0; padding: 16px 18px; border-radius: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.6; overflow-x: auto; margin: 14px 0; white-space: pre; }
+  .k { color: #63b3ed; } .c { color: #718096; } .s { color: #9ae6b4; }
+
+  .footer { text-align: center; color: #718096; font-size: 12px; padding-top: 18px; line-height: 1.9; }
+
+  @media (max-width: 760px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .grid2 { grid-template-columns: 1fr; }
+    .container { padding: 20px 14px 40px; }
+    .card, .header { padding: 24px 20px; }
+  }
+  @media print {
+    body { background: #fff; }
+    .card { box-shadow: none; border: 1px solid #e2e8f0; page-break-inside: avoid; }
+    .header { background: #1a3a5c !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>apiduo 数据看板与用户运营优化方案</h1>
+    <div class="sub">
+      基于现有看板实现的代码审查、133 条真实错误日志的结构分析，以及对分层逻辑的重新推导。
+      结论先行的部分说明"现在哪里是错的"，而不是"还能加什么"。
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="v">3 处</div><div class="l">必须先修的口径错误</div></div>
+      <div class="stat"><div class="v">1 张</div><div class="l">需要新建的表</div></div>
+      <div class="stat"><div class="v">6 页</div><div class="l">重构后的信息架构</div></div>
+      <div class="stat"><div class="v">12 条</div><div class="l">可配置的运营触发表</div></div>
+    </div>
+    <div class="meta">2026-11-16 · 由营销增长专家团（策略 / 分析 / 增长工程）联合产出</div>
+  </div>
+
+  <div class="card">
+    <h2>执行摘要</h2>
+    <div class="tldr">
+      <ul>
+        <li><strong>最严重的问题不是缺功能，是三个口径错误。</strong>现有 <span class="mono">failures_7d</span> 记的是"渠道尝试失败"而非"用户失败"，一次客户请求重试 3 个渠道会写 3 行日志，导致失败率被放大 2–4 倍，预警会持续误报。</li>
+        <li><strong>北极星指标改用「周计费消耗额」。</strong>不用活跃用户数——收入等于消耗，任何动作都必须能落到这一项，而且它是可加量，能按用户/渠道/cohort 任意拆分。</li>
+        <li><strong>看板要从"账户监控"变成"决策支持"。</strong>把规则页降级为设置入口，腾出两个位置给趋势和渠道质量——现在的 5 个页签里，没有一个能回答"从哪天开始跌"。</li>
+        <li><strong>运营要从"人盯队列"变成"待发队列 + 一次批准"。</strong>12 条触发表覆盖新客到流失，全自动执行、人工只做批准，出错可控。</li>
+        <li><strong>只建 1 张新表。</strong>渠道采购价是不可重建的事实；cohort、渠道维度这些都能从现有数据派生，建表就是制造第二份事实来源。</li>
+        <li><strong>已修一个会让客户静默消失的 bug。</strong>余额归零的客户既不进余额预警（前置条件是 <span class="mono">quotas &gt; 0</span>），也不进事故型（他的调用是成功的），直接掉出队列。已修复，并补了「值得救」闸门避免试用账户塞满队列。</li>
+        <li><strong>队列排序从「严重度」改为「预计损失」。</strong>运营的一天应该按钱排序——降 80% 的中型客户，可能比降 12% 的大客户更值得先打。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>一、先修三个口径错误</h2>
+    <p>这三条比任何新功能都优先。口径错了，再加十个图表也只是把错误放大十倍。</p>
+
+    <table>
+      <thead><tr><th style="width:20%">问题</th><th style="width:38%">现状</th><th style="width:42%">后果与修法</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge b-red">P0</span><br><strong>失败率被放大</strong></td>
+          <td><span class="mono">failures_7d</span> 统计的是 <span class="mono">logs</span> 中 type=5 的行。但 <span class="mono">RecordRelayErrorLog</span> 在 <span class="mono">ProcessChannelError</span> 中逐渠道调用，一次客户请求重试 3 个渠道写 3 行。</td>
+          <td>分子是"尝试级"、分母是"成功请求数"，比率被重试次数放大 2–4 倍。openrouter-fallback 这类 3 次重试渠道会天天误报。修：新增 <span class="mono">is_final</span> 列标记用户可见的最终失败，预警改用 <span class="mono">visible_failures</span>。</td>
+        </tr>
+        <tr>
+          <td><span class="badge b-red">P0</span><br><strong>预警分母错配</strong></td>
+          <td><span class="mono">incident_rate_pct</span> 的分子是尝试级失败，分母却是成功请求数。</td>
+          <td>两个不同粒度的数字相除，结果无意义。修：分母改 <span class="mono">attempts_7d</span>，或直接用可见失败率。</td>
+        </tr>
+        <tr>
+          <td><span class="badge b-orange">P1</span><br><strong>沉默层混两种人</strong></td>
+          <td>注册 3 天没调用、和流失一年没调用，都被判成 S 层，共用同一套动作。</td>
+          <td>前者是未激活（动作=onboarding），后者是沉默（动作=winback）。不拆开会导致 onboarding 邮件发给流失一年的账户。修：按注册天数拆成 N0/N1/D/L 四态。</td>
+        </tr>
+        <tr>
+          <td><span class="badge b-green">已修</span><br><strong>余额归零被漏掉</strong></td>
+          <td>余额预警分支带 <span class="mono">quotas[s.UserId] &gt; 0</span> 前置条件。</td>
+          <td>余额已归零但仍在调用的客户，既不进余额预警、也不进事故型（他调用是成功的），直接掉出队列。已修为独立告警类型 <span class="mono">exhausted</span>，并加「值得救」闸门：付过费、或落在 K/A 层才占队列位置。</td>
+        </tr>
+        <tr>
+          <td><span class="badge b-orange">P1</span><br><strong>余额预警在放量期低估</strong></td>
+          <td>用 <span class="mono">balance ÷ (quota_7d ÷ 7)</span> 算剩余天数。</td>
+          <td>客户突然放量时，7 天均值严重滞后，报"还有 5 天"其实明天就断。修：改 <span class="mono">balance ÷ max(quota_3d÷3, quota_7d÷7)</span>，取更激进的速率。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout error">
+      <strong>为什么这条最重要：</strong>最近 24 小时 133 条错误里，trial 组 19 条有 13 条是"额度不足"、零条上游故障。
+      如果按现在的口径，这些额度问题会被混进"事故型"预警，运营的动作会变成道歉 + 补偿额度，
+      而真正该做的是改额度墙的可见性。口径错了，动作就一定错。
+    </div>
+
+    <div class="callout warn">
+      <strong>一处需要澄清的归因：</strong>trial 那 13 条额度不足<strong>不是</strong>上面这些预警公式造成的。
+      预警判据要求「余额 ≤ 0 且近期有成功调用」，而 trial 账户在成功调用之前额度就耗尽了，
+      <span class="mono">daily</span> 为 0，不会命中。那批数字暴露的是产品侧的额度墙问题，不要让预警改造替产品缺陷背账。
+    </div>
+
+    <div class="callout ok">
+      <strong>一条贯穿全部预警的设计约束：预警不是事件，是状态。</strong>
+      上面几个 bug 其实是同一个缺陷的不同实例——每次刷新重新判定，等于只写了<strong>进入条件</strong>、没写<strong>退出条件</strong>。
+      同一条规则会以两种方式失败：窗口滚出后静默消失（漏报），或状态一直成立后天天重复（刷屏）。
+      所以任何预警都必须同时定义四件事：<strong>进入条件、退出条件、抑制窗口、价值闸门</strong>。
+      耗尽型的完整判据就是范例：余额 ≤ 0 且 <span class="mono">last_active_at</span> 落在沉默切点之内（与沉默判定结构性互斥）
+      且 <span class="mono">last_touch_at</span> 在 7 天外（触达过就退出）且过价值闸门。
+      <br><br>
+      <strong>一个反例，值得记住：</strong>不要用「安静 3 天才进队列」这种判据。
+      <span class="mono">last_active_at</span> 取自 <span class="mono">quota_data</span>（只记成功消费），
+      跑空后每天被额度拦的客户，这个字段<strong>冻结在最后一次成功的时刻</strong>——判不出他在重试。
+      加了这个条件只会制造 3 天盲区，而不是减少打扰。
+    </div>
+
+    <div class="callout error">
+      <strong>一个绝不能用于健康度的公式：</strong>
+      <span class="mono">failures_7d ÷ requests_7d</span>。分子是重试后的尝试行数、分母只算成功请求，
+      比值会<strong>超过 100%</strong>——一个第 3 次才成功的请求会显示成 200% 失败。
+      要么把分母改成 <span class="mono">attempts_7d</span>，要么直接用可见失败率。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>二、指标体系</h2>
+
+    <h3>北极星：周计费消耗额（USD）</h3>
+    <p>
+      定义：<span class="mono">Σ quota_data.quota ÷ QuotaPerUnit</span>，按周一 0 点对齐、与上周等长天数。
+    </p>
+    <div class="grid2" style="margin-top:14px">
+      <div class="box">
+        <div class="t">为什么不用「活跃用户数」</div>
+        <ul>
+          <li>一次调用与一万美元等权，无法反映真实增长</li>
+          <li>滚动 30 天窗让同一用户连续两月重复计入，趋势永远平滑</li>
+          <li>需为每层重新定义"活跃"，口径无法统一</li>
+        </ul>
+      </div>
+      <div class="box">
+        <div class="t">为什么用消耗额</div>
+        <ul>
+          <li>收入 = 消耗，任何动作必须能落到这一项</li>
+          <li>可加量：能按用户/渠道/模型/cohort 任意拆分</li>
+          <li>自带"多少人 × 每人多少"，不必造复合指标</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:14px">
+      <strong>必须配一条质量闸门：</strong>补贴消耗占比 = 赠送/兑换额度消耗 ÷ 总消耗。
+      没有它，用补贴买来的增长会被当成真实增长。
+    </p>
+
+    <h3>三层指标</h3>
+    <table>
+      <thead><tr><th style="width:12%">层</th><th style="width:30%">指标</th><th style="width:58%">精确口径</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="4"><span class="badge b-blue">结果</span><br><span style="font-size:12px;color:#718096">周</span></td>
+          <td>计费消耗额</td><td>Σ quota，窗口 = 周一 0 点起 7 天，不含退款行</td></tr>
+        <tr><td>付费客户数</td><td><span class="mono">topups.complete_time &gt; 0</span> 的 distinct user_id</td></tr>
+        <tr><td>NDR（净留存）</td><td>同 cohort 本周消耗 ÷ 4 周前消耗，cohort = 首充周</td></tr>
+        <tr><td>Top10 集中度</td><td>前 10 用户消耗 ÷ 总消耗，超过 50% 说明收入结构脆弱</td></tr>
+        <tr><td><strong>付费流失率</strong></td><td><strong>队列口径</strong>：月初的付费活跃客户中，60 天内流失的占比。流失日取 <span class="mono">last_active_at + 60d</span> 而非检测日；被禁用/注销等非自愿流失单列；分母只含累计付费 ≥ $10 的账户</td></tr>
+
+        <tr><td rowspan="4"><span class="badge b-green">过程</span><br><span style="font-size:12px;color:#718096">周</span></td>
+          <td>有效活跃 WAU-e</td><td>成功请求 ≥ 5 <strong>且</strong> 有成功调用天数 ≥ 2 的 distinct user_id</td></tr>
+        <tr><td>激活率</td><td>注册 7 天内首笔成功调用的用户 ÷ 该周注册用户</td></tr>
+        <tr><td>余额中位天数</td><td><span class="mono">balance ÷ max(quota_3d÷3, quota_7d÷7)</span> 的中位数</td></tr>
+        <tr><td>首充转化</td><td>首充用户 ÷ 激活用户，取 30 / 60 天两档</td></tr>
+
+        <tr><td rowspan="4"><span class="badge b-orange">诊断</span><br><span style="font-size:12px;color:#718096">日 / 时</span></td>
+          <td>可见失败率</td><td><span class="mono">1 − 有 type=2 的 request_id ÷ 全部 request_id</span></td></tr>
+        <tr><td>尝试失败率</td><td>type=5 行数 ÷ (type=2 + type=5)，用于渠道健康判断</td></tr>
+        <tr><td>额度类失败占比</td><td>失败中额度类码 ÷ 全部可见失败；trial 组 13/19 属此类</td></tr>
+        <tr><td>P95 首字延迟</td><td>只取 <span class="mono">is_stream=0</span> 的 use_time；流式需另埋 TTFB</td></tr>
+        <tr><td><strong>沉默率</strong></td><td>30 天无成功调用的全量占比。<strong>不要与流失率混用</strong>——这是两行不同的数，看板上必须分开显示</td></tr>
+        <tr><td><strong>撞墙恢复率</strong></td><td>撞墙后 48 小时内恢复成功调用的人数 ÷ 撞墙人数。这是「错误响应体里带充值入口」唯一的效果度量。<br><strong>但它有循环依赖</strong>：分子分母同源于拦截日志，分母就是撞墙记录。记录不补全，这个指标不是偏低，而是<strong>分母缺失、永远显示 100%</strong>。所以「先补拦截日志」是它与撞墙判据共同的上线前置条件</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <strong>"月活"必须收紧：</strong>现口径"30 天内有任意成功消费"有两个毛病——1 次调用与 1 万美元等权、滚动窗口导致趋势永远平滑。
+      改法：headline 一律 rolling 7 天与上周等长对齐，"活跃"必须带行为门槛；30 天只作 cohort 观察窗，不作 headline。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>三、看板信息架构：从数据表分组改为决策节奏分组</h2>
+    <p>现在的 5 个页签是按"数据长什么样"分的，所以趋势和质量没有位置。按"什么时候看"重组：</p>
+    <table>
+      <thead><tr><th style="width:10%">段</th><th style="width:16%">页签</th><th style="width:12%">节奏</th><th style="width:62%">变化</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge b-red">执行</span></td><td><strong>今日</strong></td><td>每天</td>
+          <td>保留队列；顶部只放 4 个决策数字（待救金额、待发额度、待回访、新增事故），不放图。排序键从"严重度"改为<strong>损失金额</strong>——运营的一天应该按钱排序。</td></tr>
+        <tr><td rowspan="2"><span class="badge b-blue">复盘</span></td><td><strong>趋势</strong> <span class="badge b-green">新</span></td><td>每周</td>
+          <td>周消耗 / WAU-e / 可见失败率三线 + cohort 热力图（注册周 × 留存周）。回答"从哪天开始跌"。</td></tr>
+        <tr><td><strong>分层</strong></td><td>每周</td>
+          <td>保留，增加"渠道 / cohort"切换，以及 <span class="mono">usage_shape</span>（burst / steady / one_off）。</td></tr>
+        <tr><td rowspan="2"><span class="badge b-orange">干预</span></td><td><strong>档案</strong></td><td>事件</td>
+          <td>保留，增加"请求-错误时间线"，可按 channel / model 下钻。</td></tr>
+        <tr><td><strong>触达与归因</strong></td><td>事件</td>
+          <td>ROI 改用 USD 并标注补贴占比。</td></tr>
+        <tr><td><span class="badge b-yellow">诊断</span></td><td><strong>质量与渠道</strong> <span class="badge b-green">新</span></td><td>事件</td>
+          <td>可见 vs 尝试失败率、按渠道的 401/超时率、密钥失效聚集。像"23 条 401 集中在 34 分钟"这种结论应当自助可见，而不是靠一次性分析。</td></tr>
+        <tr><td><span class="badge b-gray">配置</span></td><td>规则 <span class="badge b-gray">降级</span></td><td>季度</td>
+          <td>降为设置页入口，不占一级 tab。配置不是日常动作，占一个 tab 等于每天看空表。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>四、用户运营：从人盯队列到待发队列</h2>
+
+    <h3>生命周期六态（全部用现有字段，不加表）</h3>
+    <table>
+      <thead><tr><th style="width:12%">状态</th><th style="width:38%">判定</th><th style="width:50%">为什么这么定</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge b-blue">N0 未激活</span></td><td>注册 ≤ 7 天且 <span class="mono">first_active_at</span> = 0</td><td rowspan="2">新客没有消耗，按分位分层全是噪声。新客只看一件事：跑通第一次调用没有。</td></tr>
+        <tr><td><span class="badge b-green">N1 已激活</span></td><td>注册 ≤ 7 天且 <span class="mono">first_active_at</span> &gt; 0</td></tr>
+        <tr><td><span class="badge b-green">G 成长</span></td><td>8 ≤ 注册天数 ≤ 30 且 7 天内有调用</td><td>推升期，看模型渗透率而非单纯消耗</td></tr>
+        <tr><td><span class="badge b-blue">M 成熟</span></td><td>注册 &gt; 30 天且 7 天内有调用</td><td>防流失，看 NDR 与余额健康</td></tr>
+        <tr><td><span class="badge b-orange">D 沉默</span></td><td>30 天无成功调用</td><td>还有窗口，值得一次唤醒</td></tr>
+        <tr><td><span class="badge b-gray">L 流失</span></td><td>60 天无调用 <strong>且</strong> 累计付费 ≥ $10</td><td><strong>流失必须是付过费的人</strong>。从未充值的不是流失，是无效注册。<strong>金额门槛同样重要</strong>——充 $1 的账户会把流失率分母稀释得毫无意义。</td></tr>
+      </tbody>
+    </table>
+
+    <h3>触发表：12 条，覆盖新客到流失</h3>
+    <p>渠道只保留两条：<strong>站内信</strong>（零成本、可关）与<strong>邮件</strong>（复用已有 NotifyUser）。短信不做——贵，且开发者反感。</p>
+    <table>
+      <thead><tr><th style="width:16%">触发</th><th style="width:12%">时机</th><th style="width:44%">说什么</th><th style="width:12%">成本</th><th style="width:16%">执行</th></tr></thead>
+      <tbody>
+        <tr><td>注册未动</td><td>D0 即时</td><td>三条可粘贴的 curl + 一个真实模型 + 余额条</td><td>0</td><td>自动</td></tr>
+        <tr><td>注册 2h 无请求</td><td>+2h</td><td>「Playground 点一下就能跑」，不放代码</td><td>0</td><td>自动</td></tr>
+        <tr><td>仍未调用</td><td>+2d</td><td>首次失败 90% 是这三件事：缺 Bearer、base_url 少 <span class="mono">/v1</span>、模型名不存在</td><td>0</td><td>自动</td></tr>
+        <tr><td>仍未调用</td><td>+6d</td><td>3 行 SDK 示例 + 体验额度到期日（不催充）</td><td>0</td><td>自动</td></tr>
+        <tr><td><strong>额度墙</strong></td><td>实时</td><td>错误 JSON 里直接附上充值链接与剩余可用天数</td><td>0</td><td><strong>产品侧</strong></td></tr>
+        <tr><td>成长增长</td><td>周一</td><td>他自己的用量：Top3 模型、P95、失败率、更便宜的替代</td><td>0</td><td>自动</td></tr>
+        <tr><td>成熟异动</td><td>触发即发</td><td>环比降幅 &gt; 10% <strong>或用户感知失败率</strong> &gt; 20%：余额可用天数 + 下月预估账单</td><td>0</td><td>自动 + 批注</td></tr>
+        <tr><td>余额耗尽</td><td>每日</td><td>余额为 <strong>0</strong>，<strong>或</strong> 可用天数 &lt; 3（用 <span class="mono">max(q3d÷3, q7d÷7)</span> 算）：「还剩 X 元，按当前速率可用 4 天」——只报账，不打折</td><td>0</td><td>自动</td></tr>
+        <tr><td>沉默第 0 天</td><td>—</td><td>「90 天新增了什么」：模型、降价、新端点，<strong>不带券</strong></td><td>0</td><td>审批发</td></tr>
+        <tr><td>沉默第 14 天</td><td>+14d</td><td>最后一封，含退订按钮，之后静默 90 天</td><td>≤50 元</td><td>审批发</td></tr>
+        <tr><td>已流失</td><td>—</td><td>「密钥/账单/用量可随时导出，要我打包吗」。<strong>按充值额分档</strong>：≥$100 人工电话、$10–100 邮件、&lt;$10 不发</td><td>0</td><td>人工</td></tr>
+        <tr><td>K 层轮换</td><td>每周 5 家</td><td>用量结构、限流失败、下月扩容</td><td>返额</td><td>人工</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <strong>为什么耗尽型没有拆成「刚撞墙」和「已安静」两个类型：</strong>
+      理想情况下应该拆——前者电话第一句是「我先给你开 50 块把这周干完」，后者是「上次卡在哪一步」，
+      合成一条只能写通用文案，而通用文案对两种人都是错的。
+      <br>
+      但区分两者的唯一信号是「近 3 天有没有额度拦截记录」，而这条日志<strong>本身不完整</strong>（见数据边界）。
+      用一个残缺信号做类型拆分，等于让「没记录」伪装成「没撞墙」——那比不拆更糟。
+      <br>
+      <strong>所以现阶段保持单一类型，拆分推迟到拦截日志补全之后。</strong>
+      在那之前，运营从客户档案能看到的失败明细已经足够判断开场白，只是需要多花 30 秒。
+    </div>
+
+    <h3>渠道路由：同一件事只走一条通道</h3>
+    <p>三张表（触发表 / 预警队列 / 错误响应体）如果各说各的，同一个「额度耗尽」会同时触发三个通道。必须写死：</p>
+    <table>
+      <thead><tr><th style="width:32%">情形</th><th style="width:36%">走哪</th><th style="width:32%">不走哪</th></tr></thead>
+      <tbody>
+        <tr><td>未付费 + 额度耗尽</td><td>错误响应体（<span class="mono">quota_wall</span>）</td><td>队列、邮件</td></tr>
+        <tr><td>已付费 + 额度耗尽</td><td>队列 P0 人工 + 报账邮件</td><td>—</td></tr>
+        <tr><td>已付费 + 余量 &lt; 3 天</td><td>报账邮件</td><td>队列</td></tr>
+        <tr><td>7 天无调用 + 余量低</td><td><strong>什么都不发</strong></td><td>全部</td></tr>
+        <tr><td>账户状态非启用</td><td><strong>什么都不发</strong></td><td>全部</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px">
+      两条原则：<strong>邮件只碰付过费的人</strong>——未付费的耗尽由额度墙接住，那一刻他在等响应，不在等邮件。
+      <strong>对已停用的账户报账等于催充</strong>——所以报账类邮件必须带「近 7 天有活动」门槛。
+    </p>
+
+    <div class="callout ok">
+      <strong>最高 ROI 的动作不在运营侧，在错误响应体里。</strong>
+      trial 组 24 小时内 19 条错误有 13 条是额度不足——用户是撞到墙才知道有墙。
+      加额度不解决问题，让墙可见、可跨才解决。这一条成本为零，优先级应该排在所有触达之上。
+    </div>
+
+    <h3>自动化与人工的边界</h3>
+    <p>不用"重要 / 不重要"这种判断，用三条全满足才算可全自动：</p>
+    <div class="grid2">
+      <div class="box">
+        <div class="t">可全自动的三条判据</div>
+        <ul>
+          <li><strong>可逆且代价低</strong>——发错约等于零成本，不是误发折扣</li>
+          <li><strong>不读意图</strong>——只依赖事实（"还剩 4 天"），不依赖解读（"他为什么降量"）</li>
+          <li><strong>一句话对 100 个客户都成立</strong></li>
+        </ul>
+      </div>
+      <div class="box">
+        <div class="t">必须人做的三类</div>
+        <ul>
+          <li>打电话</li>
+          <li>判读降量原因（可能是他自己业务下滑，也可能是我们模型变差）</li>
+          <li>承诺资源（折扣、专属通道、定制集成）</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:14px">
+      <strong>抑制规则先于触发规则</strong>（顺序不能反）：账户状态非启用则不进任何 play——给被我们封掉的人发「帮你导出」是二次伤害；同用户 7 天内触达 ≤ 1 次；
+      有未解 P0 事故则抑制全部营销类，只放行事故沟通；有 open 的人工跟进则抑制自动触达，避免人机打架。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>五、数据模型：只建一张新表</h2>
+
+    <h3>先补索引（1 小时，收益最大）</h3>
+    <code class="block"><span class="c">-- quota_data 现在只有 (user_id)、(created_at) 单列索引，按用户+时间窗必全扫</span>
+<span class="k">CREATE INDEX</span> idx_qd_user_created <span class="k">ON</span> quota_data(user_id, created_at);
+
+<span class="c">-- logs 把 other JSON 里的字段抽成列，才能按错误类型聚合与建索引</span>
+<span class="k">ALTER TABLE</span> logs
+  <span class="k">ADD</span> status_code <span class="k">INT</span> <span class="k">DEFAULT</span> 0,
+  <span class="k">ADD</span> error_code <span class="k">VARCHAR</span>(64) <span class="k">DEFAULT</span> <span class="s">''</span>,
+  <span class="k">ADD</span> is_final <span class="k">TINYINT</span> <span class="k">DEFAULT</span> 0;
+
+<span class="c">-- is_final 由已在运行的 RecordRequestPolicyTermination 置 1，逻辑在跑只是没写列</span>
+<span class="k">CREATE INDEX</span> idx_logs_final <span class="k">ON</span> logs(created_at, type, is_final);</code>
+
+    <h3>唯一的新表：渠道采购价</h3>
+    <p>这是唯一"不可重建"的事实。价格会变，没有生效时点就无法复盘历史毛利。</p>
+    <table>
+      <thead><tr><th>列</th><th>类型</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td>BIGINT PK</td><td>—</td></tr>
+        <tr><td class="mono">channel_id</td><td>INT</td><td>关联 channels</td></tr>
+        <tr><td class="mono">model_name</td><td>VARCHAR(64)</td><td>粒度 = 渠道 × 模型</td></tr>
+        <tr><td class="mono">unit_cost_in / unit_cost_out</td><td>NUMERIC(12,6)</td><td>输入/输出单价</td></tr>
+        <tr><td class="mono">currency</td><td>CHAR(3)</td><td>—</td></tr>
+        <tr><td class="mono">effective_from</td><td>BIGINT</td><td>生效时点，支持历史复盘</td></tr>
+        <tr><td class="mono">source</td><td>VARCHAR(32)</td><td>报价单 / 后台 / 人工估算</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px">
+      没有它，毛利永远"待接入"。更要紧的是<strong>错误归因会指错方向</strong>——
+      如果 azure-gpt4o-hk 本身是亏损渠道，那 34 分钟的 401 未必是纯损失。
+    </p>
+
+    <h3>宽表加列（派生数据，允许整表覆盖）</h3>
+    <p>
+      <span class="mono">quota_3d</span>、<span class="mono">active_days_28</span>、<span class="mono">attempts_7d</span>、
+      <span class="mono">visible_failures_7d</span>、<span class="mono">channel</span>、<span class="mono">usage_shape</span>、
+      <span class="mono">weekly_loss_cents</span>、<span class="mono">failed_kind</span>。
+    </p>
+    <p>
+      其中 <span class="mono">failed_kind</span>（quota / upstream / channel / local，取近 7 天失败最多的归因）
+      直接决定动作是"发额度"还是"道歉 + 补偿"。<span class="mono">channel</span> 由 OAuth provider 派生，不建维度表：
+    </p>
+    <code class="block"><span class="k">CASE WHEN</span> inviter_id &gt; 0      <span class="k">THEN</span> <span class="s">'referral'</span>
+     <span class="k">WHEN</span> linux_do_id &lt;&gt; <span class="s">''</span>  <span class="k">THEN</span> <span class="s">'linuxdo'</span>
+     <span class="k">WHEN</span> github_id &lt;&gt; <span class="s">''</span>    <span class="k">THEN</span> <span class="s">'github'</span>
+     <span class="k">WHEN</span> oidc_id &lt;&gt; <span class="s">''</span>      <span class="k">THEN</span> <span class="s">'oidc'</span>
+     <span class="k">WHEN</span> telegram_id &lt;&gt; <span class="s">''</span> <span class="k">THEN</span> <span class="s">'telegram'</span>
+     <span class="k">WHEN</span> wechat_id &lt;&gt; <span class="s">''</span>   <span class="k">THEN</span> <span class="s">'wechat'</span>
+     <span class="k">ELSE</span> <span class="s">'direct'</span> <span class="k">END</span></code>
+
+    <div class="callout warn">
+      <strong>明确否掉 cohort 表。</strong>cohort 是一次 GROUP BY 的派生物，<span class="mono">quota_data</span> 有历史且无清理任务。
+      建成表就是第二份事实来源，30 天后必与 <span class="mono">quota_data</span> 打架。
+      只在需要时用窗口查询派生，配合联合索引即可。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>六、预算与 ROI：修正一处自相矛盾</h2>
+    <div class="callout error">
+      <strong>原方案存在数学冲突：</strong>「K 层返月消耗 5–10%」与「总权益预算 = 平台消耗 3%」不能同时成立。
+      K+A 通常占消耗 70–80%，光 K 返 5% 就吃掉全平台 3.5–4%，预算必然超支。
+    </div>
+    <p><strong>改为：只对增量返。</strong>环比增量 × 10%，上限为账户月消耗的 5%。只为增长付钱，不为存量付钱。</p>
+
+    <table>
+      <thead><tr><th style="width:16%">层</th><th class="num" style="width:14%">预算占比</th><th style="width:70%">说明</th></tr></thead>
+      <tbody>
+        <tr><td>K</td><td class="num">50%</td><td>只对增量返额，不返存量</td></tr>
+        <tr><td>A</td><td class="num">20%</td><td>培养下一批 K</td></tr>
+        <tr><td><strong>新客</strong></td><td class="num">20%</td><td>原方案给新客 0 预算，恰恰是最该投的人群。<strong>注意：这一块不能用 ROI 评估</strong>，见下方「两类批次」</td></tr>
+        <tr><td>风险 / 唤醒</td><td class="num">10%</td><td>止血，不求回报</td></tr>
+      </tbody>
+    </table>
+
+    <h3>ROI 门槛：单线 3.3</h3>
+    <p>
+      推导只有一步：<span class="mono">Δ利润 = 毛利率 m × 增量 − 已消耗赠送面值</span>。
+      令 Δ 为 0，得 <span class="mono">增量 ÷ 面值 = 1 ÷ m</span>。按 m = 30% 算是 <strong>3.33</strong>。
+    </p>
+    <div class="callout ok">
+      <strong>这个阈值与「替代率」无关</strong>——替代率（增量里有多少本来也会发生）已经被「增量」这个分子吸收了，
+      再拿它去调门槛等于重复扣一次成本。毛利字段接入后按 <span class="mono">1 ÷ m</span> 重算，不要用经验系数。
+    </div>
+    <ul style="margin-left:20px;margin-bottom:12px">
+      <li><span class="badge b-green">≥ 3.3</span> 继续投</li>
+      <li><span class="badge b-red">&lt; 3.3</span> 停</li>
+    </ul>
+
+    <div class="callout error">
+      <strong>两个必须纠正的换算错误：</strong><br>
+      ① 营收口径 ROI 高估的倍数是 <span class="mono">1 ÷ 毛利率 = 3.33</span>，<strong>不是</strong> <span class="mono">1 ÷ (1 − 毛利率) = 1.43</span>。<br>
+      ② 成本要按<strong>已消耗的赠送面值</strong>计，不是发放面值——否则没用完的额度被算成成本，好批次会被误停。
+      那没用完的部分怎么算？它是<strong>负债</strong>，不是成本。<br>
+      ③ <strong>两个数分开显示</strong>：<span class="mono">预算按发放面值</span>控敞口，<span class="mono">ROI 按消耗面值</span>算回报。混用一个数，要么预算失控，要么好批次被误停。
+    </div>
+
+    <h3>增量基线（不设基线，ROI 必然虚高）</h3>
+    <p>
+      基线 = 前 4 周消耗中位数 × 4 × 大盘同期累计增速，观察窗 28 天。<strong>单批少于 10 人不出 ROI 数字</strong>——样本太小只会给自己假信心。
+    </p>
+    <p>
+      用中位数而非均值：我们专挑下滑账户发权益，前窗口的均值本来就偏低，用均值会让增量虚高。这是回归均值偏差，不是数据问题。
+    </p>
+    <p>
+      大盘增速另做两处处理：<strong>剔除本批用户</strong>（否则一个 K 层客户翻倍就能抬高全盘基线，把所有批次算成零增量），
+      取<strong>四个周环比的中位数并截断在 ±20%</strong>。
+    </p>
+    <p>
+      观察窗 28 天，第 7 / 14 / 21 天出中期读数，但必须带<strong>显著性门槛</strong>：
+      变化幅度要超过该批前 4 周周环比的 MAD 才显示方向。否则运营每周都会被噪声推着改主意。
+    </p>
+
+    <h3>两类批次，两套指标（不能混排）</h3>
+    <p>
+      把新客试用批次和存量激励批次放在一张表里按 ROI 排序，会直接导致错误的预算决策。
+    </p>
+    <table>
+      <thead><tr><th style="width:18%">批次类型</th><th style="width:26%">评估指标</th><th style="width:56%">为什么不能混</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>存量激励</strong><br><span style="font-size:12px;color:#718096">K/A 层返额</span></td>
+          <td>增量消耗 ÷ 已消耗面值 <span class="badge b-green">≥ 3.3</span></td>
+          <td>对象本来就付费，增量可以直接归因到权益</td>
+        </tr>
+        <tr>
+          <td><strong>新客试用</strong><br><span style="font-size:12px;color:#718096">注册赠送</span></td>
+          <td><strong>首充转化率</strong>（30 / 60 天）+ <strong>回本周期</strong></td>
+          <td>从未付费的用户，赠送消耗完也没有收入回流，<strong>这个数恒为负</strong>。它不是「ROI 低」，是获客成本。硬套 ROI 会让新客预算永远显示亏损、然后被砍掉——而那恰好是最该投的一块。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>停投三线（任一命中即停）</h3>
+    <div class="grid2">
+      <div class="box"><div class="t">量化条件</div><ul>
+        <li>唤醒率连续两轮 &lt; 8%</li>
+        <li>批次 ROI &lt; 3.3</li>
+        <li>该人群权益成本 &gt; 其增量消耗的 30%</li>
+      </ul></div>
+      <div class="box"><div class="t">流程约束</div><ul>
+        <li>批次 28 天未结算，不允许开新批次（观察窗从 14 天扩到 28 天）</li>
+        <li>没有批次号的发放无法归因，只能算成本</li>
+        <li>单月权益成本率硬顶 5%</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>七、两个已裁决的实现口径</h2>
+    <p>下面两条不影响方案框架，但影响实现正确性，已经定调：</p>
+    <table>
+      <thead><tr><th style="width:30%">问题</th><th style="width:14%">裁决</th><th style="width:56%">理由</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>R/C 的分子分母是否都用「已消耗面值」</td>
+          <td><span class="badge b-green">都用</span></td>
+          <td>分子用发放、分母用消耗就是自相矛盾。增量消耗本身就是「已发生」的量，成本也只有「已消耗」才是真成本。两端对齐，比值才有意义。</td>
+        </tr>
+        <tr>
+          <td>大盘增速是否剔除本批用户</td>
+          <td><span class="badge b-green">必须剔除</span></td>
+          <td>一个 K 层客户放量会把整批的「大盘增速」抬高，用这个被污染的基线去算增量，ROI 系统性虚高。剔除本批用户后算出的增速才是干净的对照。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>八、90 天路线图</h2>
+    <table>
+      <thead><tr><th style="width:12%">阶段</th><th style="width:36%">动作</th><th style="width:16%">成本</th><th style="width:36%">验收标准</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge b-red">第 1–2 周</span><br>修口径</td>
+          <td>补 <span class="mono">is_final</span> 列与三处口径修正；加联合索引；今日队列改按损失金额排序</td>
+          <td>2 人日</td>
+          <td>失败率与线上事故对得上；队列排序不再出现"金额小但排前面"</td>
+        </tr>
+        <tr>
+          <td><span class="badge b-orange">第 3–4 周</span><br>补决策</td>
+          <td>新增「趋势」页（周序列 + cohort 热力图）；新增「质量与渠道」页；规则页降级</td>
+          <td>3 人日</td>
+          <td>能回答"从哪天开始跌""linux.do 与 GitHub 用户留存差多少"</td>
+        </tr>
+        <tr>
+          <td><span class="badge b-yellow">第 5–8 周</span><br>上运营</td>
+          <td><span class="mono">growth_plays</span> 表 + 物化函数 + 抑制规则 + 发送适配；先开新客 4 条 play</td>
+          <td>4 人日</td>
+          <td>新客激活率从基线提升；触达记录里出现 <span class="mono">auto:email</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge b-green">第 9–12 周</span><br>算钱</td>
+          <td><span class="mono">channel_costs</span> 表 + 毛利口径；ROI 改 USD 口径；批次按新门槛结算</td>
+          <td>3 人日</td>
+          <td>能算出每个渠道的真实毛利；停投决策有数字依据</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>九、五条不能做的事</h2>
+    <table>
+      <thead><tr><th style="width:30%">禁令</th><th style="width:70%">原因</th></tr></thead>
+      <tbody>
+        <tr><td><strong>故障窗口内不做营销触达</strong></td><td>失败率 &gt; 20% 或有未解 P0 时，唯一允许的沟通是事故说明。此时发券等于承认"我知道你坏了，但我只关心你充值"。</td></tr>
+        <tr><td><strong>不把"余额不足"写成催充</strong></td><td>只报账，不打折。开发者不反感知道自己的账，反感被催。</td></tr>
+        <tr><td><strong>K 层不发模板</strong></td><td>每封必须带一条只有他能看到的信息。一封群发毁掉的关系，十次 1v1 补不回来。</td></tr>
+        <tr><td><strong>不用"我们想你了"唤醒</strong></td><td>沉默 30 天不是想你，是项目结束或换了供应商。内容只能是"新增了什么"和"可随时导出"。</td></tr>
+        <tr><td><strong>不给未验证账户自动发权益</strong></td><td>只发给 <span class="mono">topup_total &gt; 0</span> 或已验证企业邮箱的账户，否则必被刷。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>十、边界：这些事靠现有数据永远答不了</h2>
+    <p>承认边界比假装能算更重要。这些项需要埋点或架构改动，不在本方案范围内：</p>
+    <div class="callout error">
+      <strong>上线前置条件：先补额度拦截日志。</strong>
+      6 个额度拒绝返回点里有 4 个不写日志，受影响的包括图像、任务、语音的预扣路径。
+      在补全之前，任何依赖「拦截记录」的判据与指标都是<strong>死代码或恒真值</strong>——
+      写进去比不写更危险，因为它会让人以为在监控。
+    </div>
+    <table>
+      <thead><tr><th style="width:26%">问题</th><th style="width:74%">为什么答不了</th></tr></thead>
+      <tbody>
+        <tr><td>真实获客来源</td><td>没有 utm / referer / campaign。OAuth provider 只是代理变量，同 provider 内部（哪篇文章、哪个群）不可分。需注册页埋点 + <span class="mono">users.acquisition_source</span>。</td></tr>
+        <tr><td>注册前行为</td><td>没有前端事件流。看了几次定价页、哪句 copy 促成转化，完全无记录。</td></tr>
+        <tr><td>组织口径</td><td>没有 org 概念，一家公司开 3 个账号就低估成 3 个小客户。可先用 email 域名聚合，但 OAuth 用户 email 可能为空。</td></tr>
+        <tr><td>补贴 vs 实付</td><td>不改额度写入路径（加 <span class="mono">quota_ledger</span>）就只能近似。</td></tr>
+        <tr><td>历史错误率</td><td><span class="mono">logs</span> 有清理任务，保留期外的失败数不可回补。所以 cohort 与趋势一律走 <span class="mono">quota_data</span>，logs 只用于保留期内的事件级诊断。</td></tr>
+        <tr><td><strong>额度拦截次数（失明面 4/6）</strong></td><td>全仓 6 个额度拒绝返回点，<span class="mono">billing_session.go</span> 里有 4 个挂了 <span class="mono">ErrOptionWithNoRecordErrorLog()</span>，而 <span class="mono">RecordRelayErrorLog</span> 第一行就 return。受影响的包括<strong>图像、任务、语音类的预扣路径</strong>——不只是订阅。<br>后果不是「少记几条」：任何依赖拦截记录的判据在这些流量上会<strong>恒为 0</strong>，变成永远不触发的死代码。凡是引用「24h 13 条额度不足」这类数字，必须标注「日志口径，实际更高」。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>十一、需要你拍板的三件事</h2>
+    <table>
+      <thead><tr><th style="width:36%">决策</th><th style="width:22%">建议</th><th style="width:42%">影响面</th></tr></thead>
+      <tbody>
+        <tr><td>北极星用哪个指标</td><td><span class="badge b-green">周计费消耗额</span></td><td>决定所有页面 headline 的口径，改一次成本高</td></tr>
+        <tr><td>规则页是否降级</td><td><span class="badge b-green">降为设置入口</span></td><td>腾出位置给趋势与质量页</td></tr>
+        <tr><td>额度墙是否单独立项</td><td><span class="badge b-orange">是，产品侧</span></td><td>它在转发路径的错误映射里，不归运营看板；但它是 trial 转化漏水的主因</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    生成日期：2026-11-16<br>
+    数据来源：133 条真实错误日志（18 小时）· 现有看板代码审查 · 分层逻辑重新推导<br>
+    配套文档：growth-console.md（看板实现）· user-tier-operations.md（分层方案）· growth-automation-plays.md（触达机制）
+  </div>
+
+</div>
+</body>
+</html>

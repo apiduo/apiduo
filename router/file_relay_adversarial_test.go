@@ -47,14 +47,14 @@ func TestFileRelayRejectsAbusiveUploads(t *testing.T) {
 
 	channel := &model.Channel{
 		Type: constant.ChannelTypeOpenAI, Key: "sk-up", Status: common.ChannelStatusEnabled,
-		Group: "default", Models: "gpt-4o",
+		Group: "default", Models: "gpt-4o,@files/upload/file-extract",
 	}
 	base := upstream.URL
 	channel.BaseURL = &base
 	channel.SetOtherSettings(relaykitdto.ChannelOtherSettings{
-		FileRelay: &relaykitdto.ChannelFileRelayConfig{Purposes: []string{"file-extract"}},
+		FileRelay: &relaykitdto.ChannelFileRelayConfig{},
 	})
-	require.NoError(t, model.DB.Create(channel).Error)
+	require.NoError(t, channel.Insert())
 
 	engine := gin.New()
 	SetRelayRouter(engine)
@@ -181,14 +181,14 @@ func TestFileRelayContentTypeFollowsTheProvider(t *testing.T) {
 	// upload MIME here.
 	channel := &model.Channel{
 		Type: constant.ChannelTypeOpenAI, Key: "sk-up", Status: common.ChannelStatusEnabled,
-		Group: "default", Models: "gpt-4o",
+		Group: "default", Models: "gpt-4o,@files/upload/file-extract",
 	}
 	base := upstream.URL
 	channel.BaseURL = &base
 	channel.SetOtherSettings(relaykitdto.ChannelOtherSettings{
-		FileRelay: &relaykitdto.ChannelFileRelayConfig{Purposes: []string{"file-extract"}},
+		FileRelay: &relaykitdto.ChannelFileRelayConfig{},
 	})
-	require.NoError(t, model.DB.Create(channel).Error)
+	require.NoError(t, channel.Insert())
 
 	engine := gin.New()
 	SetRelayRouter(engine)

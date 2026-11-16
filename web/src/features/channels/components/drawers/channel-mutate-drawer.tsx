@@ -201,17 +201,25 @@ import {
   supportsNewAPIUpstream,
 } from '../../lib/channel-plugin-extensions'
 import { getChannelTypeConfig } from '../../lib/channel-type-config'
-// APIDUO:primary-endpoint:BEGIN
+/* APIDUO:ext:BEGIN */
+// apiduo 在渠道抽屉里的全部扩展都从这个入口进来。上游文件只留这一个
+// import 块 —— 新增面板或工具改 lib/apiduo-channel-ext.ts，不动这里。
 import {
-  readImageProtocol,
-  writeImageProtocol,
-} from '../../lib/image-protocol-settings'
-import {
+  AdvancedAsyncPanel,
+  ArtifactStorageBlock,
+  CHANNEL_TYPE_ADVANCED_ASYNC,
+  FileRelaySetting,
+  MinActiveKeysField,
+  MultiKeyModeHint,
+  PrimaryEndpointSummary,
+  apiduoBlockMark,
   fillPrimaryForStats,
+  readImageProtocol,
   readPrimaryEndpoint,
+  writeImageProtocol,
   writePrimaryEndpoint,
-} from '../../lib/primary-endpoint'
-// APIDUO:primary-endpoint:END
+} from '../../lib/apiduo-channel-ext'
+/* APIDUO:ext:END */
 import {
   collectInvalidStatusCodeEntries,
   collectNewDisallowedStatusCodeRedirects,
@@ -225,13 +233,6 @@ import { ChannelPluginExtensions } from '../channel-plugin-extensions'
 import { ChannelQuickOptions } from '../channel-quick-options'
 import { ChannelTypeLogo } from '../channel-type-badge'
 import { useChannels } from '../channels-provider'
-/* APIDUO:advanced-async:BEGIN */
-import {
-  CHANNEL_TYPE_ADVANCED_ASYNC,
-  getAdvancedAsyncStats,
-} from '../../lib/advanced-async'
-import { AdvancedAsyncEditorDialog } from '../dialogs/advanced-async-editor-dialog'
-/* APIDUO:advanced-async:END */
 import { AdvancedCustomEditorDialog } from '../dialogs/advanced-custom-editor-dialog'
 import { ConfigureModelsDialog } from '../dialogs/configure-models-dialog'
 import {
@@ -255,21 +256,6 @@ import {
   type ModelMappingDraftRequest,
 } from '../model-mapping-editor'
 import { ModelRedirectPanel } from '../model-redirect-panel'
-/* APIDUO:multi-key-sticky:BEGIN */
-import { MultiKeyModeHint } from '../multi-key-mode-hint'
-/* APIDUO:multi-key-sticky:END */
-/* APIDUO:multi-key-min-active:BEGIN */
-import { MinActiveKeysField } from '../min-active-keys-field'
-/* APIDUO:multi-key-min-active:END */
-/* APIDUO:marks:BEGIN */
-import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
-/* APIDUO:marks:END */
-/* APIDUO:file-relay:BEGIN */
-import { FileRelaySetting } from '../file-relay-setting'
-/* APIDUO:file-relay:END */
-/* APIDUO:artifact-storage:BEGIN */
-import { ArtifactStorageBlock } from '../artifact-storage-setting'
-/* APIDUO:artifact-storage:END */
 import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
 import { UpstreamModelSelection } from '../upstream-model-selection'
 import {
@@ -529,9 +515,6 @@ export function ChannelMutateDrawer({
   const [paramOverrideEditorOpen, setParamOverrideEditorOpen] = useState(false)
   const [advancedCustomEditorOpen, setAdvancedCustomEditorOpen] =
     useState(false)
-  /* APIDUO:advanced-async:BEGIN */
-  const [advancedAsyncEditorOpen, setAdvancedAsyncEditorOpen] = useState(false)
-  /* APIDUO:advanced-async:END */
   const [clipboardConnectionInfo, setClipboardConnectionInfo] =
     useState<ChannelConnectionInfo | null>(null)
   // Outlives the drawer: "Save and log in" closes it, then logs in.
@@ -697,9 +680,6 @@ export function ChannelMutateDrawer({
     formValues.upstream_model_update_check_enabled
   const currentSettings = formValues.settings
   const currentAdvancedCustom = formValues.advanced_custom
-  /* APIDUO:advanced-async:BEGIN */
-  const currentAdvancedAsync = formValues.advanced_async
-  /* APIDUO:advanced-async:END */
   const currentHeaderOverride = formValues.header_override
   const currentProxy = formValues.proxy
   const currentHttpProtocol = formValues.http_protocol
@@ -823,12 +803,6 @@ export function ChannelMutateDrawer({
     count: advancedCustomStats.routeCount,
   })} · ${primaryCenter}`
   /* APIDUO:primary-endpoint:END */
-  /* APIDUO:advanced-async:BEGIN */
-  const advancedAsyncStats = useMemo(
-    () => getAdvancedAsyncStats(currentAdvancedAsync),
-    [currentAdvancedAsync]
-  )
-  /* APIDUO:advanced-async:END */
   const advancedCustomRouteTypeLabels =
     advancedCustomStats.routeTypeLabels.slice(
       0,
@@ -4563,47 +4537,14 @@ export function ChannelMutateDrawer({
                   <FormItem className='space-y-3 border-y py-4'>
                     <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
                       {/* APIDUO:primary-endpoint:BEGIN */}
-                      <div className='min-w-0 space-y-2'>
-                        {/* 标题行右侧是状态（几条 + 中心），下一行才是入口清单。
-                            状态用文字、入口用 badge：两者不是同类项，不该同一种视觉。 */}
-                        <div className='flex min-w-0 items-baseline gap-x-2 gap-y-1'>
-                          <FormLabel className='shrink-0'>
-                            {t('Advanced Custom Routes')}
-                          </FormLabel>
-                          <span
-                            className='text-muted-foreground min-w-0 text-xs break-all'
-                            title={primarySummary}
-                          >
-                            {primarySummary}
-                          </span>
-                        </div>
-                        <div className='flex flex-wrap gap-1.5'>
-                          {advancedCustomRouteTypeLabels.map((label) => (
-                            <Badge
-                              key={label}
-                              variant='outline'
-                              className='max-w-[12rem] font-normal'
-                              title={label}
-                            >
-                              <span className='truncate'>{label}</span>
-                            </Badge>
-                          ))}
-                          {hiddenAdvancedCustomRouteTypeCount > 0 && (
-                            <Badge
-                              variant='outline'
-                              title={advancedCustomRouteTypeTitle}
-                            >
-                              +{hiddenAdvancedCustomRouteTypeCount}
-                            </Badge>
-                          )}
-                          {!advancedCustomStats.valid && (
-                            <Badge variant='destructive'>
-                              {t('Incomplete')}
-                            </Badge>
-                          )}
-                        </div>
-                        {/* APIDUO:primary-endpoint:END */}
-                      </div>
+                      <PrimaryEndpointSummary
+                        summary={primarySummary}
+                        labels={advancedCustomRouteTypeLabels}
+                        hiddenCount={hiddenAdvancedCustomRouteTypeCount}
+                        hiddenTitle={advancedCustomRouteTypeTitle}
+                        invalid={!advancedCustomStats.valid}
+                      />
+                      {/* APIDUO:primary-endpoint:END */}
                       <Button
                         type='button'
                         variant='outline'
@@ -4625,72 +4566,7 @@ export function ChannelMutateDrawer({
 
             {/* APIDUO:advanced-async:BEGIN */}
             {currentType === CHANNEL_TYPE_ADVANCED_ASYNC && (
-              <FormField
-                control={form.control}
-                name='advanced_async'
-                render={({ field }) => (
-                  <FormItem className='space-y-3 border-b py-4'>
-                    <div className='space-y-3'>
-                      <div className='flex items-start justify-between gap-3'>
-                        <div className='min-w-0 space-y-1'>
-                          <FormLabel>{t('Advanced async routes')}</FormLabel>
-                          <p className='text-muted-foreground text-xs'>
-                            {t(
-                              'Describe an upstream task API. The gateway submits the work and polls for the result.'
-                            )}
-                          </p>
-                        </div>
-                        <Button
-                          type='button'
-                          variant='outline'
-                          size='sm'
-                          className='shrink-0'
-                          onClick={() => setAdvancedAsyncEditorOpen(true)}
-                        >
-                          <Route className='mr-2 h-4 w-4' />
-                          {t('Configure async routes')}
-                        </Button>
-                      </div>
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <Badge
-                          variant={
-                            advancedAsyncStats.configured
-                              ? 'secondary'
-                              : 'outline'
-                          }
-                        >
-                          {advancedAsyncStats.configured
-                            ? t('Configured')
-                            : t('Not configured')}
-                        </Badge>
-                        {advancedAsyncStats.configured &&
-                        !advancedAsyncStats.valid ? (
-                          <Badge variant='destructive'>
-                            {t('Incomplete')}
-                          </Badge>
-                        ) : null}
-                      </div>
-                      {advancedAsyncStats.incomingPaths.length > 0 ? (
-                        <ul className='space-y-1'>
-                          {advancedAsyncStats.incomingPaths.map((path) => (
-                            <li
-                              key={path}
-                              title={path}
-                              className='bg-muted/40 text-muted-foreground w-full truncate rounded-md border px-2 py-1 font-mono text-xs'
-                            >
-                              {path}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                    <FormControl>
-                      <input type='hidden' {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <AdvancedAsyncPanel form={form} locked={sensitiveLocked} />
             )}
             {/* APIDUO:advanced-async:END */}
 
@@ -5658,21 +5534,6 @@ export function ChannelMutateDrawer({
         />
       )}
 
-      {/* APIDUO:advanced-async:BEGIN */}
-      {advancedAsyncEditorOpen && !sensitiveLocked && (
-        <AdvancedAsyncEditorDialog
-          open={advancedAsyncEditorOpen}
-          value={formValues.advanced_async || ''}
-          onOpenChange={setAdvancedAsyncEditorOpen}
-          onSave={(nextValue) => {
-            form.setValue('advanced_async', nextValue, {
-              shouldDirty: true,
-              shouldValidate: true,
-            })
-          }}
-        />
-      )}
-      {/* APIDUO:advanced-async:END */}
 
       <SecureVerificationDialog {...verification.dialogProps} />
 

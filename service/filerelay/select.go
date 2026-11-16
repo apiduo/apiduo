@@ -1,13 +1,12 @@
 package filerelay
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
-	"math/rand"
-	"slices"
 
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
 )
 
 var (
@@ -24,86 +23,25 @@ type Selection struct {
 	MaxUploadBytes int64
 }
 
-// SelectChannel resolves a channel from a purpose alone.
+// SelectChannel resolves a channel for one upload.
 //
-// This is the whole reason /v1/files is not run through the model distributor:
-// the request has no model to select on. A channel opts in to a purpose in the
-// file channel tables, and that opt-in is the routing table.
+// The purpose is part of the routing name — a channel serves file-extract by
+// listing "@files/upload/file-extract" — so an upload goes through the same
+// candidate pipeline as a chat request: group membership, priority, weight,
+// endpoint capability, and channel health all apply, and there is only one
+// implementation of them to keep correct.
 func SelectChannel(purpose string, group string) (*Selection, error) {
 	if purpose == "" {
 		return nil, fmt.Errorf("%w: purpose is empty", ErrNoPurposeChannel)
 	}
-	candidates, err := model.GetFileChannelCandidates(purpose)
+	channel, err := model.GetRandomSatisfiedChannel(group, endpoint.FileUploadModel(purpose), 0, []dto.ChannelFilter{
+		{Kind: dto.FilterRequestPath, RequestPath: "/v1/files"},
+	})
 	if err != nil {
 		return nil, err
 	}
-	if len(candidates) == 0 {
-		return nil, fmt.Errorf("%w: purpose=%s", ErrNoPurposeChannel, purpose)
-	}
-
-	matched := make([]model.FileChannelCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		if group == "" || channelServesGroup(candidate.Channel, group) {
-			matched = append(matched, candidate)
-		}
-	}
-	if len(matched) == 0 {
+	if channel == nil {
 		return nil, fmt.Errorf("%w: purpose=%s group=%s", ErrNoPurposeChannel, purpose, group)
 	}
-
-	// Highest priority wins; ties are broken by weight. Same rule the model
-	// distributor uses, so an operator only has to learn it once.
-	slices.SortStableFunc(matched, func(a, b model.FileChannelCandidate) int {
-		return cmp.Compare(b.Channel.GetPriority(), a.Channel.GetPriority())
-	})
-	topPriority := matched[0].Channel.GetPriority()
-	top := matched[:1]
-	for _, candidate := range matched[1:] {
-		if candidate.Channel.GetPriority() != topPriority {
-			break
-		}
-		top = append(top, candidate)
-	}
-	return weightedPick(top), nil
-}
-
-func channelServesGroup(channel *model.Channel, group string) bool {
-	for _, candidate := range channel.GetGroups() {
-		if candidate == group {
-			return true
-		}
-	}
-	return false
-}
-
-func weightedPick(candidates []model.FileChannelCandidate) *Selection {
-	if len(candidates) == 0 {
-		return nil
-	}
-	picked := candidates[0]
-	if len(candidates) > 1 {
-		total := 0
-		for _, candidate := range candidates {
-			total += effectiveWeight(candidate.Channel)
-		}
-		if total > 0 {
-			roll := rand.Intn(total)
-			for _, candidate := range candidates {
-				weight := effectiveWeight(candidate.Channel)
-				if roll < weight {
-					picked = candidate
-					break
-				}
-				roll -= weight
-			}
-		}
-	}
-	return &Selection{Channel: picked.Channel, MaxUploadBytes: picked.MaxUploadBytes}
-}
-
-func effectiveWeight(channel *model.Channel) int {
-	if weight := channel.GetWeight(); weight > 0 {
-		return weight
-	}
-	return 1
+	return &Selection{Channel: channel, MaxUploadBytes: model.FileUploadMaxBytes(channel)}, nil
 }

@@ -75,9 +75,20 @@ git add -A && git commit -m "chore(sync): 合并上游 $(git rev-parse --short u
 排优先级时先看上游活跃度，别凭感觉：
 
 ```bash
+go run ./tools/markercheck -heat          # 热文件块数与加权合并面，只报数不判定
 for f in $(git diff --name-only upstream/main HEAD); do
   echo "$(git log --oneline --since='180 days ago' upstream/main -- "$f" | wc -l) $f"
 done | sort -rn | head
+```
+
+`-heat` 按每个上游文件近 180 天的改动次数分 H0-H3（≤2 / 3-5 / 6-10 / >10），
+加权 = 块数 × 权重（1/2/4/8）。它回答的是「这 400 多块里哪几十块最危险」——
+按块数排序会把力气花在上游根本不动的文件上。
+
+行号级重叠也能看，用于判断某个块是否正压在上游的改动区：
+
+```bash
+git log -2 -U0 --format= upstream/main -- <file> | grep '^@@'
 ```
 
 上游半年改几十次的文件，一行自有代码都是成本；半年改一次的文件，几十行也无所谓。

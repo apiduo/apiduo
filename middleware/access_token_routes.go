@@ -59,20 +59,14 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/verify":                    accessTokenAnyRule,
 
 	// router/api-router.go: /api/user (self)
-	"GET /api/user/sessions":                accessTokenSessionRule,
-	"DELETE /api/user/sessions/:sid":        accessTokenSessionRule,
-	"POST /api/user/sessions/revoke-others": accessTokenSessionRule,
-	"GET /api/user/self/groups":             accessTokenScopeRule("profile:read"),
-	"GET /api/user/self":                    accessTokenScopeRule("profile:read"),
-	"GET /api/user/models":                  accessTokenScopeRule("profile:read"),
-	"PUT /api/user/self":                    accessTokenScopeRule("profile:write"),
-	"DELETE /api/user/self":                 accessTokenScopeRule("account_security:write"),
-	// APIDUO:agent-key:BEGIN Registering and revoking a key is a session action,
-	// so a token — scoped or legacy — must not be able to perform it.
-	"GET /api/agent/keys":        accessTokenSessionRule,
-	"POST /api/agent/keys":       accessTokenSessionRule,
-	"DELETE /api/agent/keys/:id": accessTokenSessionRule,
-	// APIDUO:agent-key:END
+	"GET /api/user/sessions":                       accessTokenSessionRule,
+	"DELETE /api/user/sessions/:sid":               accessTokenSessionRule,
+	"POST /api/user/sessions/revoke-others":        accessTokenSessionRule,
+	"GET /api/user/self/groups":                    accessTokenScopeRule("profile:read"),
+	"GET /api/user/self":                           accessTokenScopeRule("profile:read"),
+	"GET /api/user/models":                         accessTokenScopeRule("profile:read"),
+	"PUT /api/user/self":                           accessTokenScopeRule("profile:write"),
+	"DELETE /api/user/self":                        accessTokenScopeRule("account_security:write"),
 	"GET /api/user/access_tokens":                  accessTokenSessionRule,
 	"GET /api/user/access_tokens/catalog":          accessTokenSessionRule,
 	"GET /api/user/access_tokens/scopes":           accessTokenSessionRule,
@@ -275,6 +269,25 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/data/series/self":   accessTokenScopeRule("usage:read"),
 	"GET /api/data/user-balances": accessTokenScopeRule("log:read"),
 	// APIDUO:capacity-forecast:END
+	// APIDUO:growth:BEGIN
+	// 增长看板走 AdminAuth，没有对应的 Casbin 权限，所以 scope 借 user 资源：
+	// 它读的是用户列表与用量派生，写的是用户 tier、运营记录与批处理。
+	// 若以后把 growth 提成独立资源，这里应改成 DeclareAccessTokenPermissionRoute。
+	"GET /api/growth/overview":                     accessTokenScopeRule("user:read"),
+	"GET /api/growth/users":                        accessTokenScopeRule("user:read"),
+	"GET /api/growth/users/:id":                    accessTokenScopeRule("user:read"),
+	"GET /api/growth/alerts":                       accessTokenScopeRule("user:read"),
+	"GET /api/growth/batches":                      accessTokenScopeRule("user:read"),
+	"GET /api/growth/models":                       accessTokenScopeRule("user:read"),
+	"GET /api/growth/settings":                     accessTokenScopeRule("user:read"),
+	"PUT /api/growth/users/:id/tier":               accessTokenScopeRule("user:write"),
+	"POST /api/growth/users/:id/touches":           accessTokenScopeRule("user:write"),
+	"POST /api/growth/alerts/:userId/:kind/status": accessTokenScopeRule("user:write"),
+	"POST /api/growth/batches":                     accessTokenScopeRule("user:write"),
+	"POST /api/growth/batches/:id/stop":            accessTokenScopeRule("user:write"),
+	"PUT /api/growth/settings":                     accessTokenScopeRule("user:write"),
+	"POST /api/growth/recompute":                   accessTokenScopeRule("user:write"),
+	// APIDUO:growth:END
 
 	// router/api-router.go: /api/group, /api/prefill_group
 	"GET /api/group/":               accessTokenScopeRule("group:read"),
@@ -351,6 +364,13 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// 取低的那一个，否则普通用户拿自己的 PAT 打开 /audit/self 会 403。
 	"GET /api/audit/token-options": accessTokenScopeRule("usage:read"),
 	// APIDUO:audit-token-options:END
+
+	// APIDUO:agent-key:BEGIN Registering and revoking a key is a session action,
+	// so a token — scoped or legacy — must not be able to perform it.
+	"GET /api/agent/keys":        accessTokenSessionRule,
+	"POST /api/agent/keys":       accessTokenSessionRule,
+	"DELETE /api/agent/keys/:id": accessTokenSessionRule,
+	// APIDUO:agent-key:END
 }
 
 var (

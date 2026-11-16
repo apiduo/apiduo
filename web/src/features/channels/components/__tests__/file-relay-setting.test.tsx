@@ -32,6 +32,7 @@ import { FileRelaySetting } from '../file-relay-setting'
 
 function SettingsForm(props: {
   channelType: number
+  models?: string
   settings?: string
   disabled?: boolean
   onSave: (values: ChannelFormValues) => void
@@ -40,14 +41,13 @@ function SettingsForm(props: {
     defaultValues: {
       ...CHANNEL_FORM_DEFAULT_VALUES,
       type: props.channelType,
+      models: props.models ?? 'gpt-4o',
       settings: props.settings ?? '{}',
     },
   })
   return (
     <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit((values) => props.onSave(values))}
-      >
+      <form onSubmit={form.handleSubmit((values) => props.onSave(values))}>
         <FileRelaySetting
           channelType={props.channelType}
           disabled={props.disabled}
@@ -58,14 +58,13 @@ function SettingsForm(props: {
   )
 }
 
-function savedSettings(values: ChannelFormValues): Record<string, unknown> {
-  const payload = transformFormDataToCreatePayload(values)
-  return JSON.parse(payload.channel.settings ?? '{}')
+function savedChannel(values: ChannelFormValues) {
+  return transformFormDataToCreatePayload(values).channel
 }
 
 describe('File relay channel setting', () => {
   test.each([1, 8, 25, 26])(
-    'channel type %s records the selected purposes in the settings blob',
+    'channel type %s writes each purpose into the model list',
     async (channelType) => {
       const user = userEvent.setup()
       let saved: ChannelFormValues | null = null
@@ -84,23 +83,62 @@ describe('File relay channel setting', () => {
       await user.click(screen.getByRole('checkbox', { name: 'Batch' }))
       await user.click(screen.getByRole('button', { name: 'Save' }))
 
-      expect(savedSettings(saved!)).toMatchObject({
-        file_relay: { purposes: ['file-extract', 'batch'] },
-      })
+      expect(savedChannel(saved!).models).toBe(
+        'gpt-4o,@files/upload/file-extract,@files/upload/batch'
+      )
+      // The retired per-channel purpose list must not come back.
+      expect(
+        JSON.parse(savedChannel(saved!).settings ?? '{}').file_relay?.purposes
+      ).toBeUndefined()
     }
   )
 
+  test('a declared purpose is read back from the model list', () => {
+    render(
+      <SettingsForm
+        channelType={1}
+        models='gpt-4o,@files/upload/file-extract'
+        onSave={() => {}}
+      />
+    )
+    expect(
+      screen.getByRole('checkbox', { name: 'Document extraction' })
+    ).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Batch' })).not.toBeChecked()
+  })
+
+  test('unchecking a purpose only removes its name', async () => {
+    const user = userEvent.setup()
+    let saved: ChannelFormValues | null = null
+    render(
+      <SettingsForm
+        channelType={1}
+        models='gpt-4o,@files/upload/file-extract,@files/upload/batch'
+        onSave={(values) => {
+          saved = values
+        }}
+      />
+    )
+
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Document extraction' })
+    )
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(savedChannel(saved!).models).toBe('gpt-4o,@files/upload/batch')
+  })
+
   test('an unrelated save keeps an existing file relay block', async () => {
-    // This is the invariant that lets the configuration live in the settings
-    // blob: buildSettingsJSON starts from the stored JSON, so keys it does not
-    // manage survive a save that never mentions them.
+    // This is the invariant that lets the ceiling live in the settings blob:
+    // buildSettingsJSON starts from the stored JSON, so keys it does not manage
+    // survive a save that never mentions them.
     const user = userEvent.setup()
     let saved: ChannelFormValues | null = null
     render(
       <SettingsForm
         channelType={1}
         settings={JSON.stringify({
-          file_relay: { purposes: ['batch'], max_upload_bytes: 1048576 },
+          file_relay: { max_upload_bytes: 1048576 },
           some_unknown_key: 'keep-me',
         })}
         onSave={(values) => {
@@ -111,37 +149,9 @@ describe('File relay channel setting', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(savedSettings(saved!)).toMatchObject({
-      file_relay: { purposes: ['batch'], max_upload_bytes: 1048576 },
+    expect(JSON.parse(savedChannel(saved!).settings ?? '{}')).toMatchObject({
+      file_relay: { max_upload_bytes: 1048576 },
       some_unknown_key: 'keep-me',
-    })
-  })
-
-  test('unchecking every purpose clears the selection but keeps the block', async () => {
-    const user = userEvent.setup()
-    let saved: ChannelFormValues | null = null
-    render(
-      <SettingsForm
-        channelType={1}
-        settings={JSON.stringify({
-          file_relay: { purposes: ['file-extract'] },
-        })}
-        onSave={(values) => {
-          saved = values
-        }}
-      />
-    )
-
-    const checkbox = screen.getByRole('checkbox', {
-      name: 'Document extraction',
-    })
-    expect(checkbox).toBeChecked()
-    await user.click(checkbox)
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-
-    expect(savedSettings(saved!).file_relay).toEqual({
-      purposes: [],
-      max_upload_bytes: 0,
     })
   })
 
@@ -160,12 +170,12 @@ describe('File relay channel setting', () => {
     await user.type(screen.getByRole('spinbutton'), '200')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(savedSettings(saved!).file_relay).toMatchObject({
-      max_upload_bytes: 200 * 1024 * 1024,
+    expect(JSON.parse(savedChannel(saved!).settings ?? '{}')).toMatchObject({
+      file_relay: { max_upload_bytes: 200 * 1024 * 1024 },
     })
   })
 
-  test('the suggested button fills the provider defaults', async () => {
+  test('the suggested button adds the provider defaults', async () => {
     const user = userEvent.setup()
     let saved: ChannelFormValues | null = null
     render(
@@ -180,9 +190,9 @@ describe('File relay channel setting', () => {
     await user.click(screen.getByRole('button', { name: 'Use suggested' }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(savedSettings(saved!).file_relay).toMatchObject({
-      purposes: ['file-extract', 'image', 'video', 'batch'],
-    })
+    expect(savedChannel(saved!).models).toBe(
+      'gpt-4o,@files/upload/file-extract,@files/upload/image,@files/upload/video,@files/upload/batch'
+    )
   })
 
   test('unsupported channel types render nothing', () => {

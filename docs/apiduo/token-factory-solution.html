@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token 工厂技术方案 · 从 GPU 利用率到计费毛利</title>
+<style>
+  :root{
+    --paper:#fcfcfa; --paper-2:#f4f4f1;
+    --rule:#e4e4de; --rule-2:#cfcfc7;
+    --ink:#1a1c1e; --ink-2:#45484b; --muted:#6b7076;
+    --accent:#9a3412; --accent-soft:#fdf0ea;
+    --ok:#3f6f4a; --err:#a4161a;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.8;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1000px; margin:0 auto; padding:0 32px 120px}
+
+  /* ---------- 头部 ---------- */
+  .doc-head{padding:72px 0 28px; border-bottom:1px solid var(--rule-2)}
+  .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 20px}
+  h1{font-size:34px; line-height:1.28; letter-spacing:-.01em; margin:0 0 14px; font-weight:600}
+  .sub{font-size:17px; line-height:1.7; color:var(--ink-2); margin:0 0 28px; max-width:760px}
+  .meta{display:flex; flex-wrap:wrap; gap:8px 28px; font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .meta b{color:var(--ink-2); font-weight:500}
+
+  /* ---------- 目录 ---------- */
+  nav.toc{padding:22px 0 26px; border-bottom:1px solid var(--rule)}
+  nav.toc ol{list-style:none; margin:0; padding:0; columns:2; column-gap:40px}
+  nav.toc li{margin:0 0 7px; font-size:13.5px; break-inside:avoid}
+  nav.toc a{color:var(--ink-2); text-decoration:none; display:flex; gap:10px}
+  nav.toc a:hover{color:var(--accent)}
+  nav.toc .i{font-family:var(--mono); font-size:11.5px; color:var(--muted); min-width:22px; padding-top:2px}
+
+  /* ---------- 章节 ---------- */
+  section{padding-top:56px}
+  h2{
+    font-size:21px; line-height:1.4; font-weight:600; margin:0 0 8px;
+    padding-top:18px; border-top:1px solid var(--rule-2);
+  }
+  h2 .i{font-family:var(--mono); font-size:12px; color:var(--accent); font-weight:400; margin-right:12px; letter-spacing:.04em}
+  h3{font-size:15.5px; font-weight:600; margin:34px 0 10px; letter-spacing:.01em}
+  h3 .k{font-family:var(--mono); font-size:11.5px; color:var(--muted); font-weight:400; margin-right:8px}
+  p{margin:12px 0; color:var(--ink-2)}
+  .lead{font-size:16px; line-height:1.75; color:var(--ink); margin:14px 0 18px}
+  .lead::first-letter{font-weight:600}
+  strong{color:var(--ink); font-weight:600}
+  em{font-style:normal; background:linear-gradient(transparent 62%, var(--accent-soft) 62%); padding:0 .1em}
+  a{color:var(--ink); text-decoration:underline; text-decoration-color:var(--rule-2); text-underline-offset:3px}
+  a:hover{text-decoration-color:var(--accent); color:var(--accent)}
+  ul,ol.bul{margin:12px 0; padding-left:22px}
+  li{margin:6px 0; color:var(--ink-2)}
+  li::marker{color:var(--rule-2)}
+
+  /* ---------- 公式块 ---------- */
+  .formula{
+    background:var(--paper-2); border-left:2px solid var(--rule-2);
+    padding:16px 20px; margin:18px 0; font-family:var(--mono);
+    font-size:13px; line-height:1.9; color:var(--ink); overflow-x:auto;
+  }
+  .formula .lbl{display:block; font-size:11px; letter-spacing:.08em; color:var(--muted); margin-bottom:8px}
+  .formula b{color:var(--accent); font-weight:600}
+  code{font-family:var(--mono); font-size:12.8px; background:var(--paper-2); padding:1px 5px; color:var(--ink)}
+
+  /* ---------- 表格 ---------- */
+  .tbl-wrap{margin:20px 0 8px; overflow-x:auto}
+  table{width:100%; border-collapse:collapse; font-size:13.5px; line-height:1.65}
+  caption{caption-side:top; text-align:left; font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--muted); padding-bottom:8px}
+  th{
+    text-align:left; font-family:var(--mono); font-size:11px; font-weight:500;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+    padding:0 12px 8px 0; border-bottom:1px solid var(--rule-2); vertical-align:bottom;
+  }
+  td{padding:9px 12px 9px 0; border-bottom:1px solid var(--rule); color:var(--ink-2); vertical-align:top}
+  th:last-child,td:last-child{padding-right:0}
+  td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink); white-space:nowrap}
+  td.nm{color:var(--ink); font-weight:500}
+  td.nw{white-space:nowrap}
+  tr.tot td{border-bottom:1px solid var(--rule-2); font-weight:600; color:var(--ink)}
+  .up{color:var(--accent)}
+  .down{color:var(--ok)}
+  .tag{font-family:var(--mono); font-size:10.5px; padding:1px 5px; border:1px solid var(--rule-2); color:var(--muted); white-space:nowrap}
+
+  /* ---------- 提示块 ---------- */
+  .note{border-left:2px solid var(--accent); padding:2px 0 2px 16px; margin:18px 0; font-size:14px; color:var(--ink-2)}
+  .note .h{display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-bottom:5px}
+  .note.plain{border-left-color:var(--rule-2)}
+  .note.plain .h{color:var(--muted)}
+
+  /* ---------- 架构图（CSS 绘制） ---------- */
+  .arch{margin:26px 0 10px; border-top:1px solid var(--rule-2)}
+  .arow{display:grid; grid-template-columns:96px 1fr; gap:16px; padding:11px 0; border-bottom:1px solid var(--rule)}
+  .arow .lb{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; color:var(--muted); padding-top:6px; text-transform:uppercase}
+  .cells{display:flex; flex-wrap:wrap; gap:6px}
+  .cells span{
+    font-size:12.5px; line-height:1.5; padding:5px 10px; color:var(--ink-2);
+    border:1px solid var(--rule-2); background:var(--paper);
+  }
+  .cells span.hot{border-color:var(--accent); color:var(--accent)}
+  .cells span.solid{background:var(--paper-2); color:var(--ink)}
+  .arch-cap{font-family:var(--mono); font-size:11px; color:var(--muted); margin:10px 0 0}
+
+  /* ---------- 数据流 ---------- */
+  .flow{display:grid; grid-template-columns:1fr 28px 1fr 28px 1fr; align-items:stretch; margin:24px 0 6px}
+  .fbox{border:1px solid var(--rule-2); padding:14px 16px}
+  .fbox .t{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; color:var(--muted); display:block; margin-bottom:6px}
+  .fbox .d{font-size:12.5px; line-height:1.7; color:var(--ink-2)}
+  .fbox .d b{color:var(--ink)}
+  .arrow{display:flex; align-items:center; justify-content:center; color:var(--rule-2); font-size:15px}
+  .arrow svg{display:block; flex:none}
+
+  /* ---------- 摘要结论 ---------- */
+  .findings{margin:26px 0 0; border-top:1px solid var(--rule-2)}
+  .f{display:grid; grid-template-columns:26px 1fr; gap:14px; padding:16px 0; border-bottom:1px solid var(--rule)}
+  .f .n{font-family:var(--mono); font-size:11px; color:var(--accent); padding-top:4px}
+  .f p{margin:0; font-size:14.5px; line-height:1.75; color:var(--ink-2)}
+  .f p b{color:var(--ink)}
+
+  /* ---------- KPI 条 ---------- */
+  .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:0; margin:24px 0 6px; border-top:1px solid var(--rule-2); border-bottom:1px solid var(--rule-2)}
+  .kpi{padding:16px 18px 16px 0; border-right:1px solid var(--rule)}
+  .kpi:last-child{border-right:0}
+  .kpi .v{font-family:var(--mono); font-size:23px; line-height:1.2; color:var(--ink); font-variant-numeric:tabular-nums; display:block}
+  .kpi .v small{font-size:12px; color:var(--muted); margin-left:3px}
+  .kpi .l{font-size:11.5px; color:var(--muted); line-height:1.5; display:block; margin-top:4px}
+
+  /* ---------- 路线图 ---------- */
+  .road{margin:26px 0 8px; border-top:1px solid var(--rule-2)}
+  .rrow{display:grid; grid-template-columns:64px 130px 1fr; gap:16px; padding:14px 0; border-bottom:1px solid var(--rule); font-size:13.5px}
+  .rrow .p{font-family:var(--mono); font-size:11.5px; color:var(--accent)}
+  .rrow .w{font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .rrow .c{color:var(--ink-2); line-height:1.7}
+  .rrow .c b{color:var(--ink)}
+
+  footer{margin-top:72px; padding-top:22px; border-top:1px solid var(--rule-2); font-family:var(--mono); font-size:11px; color:var(--muted); line-height:1.9}
+
+  @media (max-width:720px){
+    .wrap{padding:0 20px 80px}
+    h1{font-size:26px} .sub{font-size:15px}
+    nav.toc ol{columns:1}
+    .arow{grid-template-columns:1fr; gap:6px}
+    .arow .lb{padding-top:0}
+    .flow{grid-template-columns:1fr; gap:0}
+    .arrow{height:26px; transform:rotate(90deg)}
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .kpi:nth-child(2){border-right:0}
+    .rrow{grid-template-columns:1fr; gap:4px}
+    table{font-size:12.5px}
+  }
+  @media print{
+    body{font-size:10.5pt}
+    .wrap{max-width:none; padding:0}
+    nav.toc{display:none}
+    section{padding-top:24pt}
+    h2{page-break-after:avoid}
+    .tbl-wrap,.fbox,.arow{page-break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <p class="eyebrow">Architecture Proposal · v1.0</p>
+  <h1>Token 工厂技术方案</h1>
+  <p class="sub">以「单百万 Token 成本」为唯一目标函数，把推理平台、计量计费、多租户隔离、可观测性与售前交付收束成一条可验证的因果链。围绕岗位职责第 5–9 项逐条给出设计、取舍与证伪指标。</p>
+  <div class="meta">
+    <span><b>范围</b> 第 5–9 项（资源调度 / 计费 / 多租户 / SLA / 交付）</span>
+    <span><b>基线</b> new-api 网关 + K8s GPU 池</span>
+    <span><b>日期</b> 2026-11-14</span>
+    <span><b>另见</b> <a href="token-factory-solution-v2-gateway.html">v2 网关篇（不含 GPU 侧）</a></span>
+  </div>
+</header>
+
+<nav class="toc">
+  <ol>
+    <li><a href="#s0"><span class="i">00</span><span>一页纸结论</span></a></li>
+    <li><a href="#s1"><span class="i">01</span><span>第一性原理：一个恒等式</span></a></li>
+    <li><a href="#s2"><span class="i">02</span><span>总体架构与子系统映射</span></a></li>
+    <li><a href="#s3"><span class="i">03</span><span>推理平台与资源调度</span></a></li>
+    <li><a href="#s4"><span class="i">04</span><span>计量计费与账务闭环</span></a></li>
+    <li><a href="#s5"><span class="i">05</span><span>多租户、安全与权限</span></a></li>
+    <li><a href="#s6"><span class="i">06</span><span>可观测性与 SLA</span></a></li>
+    <li><a href="#s7"><span class="i">07</span><span>售前与客户交付</span></a></li>
+    <li><a href="#s8"><span class="i">08</span><span>落地路线与验收</span></a></li>
+    <li><a href="#s9"><span class="i">09</span><span>对抗审查：脆弱假设</span></a></li>
+    <li><a href="#s10"><span class="i">10</span><span>与现有代码资产的映射</span></a></li>
+  </ol>
+</nav>
+
+<!-- ============ 00 ============ -->
+<section id="s0">
+  <h2><span class="i">00</span>一页纸结论</h2>
+  <p class="lead">这五项职责不是五个工程模块，而是同一条成本曲线的五个切面。先定义目标函数，再谈架构，否则每个子系统都会局部最优、整体亏损。</p>
+
+  <div class="findings">
+    <div class="f"><span class="n">01</span><p><b>成本的第一杠杆是利用率，不是采购价。</b>卡价降 25% 只让单百万 Token 成本降 25%；利用率从 0.30 提到 0.55 降 45%；单卡吞吐翻倍再降 50%。采购谈判是最后才动的旋钮。</p></div>
+    <div class="f"><span class="n">02</span><p><b>计费是产品功能，不是财务功能。</b>流式中断、多模态非标、缓存命中、内部重试四个场景决定了毛利能否被解释。必须在事件模型层解决，事后补账一定错。</p></div>
+    <div class="f"><span class="n">03</span><p><b>多租户的难点不在权限，在 KV Cache。</b>它是实例内不可切分的共享显存。租户隔离的真实单位是「实例」，不是「角色」。</p></div>
+    <div class="f"><span class="n">04</span><p><b>SLA 的前提是口径统一。</b>连接成功、首 token 成功、完整完成是三个指标。混用会让 SLO 失去约束力，也会让赔付条款无法执行。</p></div>
+    <div class="f"><span class="n">05</span><p><b>售前承诺需要工程签字。</b>「承诺—能力」映射表是唯一能挡住过度承诺的闸门；口头承诺的 P99 最终都由架构组偿还。</p></div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><span class="v">3.19<small>元/百万</small></span><span class="l">70B FP8 算力成本基准值<br>（H100 · U=0.55 · R=2000）</span></div>
+    <div class="kpi"><span class="v">0.1<small>%</small></span><span class="l">计费对账差异红线<br>超过即按事故处理</span></div>
+    <div class="kpi"><span class="v">99.9<small>%</small></span><span class="l">文本可用性 SLO<br>按「完整完成率」口径</span></div>
+    <div class="kpi"><span class="v">6.0<small>×</small></span><span class="l">三个隔离等级的<br>价格倍数跨度（示意）</span></div>
+  </div>
+  <p class="arch-cap">注：算例参数为公开区间取值，落地前须以自建 benchmark 替换，见 §7.1。</p>
+</section>
+
+<!-- ============ 01 ============ -->
+<section id="s1">
+  <h2><span class="i">01</span>第一性原理：一个恒等式</h2>
+  <p class="lead">Token 工厂的本质，是把「GPU 小时」这个刚性成本，转换成「可计费 Token」这个柔性产出。转换效率由三个变量决定，其余一切架构都是这三个变量的实现手段。</p>
+
+  <div class="formula">
+    <span class="lbl">单百万 Token 成本</span>
+    C = P × 10⁶ / ( R × 3600 × U × B )<br><br>
+    P　单卡小时成本（折旧＋电力＋机房分摊，元/卡时）<br>
+    R　单卡有效输出吞吐（tokens/s，按<b>计费口径</b>而非裸生成口径）<br>
+    U　有效利用率（实际出 token 的时长 ÷ 挂载时长）<br>
+    B　有效计费比（计费 Token ÷ 实际生成 Token，含缓存折扣、失败豁免、免费额度）
+  </div>
+
+  <p>这个式子的价值不在于算出一个数，而在于它把五个看似独立的子系统钉在了同一根因果链上：<strong>R 由推理平台决定，U 由调度决定，B 由计费模型决定，P 由采购与混部决定</strong>。任何一项技术决策，如果说不清它影响哪个变量、影响多少，就不该进入路线图。</p>
+
+  <h3><span class="k">1.1</span>敏感性：钱从哪里省出来</h3>
+  <p>以 70B FP8、H100、P=12 元/卡时为基准，逐项做单变量扰动。结论是反直觉的：<em>成本对卡价的弹性只有 1，对利用率和吞吐的弹性是 1.7–2.0</em>。</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <caption>表 1 · 单变量敏感性（基准 C = 3.19 元/百万输出 Token）</caption>
+    <thead><tr><th>变量</th><th>基准值</th><th>扰动后</th><th>单百万成本</th><th>变化</th><th>解读</th></tr></thead>
+    <tbody>
+      <tr><td class="nm">卡价 P</td><td class="num">12</td><td class="num">9（−25%）</td><td class="num">2.39</td><td class="num down">−25%</td><td>线性，且会被供应商议价能力锁死</td></tr>
+      <tr><td class="nm">吞吐 R</td><td class="num">2000</td><td class="num">3000（+50%）</td><td class="num">2.13</td><td class="num down">−33%</td><td>引擎与量化优化的主战场</td></tr>
+      <tr><td class="nm">吞吐 R</td><td class="num">2000</td><td class="num">1200（−40%）</td><td class="num">5.32</td><td class="num up">+67%</td><td>引擎选错，成本直接失控</td></tr>
+      <tr><td class="nm">利用率 U</td><td class="num">0.55</td><td class="num">0.30</td><td class="num">5.85</td><td class="num up">+83%</td><td>长尾流量下的默认状态</td></tr>
+      <tr><td class="nm">利用率 U</td><td class="num">0.55</td><td class="num">0.75</td><td class="num">2.34</td><td class="num down">−27%</td><td>混部 + 抢占式批处理的收益上限</td></tr>
+      <tr><td class="nm">计费比 B</td><td class="num">0.95</td><td class="num">0.80</td><td class="num">3.79</td><td class="num up">+19%</td><td>缓存折扣 + 失败豁免的隐性成本</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <span class="h">判断</span>
+    把「谈更低卡价」放在第一位是典型的本末倒置。正确顺序是：先让 R 和 U 到位（工程可控），再谈 P（商务可控）。当 U &lt; 0.35 时，任何采购优化都是在为一个错误的结构省钱。
+  </div>
+
+  <h3><span class="k">1.2</span>推论：五个子系统各自守一条边界</h3>
+  <div class="tbl-wrap">
+  <table>
+    <caption>表 2 · 子系统与恒等式变量的对应关系</caption>
+    <thead><tr><th>子系统</th><th>主要作用变量</th><th>核心机制</th><th>失败时的症状</th></tr></thead>
+    <tbody>
+      <tr><td class="nm">推理与调度</td><td>R、U</td><td>batching、P/D 分离、分片、混部</td><td>成本高但指标好看（吞吐虚高、利用率低）</td></tr>
+      <tr><td class="nm">计量计费</td><td>B、收入</td><td>usage 事件、ledger、价格快照</td><td>毛利无法解释、账单争议</td></tr>
+      <tr><td class="nm">多租户安全</td><td>U 的可达上限</td><td>配额树、实例隔离、预算</td><td>大户挤爆共享池，P99 抖动</td></tr>
+      <tr><td class="nm">可观测与 SLA</td><td>全部（约束项）</td><td>SLI 口径、错误预算、告警</td><td>看不见问题，赔付吃掉毛利</td></tr>
+      <tr><td class="nm">售前交付</td><td>收入、P</td><td>Sizing、承诺矩阵、私有化</td><td>承诺超能力，交付即亏损</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s2">
+  <h2><span class="i">02</span>总体架构与子系统映射</h2>
+  <p class="lead">五层结构，纵向是请求路径，横向是控制面。关键设计是<strong>控制面与数据面彻底分离</strong>：计费、配额、路由决策都不允许出现在 Token 生成的临界路径上。</p>
+
+  <div class="arch">
+    <div class="arow">
+      <div class="lb">接入层</div>
+      <div class="cells">
+        <span class="solid">OpenAI 兼容</span><span class="solid">Anthropic Messages</span><span class="solid">Gemini</span><span class="solid">多模态端点</span><span>MCP / Agent</span>
+      </div>
+    </div>
+    <div class="arow">
+      <div class="lb">治理层</div>
+      <div class="cells">
+        <span class="hot">鉴权 · 配额 · 预算</span><span>多维路由</span><span>熔断 / 降级链</span><span>分层队列</span><span>内容安全</span>
+      </div>
+    </div>
+    <div class="arow">
+      <div class="lb">推理层</div>
+      <div class="cells">
+        <span class="solid">GPU 池（整卡 / MIG / vGPU）</span><span>vLLM · SGLang · TRT-LLM</span><span>KV Cache 分级</span><span class="hot">P/D 分离</span>
+      </div>
+    </div>
+    <div class="arow">
+      <div class="lb">计量层</div>
+      <div class="cells">
+        <span class="solid">usage 采集</span><span>结算 ledger</span><span>价格版本</span><span>账单与对账</span>
+      </div>
+    </div>
+    <div class="arow">
+      <div class="lb">运营层</div>
+      <div class="cells">
+        <span>指标 · 追踪</span><span>SLO · 告警</span><span>成本看板</span><span>租户控制台</span><span>工单 / 审计</span>
+      </div>
+    </div>
+  </div>
+  <p class="arch-cap">图 1 · 赭红标记的是本方案的主要改造点；其余为既有能力或增量较小的部分。</p>
+
+  <p>三条贯穿性原则，用来裁决后续所有设计争议：</p>
+  <ul>
+    <li><strong>临界路径只做加法和查表。</strong>生成路径上的每个决策（扣费、限流、路由）都必须能在微秒级完成，任何需要 RPC 或锁的操作一律前置或异步化。</li>
+    <li><strong>事实只存一次。</strong>usage 事件是计费、监控、成本核算的唯一事实源。三处各算一遍是账单与看板打架的根因。</li>
+    <li><strong>降级要有序。</strong>失败顺序是：换上游 → 降规格 → 排队 → 明确拒绝。绝不静默失败，也绝不无限重试放大成本。</li>
+  </ul>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s3">
+  <h2><span class="i">03</span>推理平台与资源调度</h2>
+  <p class="lead">这一项要交付的不是「能跑 vLLM」，而是<em>在给定 GPU 预算下最大化有效吞吐，且不让任何租户的抖动外溢</em>。前者靠引擎，后者靠隔离，两者经常互相矛盾，必须显式取舍。</p>
+
+  <h3><span class="k">3.1</span>资源切分：三种隔离强度，对应三种生意</h3>
+  <p>GPU 隔离没有银弹，只有成本与确定性的交换。实践中应把集群按隔离强度分成三个池，而不是追求一种方案通吃。</p>
+  <p>节点侧统一由 GPU Operator 管理驱动、device plugin 与 DCGM exporter，避免「驱动版本不一致」成为长期故障源。这一层不承载任何业务逻辑，只保证 GPU 资源能被正确声明、切分与观测。</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <caption>表 3 · 隔离方案对比与适用边界</caption>
+    <thead><tr><th>方案</th><th>隔离强度</th><th>可超卖</th><th>适用负载</th><th>主要风险</th></tr></thead>
+    <tbody>
+      <tr><td class="nm">整卡独占</td><td>物理级</td><td>否</td><td>70B+、VIP、SLA 承诺客户</td><td>利用率低，须靠离峰批处理填充</td></tr>
+      <tr><td class="nm">MIG 硬切分</td><td>硬件级</td><td>否</td><td>中等模型多租、稳定型 SLA</td><td>切分规格固定不可动态调整；A100/H100 最多 7 片</td></tr>
+      <tr><td class="nm">HAMi / vGPU 软隔离</td><td>限额级</td><td>是</td><td>开发测试、低 SLA、小模型高密度</td><td>显存超卖导致 OOM 相互影响，延迟抖动不可控</td></tr>
+      <tr><td class="nm">MPS 时间片</td><td>几乎无</td><td>—</td><td>仅离线批处理</td><td>互相干扰严重，不进在线路径</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note">
+    <span class="h">取舍</span>
+    软隔离的收益是利用率，代价是确定性。因此规则应写死：<strong>软隔离池只承接内部负载与免费/试用租户，任何带赔付条款的租户不得进入</strong>。这条规则一旦松动，一次 OOM 就可能同时打掉多个付费客户。
+  </div>
+
+  <h3><span class="k">3.2</span>引擎选型：按负载形态分配，而不是选一个「最好的」</h3>
+  <div class="tbl-wrap">
+  <table>
+    <caption>表 4 · 推理引擎定位矩阵（以 2026 年主流版本能力为准，须按季度复测）</caption>
+    <thead><tr><th>引擎</th><th>结构性优势</th><th>代价</th><th>在本方案中的定位</th></tr></thead>
+    <tbody>
+      <tr><td class="nm">vLLM</td><td>PagedAttention、模型与多模态覆盖最广、OpenAI 兼容完善</td><td>前缀复用与结构化输出不如 SGLang 极致</td><td><b>默认底座</b>，承载长尾模型</td></tr>
+      <tr><td class="nm">SGLang</td><td>RadixAttention 前缀共享，Agent / RAG / 多轮场景吞吐显著更高</td><td>新模型适配滞后于 vLLM</td><td><b>主力对话模型</b>，Top 5 优先</td></tr>
+      <tr><td class="nm nw">TensorRT-LLM</td><td>延迟与吞吐上限最高，适合固定 shape</td><td>编译链路重、调试困难、上线周期以周计</td><td><b>专属实例</b>，高价值低并发</td></tr>
+      <tr><td class="nm">LMDeploy</td><td>国产加速卡适配成熟</td><td>生态与工具链较弱</td><td><b>信创交付</b>分支</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3><span class="k">3.3</span>吞吐杠杆：收益、代价与前置条件</h3>
+  <p>下面每一项都是「用复杂度换吞吐」，必须同时写清前置条件。没有前置条件就上，通常得到的是更低的稳定性和更高的事故率。</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <caption>表 5 · 优化手段的量化预期（公开基准与实测区间，须自建 benchmark 校准）</caption>
+    <thead><tr><th>手段</th><th>吞吐 / 延迟收益</th><th>代价</th><th>前置条件</th></tr></thead>
+    <tbody>
+      <tr><td class="nm">Continuous Batching</td><td>吞吐 5–20×（低 QPS 更明显）</td><td>单请求延迟抖动上升</td><td>必须存在排队层与超时策略</td></tr>
+      <tr><td class="nm">Dynamic Batching</td><td>小请求（图片、短文本）吞吐 2–4×</td><td>批次等待抬高尾延迟</td><td>必须设最大等待窗口（≤ 50ms）</td></tr>
+      <tr><td class="nm">PagedAttention</td><td>显存浪费从 60–80% 降至个位数，等效并发 2–4×</td><td>引擎内置，无额外代价</td><td>—</td></tr>
+      <tr><td class="nm">Prefix Cache</td><td>共享前缀场景 TTFT −50~80%</td><td>命中率依赖路由亲和性</td><td>请求需按前缀哈希路由到同实例</td></tr>
+      <tr><td class="nm">FP8 量化</td><td>吞吐 1.5–1.8×</td><td>质量需回归验证</td><td>Hopper / Ada 架构</td></tr>
+      <tr><td class="nm">P/D 分离</td><td>混合负载整体 +30~60%，TTFT 更稳</td><td>KV 传输带宽、故障面扩大</td><td>长上下文请求占比 &gt; 30% 且规模足够</td></tr>
+      <tr><td class="nm">投机解码</td><td>低并发下 1.5–3×</td><td>draft 模型占用显存</td><td>高价值、低 QPS 场景才划算</td></tr>
+      <tr><td class="nm">MoE + EP</td><td>单卡有效吞吐显著提升</td><td>显存占用大、通信开销重</td><td>模型本身为 MoE 架构</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <span class="h">关于 P/D 分离</span>
+    它不是默认选项。Prefill 是算力密集、Decode 是显存带宽密集，混跑确实互相干扰；但分离后 KV Cache 要跨节点传输，<strong>带宽成本和故障面会吃掉中小规模下的全部收益</strong>。判定条件应写进容量评审：单模型日均长上下文（&gt;8K）请求超过总量 30%，且该模型占用 GPU 超过 8 卡，才启动分离试点。
+  </div>
+
+  <h3><span class="k">3.4</span>调度：把「闲时」变成钱</h3>
+  <p>利用率的提升只有三条路，必须同时做，单做任何一条都不够：</p>
+  <ol class="bul">
+    <li><strong>流量整形</strong>：把可延迟的请求（批量推理、评测、离线生成）识别出来，放进低优先级队列。这是唯一不花钱就能提升 U 的手段。</li>
+    <li><strong>混部</strong>：在线池在显存水位低于阈值时接受批处理任务，高水位时抢占。<strong>抢占必须能在一个 batch 周期内完成</strong>，否则会拖垮在线 P99。</li>
+    <li><strong>分时复用</strong>：白天在线、夜间批处理，用 Kueue 之类的队列配额在时间维度上切分，避免为峰值长期付费。</li>
+  </ol>
+  <p>调度器层面，K8s 原生调度器不理解 GPU 拓扑与显存碎片，需要引入 gang scheduling 与队列配额（Kueue / Volcano 一类）。<strong>不要自研调度器</strong>——这是典型的投入产出倒挂项。</p>
+
+  <h3><span class="k">3.5</span>本项验收指标</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>指标</th><th>定义</th><th>目标</th><th>采集方式</th></tr></thead>
+    <tbody>
+      <tr><td class="nm">单卡有效吞吐</td><td>计费 Token ÷ GPU 秒</td><td>按模型基线 +20%</td><td>usage 事件 × 挂载时长</td></tr>
+      <tr><td class="nm">GPU 利用率</td><td>SM 活跃时间占比</td><td>在线池 ≥ 45%，混部池 ≥ 65%</td><td>DCGM</td></tr>
+      <tr><td class="nm">KV 命中率</td><td>prefix cache 命中 Token ÷ 输入 Token</td><td>≥ 25%（Agent 场景 ≥ 50%）</td><td>引擎指标</td></tr>
+      <tr><td class="nm">抢占成功率</td><td>批处理任务被抢占后正常退出比例</td><td>≥ 99%</td><td>调度器事件</td></tr>
+      <tr><td class="nm">OOM 率</td><td>因显存不足重启的实例数 ÷ 总实例数</td><td>&lt; 0.5%/周</td><td>kubelet 事件</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="s4">
+  <h2><span class="i">04</span>计量计费与账务闭环</h2>
+  <p class="lead">这是整个平台的「收银台」，也是唯一一处<em>错误不可被用户容忍</em>的模块。设计目标不是「算得准」，而是「在任何异常下都能证明自己算得准」——两者需要完全不同的工程手段。</p>
+
+  <div class="flow">
+    <div class="fbox"><span class="t">采集 · collect</span><span class="d"><b>usage 事件</b><br>请求级、幂等、不可变<br>记录计量来源与计价快照</span></div>
+    <div class="arrow"><svg width="24" height="10" viewBox="0 0 24 10" aria-hidden="true"><path d="M0 5h15" stroke="#cfcfc7" stroke-width="1"/><path d="M14 2l5.5 3-5.5 3z" fill="#cfcfc7"/></svg></div>
+    <div class="fbox"><span class="t">结算 · settle</span><span class="d"><b>双分录 ledger</b><br>预扣 → 结算 → 释放<br>余额只能由流水推导</span></div>
+    <div class="arrow"><svg width="24" height="10" viewBox="0 0 24 10" aria-hidden="true"><path d="M0 5h15" stroke="#cfcfc7" stroke-width="1"/><path d="M14 2l5.5 3-5.5 3z" fill="#cfcfc7"/></svg></div>
+    <div class="fbox"><span class="t">账单 · bill</span><span class="d"><b>可解释明细</b><br>按租户 / Key / 模型聚合<br>支持逐条下钻与争议处理</span></div>
+  </div>
+  <p class="arch-cap">图 2 · 主链路之外还有一条 T+1 的旁路：三方对账（平台 ledger / 支付渠道 / 客户账单），差异超过阈值触发事故流程。</p>
+
+  <h3><span class="k">4.1</span>事件模型：一次请求只产生一条事实</h3>
+  <div class="formula">
+    <span class="lbl">usage_event（不可变，追加写）</span>
+    request_id · billing_group_id · tenant / project / key<br>
+    model · endpoint · provider · stream · finish_reason<br>
+    in_tokens · cached_tokens · out_tokens · unit · unit_qty<br>
+    <b>usage_source</b>: upstream | estimated | mixed<br>
+    <b>price_version</b> · in_price · out_price · cached_price · fx_rate<br>
+    amount · currency · status: ok | client_abort | upstream_error | policy_blocked
+  </div>
+  <p>三个字段值得单独说明，它们决定了后面所有争议能否被裁决：</p>
+  <ul>
+    <li><code>billing_group_id</code>：一次<strong>用户语义上的请求</strong>。网关内部因上游失败重试 3 次，只归入同一组，只结算一次。没有这个字段，重试会变成重复计费。</li>
+    <li><code>usage_source</code>：计量数据来自上游返回、本地估算还是混合。对账时按来源分层比对，能立刻区分「模型差异」与「实现 bug」。</li>
+    <li><code>price_version</code>：结算当时的价格快照。<strong>价格表可变，已结算事实不可变</strong>。所有退款、重算、审计都基于快照，而不是当前价格。</li>
+  </ul>
+
+  <h3><span class="k">4.2</span>流式计费：四种情况，四套口径</h3>
+  <p>流式是计费最容易出错的地方，因为「请求结束」有四种互不相同的含义。必须为每种情况定义清晰的计费归属，否则每一次都是人工仲裁。</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <caption>表 6 · 流式场景的计量与计费口径</caption>
+    <thead><tr><th>场景</th><th>计量方式</th><th>计费口径</th><th>实现要点</th></tr></thead>
+    <tbody>
+      <tr><td class="nm">正常完成</td><td>优先采信上游 usage（<code>include_usage</code>）</td><td>全额</td><td>上游缺失时本地 tokenizer 全量重算</td></tr>
+      <tr><td class="nm">客户端主动断开</td><td>已推送 delta 的累计 Token</td><td>按已交付部分计费</td><td>服务端设 1s 宽限再停，避免半句截断</td></tr>
+      <tr><td class="nm">上游中途失败</td><td>已收到 delta 的累计 Token</td><td>已交付部分计费，未交付不计</td><td>标记 <code>upstream_error</code>，进入补偿流程</td></tr>
+      <tr><td class="nm">策略拦截</td><td>不计量或仅计输入</td><td>不计费</td><td>内容安全命中记 <code>policy_blocked</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <span class="h">工程细节</span>
+    <strong>不要对每个 chunk 单独做 tokenize。</strong>BPE 合并与多字节 UTF-8 会跨 chunk 边界，逐块编码必然多算或少算。正确做法是维持滑动窗口缓冲（保留尾部若干字节的重叠区），用「累计编码长度差」计算增量，并在 <code>finish_reason</code> 到达时以完整文本重算收敛。所有增量计数只用于过程中的预扣校验，最终结算以完整文本为准。
+  </div>
+
+  <h3><span class="k">4.3</span>非标计量：统一到「成本当量」</h3>
+  <p>文本、图片、音频、视频的计量单位不同，但成本都来自 GPU 秒。因此内部需要一个归一化单位（下称 <code>credit</code>），把所有模态折算成同一把尺子，再对外用各自习惯的单位报价。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 7 · 非标计量归一口径</caption>
+  <thead><tr><th>模态</th><th>原生单位</th><th>归一口径</th><th>定价依据</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">文本生成</td><td>Token</td><td>1 credit / 1K Token</td><td>算力成本 × 毛利率</td></tr>
+    <tr><td class="nm">图片理解</td><td>image_tokens</td><td>按官方分块公式折算 Token</td><td>等价 Token 成本</td></tr>
+    <tr><td class="nm">图片生成</td><td>张 × 分辨率档</td><td>按档位实测 GPU 秒折算</td><td><b>实测成本反推</b>，非按张定价</td></tr>
+    <tr><td class="nm">语音合成</td><td>字符 / 秒</td><td>1 秒 ≈ N 个 credit</td><td>实测 RTF 反推</td></tr>
+    <tr><td class="nm">语音识别</td><td>分钟</td><td>1 分钟 ≈ M 个 credit</td><td>实测 RTF 反推</td></tr>
+    <tr><td class="nm">视频生成</td><td>秒 × 分辨率 × 帧率</td><td>按 GPU 秒直接折算</td><td><b>唯一必须按成本定价的模态</b></td></tr>
+    <tr><td class="nm">向量 / 重排</td><td>输入 Token</td><td>1 : 1</td><td>等价 Token 成本</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <div class="note">
+    <span class="h">亏损高发区</span>
+    图片与视频的定价如果照抄竞品价目表，几乎必然亏损，因为同一档分辨率在不同模型上的 GPU 秒相差 3–10 倍。<strong>每一档都必须跑一次实测</strong>：固定种子与步数，测端到端 GPU 秒，乘以卡价得到成本下限，再定售价。这条不做，规模越大亏得越快。
+  </div>
+
+  <h3><span class="k">4.4</span>账务正确性：三条不变式</h3>
+  <p>账务系统的可信度不来自「写得对」，而来自「任何时候都能验证」。为此只允许三条不变式存在，所有实现必须围绕它们：</p>
+  <ol class="bul">
+    <li><strong>余额只能由流水推导。</strong>禁止直接 <code>UPDATE balance</code>。任何余额变动必须同时产生一条 ledger 分录，余额是物化视图。退款用反向分录，不改历史。</li>
+    <li><strong>预扣恒大于实扣。</strong>请求开始按 <code>prompt × in_price + max_tokens × out_price</code> 冻结额度，结束时按实际用量结算并释放差额。这保证超支不会发生，也天然容忍结算延迟。</li>
+    <li><strong>日终对账必须收敛。</strong>Σledger、渠道实收、客户账单三方差异不得超过 0.1%。差异分类为漏单 / 重单 / 金额差 / 汇率差，各自有自动处置策略。</li>
+  </ol>
+
+  <p>预付与后付共用同一套 ledger，差异只在结算时点与信用敞口：预付按钱包余额实时扣减，余额不足在请求入口直接返回 402，不允许「先跑后欠」；后付按月结账期出账，需要押金或信用额度，额度用尽自动降级为预付，逾期则冻结调用。<strong>两种模式不能靠开关在运行时混用</strong>，必须绑定在租户合同上，否则财务无法判断应收。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 8 · 常见账务异常与处置</caption>
+  <thead><tr><th>异常</th><th>根因</th><th>处置</th><th>预防</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">重复扣费</td><td>重试未归组</td><td>反向分录冲正</td><td><code>billing_group_id</code> 幂等键</td></tr>
+    <tr><td class="nm">漏计</td><td>事件写入失败</td><td>补采 + 标记来源</td><td>本地 WAL，先落盘再响应</td></tr>
+    <tr><td class="nm">余额漂移</td><td>Redis 与 DB 不一致</td><td>以 ledger 为准重建</td><td>预扣模型 + 每小时全量校验</td></tr>
+    <tr><td class="nm">汇率损失</td><td>跨境模型按 USD 采购</td><td>汇兑损益科目单列</td><td>结算时快照汇率，不做实时重估</td></tr>
+    <tr><td class="nm">免费额度侵蚀毛利</td><td>赠送金未隔离成本中心</td><td>毛利报表剔除</td><td>赠送金单独科目，不计收入只计成本</td></tr>
+  </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s5">
+  <h2><span class="i">05</span>多租户、安全与权限</h2>
+  <p class="lead">B 端客户买的不是「账号」，是<em>可审计的边界</em>。因此租户模型的设计起点不是角色表，而是「哪些资源必须被证明隔离」——数据、算力、预算、审计，四条各自独立。</p>
+
+  <h3><span class="k">5.1</span>三层租户模型</h3>
+  <div class="formula">
+    <span class="lbl">层级与职责</span>
+    Organization（合同主体 · 结算单位 · 数据边界）<br>
+    　└─ Team / Project（成本中心 · 配额单位 · 权限范围）<br>
+    　　　└─ API Key（调用凭证 · 最小授权 · 可轮换）<br>
+    <span style="color:#6b7076">任意一层都可独立设置预算、模型白名单、IP 白名单与速率上限；子层约束不得超过父层。</span>
+  </div>
+  <p>把「结算单位」放在 Organization 而不是 Key，是因为发票、账期、信用额度天然属于合同主体。把「配额单位」放在 Project，是因为内部团队的成本归集发生在这个粒度。<strong>这两件事混在一起，会导致财务与研发互相不认账。</strong></p>
+
+  <h3><span class="k">5.2</span>权限：RBAC 定功能，ABAC 定范围</h3>
+  <p>纯 RBAC 无法表达「这个开发者只能调用白名单内的模型、且只能在办公网段」这类约束。实际需要两层叠加：</p>
+  <ul>
+    <li><strong>RBAC</strong>：角色 = 一组功能权限（owner / admin / developer / billing / viewer）。解决「能不能做这个动作」。</li>
+    <li><strong>ABAC</strong>：策略 = 对资源与条件的约束（project、model、时段、来源 IP、预算余量）。解决「能对哪些对象、在什么条件下做」。</li>
+  </ul>
+  <p>实现上复用现成的策略引擎（Casbin / OPA），<strong>不要自研表达式解释器</strong>。策略变更必须留审计，且支持灰度：先 dry-run 记录「本会被拒绝」的请求，观察一周无异常再真正生效。</p>
+
+  <h3><span class="k">5.3</span>API Key 的六条硬规则</h3>
+  <ol class="bul">
+    <li>只存哈希，不存明文；展示时仅显示前缀与后四位。</li>
+    <li>支持 scope：模型白名单、端点白名单、额度上限、速率上限、过期时间。</li>
+    <li>支持轮换：新旧 Key 并行有效期可配（默认 24h），到期自动失效。</li>
+    <li>支持绑定来源：IP / CIDR / 来源标签，越界直接 401 而非 429。</li>
+    <li>异常检测：用量突增、跨地域调用、公开仓库泄漏扫描，命中即告警并可一键吊销。</li>
+    <li>禁用即失效：吊销走缓存失效广播，收敛时间目标 &lt; 5s，不依赖 TTL 自然过期。</li>
+  </ol>
+
+  <h3><span class="k">5.4</span>隔离等级：从「共享」到「物理独占」</h3>
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 9 · 三级隔离与商业形态的对应（价格倍数为示意，须按成本模型校准）</caption>
+  <thead><tr><th>等级</th><th>数据</th><th>算力</th><th>网络</th><th>适用客户</th><th>价格倍数</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">L1 共享</td><td>同库，行级隔离 + 强制租户过滤</td><td>共享池 + 并发配额</td><td>共享入口</td><td>中小客户、试用</td><td class="num">1.0×</td></tr>
+    <tr><td class="nm">L2 逻辑独占</td><td>同库，租户级加密密钥</td><td>独占推理实例 / 专属队列</td><td>共享入口 + IP 白名单</td><td>中型企业</td><td class="num">2.5×</td></tr>
+    <tr><td class="nm">L3 物理独占</td><td>独立库或独立 schema</td><td>独占 GPU 池</td><td>VPC / 专线</td><td>金融、政务、大客户</td><td class="num">6.0×</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <span class="h">关键判断</span>
+    L1 的风险不在数据泄露（行级过滤可以做到），而在<strong>算力干扰</strong>：同一推理实例内，KV Cache 是全局共享的显存池，一个大户的长上下文请求可以让同实例其他租户的 TTFT 翻倍。因此 <strong>L1 必须配 per-tenant 并发上限与输入长度上限</strong>，且这两个限制不是「防滥用」，而是隔离机制本身。
+  </div>
+
+  <h3><span class="k">5.5</span>数据安全与内容安全</h3>
+  <div class="tbl-wrap">
+  <table>
+  <thead><tr><th>控制项</th><th>做法</th><th>默认值</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">传输</td><td>TLS 1.2+，内部服务 mTLS</td><td>强制</td></tr>
+    <tr><td class="nm">静态加密</td><td>KMS 信封加密，按租户 DEK</td><td>开启</td></tr>
+    <tr><td class="nm">Prompt 留存</td><td>默认不落原文，仅存长度、哈希、采样片段</td><td>关闭（可申请开启）</td></tr>
+    <tr><td class="nm">日志脱敏</td><td>手机号 / 身份证 / 邮箱 / 密钥模式匹配替换</td><td>强制</td></tr>
+    <tr><td class="nm">内容审核</td><td>输入同步、输出异步 + 命中回滚</td><td>高风险模型同步</td></tr>
+    <tr><td class="nm">审计日志</td><td>追加写 + 哈希链，保留 ≥ 180 天</td><td>强制</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>内容安全的工程要点是<strong>不要阻塞主链路</strong>：输入审核可以在请求进入时同步判定（毫秒级），输出审核应与生成并行，命中后终止流并标记 <code>policy_blocked</code>。若一律在生成后整体审核再返回，流式体验将不复存在。</p>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s6">
+  <h2><span class="i">06</span>可观测性与 SLA</h2>
+  <p class="lead">可观测性不是「装个 Prometheus」，而是<em>让每一次毛利波动都能被归因到具体租户、模型与卡</em>。因此指标必须与计费同源——两套数字打架的平台，最终谁都不信。</p>
+
+  <h3><span class="k">6.1</span>指标字典：五层，各有唯一 Owner</h3>
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 10 · 指标分层与责任边界</caption>
+  <thead><tr><th>层</th><th>核心指标</th><th>责任方</th><th>典型用途</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">业务</td><td>活跃租户、收入、ARPU、流失预警</td><td>产品</td><td>经营决策</td></tr>
+    <tr><td class="nm">网关</td><td>RPS、错误码分布、P99 端到端、排队时长</td><td>网关组</td><td>容量与故障定位</td></tr>
+    <tr><td class="nm">流式</td><td>首 Token 成功率、完整完成率、中断率</td><td>网关组</td><td>SLO 计算与赔付</td></tr>
+    <tr><td class="nm">推理</td><td>TTFT、TPOT、单卡吞吐、KV 命中、显存水位、队列长度</td><td>推理组</td><td>性能优化</td></tr>
+    <tr><td class="nm">成本</td><td>单百万 Token 成本、毛利率、GPU 时价</td><td>架构组</td><td>定价与采购</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <h3><span class="k">6.2</span>流式健康度：三个口径，不能混用</h3>
+  <div class="tbl-wrap">
+  <table>
+  <thead><tr><th>口径</th><th>定义</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">L1 连接成功</td><td>HTTP 200 且收到首个 SSE 事件</td><td>定位网络与鉴权问题</td></tr>
+    <tr><td class="nm">L2 首 Token 成功</td><td>收到首个非空 delta</td><td>告警主指标（早于用户感知失败）</td></tr>
+    <tr><td class="nm">L3 完整完成</td><td>收到 <code>finish_reason</code> 且正常关闭</td><td><b>SLO 与赔付的唯一口径</b></td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>中断率必须区分<strong>客户端主动取消</strong>与<strong>平台侧中断</strong>。把两者混在一个分母里，会导致「用户手滑关页面」把 SLO 拉爆，团队随后学会忽略这个指标——这是 SLO 体系最常见的死亡方式。</p>
+
+  <h3><span class="k">6.3</span>SLO 与错误预算</h3>
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 11 · 服务等级目标（月度统计）</caption>
+  <thead><tr><th>SLI</th><th>目标</th><th>错误预算</th><th>预算耗尽动作</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">文本可用性（L3）</td><td class="num">99.9%</td><td class="num">43.2 min</td><td>冻结非紧急变更</td></tr>
+    <tr><td class="nm">TTFT P99（&lt;2K prompt）</td><td class="num">≤ 1.5s</td><td class="num">1% 请求</td><td>触发扩容评审</td></tr>
+    <tr><td class="nm">流式中断率（平台侧）</td><td class="num">≤ 0.3%</td><td class="num">0.3%</td><td>熔断问题上游</td></tr>
+    <tr><td class="nm">路由成功率（含 fallback）</td><td class="num">≥ 99.95%</td><td class="num">21.6 min</td><td>回溯熔断策略</td></tr>
+    <tr><td class="nm">计费准确率</td><td class="num">≥ 99.99%</td><td class="num">—</td><td>暂停自动结算，人工复核</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>告警策略应<strong>以症状为主、原因为辅</strong>。用户能感知的是「请求失败」「首 Token 慢」，而不是「某块 GPU 温度高」。因此告警全部基于 SLI 的多窗口燃烧率（1h 14.4× / 6h 6× / 3d 1×），原因类指标只进看板，不进值班通道。</p>
+
+  <h3><span class="k">6.4</span>链路追踪与降级链</h3>
+  <p>一条 trace 必须能回答「这 800ms 花在哪」：网关排队 → 路由选择 → 上游 TTFT → Token 传输 → 客户端。采样策略为错误全采、慢请求全采、正常 1% 采样。<strong>Prompt 内容默认不进 span</strong>，只带长度、模型、租户哈希。</p>
+  <p>降级链需预先定义并做成可配置，而不是故障时临场决定：</p>
+  <div class="formula">
+    <span class="lbl">降级顺序（逐级放宽，逐级通知）</span>
+    同模型备用上游 → 同规格替代模型 → 降规格模型（明示降级）<br>
+    → 排队等待（返回预估时长） → 明确拒绝（附重试建议）
+  </div>
+
+  <h3><span class="k">6.5</span>弹性扩缩容：扩容靠预热，缩容靠耐心</h3>
+  <p>推理实例冷启动以分钟计（拉镜像、加载权重、图捕获与显存预分配），因此<strong>扩容不能靠临时拉起</strong>，只能靠预热池。策略分三层：</p>
+  <ul>
+    <li><strong>预留池</strong>：常驻 15–20% 空闲实例覆盖日常波动，这部分成本已计入基线利用率，不能算作浪费。</li>
+    <li><strong>指标驱动扩容</strong>：以队列等待 P95 与 TTFT P99 为主指标，而不是 GPU 利用率。利用率是滞后信号，看到 90% 时用户已经在排队。</li>
+    <li><strong>缩容滞后</strong>：缩容窗口不短于 10 分钟，且只在队列为空、活跃会话低于阈值时执行。过早缩容会引发抖动式扩缩，实际成本高于不缩。</li>
+  </ul>
+  <p>跨集群切换是最后一道防线：同城双活吸收单集群故障（RTO &lt; 1 min），异地冷备应对区域性故障（RTO &lt; 30 min）。切换必须支持按租户灰度与一键回滚——整体切流是事故放大器，不是容灾手段。</p>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s7">
+  <h2><span class="i">07</span>售前与客户交付</h2>
+  <p class="lead">这一项的本质是<em>把工程能力翻译成客户能审计的承诺</em>。做得好，技术溢价被认可；做得差，每一份标书都是一次未来的赔付。</p>
+
+  <h3><span class="k">7.1</span>Sizing：先算并发，再算卡</h3>
+  <p>客户给的是 QPS 和场景，不是并发数。中间需要一步换算，而这一步几乎总被跳过，导致「资源报多了丢标、报少了亏钱」。</p>
+
+  <div class="formula">
+    <span class="lbl">容量换算三步</span>
+    ① 并发会话 N = QPS × 平均会话时长（含排队与生成）<br>
+    ② 显存上限 N_kv = 可用显存 ÷ 单会话 KV 占用<br>
+    　　单会话 KV ≈ 2 × 层数 × KV 头数 × head_dim × 序列长度 × 精度字节<br>
+    ③ 算力上限 N_c = 集群有效吞吐 ÷ 单会话 Token 速率<br><br>
+    <b>实际可承载并发 = min(N_kv, N_c)</b>
+  </div>
+
+  <p>举例：Llama-3-8B FP8 部署于单张 48GB 卡，序列 4K、FP16 KV。<br>
+  单 Token KV ≈ 2 × 32 × 8 × 128 × 2B ≈ 131 KB，4K 序列约 512 MB/会话，可用显存约 36 GB ⇒ <strong>N_kv ≈ 70</strong>。<br>
+  该卡实测总吞吐约 3000 Token/s，单会话按 40 Token/s 计 ⇒ <strong>N_c ≈ 75</strong>。<br>
+  两者接近时才是平衡配置；若 N_c 远小于 N_kv，问题在算力（应换卡型或量化），反之问题在显存（应加卡或缩短上下文）。</p>
+
+  <div class="note plain">
+    <span class="h">交付纪律</span>
+    Sizing 必须给出<strong>区间与假设</strong>，不能给单点数字。「按 4K 上下文、40 Token/s 输出估算，单卡支持 60–75 并发」是可信的；「支持 100 并发」是不可交付的。
+  </div>
+
+  <h3><span class="k">7.2</span>承诺矩阵：把 SLA 变成可售商品</h3>
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 12 · 服务档位与承诺范围（示例结构，数值需按成本校准）</caption>
+  <thead><tr><th>档位</th><th>部署形态</th><th>可用性</th><th>TTFT P99</th><th>支持</th><th>相对价格</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">基础</td><td>共享池</td><td class="num">99.5%</td><td>尽力而为</td><td>工单</td><td class="num">1.0×</td></tr>
+    <tr><td class="nm">标准</td><td>共享池 + 优先队列</td><td class="num">99.9%</td><td class="num">≤ 2.0s</td><td>工单 + IM</td><td class="num">1.8×</td></tr>
+    <tr><td class="nm">专属</td><td>独占实例</td><td class="num">99.95%</td><td class="num">≤ 1.2s</td><td>专属群 + 值班</td><td class="num">4.5×</td></tr>
+    <tr><td class="nm">私有化</td><td>客户机房</td><td>按合同</td><td>按验收</td><td>驻场 / 远程</td><td>项目制</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>这张表的工程含义是：<strong>每一个承诺都必须对应一种架构形态</strong>。如果销售在「基础」档承诺 P99 ≤ 1.2s，架构上无法兑现——共享池里没有隔离机制能保证这一点。因此矩阵应由架构组维护，销售只被允许引用，不允许自行组合。</p>
+
+  <h3><span class="k">7.3</span>交付物清单</h3>
+  <ol class="bul">
+    <li><strong>技术方案书</strong>：逻辑架构、部署架构、数据流三张图 + 容量与成本测算。</li>
+    <li><strong>压测报告</strong>：混合负载（长短 prompt、多租户、突发），给 P50/P95/P99 与吞吐曲线，而非单点延迟。</li>
+    <li><strong>成本测算表</strong>：可复算的 Excel，输入 QPS 与模型即可输出卡数与月成本。</li>
+    <li><strong>SLA 条款</strong>：与承诺矩阵一一对应，含统计口径、排除条款、赔付计算方式。</li>
+    <li><strong>私有化清单</strong>：离线镜像、License 机制、升级通道、运维移交文档。</li>
+  </ol>
+  <p>其中<strong>成本测算表</strong>是最容易被低估的交付物。它同时是售前工具和内部定价依据，一旦两边用同一份模型，报价与成本就不会脱节。</p>
+</section>
+
+<!-- ============ 08 ============ -->
+<section id="s8">
+  <h2><span class="i">08</span>落地路线与验收</h2>
+  <p class="lead">顺序由「错了以后最难补救」决定，而不是由「技术上最想做的」决定。计费错误会直接摧毁客户信任且无法追溯，因此排第一；引擎优化可以随时补，排后面。</p>
+
+  <div class="road">
+    <div class="rrow"><span class="p">P0</span><span class="w">0–2 月</span><span class="c"><b>计费可信 + 看得见。</b>usage 事件模型、流式四场景计数、双分录 ledger、指标字典与 L3 口径。验收：对账差异 &lt; 0.1%，任一请求可逐条下钻到成本。</span></div>
+    <div class="rrow"><span class="p">P1</span><span class="w">3–5 月</span><span class="c"><b>多租户可卖。</b>Org/Project/Key 三层模型、配额树、价格版本与快照、L2 隔离。验收：单租户无法影响他人 P99（同池抖动 &lt; 1.2×）。</span></div>
+    <div class="rrow"><span class="p">P2</span><span class="w">6–9 月</span><span class="c"><b>成本可优化。</b>分层队列、抢占式批处理、MIG 池化、Top 5 模型换 SGLang 专项调优。验收：在线池 U ≥ 0.45，混部池 ≥ 0.65。</span></div>
+    <div class="rrow"><span class="p">P3</span><span class="w">10–12 月</span><span class="c"><b>规模化交付。</b>多集群容灾、私有化交付流水线、Sizing 计算器与承诺矩阵进销售流程。验收：标准项目交付周期缩短 50%。</span></div>
+  </div>
+
+  <h3><span class="k">8.1</span>为什么 P/D 分离排在 P2 之后</h3>
+  <p>它需要稳定的流量结构、可靠的 KV 传输层、以及能承受更大故障面的运维能力。在 P0/P1 阶段引入，会把「计费不准」和「推理不稳」两类问题混在一起，导致故障归因失效。工程上，<strong>先让系统可解释，再让它更快</strong>。</p>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="s9">
+  <h2><span class="i">09</span>对抗审查：这套方案的脆弱假设</h2>
+  <p class="lead">任何架构方案都是一组假设的集合。有价值的不是证明它对，而是<em>提前说清它在什么条件下会错</em>，并为每个假设配一个可观测的证伪指标。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 13 · 六个关键假设、失效后果与反制</caption>
+  <thead><tr><th>#</th><th>假设</th><th>若不成立的后果</th><th>反制</th><th>证伪指标</th></tr></thead>
+  <tbody>
+    <tr><td class="num">1</td><td class="nm">上游返回的 usage 可信</td><td>毛利被系统性侵蚀，且无法察觉</td><td>抽样本地重算校准，偏差入价目表</td><td>上游 usage 与本地估算偏差 &gt; 2%</td></tr>
+    <tr><td class="num">2</td><td class="nm">利用率能稳定到 55%</td><td>整个成本模型崩塌，定价失去依据</td><td>混部 + 抢占 + 预留折扣三条腿</td><td>U &lt; 0.35 连续 7 天</td></tr>
+    <tr><td class="num">3</td><td class="nm">客户接受按 Token 计价</td><td>计量体系白做，商务被迫改按次/席位</td><td>计量单位与计价单位分离，加映射层</td><td>报价被要求改计价方式的占比 &gt; 30%</td></tr>
+    <tr><td class="num">4</td><td class="nm">共享池能保证租户隔离</td><td>大客户因抖动流失，且难以举证</td><td>实例级隔离 + 前缀亲和路由</td><td>同池跨租户 P99 抖动 &gt; 2×</td></tr>
+    <tr><td class="num">5</td><td class="nm">多集群容灾值得做</td><td>复杂度吃掉全部可用性收益</td><td>先做多上游，再做多集群</td><td>单集群可用性已 &gt; 99.95%</td></tr>
+    <tr><td class="num">6</td><td class="nm">自研引擎优化划算</td><td>人力成本超过节省的算力成本</td><td>只在 Top 3 模型做专项</td><td>单模型毛利率 &lt; 20%</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <h3><span class="k">9.1</span>三个反向指标：看起来好，其实危险</h3>
+  <div class="tbl-wrap">
+  <table>
+  <thead><tr><th>现象</th><th>表面解读</th><th>真实含义</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">TTFT 达标但成本超标</td><td>性能很好</td><td>过度配置，卡在为峰值付费</td></tr>
+    <tr><td class="nm">成本达标但中断率高</td><td>资源效率高</td><td>在用体验换成本，续约时偿还</td></tr>
+    <tr><td class="nm">计费准确但客户投诉多</td><td>客户不讲理</td><td>账单不可解释，缺少逐条下钻</td></tr>
+    <tr><td class="nm">利用率高但毛利低</td><td>生意很好</td><td>定价低于成本，或在补贴低价值流量</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <h3><span class="k">9.2</span>本方案主动放弃的东西</h3>
+  <ul>
+    <li><strong>不做统一推理抽象层。</strong>试图用一个接口屏蔽 vLLM / SGLang / TRT-LLM 的全部差异，会让每家的特性都用不上。改为：网关层统一协议，引擎层各自最优。</li>
+    <li><strong>不做自研 tokenizer。</strong>多模态与多模型的 tokenizer 差异是长期债，一律用官方实现 + 版本锁定，升级走回归测试。</li>
+    <li><strong>不做实时毛利计算。</strong>成本核算按小时批量，实时性对经营决策没有价值，却会拖垮结算链路。</li>
+  </ul>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <h2><span class="i">10</span>与现有代码资产的映射</h2>
+  <p class="lead">本方案不以「新建一套」为前提。现有网关已经解决了接入、路由与基础计费，真正的缺口集中在<strong>事实模型</strong>与<strong>成本可见性</strong>两处。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 14 · 能力现状与改造量估计（基于 new-api 架构）</caption>
+  <thead><tr><th>能力</th><th>现状</th><th>缺口</th><th>改造方式</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">统一接入与协议转换</td><td>已具备（relay / dto 层）</td><td>—</td><td>复用</td></tr>
+    <tr><td class="nm">渠道选择与重试</td><td>已具备（abilities / channel）</td><td>缺少端点级能力约束与成本权重</td><td>增补负向能力表</td></tr>
+    <tr><td class="nm">Token 计数</td><td>已具备（tokenkit）</td><td>流式场景与多模态归一</td><td>事件化改造</td></tr>
+    <tr><td class="nm">额度扣减</td><td>已有 quota 字段与扣减</td><td>缺双分录 ledger、缺幂等归组</td><td><b>新增账务层</b></td></tr>
+    <tr><td class="nm">多租户层级</td><td>group / token 两级</td><td>缺 Org / Project 与预算树</td><td>模型扩展</td></tr>
+    <tr><td class="nm">可观测性</td><td>日志与渠道健康</td><td>缺指标字典、trace、成本看板</td><td>新增</td></tr>
+    <tr><td class="nm">GPU 推理平台</td><td>无（纯转发）</td><td>全部</td><td><b>新增能力域</b></td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <p>按此映射，P0 的实际工作量集中在<strong>账务层</strong>与<strong>事件模型</strong>两块，而不是重写网关。这也是为什么路线图把「计费可信」放在第一位：它是唯一一处「现有实现能跑但证不清」的地方，而恰恰是 B 端客户最先审计的地方。</p>
+</section>
+
+<footer>
+  Token 工厂技术方案 · v1.0 · 2026-11-14<br>
+  文中性能与价格数字为公开区间取值与示意，落地前须以自建 benchmark 与成本模型替换。<br>
+  设计语言遵循项目既有契约：纸 #fcfcfa / 墨 #1a1c1e / 一根线 #e4e4de，单一强调色 #9a3412。
+</footer>
+
+</div>
+</body>
+</html>

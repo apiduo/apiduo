@@ -85,8 +85,10 @@ services:
       MOCK_HOST: 0.0.0.0
       MOCK_LOG: /tmp/mock_upstream.log
     volumes:
-      - ./mock_upstream.py:/mock_upstream.py:ro
-    command: ["python", "/mock_upstream.py"]
+      # 挂目录而不是单文件：单文件绑定的是 inode，改完脚本重启容器仍是旧内容
+      # （与 ClickHouse 配置同一类坑）。
+      - ./mock:/mocks:ro
+    command: ["python", "/mocks/mock_upstream.py"]
     ports:
       - "127.0.0.1:18080:18080"
     logging: *default-logging
@@ -108,6 +110,9 @@ services:
       - .env.app
     ports:
       - "127.0.0.1:39047:3000"
+    networks:
+      - default
+      - langfuse
     volumes:
       # 上传文件与 ./logs；主库在 MySQL，不落这里
       - ./data/app:/data
@@ -125,3 +130,10 @@ services:
       start_period: 20s
     stop_grace_period: 90s
     logging: *default-logging
+
+# Langfuse 的默认网络。本地 trace 验证需要同一网络下按服务名访问，
+# 跨 compose 项目用 host.docker.internal 或网关 IP 都会被拒。
+networks:
+  langfuse:
+    external: true
+    name: local_default

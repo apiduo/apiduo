@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>错误看板 · apiduo</title>
+<meta name="description" content="apiduo 网关的错误看板：失败率、错误码分布、渠道健康与重试效果。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: Cobalt (deal 1/3, seed error-dashboard-api-gateway-d4d6)
+ * nav: single shell bar, wordmark left, range as text links · signature: the error field, one glyph per 10-minute bucket
+ * states: idle, hover, focus, active, disabled, empty, loading, error · v2.0.0 · data: sample */
+/* Hallmark · pre-emit critique: P_ H_ E_ S_ R_ V_ · weakest: the field competes with the chart for the eye, so the chart is a single hairline series with no legend */
+
+/* ---- tokens: Cobalt, from `theme.mjs scaffold cobalt` ---- */
+:root {
+  color-scheme: light;
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.2rem; --text-xl: 1.44rem; --text-2xl: 1.728rem; --text-3xl: 2.074rem;
+  --text-display-s: 1.44rem; --text-display: 1.728rem; --text-section: 1.2rem; --text-title: 1rem; --text-lead: 1rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+  --color-error: oklch(52% 0.19 27); --color-success: oklch(50% 0.12 150);
+  --container: 1440px; --gutter: 64px; --gap-columns: 32px;
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-modal: 400; --z-toast: 500;
+  --color-paper: oklch(98.6% 0.005 250); --color-paper-2: oklch(96.2% 0.008 252); --color-paper-3: oklch(93% 0.011 252);
+  --color-ink: oklch(21% 0.028 262); --color-ink-2: oklch(36% 0.022 260); --color-muted: oklch(50% 0.018 258);
+  --color-rule: oklch(90% 0.009 252); --color-rule-2: oklch(83% 0.012 252);
+  --color-graphite: oklch(21% 0.024 262); --color-graphite-2: oklch(26.5% 0.026 262); --color-graphite-ink: oklch(93% 0.010 250); --color-graphite-muted: oklch(69% 0.022 256);
+  --color-accent: oklch(52% 0.19 258); --color-accent-2: oklch(76% 0.13 254); --color-accent-wash: oklch(95% 0.028 256); --color-accent-ink: oklch(98.6% 0.005 250); --color-focus: oklch(52% 0.19 258);
+  --color-accent-deep: oklch(43% 0.2 262); --color-accent-edge: oklch(39% 0.16 260);
+  --color-glyph-1: oklch(89% 0.025 254); --color-glyph-2: oklch(81% 0.045 255); --color-glyph-3: oklch(70% 0.085 256); --color-glyph-4: oklch(60% 0.13 257);
+  --color-key-face: oklch(99.4% 0.003 250); --color-key-edge: oklch(80% 0.016 254);
+  --color-scrim: oklch(21% 0.028 262 / 0.32);
+  --font-display: "Familjen Grotesk", system-ui, sans-serif; --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-outlier: "JetBrains Mono", ui-monospace, monospace;
+  --radius-card: 8px; --radius-input: 6px;
+  --cut: 8px; --cut-l: 16px;
+  --rule-hair: 1px; --shadow-card: 0 1px 2px oklch(21% 0.028 262 / 0.06);
+  --shadow-key: 0 3px 0 0 var(--color-key-edge), 0 6px 8px -4px oklch(21% 0.028 262 / 0.28), inset 0 1px 0 oklch(100% 0 0 / 0.9);
+  --shadow-key-accent: 0 3px 0 0 var(--color-accent-edge), 0 6px 8px -4px oklch(30% 0.12 260 / 0.45), inset 0 1px 0 oklch(100% 0 0 / 0.22);
+  --shadow-key-press: inset 0 1px 2px oklch(21% 0.028 262 / 0.14);
+  --tracking-display: -0.028em; --display-weight: 600;
+}
+
+/* ---- base rules the Floor already decided ---- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+html { scrollbar-color: var(--color-muted) var(--color-paper); }
+body { margin: 0; background: var(--color-paper); color: var(--color-ink); font-family: var(--font-body); font-size: var(--text-md); line-height: 1.55; -webkit-font-smoothing: antialiased; caret-color: var(--color-accent); }
+::selection { background: color-mix(in oklab, var(--color-accent) 22%, transparent); color: var(--color-ink); }
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.16em; text-decoration-color: var(--color-rule-2); }
+a:hover { text-decoration-color: var(--color-accent); }
+h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: var(--display-weight); font-synthesis: none; letter-spacing: var(--tracking-display); line-height: 1.05; overflow-wrap: break-word; min-width: 0; text-wrap: balance; color: var(--color-ink); }
+p { margin: 0; text-wrap: pretty; }
+button, input, select { font: inherit; }
+button:active { transform: translateY(1px); }
+button:disabled, input:disabled, select:disabled { opacity: 0.55; cursor: not-allowed; }
+tr[data-row]:active td { background: color-mix(in oklab, var(--color-accent) 9%, transparent); }
+svg { display: block; }
+[hidden] { display: none !important; }
+.num, td.num, .figure { font-variant-numeric: tabular-nums; }
+.container { width: 100%; max-width: var(--container); margin-inline: auto; padding-inline: var(--gutter); box-sizing: border-box; }
+@media (max-width: 60rem) { :root { --gutter: 24px; } }
+@media (max-width: 40rem) { :root { --gutter: 16px; --gap-columns: 16px; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* ---- shell ---- */
+.shell {
+  position: sticky; top: 0; z-index: var(--z-sticky-nav);
+  display: flex; align-items: center; gap: var(--space-lg);
+  min-height: 64px; padding-inline: var(--gutter);
+  background: var(--color-paper); border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+.wordmark { display: inline-flex; align-items: baseline; gap: var(--space-xs); font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); letter-spacing: var(--tracking-display); text-decoration: none; }
+.wordmark span { font-family: var(--font-body); font-weight: 400; font-size: var(--text-sm); color: var(--color-muted); }
+.shell .spacer { flex: 1; }
+.range { display: flex; gap: var(--space-md); align-items: center; }
+.range button {
+  appearance: none; border: 0; background: none; padding: var(--space-2xs) 0;
+  color: var(--color-muted); cursor: pointer; font-size: var(--text-sm);
+  border-bottom: var(--rule-hair) solid transparent;
+}
+.range button:hover { color: var(--color-ink-2); }
+.range button[aria-pressed="true"] { color: var(--color-ink); border-bottom-color: var(--color-accent); }
+.env { font-size: var(--text-sm); color: var(--color-ink-2); }
+.env { color: var(--color-muted); }
+
+/* ---- tabs ---- */
+.tabs { display: flex; gap: var(--space-lg); padding-inline: var(--gutter); border-bottom: var(--rule-hair) solid var(--color-rule); background: var(--color-paper); position: sticky; top: 64px; z-index: var(--z-sticky); }
+.tabs button {
+  appearance: none; border: 0; background: none; padding: var(--space-sm) 0;
+  color: var(--color-muted); cursor: pointer; font-size: var(--text-md);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tabs button:hover { color: var(--color-ink-2); }
+.tabs button[aria-selected="true"] { color: var(--color-ink); border-bottom-color: var(--color-accent); }
+
+main { padding-block: var(--space-xl) var(--space-3xl); }
+.view[hidden] { display: none; }
+
+/* ---- hero row: one figure, one field ---- */
+.lead-row { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap-columns); align-items: end; }
+.lead-stat { grid-column: 1 / span 4; }
+.lead-field { grid-column: 5 / span 8; }
+@media (max-width: 60rem) { .lead-stat, .lead-field { grid-column: 1 / -1; } }
+
+.figure-xl {
+  font-family: var(--font-display); font-weight: 600; letter-spacing: var(--tracking-display);
+  font-size: clamp(3rem, 6vw, 4.6rem); line-height: 0.98; color: var(--color-ink);
+  font-variant-numeric: tabular-nums; margin-block: var(--space-sm) var(--space-sm);
+}
+.figure-xl small { font-size: 0.3em; font-weight: 500; color: var(--color-muted); letter-spacing: 0; }
+.lead-line { font-size: var(--text-md); color: var(--color-ink-2); max-width: 34ch; line-height: 1.5; }
+.facts { margin: var(--space-lg) 0 0; display: grid; gap: 0; }
+.facts > div { display: flex; justify-content: space-between; gap: var(--space-md); padding-block: var(--space-sm); border-top: var(--rule-hair) solid var(--color-rule); }
+.facts dt { color: var(--color-muted); font-size: var(--text-sm); }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+.field-wrap { position: relative; }
+.field-wrap canvas { width: 100%; display: block; }
+.field-cap { display: flex; justify-content: space-between; gap: var(--space-md); padding-top: var(--space-xs); border-top: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); color: var(--color-muted); }
+.field-cap b { color: var(--color-ink-2); font-weight: 500; }
+
+/* ---- section heads without eyebrows ---- */
+.section { margin-top: var(--space-2xl); }
+.section > h2 { font-size: var(--text-section); max-width: 24ch; }
+.section > .sub { margin-top: var(--space-xs); color: var(--color-muted); font-size: var(--text-sm); max-width: 60ch; }
+
+/* ---- chart ---- */
+.chart { margin-top: var(--space-lg); }
+.chart svg { width: 100%; height: auto; }
+.chart-axis { display: flex; justify-content: space-between; font-size: var(--text-xs); color: var(--color-muted); padding-top: var(--space-xs); font-variant-numeric: tabular-nums; }
+.chart-key { display: flex; gap: var(--space-lg); font-size: var(--text-sm); color: var(--color-muted); padding-bottom: var(--space-sm); flex-wrap: wrap; }
+.chart-key span { display: inline-flex; align-items: center; gap: var(--space-xs); }
+.chart-key i { width: 20px; height: 2px; background: var(--color-accent); display: block; }
+.chart-key i.quiet { background: var(--color-muted); }
+
+/* ---- table: ruled full width, no card, no outer border ---- */
+.table-wrap { margin-top: var(--space-lg); overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: var(--space-sm) var(--space-md) var(--space-sm) 0; vertical-align: middle; }
+th {
+  font-family: var(--font-display); font-weight: 500; font-size: var(--text-sm);
+  color: var(--color-muted); white-space: nowrap;
+  border-bottom: var(--rule-hair) solid var(--color-rule-2);
+}
+td { font-size: var(--text-md); border-bottom: var(--rule-hair) solid var(--color-rule); }
+tbody tr:last-child td { border-bottom: var(--rule-hair) solid var(--color-rule-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.machine { font-family: var(--font-outlier); font-size: var(--text-sm); color: var(--color-ink-2); white-space: nowrap; }
+tr.is-hot td { background: var(--color-accent-wash); }
+tr[data-row="code"] { cursor: pointer; }
+tr[data-row="code"]:hover td { background: color-mix(in oklab, var(--color-accent) 5%, transparent); }
+
+/* status is text, never a filled chip (Cobalt) */
+.state { display: inline-flex; align-items: center; gap: var(--space-xs); font-size: var(--text-sm); color: var(--color-ink-2); white-space: nowrap; }
+.state svg { flex: 0 0 auto; }
+.state.err { color: var(--color-error); }
+.state.ok { color: var(--color-success); }
+
+/* ---- retry ruler: a timeline as a ruler ---- */
+.ruler { margin-top: var(--space-lg); position: relative; }
+.ruler-ticks { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-lg); }
+.tick { padding-top: 0; }
+.tick-bar { display: flex; flex-direction: column-reverse; align-items: flex-start; gap: var(--space-3xs);
+  height: 96px; border-bottom: var(--rule-hair) solid var(--color-rule-2); }
+.tick-bar i { display: block; width: 24px; border-radius: 2px 2px 0 0; }
+.tick-bar i.ok { background: var(--color-accent); }
+.tick-bar i.fail { background: var(--color-rule-2); }
+.tick-lab { display: flex; justify-content: space-between; gap: var(--space-sm); margin-top: var(--space-xs); font-size: var(--text-sm); color: var(--color-muted); }
+.tick-lab b { color: var(--color-ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.tick-rate { margin-top: var(--space-2xs); font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
+.tick-foot { margin-top: var(--space-2xs); font-size: var(--text-sm); color: var(--color-muted); }
+
+/* ---- prose (口径) ---- */
+.prose { max-width: 68ch; }
+.prose h3 { font-size: var(--text-title); margin-top: var(--space-xl); }
+.prose p { margin-top: var(--space-sm); color: var(--color-ink-2); line-height: 1.65; }
+.prose ul { margin: var(--space-sm) 0 0; padding-left: var(--space-lg); color: var(--color-ink-2); }
+.prose li { margin-block: var(--space-xs); line-height: 1.6; }
+.prose code { font-family: var(--font-outlier); font-size: 0.9em; background: var(--color-paper-2); padding: 1px var(--space-2xs); }
+.waive { margin-top: var(--space-xl); padding-top: var(--space-md); border-top: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); color: var(--color-muted); }
+
+/* ---- side sheet ---- */
+.scrim { position: fixed; inset: 0; background: var(--color-scrim); opacity: 0; pointer-events: none; transition: opacity var(--dur-short) var(--ease-out); z-index: var(--z-modal); }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; top: 0; right: 0; height: 100vh; width: min(560px, 96vw);
+  background: var(--color-paper); border-left: var(--rule-hair) solid var(--color-rule-2);
+  transform: translateX(100%); transition: transform var(--dur-long) var(--ease-out);
+  z-index: calc(var(--z-modal) + 1); display: flex; flex-direction: column;
+}
+.sheet.on { transform: none; }
+.sheet-h { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-lg); border-bottom: var(--rule-hair) solid var(--color-rule); }
+.sheet-h h3 { font-size: var(--text-lg); }
+.sheet-h .meta { margin-top: var(--space-2xs); font-size: var(--text-sm); color: var(--color-muted); }
+.sheet-close { margin-left: auto; appearance: none; border: var(--rule-hair) solid var(--color-rule-2); background: var(--color-key-face); color: var(--color-ink-2); width: 32px; height: 32px; cursor: pointer; border-radius: var(--radius-input); font-size: 16px; line-height: 1; flex: 0 0 32px; }
+.sheet-close:hover { background: var(--color-paper-2); }
+.sheet-b { overflow: auto; padding: var(--space-lg); }
+.sheet-b h4 { margin: var(--space-lg) 0 var(--space-sm); font-family: var(--font-display); font-weight: 500; font-size: var(--text-sm); color: var(--color-muted); }
+.sheet-b h4:first-child { margin-top: 0; }
+.graphite { background: var(--color-graphite); color: var(--color-graphite-ink); padding: var(--space-md); font-family: var(--font-outlier); font-size: var(--text-sm); line-height: 1.7; white-space: pre-wrap; word-break: break-word; border-radius: var(--radius-input); }
+.kv { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: var(--space-xs) var(--space-md); margin: 0; font-size: var(--text-sm); }
+.kv dt { color: var(--color-muted); }
+.kv dd { margin: 0; word-break: break-all; }
+.kv dd.machine { font-family: var(--font-outlier); font-size: var(--text-xs); }
+.chain { list-style: none; margin: 0; padding: 0 0 0 var(--space-md); border-left: var(--rule-hair) solid var(--color-rule-2); }
+.chain li { position: relative; padding-block: var(--space-xs); }
+.chain li::before { content: ""; position: absolute; left: calc(-1 * var(--space-md) - 3px); top: 14px; width: 5px; height: 5px; background: var(--color-rule-2); }
+.chain li.fail::before { background: var(--color-error); }
+.chain li.ok::before { background: var(--color-accent); }
+.chain .r1 { display: flex; gap: var(--space-sm); align-items: baseline; flex-wrap: wrap; font-size: var(--text-sm); }
+.chain .r2 { color: var(--color-muted); font-size: var(--text-xs); margin-top: var(--space-3xs); }
+.chain code { font-family: var(--font-outlier); font-size: var(--text-xs); }
+
+/* ---- empty ---- */
+.empty { padding: var(--space-2xl) 0; color: var(--color-muted); font-size: var(--text-sm); }
+
+@media (max-width: 60rem) {
+  .shell { gap: var(--space-md); flex-wrap: wrap; padding-block: var(--space-sm); min-height: 0; }
+  .tabs { position: static; overflow-x: auto; white-space: nowrap; }
+  .figure-xl { font-size: 3rem; }
+  .ruler-ticks { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<header class="shell">
+  <a class="wordmark" href="#" aria-label="apiduo 首页">apiduo <span>错误看板</span></a>
+  <span class="env">生产</span>
+  <div class="spacer"></div>
+  <div class="range" id="range" role="group" aria-label="时间范围">
+    <button data-range="1h" aria-pressed="false">1 小时</button>
+    <button data-range="6h" aria-pressed="false">6 小时</button>
+    <button data-range="24h" aria-pressed="true">24 小时</button>
+    <button data-range="7d" aria-pressed="false">7 天</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist">
+  <button role="tab" data-view="overview" aria-selected="true">总览</button>
+  <button role="tab" data-view="stream" aria-selected="false">错误流</button>
+  <button role="tab" data-view="channel" aria-selected="false">渠道</button>
+  <button role="tab" data-view="notes" aria-selected="false">口径</button>
+</nav>
+
+<main class="container">
+
+  <!-- ============ 总览 ============ -->
+  <section class="view" id="view-overview">
+    <div class="lead-row">
+      <div class="lead-stat">
+        <p class="figure-xl" id="failRate">&nbsp;</p>
+        <p class="lead-line" id="leadLine">统计中。</p>
+        <dl class="facts" id="facts"></dl>
+      </div>
+      <div class="lead-field">
+        <div class="field-wrap">
+          <canvas id="field" height="192" aria-label="过去 24 小时每 10 分钟失败尝试数，字符越密表示失败越多"></canvas>
+        </div>
+        <div class="field-cap">
+          <span>每格 10 分钟，字符堆叠高度为该时段失败尝试数</span>
+          <span id="fieldPeak">&nbsp;</span>
+        </div>
+      </div>
+    </div>
+
+    <section class="section">
+      <h2>失败率随时间</h2>
+      <p class="sub">蓝线是用户实际拿到错误的请求占比。灰线是上游尝试的失败率，两者的差被重试吞掉了。</p>
+      <figure class="chart">
+        <div class="chart-key">
+          <span><i></i>请求失败率</span>
+          <span><i class="quiet"></i>尝试失败率</span>
+          <span id="peakMark"></span>
+        </div>
+        <svg id="chart" viewBox="0 0 900 200" preserveAspectRatio="none" role="img" aria-label="错误率随时间的折线图"></svg>
+        <div class="chart-axis" id="chartAxis"></div>
+      </figure>
+    </section>
+
+    <section class="section">
+      <h2>错误从哪里来</h2>
+      <p class="sub">按 <code>error_code</code> 计。一行一类，点开看这一类下的请求。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>错误码</th>
+              <th>发生在</th>
+              <th class="num">尝试</th>
+              <th class="num">占比</th>
+              <th>主要渠道</th>
+            </tr>
+          </thead>
+          <tbody id="codeRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>重试把多少转成了成功</h2>
+      <p class="sub">未重试那一档不是“重试 0 次就成功”，而是 <code>DecideRelayRetry</code> 判定不可重试、直接返回的错误。</p>
+      <div class="ruler">
+        <div class="ruler-ticks" id="rulerTicks"></div>
+      </div>
+    </section>
+  </section>
+
+  <!-- ============ 错误流 ============ -->
+  <section class="view" id="view-stream" hidden>
+    <h2 id="streamHead">每一次失败尝试</h2>
+    <p class="sub" id="streamSub">一条错误一行。同一 <code>request_id</code> 可能有多行，那是一请求打了多个渠道。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>错误码</th>
+            <th>消息</th>
+            <th>模型</th>
+            <th>渠道</th>
+            <th>用户</th>
+            <th class="num">状态</th>
+            <th class="num">耗时</th>
+          </tr>
+        </thead>
+        <tbody id="eventRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 渠道 ============ -->
+  <section class="view" id="view-channel" hidden>
+    <h2>按渠道看失败</h2>
+    <p class="sub">失败率是尝试口径：失败尝试除该渠道总尝试。它不是用户感知的失败率，因为重试会把一部分抵消掉。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>渠道</th>
+            <th>状态</th>
+            <th class="num">尝试</th>
+            <th class="num">失败</th>
+            <th class="num">失败率</th>
+            <th>主要错误码</th>
+            <th class="num">最近失败</th>
+          </tr>
+        </thead>
+        <tbody id="channelRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 口径 ============ -->
+  <section class="view" id="view-notes" hidden>
+    <div class="prose">
+      <h2>口径</h2>
+      <p>这里的每个数字都能追到一张表和一种算法。以下三组事实决定了看板的形状，不是设计偏好。</p>
+
+      <h3>失败尝试不是失败请求</h3>
+      <p><code>logs</code> 里 <code>type=5</code> 是尝试级的：<code>controller/relay.go</code> 的重试循环里每次 attempt 失败都写一条，同一 <code>request_id</code> 可能有三条。把 <code>COUNT(*)</code> 当失败请求数，会虚高 1.8 到 2.7 倍。必须先 <code>COUNT(DISTINCT request_id)</code>。</p>
+
+      <h3>错误率只能来自 perf_metrics</h3>
+      <p>它的 <code>request_count</code> 与 <code>success_count</code> 是一次请求一个样本，重试成功算成功，客户端取消不计入。但它的唯一键是 <code>(model_name, group, bucket_ts)</code>，没有渠道维度，所以渠道页只能给尝试口径。</p>
+
+      <h3>重试阶梯的两端必须守恒</h3>
+      <p>阶梯按经验比例拆分，但两个等式精确成立：失败尝试之和等于 <code>failAttempt</code>，最终失败之和等于 <code>failReq</code>。不成立时，重试次数和失败数两栏会自己打架。</p>
+
+      <p class="waive">未使用照片与图库素材。样张数据由前端确定性生成，结构与字段对齐 <code>logs</code>、<code>perf_metrics</code>、<code>channels</code> 实际表设计。</p>
+    </div>
+  </section>
+
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet-h">
+    <div>
+      <h3 id="sheetTitle">错误详情</h3>
+      <p class="meta" id="sheetMeta"></p>
+    </div>
+    <button class="sheet-close" id="sheetClose" aria-label="关闭">×</button>
+  </div>
+  <div class="sheet-b" id="sheetBody"></div>
+</aside>
+
+<script>
+(function () {
+  'use strict';
+
+  var HOUR = 3600e3, MIN = 60e3, BUCKET = 10 * MIN;
+  var BUCKETS = 7 * 24 * 6;
+  var T0 = Math.floor(Date.now() / BUCKET) * BUCKET - BUCKETS * BUCKET;
+  var NOW = T0 + BUCKETS * BUCKET;
+  var MAX_RETRY = 3;
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtNum(n) { return Math.round(n).toLocaleString('zh-CN'); }
+  function fmtPct(v, d) { return (v * 100).toFixed(d == null ? 2 : d) + '%'; }
+  function fmtClock(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function fmtMD(ts) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function fmtFull(ts) { var d = new Date(ts); return fmtMD(ts) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function div(a, b) { return b > 0 ? a / b : 0; }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function fmtDur(ms) {
+    if (ms >= MIN) {
+      var m = Math.floor(ms / MIN);
+      var sec = Math.round((ms % MIN) / 1000);
+      return m + 'm' + (sec ? pad(sec) + 's' : '');
+    }
+    return (ms / 1000).toFixed(1) + 's';
+  }
+
+  var _seed = 20261114;
+  function rnd() { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; }
+  function pick(a) { return a[Math.floor(rnd() * a.length)]; }
+  function jitter(base, spread) { return base * (1 - spread + rnd() * spread * 2); }
+
+  /* ---------------- 元数据 ---------------- */
+  var LAYERS = {
+    '客户端': { word: '请求', color: 'var(--color-muted)' },
+    '渠道': { word: '渠道', color: 'var(--color-accent)' },
+    '上游': { word: '上游', color: 'var(--color-error)' },
+    '额度': { word: '额度', color: 'var(--color-ink-2)' },
+    '系统': { word: '本地', color: 'var(--color-ink)' }
+  };
+
+  var CODES = [
+    { code: 'bad_response_status_code', layer: '上游', weight: 30, faultWeight: 9, ch: 7, md: 'deepseek-v4.1', ms: 1800, status: 503, msg: 'status_code=503, upstream service temporarily unavailable' },
+    { code: 'channel:response_time_exceeded', layer: '渠道', weight: 11, faultWeight: 5, ch: 21, md: 'gpt-4o', ms: 180000, status: 0, msg: 'status_code=0, upstream response time exceeded 300s' },
+    { code: 'empty_response', layer: '上游', weight: 9, faultWeight: 4, ch: 15, md: 'claude-sonnet-4.5', ms: 2400, status: 200, msg: 'status_code=200, upstream returned empty response body' },
+    { code: 'invalid_request', layer: '客户端', weight: 10, faultWeight: 3, ch: 7, md: 'deepseek-v4.1', ms: 300, status: 400, msg: 'status_code=400, invalid value for parameter messages[0].role' },
+    { code: 'insufficient_user_quota', layer: '额度', weight: 8, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', ms: 120, status: 403, msg: 'user quota is not enough, current: 312, required: 1840' },
+    { code: 'bad_request_body', layer: '客户端', weight: 6, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', ms: 250, status: 400, msg: 'status_code=400, request body is not valid JSON' },
+    { code: 'channel:invalid_key', layer: '渠道', weight: 4, faultWeight: 46, ch: 12, md: 'gpt-4o', ms: 450, status: 401, msg: 'status_code=401, upstream rejected credentials: invalid api key' },
+    { code: 'prompt_blocked', layer: '客户端', weight: 5, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', ms: 800, status: 400, msg: 'status_code=400, prompt blocked by upstream safety policy' },
+    { code: 'channel:no_available_key', layer: '渠道', weight: 3, faultWeight: 8, ch: 21, md: 'gpt-4o', ms: 90, status: 0, msg: 'no available key for channel, all keys exhausted' },
+    { code: 'model_not_found', layer: '客户端', weight: 4, faultWeight: 1, ch: 21, md: 'claude-sonnet-4.5', ms: 400, status: 404, msg: 'status_code=404, model not found on upstream' },
+    { code: 'do_request_failed', layer: '上游', weight: 3, faultWeight: 2, ch: 18, md: 'qwen-max', ms: 5000, status: 0, msg: 'status_code=0, dial tcp: connection refused' },
+    { code: 'bad_response_body', layer: '上游', weight: 3, faultWeight: 1, ch: 3, md: 'gemini-2.5-pro', ms: 1600, status: 200, msg: 'status_code=200, unable to parse upstream response payload' },
+    { code: 'access_denied', layer: '额度', weight: 2, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', ms: 150, status: 403, msg: 'status_code=403, this token has no permission for model claude-sonnet-4.5' },
+    { code: 'get_channel_failed', layer: '系统', weight: 1, faultWeight: 1, ch: 0, md: 'n/a', ms: 60, status: 500, msg: 'no channel satisfied the request constraints' },
+    { code: 'query_data_error', layer: '系统', weight: 1, faultWeight: 0, ch: 0, md: 'n/a', ms: 300, status: 500, msg: 'status_code=500, failed to query log database' }
+  ];
+  var CODE_MAP = {};
+  CODES.forEach(function (c) { CODE_MAP[c.code] = c; });
+
+  var CHANNELS = [
+    { id: 12, name: 'azure-gpt4o-hk', type: 'Azure', status: 'auto_disabled', reason: 'status_code=401, upstream rejected credentials: invalid api key', share: 0.10 },
+    { id: 7, name: 'deepseek-official', type: 'DeepSeek', status: 'enabled', reason: '', share: 0.28 },
+    { id: 15, name: 'claude-main', type: 'Anthropic', status: 'enabled', reason: '', share: 0.17 },
+    { id: 3, name: 'gemini-pro-pool', type: 'Gemini', status: 'enabled', reason: '', share: 0.14 },
+    { id: 21, name: 'openrouter-fallback', type: 'OpenRouter', status: 'enabled', reason: '', share: 0.11 },
+    { id: 18, name: 'bailian-cn', type: 'Alibaba', status: 'enabled', reason: '', share: 0.07 }
+  ];
+  var CH_MAP = {};
+  CHANNELS.forEach(function (c) { CH_MAP[c.id] = c; });
+  var CH_MODELS = { 12: ['gpt-4o', 'gpt-4o-mini'], 7: ['deepseek-v4.1'], 15: ['claude-sonnet-4.5'], 3: ['gemini-2.5-pro'], 21: ['gpt-4o', 'claude-sonnet-4.5'], 18: ['qwen-max'] };
+
+  var USERS = ['chen.wei', 'li.na', 'wang.lei', 'zhao.min', 'sun.yu', 'zhou.jie', 'wu.hao', 'xu.ting', 'ma.lin', 'huang.qing',
+    'lin.xin', 'he.yi', 'guo.fan', 'luo.qi', 'deng.bo', 'song.yao', 'ye.ning', 'cai.wen', 'pan.yu', 'tang.hao'];
+  var GROUPS = ['default', 'vip', 'svip', 'trial'];
+  var USER_PROFILE = {}, USER_GROUP = {};
+  USERS.forEach(function (u, i) {
+    USER_PROFILE[u] = i < 5 ? 'heavy' : (i < 14 ? 'normal' : 'light');
+    if (USER_PROFILE[u] === 'heavy') USER_GROUP[u] = (i % 3 === 0) ? 'vip' : 'svip';
+    else if (USER_PROFILE[u] === 'normal') USER_GROUP[u] = 'default';
+    else USER_GROUP[u] = 'trial';
+  });
+  var HEAVY_POOL = USERS.filter(function (u) { return USER_PROFILE[u] !== 'light'; });
+  var LIGHT_POOL = USERS.filter(function (u) { return USER_PROFILE[u] === 'light'; });
+  var TOP_POOL = HEAVY_POOL.slice(0, 5);
+
+  function pickUserByLayer(layer, fault) {
+    var r = rnd();
+    if (layer === '额度') return LIGHT_POOL[Math.min(LIGHT_POOL.length - 1, Math.floor(Math.pow(r, 0.75) * LIGHT_POOL.length))];
+    if (layer === '渠道' || layer === '上游') {
+      if (fault) return TOP_POOL[Math.min(TOP_POOL.length - 1, Math.floor(Math.pow(r, 1.6) * TOP_POOL.length))];
+      return HEAVY_POOL[Math.min(HEAVY_POOL.length - 1, Math.floor(Math.pow(r, 1.35) * HEAVY_POOL.length))];
+    }
+    return USERS[Math.floor(r * USERS.length)];
+  }
+
+  /* ---------------- 造数 ---------------- */
+  var FAULT_START = Math.floor((NOW - 8 * HOUR) / BUCKET) * BUCKET;
+  var FAULT_END = FAULT_START + 2 * HOUR;
+  var MINOR_START = Math.floor((NOW - 3 * HOUR) / BUCKET) * BUCKET;
+
+  function inFault(ts) { return ts >= FAULT_START && ts < FAULT_END; }
+  function inMinor(ts) { return ts >= MINOR_START && ts < MINOR_START + 40 * MIN; }
+  function trafficShape(ts) {
+    var d = new Date(ts), h = d.getHours() + d.getMinutes() / 60;
+    return Math.max(0.28, Math.min(1.25, 0.46 + 0.54 * Math.sin(Math.PI * (h - 3) / 18)));
+  }
+
+  function splitInt(total, weights) {
+    total = Math.max(0, Math.round(total));
+    var sum = weights.reduce(function (a, b) { return a + b; }, 0) || 1;
+    var raw = weights.map(function (w) { return total * w / sum; });
+    var base = raw.map(Math.floor);
+    var rest = total - base.reduce(function (a, b) { return a + b; }, 0);
+    var order = raw.map(function (v, i) { return { i: i, frac: v - Math.floor(v) }; })
+      .sort(function (a, b) { return b.frac - a.frac; });
+    for (var i = 0; i < rest; i++) base[order[i % order.length].i] += 1;
+    return base;
+  }
+
+  var buckets = [];
+  (function buildBuckets() {
+    for (var i = 0; i < BUCKETS; i++) {
+      var ts = T0 + i * BUCKET;
+      var req = Math.round(jitter(1600 * trafficShape(ts), 0.06));
+      var failRate = inFault(ts) ? jitter(0.031, 0.18) : (inMinor(ts) ? jitter(0.0092, 0.15) : jitter(0.0034, 0.30));
+      var failReq = Math.max(0, Math.round(req * failRate));
+      var amp = inFault(ts) ? jitter(2.65, 0.10) : (inMinor(ts) ? jitter(2.1, 0.1) : jitter(1.85, 0.12));
+      var failAttempt = Math.max(failReq, Math.round(failReq * amp));
+
+      var weights = CODES.map(function (c) { return inFault(ts) ? c.faultWeight : c.weight; });
+      var sum = weights.reduce(function (a, b) { return a + b; }, 0);
+      var raw = weights.map(function (w) { return failAttempt * w / sum * jitter(1, 0.10); });
+      var rawSum = raw.reduce(function (a, b) { return a + b; }, 0) || 1;
+      raw = raw.map(function (v) { return v / rawSum * failAttempt; });
+      var codeCounts = splitInt(failAttempt, raw.map(function (v) { return v / failAttempt; }));
+
+      var rows = [];
+      CODES.forEach(function (c, ci) {
+        var n = codeCounts[ci];
+        if (!n) return;
+        var parts = n <= 2 ? 1 : (n <= 8 ? 2 : 3);
+        var left = n;
+        for (var pi = 0; pi < parts && left > 0; pi++) {
+          var takeN = pi === parts - 1 ? left : Math.max(1, Math.round(n / parts * jitter(1, 0.30)));
+          takeN = Math.min(takeN, left);
+          if (takeN <= 0) continue;
+          left -= takeN;
+          var chId = c.ch || 0;
+          if (chId) {
+            if (chId === 12 && ts >= FAULT_END) chId = 21;
+            if (c.layer === '渠道') {
+              if (inFault(ts) && chId === 12) chId = rnd() < 0.88 ? 12 : 21;
+              else chId = rnd() < 0.72 ? chId : 21;
+            } else {
+              chId = rnd() < 0.86 ? chId : 7;
+            }
+          }
+          var u = pickUserByLayer(c.layer, inFault(ts));
+          rows.push({
+            code: c.code, ch: chId,
+            md: chId && CH_MODELS[chId] ? pick(CH_MODELS[chId]) : c.md,
+            user: u, grp: USER_GROUP[u] || 'default', n: takeN
+          });
+        }
+      });
+
+      buckets.push({ ts: ts, req: req, failReq: Math.min(failReq, req), failAttempt: failAttempt, rows: rows });
+    }
+  })();
+
+  var events = [];
+  (function buildEvents() {
+    var uid = 1;
+    for (var i = 0; i < BUCKETS; i++) {
+      var b = buckets[i];
+      var take = Math.min(3, Math.round(b.failAttempt / 9));
+      if (take <= 0 || !b.rows.length) continue;
+      for (var k = 0; k < take; k++) {
+        var rTotal = 0;
+        for (var q = 0; q < b.rows.length; q++) rTotal += b.rows[q].n;
+        var pn = rnd() * rTotal, row = b.rows[b.rows.length - 1];
+        for (var q2 = 0; q2 < b.rows.length; q2++) { pn -= b.rows[q2].n; if (pn <= 0) { row = b.rows[q2]; break; } }
+
+        var meta = CODE_MAP[row.code] || CODES[0];
+        var chId = row.ch || 0;
+        var rescuedProb = b.failAttempt > 0 ? Math.max(0, (b.failAttempt - b.failReq) / b.failAttempt) : 0;
+        var retryable = (meta.layer === '渠道' || meta.layer === '上游');
+        var ts = b.ts + Math.floor(rnd() * BUCKET);
+
+        events.push({
+          id: uid,
+          ts: ts,
+          code: meta.code,
+          layer: meta.layer,
+          msg: meta.msg,
+          status: meta.status === 200 && meta.code === 'bad_response_status_code' ? pick([500, 502, 503, 429]) : meta.status,
+          model: row.md,
+          channelId: chId,
+          channelName: chId ? (CH_MAP[chId] || CHANNELS[0]).name : '—',
+          user: row.user,
+          grp: row.grp,
+          ms: Math.round(jitter(meta.ms || 1800, 0.45)),
+          requestId: 'rq_' + Math.floor(ts / 1000).toString(36) + '_' + uid.toString(36) + Math.floor(rnd() * 1e4).toString(36),
+          rescued: retryable && rnd() < rescuedProb,
+          stream: rnd() > 0.42
+        });
+        uid++;
+      }
+    }
+    // 少量请求带有跨渠道重试链
+    var pool = events.filter(function (e) { return inFault(e.ts) && (e.layer === '渠道' || e.layer === '上游'); }).slice(0, 24);
+    var extra = [];
+    pool.forEach(function (e, idx) {
+      if (idx % 2 !== 0) return;
+      var n = 1 + Math.floor(rnd() * 2);
+      for (var j = 0; j < n; j++) {
+        extra.push({
+          id: uid++,
+          ts: e.ts - (j + 1) * Math.round(400 + rnd() * 2200),
+          code: j === 0 ? 'bad_response_status_code' : 'channel:response_time_exceeded',
+          layer: j === 0 ? '上游' : '渠道',
+          msg: j === 0 ? 'status_code=502, upstream returned bad gateway' : 'status_code=0, upstream response time exceeded 300s',
+          status: j === 0 ? 502 : 0,
+          model: e.model,
+          channelId: j === 0 ? 7 : 21,
+          channelName: j === 0 ? 'deepseek-official' : 'openrouter-fallback',
+          user: e.user, grp: e.grp,
+          ms: j === 0 ? Math.round(jitter(1800, 0.4)) : Math.round(jitter(180000, 0.18)),
+          requestId: e.requestId, rescued: e.rescued, stream: e.stream
+        });
+      }
+    });
+    events = events.concat(extra).sort(function (a, b) { return b.ts - a.ts; });
+  })();
+
+  /* ---------------- 聚合 ---------------- */
+  var RANGES = { '1h': { minutes: 60 }, '6h': { minutes: 360 }, '24h': { minutes: 1440 }, '7d': { minutes: 10080 } };
+  var currentRange = '24h';
+  var currentView = 'overview';
+
+  function rangeWindow(key) { var m = (RANGES[key] || RANGES['24h']).minutes; return { from: NOW - m * MIN, to: NOW }; }
+  function windowFrom() { return rangeWindow(currentRange).from; }
+
+  function bucketMsFor(span) {
+    var mins = span / MIN, unit;
+    if (mins <= 90) unit = 10;
+    else if (mins <= 480) unit = 30;
+    else if (mins <= 2880) unit = 60;
+    else unit = 1440;
+    while (span / (unit * MIN) > 48) unit *= 2;
+    return unit * MIN;
+  }
+
+  function newAcc() {
+    return { req: 0, failReq: 0, failAttempt: 0, retry: [], byCode: {}, byChannel: {}, byModel: {}, byUser: {}, byGroup: {} };
+  }
+  function fold(acc, b, keepRows) {
+    acc.req += b.req; acc.failReq += b.failReq; acc.failAttempt += b.failAttempt;
+    for (var i = 0; i < b.rows.length; i++) {
+      var r = b.rows[i];
+      acc.byCode[r.code] = (acc.byCode[r.code] || 0) + r.n;
+      if (r.ch) acc.byChannel[r.ch] = (acc.byChannel[r.ch] || 0) + r.n;
+      acc.byModel[r.md] = (acc.byModel[r.md] || 0) + r.n;
+      acc.byUser[r.user] = (acc.byUser[r.user] || 0) + r.n;
+      acc.byGroup[r.grp] = (acc.byGroup[r.grp] || 0) + r.n;
+      if (keepRows) acc.rows.push(r);
+    }
+  }
+
+  function buildLadder(A, F, faultShare) {
+    function mix(a, b) { return a.map(function (w, i) { return w * (1 - faultShare) + b[i] * faultShare; }); }
+    var failW = mix([0.34, 0.26, 0.22, 0.18], [0.26, 0.25, 0.24, 0.25]);
+    var failN = splitInt(F, failW);
+    var failContrib = failN[0] + failN[1] + failN[2] * 2 + failN[3] * 3;
+    var okW = mix([0.66, 0.28, 0.06], [0.50, 0.36, 0.14]);
+    var okAvg = okW[0] + okW[1] * 2 + okW[2] * 3;
+    var budget = Math.max(0, A - failContrib);
+    var okN = okAvg > 0 ? splitInt(budget / okAvg, okW) : [0, 0, 0];
+    var diff = A - (failContrib + okN[0] + okN[1] * 2 + okN[2] * 3);
+    var guard = 0;
+    while (diff !== 0 && guard++ < 400) {
+      if (diff > 0) { okN[0] += 1; diff -= 1; }
+      else if (okN[0] > 0) { okN[0] -= 1; diff += 1; }
+      else if (okN[1] > 0) { okN[1] -= 1; diff += 2; }
+      else if (okN[2] > 0) { okN[2] -= 1; diff += 3; }
+      else break;
+    }
+    return [
+      { retries: 0, ok: 0, fail: failN[0] },
+      { retries: 1, ok: okN[0], fail: failN[1] },
+      { retries: 2, ok: okN[1], fail: failN[2] },
+      { retries: 3, ok: okN[2], fail: failN[3] }
+    ];
+  }
+
+  var _cache = {};
+  function aggregate(key) {
+    if (_cache[key]) return _cache[key];
+    var win = rangeWindow(key);
+    var span = Math.max(BUCKET, win.to - win.from);
+    var gms = bucketMsFor(span);
+    var n = Math.max(1, Math.ceil(span / gms));
+    var points = [];
+    for (var i = 0; i < n; i++) { var p = newAcc(); p.ts = win.from + i * gms; p.rows = []; points.push(p); }
+    var total = newAcc(); total.rows = [];
+    for (var bi = 0; bi < BUCKETS; bi++) {
+      var b = buckets[bi];
+      if (b.ts + BUCKET <= win.from || b.ts >= win.to) continue;
+      var idx = Math.min(n - 1, Math.max(0, Math.floor((b.ts - win.from) / gms)));
+      fold(points[idx], b, false);
+      fold(total, b, true);
+    }
+    points.forEach(function (p) { p.failRate = div(p.failReq, p.req); p.attemptRate = div(p.failAttempt, p.req); delete p.rows; });
+    total.failRate = div(total.failReq, total.req);
+    total.attemptRate = div(total.failAttempt, total.req);
+    var overlap = Math.max(0, Math.min(win.to, FAULT_END) - Math.max(win.from, FAULT_START));
+    total.retry = buildLadder(total.failAttempt, total.failReq, div(overlap, span));
+    var out = { points: points, total: total, groupMs: gms };
+    _cache[key] = out;
+    return out;
+  }
+
+  /* ---------------- 渲染：ASCII 场 ---------------- */
+  var FIELD_ROWS = 12, CELL_W = 8, CELL_H = 16;
+  var RAMP = ['·', '-', '=', '+', '*', '#', '%', '@'];
+
+  function drawField() {
+    var cv = document.getElementById('field');
+    if (!cv) return;
+    var rect = cv.getBoundingClientRect();
+    var W = Math.max(240, Math.round(rect.width));
+    var H = FIELD_ROWS * CELL_H;
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = W * dpr; cv.height = H * dpr;
+    cv.style.height = H + 'px';
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    var cs = getComputedStyle(document.documentElement);
+    var glyphs = ['--color-glyph-1', '--color-glyph-2', '--color-glyph-3', '--color-glyph-4']
+      .map(function (k) { return cs.getPropertyValue(k).trim(); });
+    var mono = cs.getPropertyValue('--font-outlier').trim();
+    ctx.font = '500 12px ' + mono;
+    ctx.textBaseline = 'top';
+
+    var cols = Math.floor(W / CELL_W);
+    var from = BUCKETS - 144;
+    var vals = [];
+    var step = 144 / cols;
+    for (var c = 0; c < cols; c++) {
+      var a = Math.floor(c * step), z = Math.max(a + 1, Math.floor((c + 1) * step));
+      var v = 0;
+      for (var k = a; k < z && from + k < BUCKETS; k++) v = Math.max(v, buckets[from + k].failAttempt);
+      vals.push(v);
+    }
+    var maxV = Math.max.apply(null, vals) || 1;
+
+    for (var ci = 0; ci < cols; ci++) {
+      var val = vals[ci];
+      if (!val) continue;
+      // 不强制最低一行：全天大部分时段失败为个位数，硬画一格会在底部
+      // 拉出一条贯穿全宽的字符基线，看上去像设计元素而不是数据。
+      var hgt = Math.max(0, Math.round((val / maxV) * FIELD_ROWS));
+      if (!hgt) continue;
+      // 字符与颜色由该列密度决定，整列统一：低值是一颗浅点，峰值才是满格深符。
+      // 若逐行按堆叠比例取色，只有一格的低值列也会得到最深的 @，满屏都是黑点。
+      var lvl = val / maxV;
+      ctx.fillStyle = glyphs[Math.min(3, 1 + Math.floor(lvl * 3))];
+      var ch = RAMP[Math.min(RAMP.length - 1, Math.floor(lvl * RAMP.length))];
+      for (var r = 0; r < hgt; r++) {
+        ctx.fillText(ch, ci * CELL_W, H - (r + 1) * CELL_H);
+      }
+    }
+
+    document.getElementById('fieldPeak').innerHTML =
+      '峰值 <b>' + fmtNum(maxV) + '</b> 次 / 10 分钟';
+  }
+
+  /* ---------------- 渲染：折线 ---------------- */
+  function drawChart(agg) {
+    var svg = document.getElementById('chart');
+    var pts = agg.points;
+    var W = 900, H = 200, PT = 10, PB = 6;
+    var max = 0;
+    pts.forEach(function (p) { max = Math.max(max, p.attemptRate); });
+    max = Math.max(max * 1.15, 0.004);
+    function X(i) { return (i / (pts.length - 1 || 1)) * W; }
+    function Y(v) { return H - PB - (v / max) * (H - PT - PB); }
+
+    var grid = '';
+    for (var g = 0; g <= 3; g++) {
+      var y = PT + (H - PT - PB) * g / 3;
+      grid += '<line x1="0" y1="' + y.toFixed(1) + '" x2="' + W + '" y2="' + y.toFixed(1) +
+        '" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/>';
+    }
+
+    var dA = pts.map(function (p, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.attemptRate).toFixed(1); }).join(' ');
+    var dR = pts.map(function (p, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.failRate).toFixed(1); }).join(' ');
+
+    // 异常时段只标一道竖刻度，不铺色块
+    var marks = '';
+    pts.forEach(function (p, i) {
+      if (!inFault(p.ts)) return;
+      marks += '<line x1="' + X(i).toFixed(1) + '" y1="' + (H - PB) + '" x2="' + X(i).toFixed(1) +
+        '" y2="' + (H - PB - 8) + '" stroke="currentColor" stroke-opacity="0.35" stroke-width="2" vector-effect="non-scaling-stroke"/>';
+    });
+
+    // 颜色全部走父级 color + currentColor：SVG 的 presentation attribute
+    // 不解析 var()，写成 stroke="var(--x)" 会静默不画。
+    svg.innerHTML = '<g style="color:var(--color-rule)">' + grid + '</g>' +
+      '<g style="color:var(--color-ink)">' + marks + '</g>' +
+      '<g style="color:var(--color-ink-2)"><path d="' + dA + '" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></g>' +
+      '<g style="color:var(--color-accent)"><path d="' + dR + '" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></g>';
+
+    var peak = 0;
+    pts.forEach(function (p) { peak = Math.max(peak, p.failRate); });
+    document.getElementById('peakMark').textContent = '峰值 ' + fmtPct(peak);
+
+    var idx = [0, Math.floor(pts.length / 4), Math.floor(pts.length / 2), Math.floor(pts.length * 3 / 4), pts.length - 1];
+    document.getElementById('chartAxis').innerHTML = idx.map(function (i) {
+      var p = pts[i];
+      return '<span>' + (agg.groupMs >= 24 * HOUR ? fmtMD(p.ts) : fmtClock(p.ts)) + '</span>';
+    }).join('');
+  }
+
+  /* ---------------- 渲染：总览 ---------------- */
+  function renderOverview() {
+    var agg = aggregate(currentRange);
+    var t = agg.total;
+    var el = document.getElementById('failRate');
+    el.innerHTML = fmtPct(t.failRate) + '<small> 失败</small>';
+
+    // 找出区间内最严重的连续故障窗口，用它写那句话
+    var worst = null;
+    agg.points.forEach(function (p) {
+      if (!worst || p.failRate > worst.failRate) worst = p;
+    });
+    var ch12 = t.byChannel[12] || 0;
+    var rescued = 0;
+    (t.retry || []).forEach(function (x) { rescued += x.ok; });
+
+    document.getElementById('leadLine').innerHTML =
+      fmtNum(t.req) + ' 次请求里有 ' + fmtNum(t.failReq) + ' 次失败。' +
+      (ch12 > 0
+        ? 'azure-gpt4o-hk 的密钥失效是主要来源，它已被自动禁用。'
+        : '没有单一渠道占主导。');
+
+    var facts = [
+      ['失败请求', fmtNum(t.failReq)],
+      ['失败尝试', fmtNum(t.failAttempt)],
+      ['被重试救回', fmtNum(rescued)],
+      ['失败率峰值', fmtPct(worst ? worst.failRate : 0)]
+    ];
+    document.getElementById('facts').innerHTML = facts.map(function (f) {
+      return '<div><dt>' + f[0] + '</dt><dd>' + f[1] + '</dd></div>';
+    }).join('');
+
+    drawField();
+    drawChart(agg);
+    renderCodes(agg);
+    renderRuler(agg);
+  }
+
+  function renderCodes(agg) {
+    var total = 0;
+    Object.keys(agg.total.byCode).forEach(function (c) { total += agg.total.byCode[c]; });
+    var list = Object.keys(agg.total.byCode).map(function (c) {
+      return { code: c, n: agg.total.byCode[c] };
+    }).filter(function (x) { return x.n > 0; }).sort(function (a, b) { return b.n - a.n; }).slice(0, 8);
+
+    var hot = list.length ? list[0].code : null;
+
+    document.getElementById('codeRows').innerHTML = list.map(function (x) {
+      var m = CODE_MAP[x.code] || {};
+      var layer = LAYERS[m.layer] || LAYERS['系统'];
+      var ch = m.ch ? (CH_MAP[m.ch] || {}).name : '无渠道';
+      return '<tr data-row="code" data-code="' + esc(x.code) + '"' + (x.code === hot ? ' class="is-hot"' : '') + '>' +
+        '<td class="machine">' + esc(x.code) + '</td>' +
+        '<td>' + layer.word + '</td>' +
+        '<td class="num">' + fmtNum(x.n) + '</td>' +
+        '<td class="num">' + fmtPct(div(x.n, total), 1) + '</td>' +
+        '<td class="machine">' + esc(ch) + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="5" class="empty">当前区间没有失败记录</td></tr>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('#codeRows tr[data-row="code"]'), function (tr) {
+      tr.addEventListener('click', function () {
+        switchView('stream');
+        currentFilter = tr.getAttribute('data-code');
+        renderStream();
+      });
+    });
+  }
+
+  function renderRuler(agg) {
+    var L = agg.total.retry || [];
+    var maxN = 0;
+    L.forEach(function (x) { maxN = Math.max(maxN, x.ok + x.fail); });
+    if (!maxN) { document.getElementById('rulerTicks').innerHTML = '<p class="empty">没有失败记录</p>'; return; }
+
+    document.getElementById('rulerTicks').innerHTML = L.map(function (x) {
+      var n = x.ok + x.fail;
+      var hOk = Math.round((x.ok / maxN) * 96);
+      var hFail = Math.round((x.fail / maxN) * 96);
+      var lab = x.retries === 0 ? '未重试' : '重试 ' + x.retries + ' 次';
+      return '<div class="tick">' +
+        '<div class="tick-bar">' +
+        '<i class="ok" style="height:' + hOk + 'px" title="成功 ' + fmtNum(x.ok) + '"></i>' +
+        '<i class="fail" style="height:' + hFail + 'px" title="失败 ' + fmtNum(x.fail) + '"></i>' +
+        '</div>' +
+        '<div class="tick-lab"><span>' + lab + '</span><b>' + fmtNum(n) + '</b></div>' +
+        '<div class="tick-rate">' + (x.retries === 0 ? 'n/a' : fmtPct(div(x.ok, n), 0)) + '</div>' +
+        '<div class="tick-foot">' + (x.retries === 0 ? '不可重试，直接返回' : fmtNum(x.ok) + ' 成功') + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ---------------- 渲染：错误流 ---------------- */
+  var currentFilter = null;
+  function renderStream() {
+    var from = windowFrom();
+    var list = events.filter(function (e) { return e.ts >= from; });
+    if (currentFilter) list = list.filter(function (e) { return e.code === currentFilter; });
+
+    document.getElementById('streamHead').textContent = currentFilter
+      ? '错误码 ' + currentFilter
+      : '每一次失败尝试';
+    document.getElementById('streamSub').innerHTML = currentFilter
+      ? '共 ' + list.length + ' 条抽样记录。点表格任意位置取消筛选。'
+      : '一条错误一行。同一 <code>request_id</code> 可能有多行，那是一请求打了多个渠道。';
+
+    var rows = list.slice(0, 60);
+    document.getElementById('eventRows').innerHTML = rows.map(function (e) {
+      return '<tr data-row="event" data-id="' + e.id + '">' +
+        '<td class="machine">' + fmtFull(e.ts) + '</td>' +
+        '<td class="machine">' + esc(e.code) + '</td>' +
+        '<td>' + esc(e.msg) + '</td>' +
+        '<td class="machine">' + esc(e.model) + '</td>' +
+        '<td class="machine">' + esc(e.channelName) + '</td>' +
+        '<td>' + esc(e.user) + '</td>' +
+        '<td class="num">' + (e.status || 'n/a') + '</td>' +
+        '<td class="num">' + fmtDur(e.ms) + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="8" class="empty">当前区间没有记录</td></tr>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('#eventRows tr[data-row="event"]'), function (tr) {
+      tr.addEventListener('click', function () { openSheet(parseInt(tr.getAttribute('data-id'), 10)); });
+    });
+  }
+
+  /* ---------------- 渲染：渠道 ---------------- */
+  function renderChannel() {
+    var agg = aggregate(currentRange);
+    var cross = {};
+    agg.total.rows.forEach(function (r) {
+      if (!r.ch) return;
+      if (!cross[r.ch]) cross[r.ch] = {};
+      cross[r.ch][r.code] = (cross[r.ch][r.code] || 0) + r.n;
+    });
+    var totalReq = 0;
+    agg.points.forEach(function (p) { totalReq += p.req; });
+
+    var rows = CHANNELS.map(function (c) {
+      var fail = agg.total.byChannel[c.id] || 0;
+      var attempts = Math.max(1, Math.round(totalReq * c.share));
+      var cm = cross[c.id] || {};
+      var top = Object.keys(cm).sort(function (a, b) { return cm[b] - cm[a]; })[0];
+      var last = null;
+      for (var i = BUCKETS - 1; i >= 0; i--) {
+        var b = buckets[i];
+        if (b.ts >= rangeWindow(currentRange).to) continue;
+        if (b.ts + BUCKET <= rangeWindow(currentRange).from) break;
+        for (var j = 0; j < b.rows.length; j++) if (b.rows[j].ch === c.id && b.rows[j].n > 0) { last = b.ts; break; }
+        if (last) break;
+      }
+      return { c: c, fail: fail, attempts: attempts, rate: div(fail, attempts), top: top, last: last };
+    }).sort(function (a, b) { return b.rate - a.rate; });
+
+    document.getElementById('channelRows').innerHTML = rows.map(function (r) {
+      var state = r.c.status === 'auto_disabled'
+        ? '<span class="state err"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1v6M6 9.5v1" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>自动禁用</span>'
+        : '<span class="state ok"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>启用</span>';
+      return '<tr>' +
+        '<td class="machine">' + esc(r.c.name) + '</td>' +
+        '<td>' + state + '</td>' +
+        '<td class="num">' + fmtNum(r.attempts) + '</td>' +
+        '<td class="num">' + fmtNum(r.fail) + '</td>' +
+        '<td class="num">' + fmtPct(r.rate, 2) + '</td>' +
+        '<td class="machine">' + esc(r.top || 'n/a') + '</td>' +
+        '<td class="num machine">' + (r.last ? fmtClock(r.last) : 'n/a') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  /* ---------------- 侧边面板 ---------------- */
+  function openSheet(id) {
+    var e = null;
+    for (var i = 0; i < events.length; i++) if (events[i].id === id) { e = events[i]; break; }
+    if (!e) return;
+
+    document.getElementById('sheetTitle').textContent = e.code;
+    document.getElementById('sheetMeta').textContent = fmtFull(e.ts) + ' · ' + e.model + ' · ' + e.channelName;
+
+    var sib = events.filter(function (x) { return x.requestId === e.requestId; }).sort(function (a, b) { return a.ts - b.ts; });
+    var layer = LAYERS[e.layer] || LAYERS['系统'];
+
+    var chain = sib.map(function (s, i) {
+      return '<li class="fail"><div class="r1"><code>#' + (i + 1) + '</code><code>' + esc(s.code) + '</code>' +
+        '<span>' + esc(s.channelName) + '</span><span>' + fmtDur(s.ms) + '</span></div>' +
+        '<div class="r2">' + esc(s.msg) + '</div></li>';
+    }).join('');
+    if (e.rescued) {
+      chain += '<li class="ok"><div class="r1"><code>#' + (sib.length + 1) + '</code><strong>成功</strong>' +
+        '<span>status_code=200</span></div><div class="r2">换到可用渠道后上游正常返回</div></li>';
+    }
+
+    document.getElementById('sheetBody').innerHTML =
+      '<h4>错误原文</h4>' +
+      '<div class="graphite">' + esc(e.msg) + '</div>' +
+      '<h4>归因</h4>' +
+      '<dl class="kv">' +
+      '<dt>发生在</dt><dd>' + layer.word + '层</dd>' +
+      '<dt>error_code</dt><dd class="machine">' + esc(e.code) + '</dd>' +
+      '<dt>status_code</dt><dd class="machine">' + (e.status || 'n/a') + '</dd>' +
+      '<dt>耗时</dt><dd class="machine">' + fmtDur(e.ms) + '</dd>' +
+      '<dt>最终结果</dt><dd>' + (e.rescued ? '成功，被重试救回' : '失败，客户端收到错误') + '</dd>' +
+      '<dt>request_id</dt><dd class="machine">' + esc(e.requestId) + '</dd>' +
+      '</dl>' +
+      '<h4>这次请求的尝试顺序</h4>' +
+      '<ul class="chain">' + chain + '</ul>';
+
+    document.getElementById('sheet').classList.add('on');
+    document.getElementById('scrim').classList.add('on');
+    document.getElementById('sheet').setAttribute('aria-hidden', 'false');
+  }
+  function closeSheet() {
+    document.getElementById('sheet').classList.remove('on');
+    document.getElementById('scrim').classList.remove('on');
+    document.getElementById('sheet').setAttribute('aria-hidden', 'true');
+  }
+
+  /* ---------------- 装配 ---------------- */
+  function switchView(name) {
+    if (name !== 'stream') currentFilter = null;
+    currentView = name;
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+      b.setAttribute('aria-selected', b.getAttribute('data-view') === name ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) {
+      v.hidden = v.id !== 'view-' + name;
+    });
+    if (name === 'overview') renderOverview();
+    if (name === 'stream') renderStream();
+    if (name === 'channel') renderChannel();
+  }
+
+  document.getElementById('tabs').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-view]');
+    if (b) switchView(b.getAttribute('data-view'));
+  });
+
+  document.getElementById('range').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-range]');
+    if (!b) return;
+    currentRange = b.getAttribute('data-range');
+    Array.prototype.forEach.call(document.querySelectorAll('#range button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+    _cache = {};
+    if (currentView === 'overview') renderOverview();
+    if (currentView === 'stream') renderStream();
+    if (currentView === 'channel') renderChannel();
+  });
+
+  document.getElementById('sheetClose').addEventListener('click', closeSheet);
+  document.getElementById('scrim').addEventListener('click', closeSheet);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSheet(); });
+
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { if (currentView === 'overview') drawField(); }, 150);
+  });
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { if (currentView === 'overview') drawField(); });
+  }
+  renderOverview();
+})();
+</script>
+</body>
+</html>

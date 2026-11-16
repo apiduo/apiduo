@@ -240,7 +240,7 @@ func adversarialInsertColumns(stmt string) []string {
 func TestAdversarial_DDLAndNativeInsertColumnOrderAgree(t *testing.T) {
 	ddlCols := adversarialDDLColumns(clickHouseLogCreateTableSQL(0))
 	insertCols := adversarialInsertColumns(clickHouseLogInsertStatement)
-	require.Len(t, ddlCols, 20)
+	require.Len(t, ddlCols, 21)
 	t.Logf("DDL 列(%d): %v", len(ddlCols), ddlCols)
 	assert.Equal(t, ddlCols, insertCols, "两处硬编码列顺序必须逐字一致，否则 native batch 会整体错位")
 }
@@ -253,7 +253,7 @@ func TestAdversarial_LogStructFieldOrderMatchesDDLColumns(t *testing.T) {
 	structCols := []string{
 		"id", "user_id", "created_at", "type", "content", "username", "token_name",
 		"model_name", "quota", "prompt_tokens", "completion_tokens", "use_time",
-		"is_stream", "channel_id", "token_id", "group", "ip", "request_id",
+		"use_time_ms", "is_stream", "channel_id", "token_id", "group", "ip", "request_id",
 		"upstream_request_id", "other",
 	}
 	assert.Equal(t, ddlCols, structCols, "Log 结构体字段顺序 = GORM 同步插入的列顺序 = DDL 列顺序")

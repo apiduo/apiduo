@@ -10,12 +10,34 @@ import (
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 )
 
+// DefaultTopUpPath 是额度不足时给出的充值入口。
+// 只给相对路径不拼域名：同一服务可能通过多个域名访问，
+// 写死域名会让客户跳到错的地方。
+const DefaultTopUpPath = "/wallet"
+
+// TopUpHint 是额度不足时的一条可执行出路。
+// 客户看到 403 时最需要知道的是「钱花完了，去哪充」，
+// 而不是一句 cryptic 的 insufficient quota。
+//
+// 三个字段都是请求路径上已经有的值，不触发任何额外查询。
+// Balance 用指针是为了区分「余额为 0」与「不知道怎么算余额」：
+// 前者要如实告诉客户，后者应该省略而不是编一个数。
+// 拒绝发生在请求路径上，能省一次查询就省一次——所以余额允许不填。
+type TopUpHint struct {
+	URL     string   `json:"url"`
+	Balance *float64 `json:"balance,omitempty"`
+	Hint    string   `json:"hint,omitempty"`
+}
+
 type OpenAIError struct {
 	Message  string          `json:"message"`
 	Type     string          `json:"type"`
 	Param    string          `json:"param"`
 	Code     any             `json:"code"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
+	// TopUp 只在额度类错误上出现。普通错误保持原样，
+	// 不能因为加了这条路劲就让所有响应多一块无意义的内容。
+	TopUp *TopUpHint `json:"topup,omitempty"`
 }
 
 type ClaudeError struct {
@@ -99,6 +121,7 @@ type NewAPIError struct {
 	errorCode      ErrorCode
 	StatusCode     int
 	Metadata       json.RawMessage
+	topUp          *TopUpHint
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -213,6 +236,20 @@ func (e *NewAPIError) ToOpenAIError(upstreamURLs ...string) OpenAIError {
 	}
 	if result.Message == "" {
 		result.Message = string(e.errorType)
+	}
+	// 统一在这里挂出路口径：五处额度拒绝点都不必各自处理，
+	// 只要构造时带上 option，序列化后自然就有。
+	// 显式传入的优先（可以带余额）；否则按错误码兜底。
+	// 兜底放在序列化层而不是各个调用点，是因为额度拒绝有九处，
+	// 逐处加必然漏——这个仓库里已经出现过一次「只改了一半」。
+	if e.topUp != nil {
+		result.TopUp = e.topUp
+	} else if e.errorCode == ErrorCodeInsufficientUserQuota ||
+		e.errorCode == ErrorCodePreConsumeTokenQuotaFailed {
+		result.TopUp = &TopUpHint{
+			URL:  DefaultTopUpPath,
+			Hint: "余额不足，充值后可继续调用",
+		}
 	}
 	return result
 }
@@ -395,6 +432,12 @@ func ErrOptionWithSkipRetry() NewAPIErrorOptions {
 func ErrOptionWithNoRecordErrorLog() NewAPIErrorOptions {
 	return func(e *NewAPIError) {
 		e.recordErrorLog = kitutil.GetPointer(false)
+	}
+}
+
+func ErrOptionWithTopUp(hint TopUpHint) NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.topUp = &hint
 	}
 }
 

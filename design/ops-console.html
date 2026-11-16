@@ -1,0 +1,1379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fcfcfa">
+<title>运营台 · apiduo</title>
+<meta name="description" content="apiduo 运营台：把系统异常与客户流失合成一条动作队列，回答今天先做哪件事。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* 角色: section 18 / body 14 / label 12 · 相邻 ≥1.17 */
+:root {
+  --paper: #fcfcfa;
+  --paper-2: #f4f4f1;
+  --rule: #e4e4de;
+  --rule-2: #cfcfc7;
+  --ink: #1a1c1e;
+  --ink-2: #45484b;
+  --muted: #6b7076;
+  --accent: #9a3412;
+  --accent-soft: #fdf0ea;
+  --ok: #3f6f4a;
+  --err: #a4161a;
+  --raw-bg: #1a1c1e;
+  --raw-ink: #ececea;
+
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px;
+  --f-label: 12px; --f-body: 14px; --f-section: 18px;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-press: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 160ms;
+  --dur: 200ms;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16181c; --paper-2: #1e2127; --rule: #2a2e36; --rule-2: #3c414b;
+    --ink: #e7e9ec; --ink-2: #b6bac1; --muted: #8b9097;
+    --accent: #e07a52; --accent-soft: #2b1c15; --ok: #74b98a; --err: #e07377;
+    --raw-bg: #0e1013; --raw-ink: #dfe1e5; color-scheme: dark;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scrollbar-color: var(--rule-2) var(--paper); scrollbar-width: thin; }
+@media (pointer: fine) { html { overscroll-behavior: none; } }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--sans); font-size: var(--f-body); line-height: 1.55;
+  -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+}
+button, a, input, select { touch-action: manipulation; }
+button { transition: transform var(--dur-fast) var(--ease-press); }
+button:active:not(:disabled) { transform: scale(0.972); }
+@media (prefers-reduced-motion: reduce) { button:active { transform: none; } }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; text-wrap: balance; }
+p { margin: 0; text-wrap: pretty; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); font-size: 12px; }
+
+.skip {
+  position: absolute; left: var(--s-4); top: -100px; z-index: 60;
+  background: var(--ink); color: var(--paper); padding: var(--s-2) var(--s-4);
+  font-size: var(--f-label); text-decoration: none;
+  transition: top var(--dur-fast) var(--ease-out);
+}
+.skip:focus-visible { top: var(--s-2); outline-offset: -3px; outline-color: var(--paper); }
+
+/* ── 报头 ── */
+.bar {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--rule); background: var(--paper);
+  position: sticky; top: 0; z-index: 30;
+}
+.brand {
+  font-family: var(--mono); font-size: var(--f-label); letter-spacing: 0.04em;
+  color: var(--muted); padding-right: var(--s-3); border-right: 1px solid var(--rule);
+}
+.bar h1 { font-size: var(--f-body); font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.day { font-size: var(--f-label); color: var(--muted); white-space: nowrap; }
+.counters { display: flex; gap: var(--s-4); margin-left: auto; }
+.counters span { font-size: var(--f-label); color: var(--muted); white-space: nowrap; }
+.counters b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.counters b.warn { color: var(--accent); }
+
+.tabs {
+  display: flex; gap: var(--s-5); padding: 0 var(--s-5);
+  border-bottom: 1px solid var(--rule); background: var(--paper);
+  position: sticky; top: 47px; z-index: 29; overflow-x: auto;
+}
+.tabs button {
+  appearance: none; border: 0; background: none; height: 40px; padding: 0;
+  font-family: inherit; font-size: var(--f-body); color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+  transition: color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.tabs button:hover { color: var(--ink-2); }
+
+main { max-width: 1220px; margin-inline: auto; padding: var(--s-6) var(--s-5) var(--s-8); }
+
+/* ── 状态句 ── */
+.status { padding-bottom: var(--s-5); border-bottom: 1px solid var(--rule); }
+.status-line { font-size: var(--f-section); line-height: 1.45; max-width: 36em; }
+.status-line b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.status-line em { font-style: normal; color: var(--accent); font-weight: 600; }
+.status-sub { margin-top: var(--s-2); font-size: 13px; color: var(--ink-2); max-width: 70ch; }
+
+/* ── 队列 ── */
+.queue { margin-top: var(--s-6); }
+.queue-head {
+  display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap;
+  padding-bottom: var(--s-2); border-bottom: 1px solid var(--rule);
+}
+.queue-head h2 { font-size: var(--f-section); }
+.queue-head .mix { font-size: var(--f-label); color: var(--muted); }
+.queue-head .def { margin-left: auto; font-size: var(--f-label); color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--rule-2); }
+.queue-head .def:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+.filters { display: flex; gap: var(--s-4); margin: var(--s-3) 0 var(--s-1); flex-wrap: wrap; }
+.filters button {
+  appearance: none; border: 0; background: none; padding: 2px 0;
+  font-family: inherit; font-size: 13px; color: var(--muted); cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.filters button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: var(--s-2) var(--s-3); vertical-align: top; }
+th {
+  font-size: var(--f-label); color: var(--muted); font-weight: 500;
+  border-bottom: 1px solid var(--rule-2); white-space: nowrap;
+}
+td { border-bottom: 1px solid var(--rule); font-size: 13px; }
+th.r, td.r { text-align: right; }
+th:first-child, td:first-child { padding-left: 0; }
+th:last-child, td:last-child { padding-right: 0; }
+tbody tr.click { cursor: pointer; }
+tbody tr.click td { transition: background-color 90ms linear; }
+@media (hover: hover) and (pointer: fine) {
+  tbody tr.click:hover td { background: var(--paper-2); }
+}
+tr.click:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.sev { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.sev.s1 { color: var(--accent); font-weight: 500; }
+.who { color: var(--ink); font-weight: 500; }
+.who span { display: block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 1px; }
+.reason { color: var(--ink-2); }
+.reason code { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
+.impact { color: var(--ink-2); white-space: nowrap; }
+.impact b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.act-cell { white-space: nowrap; text-align: right; }
+.advice { font-size: 13px; color: var(--ink-2); }
+.advice.strong { color: var(--ink); }
+
+.tag {
+  display: inline-block; font-size: 11px; line-height: 18px; padding: 0 6px;
+  border: 1px solid var(--rule-2); color: var(--ink-2); white-space: nowrap;
+}
+.tag.new { border-color: var(--accent); color: var(--accent); }
+.tag.fixed { border-color: var(--ok); color: var(--ok); }
+.tag.mute { color: var(--muted); }
+.tag.sys { border-color: var(--ink-2); color: var(--ink-2); }
+
+.btn {
+  appearance: none; border: 1px solid var(--rule-2); background: var(--paper);
+  height: 28px; padding: 0 var(--s-3); font-family: inherit; font-size: 12px;
+  color: var(--ink-2); cursor: pointer;
+  transition: background-color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.btn:hover { background: var(--paper-2); border-color: var(--ink-2); }
+.btn.primary { border-color: var(--ink); color: var(--ink); }
+.btn.primary:hover { background: var(--ink); color: var(--paper); }
+
+/* ── 交叉：受影响付费用户 ── */
+.cross { margin-top: var(--s-7); }
+.cross h2 { font-size: var(--f-section); padding-bottom: var(--s-2); border-bottom: 1px solid var(--rule); }
+.cross .sub { margin-top: var(--s-2); font-size: 13px; color: var(--ink-2); max-width: 78ch; }
+.cross-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: var(--s-4); border-top: 1px solid var(--rule); }
+.cross-grid > div { padding: var(--s-3) var(--s-4) 0 0; }
+.cross-grid > div + div { padding-left: var(--s-4); border-left: 1px solid var(--rule); }
+.cross-grid .k { font-size: var(--f-label); color: var(--muted); }
+.cross-grid .v { margin-top: var(--s-1); font-size: var(--f-section); font-variant-numeric: tabular-nums; }
+.cross-grid .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ── 错误页：刻度 ── */
+.chart { margin-top: var(--s-5); }
+.plot { position: relative; height: 96px; border-bottom: 1px solid var(--rule-2); }
+.plot .band-seg { position: absolute; bottom: 0; background: var(--rule-2); opacity: 0.55; border-bottom: 1px solid var(--ink-2); }
+.plot .vbar {
+  position: absolute; bottom: 0; background: var(--ink-2);
+  transform-origin: 50% 100%; animation: grow var(--dur) var(--ease) both;
+}
+.plot .vbar.hot { background: var(--accent); }
+.plot .p50 { position: absolute; height: 0; border-top: 1px dashed var(--ink-2); opacity: 0.7; z-index: 2; }
+.plot .chg { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink); opacity: 0.55; }
+.plot .chg::before { content: ""; position: absolute; top: 0; left: -2px; width: 5px; height: 5px; background: var(--ink); }
+@keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .plot .vbar { animation: none; } }
+.chart-axis { display: flex; justify-content: space-between; margin-top: var(--s-1); }
+.chart-axis span { font-family: var(--mono); font-size: var(--f-label); color: var(--muted); }
+.chart-key { display: flex; gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-2); font-size: var(--f-label); color: var(--muted); }
+.chart-key i { display: inline-block; width: 12px; height: 8px; margin-right: var(--s-1); }
+.chart-key .k-band { background: var(--rule-2); opacity: 0.55; }
+.chart-key .k-line { height: 0 !important; border-top: 2px dashed var(--ink-2); opacity: 0.7; }
+.chart-key .k-bar { background: var(--ink-2); }
+.chart-key .k-hot { background: var(--accent); }
+.chart-note { margin-top: var(--s-2); font-size: var(--f-label); color: var(--muted); line-height: 1.6; }
+
+.section { margin-top: var(--s-7); }
+.section > h2 {
+  display: flex; align-items: baseline; gap: var(--s-3);
+  font-size: var(--f-section); padding-bottom: var(--s-2); border-bottom: 1px solid var(--rule);
+}
+.section > h2 .def { margin-left: auto; font-size: var(--f-label); font-weight: 400; color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--rule-2); }
+.section > .sub { margin-top: var(--s-2); font-size: 13px; color: var(--ink-2); max-width: 78ch; }
+
+.share { display: flex; align-items: center; gap: var(--s-2); }
+.share-bar { flex: 1 1 auto; height: 6px; background: var(--paper-2); position: relative; min-width: 40px; }
+.share-bar i { position: absolute; inset: 0 auto 0 0; background: var(--rule-2); }
+.share-bar i.hot { background: var(--accent); }
+.share-num { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+
+/* ── 客户页 ── */
+.tiers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: var(--s-4); border-top: 1px solid var(--rule); }
+.tiers > div { padding: var(--s-3) var(--s-4) 0 0; }
+.tiers > div + div { padding-left: var(--s-4); border-left: 1px solid var(--rule); }
+.tiers .k { font-size: var(--f-label); color: var(--muted); }
+.tiers .v { font-size: var(--f-section); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tiers .s { font-size: 12px; color: var(--muted); }
+
+/* ── 抽屉 ── */
+.scrim { position: fixed; inset: 0; background: rgba(20,20,26,.42); opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) linear; z-index: 40; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; top: 0; right: 0; height: 100%; width: min(520px, 94vw);
+  background: var(--paper); border-left: 1px solid var(--rule-2);
+  transform: translateX(100%); transition: transform 180ms var(--ease-press);
+  z-index: 41; display: flex; flex-direction: column;
+}
+.sheet.on { transform: none; transition-duration: 260ms; transition-timing-function: var(--ease-out); }
+.sheet-h { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--rule); }
+.sheet-h h3 { font-size: var(--f-body); font-weight: 500; }
+.sheet-h .meta { margin-top: var(--s-1); font-size: var(--f-label); color: var(--muted); }
+.sheet-x {
+  margin-left: auto; appearance: none; border: 1px solid var(--rule-2); background: var(--paper);
+  width: 28px; height: 28px; cursor: pointer; color: var(--ink-2); font-size: 15px; line-height: 1; padding: 0; flex: 0 0 28px;
+}
+.sheet-b { overflow: auto; overscroll-behavior: contain; padding: var(--s-5); }
+.sheet-b h4 { margin: var(--s-5) 0 var(--s-2); font-size: var(--f-label); font-weight: 500; color: var(--muted); }
+.sheet-b h4:first-child { margin-top: 0; }
+.raw {
+  background: var(--raw-bg); color: var(--raw-ink); padding: var(--s-3);
+  font-family: var(--mono); font-size: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+}
+dl.kv { display: grid; grid-template-columns: 104px minmax(0,1fr); gap: var(--s-1) var(--s-3); margin: 0; font-size: 13px; }
+dl.kv dt { color: var(--muted); font-size: 12px; }
+dl.kv dd { margin: 0; word-break: break-all; }
+ol.tl { list-style: none; margin: 0; padding: 0 0 0 var(--s-4); border-left: 1px solid var(--rule-2); }
+ol.tl li { position: relative; padding: var(--s-2) 0; }
+ol.tl li::before { content: ""; position: absolute; left: calc(-1 * var(--s-4) - 2.5px); top: 13px; width: 4px; height: 4px; background: var(--rule-2); }
+ol.tl li.warn::before { background: var(--err); }
+ol.tl li.ok::before { background: var(--ok); }
+ol.tl .r1 { font-size: 13px; display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: baseline; }
+ol.tl .r2 { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+/* ── 口径 ── */
+.prose { max-width: 74ch; }
+.prose h2 { font-size: var(--f-section); padding-bottom: var(--s-2); border-bottom: 1px solid var(--rule); }
+.prose h3 { margin-top: var(--s-6); margin-bottom: var(--s-2); font-size: var(--f-body); font-weight: 500; }
+.prose p { margin-top: var(--s-2); color: var(--ink-2); line-height: 1.65; }
+.prose code { font-family: var(--mono); font-size: 12px; background: var(--paper-2); padding: 1px 4px; }
+.prose pre {
+  margin: var(--s-3) 0 0; background: var(--paper-2); padding: var(--s-3);
+  font-family: var(--mono); font-size: 12px; line-height: 1.8; overflow-x: auto; color: var(--ink-2);
+}
+.prose pre b { color: var(--ink); }
+.prose .flag { border: 1px solid var(--err); padding: var(--s-3); margin-top: var(--s-3); font-size: 13px; color: var(--ink-2); }
+.prose .flag b { color: var(--ink); }
+.foot { margin-top: var(--s-6); padding-top: var(--s-3); border-top: 1px solid var(--rule); font-size: var(--f-label); color: var(--muted); line-height: 1.7; }
+.foot a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule-2); }
+
+.toast {
+  position: fixed; left: 50%; bottom: var(--s-5); transform: translate(-50%, 12px);
+  background: var(--ink); color: var(--paper); padding: var(--s-2) var(--s-4);
+  font-size: 13px; opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-fast) linear, transform var(--dur-fast) var(--ease-out);
+  z-index: 60; max-width: min(560px, 90vw);
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 900px) {
+  .cross-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cross-grid > div { padding-top: var(--s-3); }
+  .cross-grid > div:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .cross-grid > div:nth-child(n+3) { border-top: 1px solid var(--rule); }
+}
+@media (max-width: 720px) {
+  .bar { flex-wrap: wrap; gap: var(--s-2); padding: var(--s-3) var(--s-4); }
+  .counters { order: 3; width: 100%; margin-left: 0; }
+  .tabs { position: static; padding: 0 var(--s-4); gap: var(--s-4); }
+  main { padding: var(--s-5) var(--s-4) var(--s-8); }
+  .status-line { font-size: 16px; }
+  .tiers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .table-wrap { overflow: visible; }
+  table, thead, tbody, tr, td, th { display: block; }
+  thead { display: none; }
+  tbody tr { padding: var(--s-3) 0; border-bottom: 1px solid var(--rule); }
+  td { border: 0; padding: 3px 0; font-size: 13px; min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); }
+  td::before { content: attr(data-l); color: var(--muted); font-size: 12px; flex: 0 0 auto; white-space: nowrap; }
+  td:not([data-l])::before { content: none; }
+  td.act-cell { padding-top: var(--s-2); }
+  .sheet { width: 100%; border-left: 0; }
+  .sheet-b { padding: var(--s-4); }
+}
+.table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="bar">
+  <span class="brand">apiduo</span>
+  <h1>运营台</h1>
+  <span class="day" id="today">—</span>
+  <div class="counters">
+    <span>待处理 <b class="warn" id="cTodo">—</b></span>
+    <span>今日已处理 <b id="cDone">5</b></span>
+    <span>系统 <b class="warn" id="cSys">异常</b></span>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist">
+  <button role="tab" data-view="today" aria-selected="true" aria-controls="view-today">今天</button>
+  <button role="tab" data-view="system" aria-selected="false" aria-controls="view-system">系统异常</button>
+  <button role="tab" data-view="accounts" aria-selected="false" aria-controls="view-accounts">客户</button>
+  <button role="tab" data-view="notes" aria-selected="false" aria-controls="view-notes">口径</button>
+</nav>
+
+<main id="main" tabindex="-1">
+
+  <section class="view" id="view-today" role="tabpanel">
+    <div class="status">
+      <p class="status-line" id="statusLine">&nbsp;</p>
+      <p class="status-sub" id="statusSub">&nbsp;</p>
+    </div>
+
+    <div class="queue">
+      <div class="queue-head">
+        <h2>动作队列</h2>
+        <span class="mix" id="qMix"></span>
+        <a class="def" href="#notes">判定规则</a>
+      </div>
+      <div class="filters" id="qFilters" role="group" aria-label="队列筛选">
+        <button data-f="all" aria-pressed="true">全部</button>
+        <button data-f="system" aria-pressed="false">系统</button>
+        <button data-f="customer" aria-pressed="false">客户</button>
+        <button data-f="paying" aria-pressed="false">仅付费客户</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:44px">级</th>
+              <th>对象</th>
+              <th>原因</th>
+              <th>影响</th>
+              <th>建议动作</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="queueRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="cross">
+      <h2>受影响的人里有谁在付钱</h2>
+      <p class="sub">这是两张表真正的交点：错误日志给出「谁被打中」，配额表给出「他值多少」。只看左边会救错人，只看右边会漏掉事故型客户。</p>
+      <div class="cross-grid" id="crossGrid"></div>
+    </div>
+  </section>
+
+  <section class="view" id="view-system" role="tabpanel" hidden>
+    <div class="status">
+      <p class="status-line" id="sysLine">&nbsp;</p>
+      <p class="status-sub" id="sysSub">&nbsp;</p>
+    </div>
+
+    <div class="chart">
+      <div class="plot" id="plot"></div>
+      <div class="chart-axis" id="chartAxis"></div>
+      <div class="chart-key">
+        <span><i class="k-line"></i>常态中位数（P50）</span>
+        <span><i class="k-band"></i>常态区间（P50–P95）</span>
+        <span><i class="k-bar"></i>失败尝试</span>
+        <span><i class="k-hot"></i>异常时段</span>
+      </div>
+      <p class="chart-note" id="chartNote">&nbsp;</p>
+    </div>
+
+    <section class="section">
+      <h2>错误聚类 <a class="def" href="#notes">口径</a></h2>
+      <p class="sub">新增的排最前。首现决定它是不是新问题，影响用户决定要不要现在动手。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>错误</th>
+              <th>首现</th>
+              <th class="r">影响用户</th>
+              <th class="r">尝试</th>
+              <th>占比</th>
+              <th>状态</th>
+              <th>主要渠道</th>
+            </tr>
+          </thead>
+          <tbody id="clusterRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>渠道 <a class="def" href="#notes">口径</a></h2>
+      <p class="sub">失败率是尝试口径：失败尝试除该渠道总尝试。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>渠道</th>
+              <th>状态</th>
+              <th class="r">尝试</th>
+              <th class="r">失败</th>
+              <th class="r">失败率</th>
+              <th>主要错误码</th>
+            </tr>
+          </thead>
+          <tbody id="channelRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <section class="view" id="view-accounts" role="tabpanel" hidden>
+    <div class="status">
+      <p class="status-line" id="accLine">&nbsp;</p>
+      <p class="status-sub">分层按近 7 天消耗与活跃度自动计算，可人工覆盖。失败数与错误页同源，口径见「口径」页。</p>
+    </div>
+    <div class="tiers" id="tiers"></div>
+
+    <section class="section">
+      <h2>客户明细 <a class="def" href="#notes">口径</a></h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>客户</th>
+              <th>分层</th>
+              <th class="r">7 天消耗</th>
+              <th class="r">环比</th>
+              <th class="r">失败尝试</th>
+              <th class="r">失败率</th>
+              <th class="r">余额</th>
+              <th>最后活跃</th>
+            </tr>
+          </thead>
+          <tbody id="accountRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <section class="view" id="view-notes" role="tabpanel" hidden>
+    <div class="prose">
+      <h2>口径</h2>
+      <p>合并两个看板的前提是两边的数字能对上。以下五件事决定了这个页面为什么长这样。</p>
+
+      <h3>合并的单位是动作，不是图表</h3>
+      <p>增长看板回答「哪个客户要走了」，错误看板回答「哪里坏了」。两者服务同一个决策：<b>今天先做哪件事</b>。所以合并后的首页是一条队列，不是两组图表。图表留在「系统异常」页，供需要深挖时使用。</p>
+
+      <h3>失败数的口径必须统一</h3>
+      <p><code>logs</code> 里 type=5 是<b>尝试级</b>的：重试循环里每次 attempt 失败都写一条。而 <code>quota_data.count</code> 是<b>成功请求数</b>。当前 growth 的 <code>ScanFailures</code> 用 <code>COUNT(*)</code>，把尝试数当成了请求数：</p>
+      <pre>-- 现在（尝试级，虚高 1.8–2.7 倍）
+<b>COUNT(*)</b> FROM logs WHERE type = 5
+
+-- 应为（请求级）
+<b>COUNT(DISTINCT CASE WHEN request_id &lt;&gt; '' THEN request_id END)
++ SUM(CASE WHEN request_id = '' THEN 1 ELSE 0 END)</b></pre>
+      <p>后果是 <code>incident_rate_pct</code> 的阈值比预期更早触发：一个请求失败三次，分子算 3，分母只算 0 次成功。比率会明显偏高，告警因此提前。</p>
+
+      <h3>「有请求但消耗为 0」是最重要的一条</h3>
+      <p>这条判据比失败率更有效：客户被故障打死时消耗为 0，只看消耗会把他判成「沉默」，而沉默的处置是「等」——恰好在最该救的时候等。这个逻辑现有实现已经有了，合并时保留原样。</p>
+
+      <h3>事故型客户不能按分层筛掉</h3>
+      <p>分层的作用是控制触达成本，但事故型客户往往量级不大、分层不高。如果队列先按分层过滤，最先被漏掉的正是这批人。所以队列默认不按分层过滤，只提供「仅付费客户」这一个可选项。</p>
+
+      <h3>影响面要用请求级去重</h3>
+      <p>「影响 20 个用户」来自 <code>logs.username</code> 去重，是下界：没有失败的用户不会出现，同一用户多 key 只算一个。它不能和「注册用户数」做除法。</p>
+
+      <p class="foot">
+        示例数据由前端确定性生成，结构与字段对齐 logs、perf_metrics、channels、quota_data。
+        设计规则见 <a href="design-system.html">设计规范</a>，错误分析细节见 <a href="error-dashboard-v2.html">v2 判断版</a>。
+      </p>
+    </div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" aria-hidden="true" aria-labelledby="sheetTitle">
+  <div class="sheet-h">
+    <div>
+      <h3 id="sheetTitle">详情</h3>
+      <p class="meta" id="sheetMeta"></p>
+    </div>
+    <button class="sheet-x" id="sheetClose" aria-label="关闭详情">×</button>
+  </div>
+  <div class="sheet-b" id="sheetBody"></div>
+</aside>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<noscript><p style="margin:24px">这个页面靠脚本聚合数据。请启用 JavaScript。</p></noscript>
+
+<script>
+(function () {
+  'use strict';
+
+  var MIN = 60e3, HOUR = 3600e3, DAY = 24 * HOUR, BUCKET = 10 * MIN;
+  var BUCKETS = 7 * 24 * 6;
+  var T0 = Math.floor(Date.now() / BUCKET) * BUCKET - BUCKETS * BUCKET;
+  var NOW = T0 + BUCKETS * BUCKET;
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtNum(n) { return Math.round(n).toLocaleString('zh-CN'); }
+  function fmtPct(v, d) { return (v * 100).toFixed(d == null ? 2 : d) + '%'; }
+  function fmtClock(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function fmtMD(ts) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function fmtFull(ts) { return fmtMD(ts) + ' ' + fmtClock(ts); }
+  function div(a, b) { return b > 0 ? a / b : 0; }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function ago(ts) {
+    var d = NOW - ts, h = Math.floor(d / HOUR);
+    if (h < 1) return Math.max(1, Math.round(d / MIN)) + ' 分钟前';
+    if (h < 48) return h + ' 小时前';
+    return Math.floor(h / 24) + ' 天前';
+  }
+
+  var _seed = 20261116;
+  function rnd() { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; }
+  function pick(a) { return a[Math.floor(rnd() * a.length)]; }
+  function jitter(b, s) { return b * (1 - s + rnd() * s * 2); }
+
+  /* ============================================================
+   * 一、系统侧：错误日志（与 v2 同一套生成器）
+   * ============================================================ */
+  var CODES = [
+    { code: 'bad_response_status_code', layer: '上游', weight: 30, faultWeight: 9, ch: 7, md: 'deepseek-v4.1', ms: 1800, status: 503, msg: 'status_code=503, upstream service temporarily unavailable' },
+    { code: 'channel:response_time_exceeded', layer: '渠道', weight: 11, faultWeight: 5, ch: 21, md: 'gpt-4o', ms: 180000, status: 0, msg: 'status_code=0, upstream response time exceeded 300s' },
+    { code: 'empty_response', layer: '上游', weight: 9, faultWeight: 4, ch: 15, md: 'claude-sonnet-4.5', ms: 2400, status: 200, msg: 'status_code=200, upstream returned empty response body' },
+    { code: 'invalid_request', layer: '请求', weight: 10, faultWeight: 3, ch: 7, md: 'deepseek-v4.1', ms: 300, status: 400, msg: 'status_code=400, invalid value for parameter messages[0].role' },
+    { code: 'insufficient_user_quota', layer: '额度', weight: 8, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', ms: 120, status: 403, msg: 'user quota is not enough, current: 312, required: 1840' },
+    { code: 'bad_request_body', layer: '请求', weight: 6, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', ms: 250, status: 400, msg: 'status_code=400, request body is not valid JSON' },
+    { code: 'channel:invalid_key', layer: '渠道', weight: 4, faultWeight: 46, ch: 12, md: 'gpt-4o', ms: 450, status: 401, msg: 'status_code=401, upstream rejected credentials: invalid api key' },
+    { code: 'prompt_blocked', layer: '请求', weight: 5, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', ms: 800, status: 400, msg: 'status_code=400, prompt blocked by upstream safety policy' },
+    { code: 'channel:no_available_key', layer: '渠道', weight: 3, faultWeight: 8, ch: 21, md: 'gpt-4o', ms: 90, status: 0, msg: 'no available key for channel, all keys exhausted' },
+    { code: 'model_not_found', layer: '请求', weight: 4, faultWeight: 1, ch: 21, md: 'claude-sonnet-4.5', ms: 400, status: 404, msg: 'status_code=404, model not found on upstream' },
+    { code: 'do_request_failed', layer: '上游', weight: 3, faultWeight: 2, ch: 18, md: 'qwen-max', ms: 5000, status: 0, msg: 'status_code=0, dial tcp: connection refused' },
+    { code: 'bad_response_body', layer: '上游', weight: 3, faultWeight: 1, ch: 3, md: 'gemini-2.5-pro', ms: 1600, status: 200, msg: 'status_code=200, unable to parse upstream response payload' },
+    { code: 'access_denied', layer: '额度', weight: 2, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', ms: 150, status: 403, msg: 'status_code=403, this token has no permission for model claude-sonnet-4.5' },
+    { code: 'get_channel_failed', layer: '本地', weight: 1, faultWeight: 1, ch: 0, md: '无', ms: 60, status: 500, msg: 'no channel satisfied the request constraints' },
+    { code: 'upstream_tls_handshake_failed', layer: '上游', weight: 12, faultWeight: 2, ch: 18, md: 'qwen-max', ms: 4200, status: 0, msg: 'status_code=0, tls: failed to verify certificate: x509: certificate has expired', from: null }
+  ];
+  var CODE_MAP = {};
+  CODES.forEach(function (c) { CODE_MAP[c.code] = c; });
+
+  var CHANNELS = [
+    { id: 12, name: 'azure-gpt4o-hk', status: 'disabled', share: 0.10 },
+    { id: 7, name: 'deepseek-official', status: 'enabled', share: 0.28 },
+    { id: 15, name: 'claude-main', status: 'enabled', share: 0.17 },
+    { id: 3, name: 'gemini-pro-pool', status: 'enabled', share: 0.14 },
+    { id: 21, name: 'openrouter-fallback', status: 'enabled', share: 0.11 },
+    { id: 18, name: 'bailian-cn', status: 'enabled', share: 0.07 }
+  ];
+  var CH_MAP = {};
+  CHANNELS.forEach(function (c) { CH_MAP[c.id] = c; });
+  var CH_MODELS = { 12: ['gpt-4o', 'gpt-4o-mini'], 7: ['deepseek-v4.1'], 15: ['claude-sonnet-4.5'], 3: ['gemini-2.5-pro'], 21: ['gpt-4o', 'claude-sonnet-4.5'], 18: ['qwen-max'] };
+
+  /* 客户：与 growth 的分层同构（K/A/B/S），失败来自下面的错误日志 */
+  var ACCOUNTS = [
+    { id: 1001, name: '星野科技', tier: 'K', group: 'svip', quota7d: 4820, prev7d: 4410, balance: 12600, lastActiveH: 0.3, key: 'chen.wei' },
+    { id: 1002, name: '橙子互娱', tier: 'K', group: 'svip', quota7d: 3910, prev7d: 4020, balance: 8800, lastActiveH: 1.2, key: 'li.na' },
+    { id: 1003, name: '蓝湾数据', tier: 'A', group: 'vip', quota7d: 2140, prev7d: 2160, balance: 5200, lastActiveH: 2.4, key: 'wang.lei' },
+    { id: 1004, name: '知微教育', tier: 'A', group: 'vip', quota7d: 1780, prev7d: 1240, balance: 3100, lastActiveH: 0.8, key: 'zhao.min' },
+    { id: 1005, name: '锦时文化', tier: 'A', group: 'vip', quota7d: 960, prev7d: 1580, balance: 0, lastActiveH: 5.5, key: 'sun.yu' },
+    { id: 1006, name: '南屿工作室', tier: 'B', group: 'default', quota7d: 420, prev7d: 405, balance: 760, lastActiveH: 9, key: 'zhou.jie' },
+    { id: 1007, name: '新光传媒', tier: 'B', group: 'default', quota7d: 380, prev7d: 620, balance: 120, lastActiveH: 26, key: 'wu.hao' },
+    { id: 1008, name: '木木科技', tier: 'B', group: 'default', quota7d: 240, prev7d: 250, balance: 0, lastActiveH: 40, key: 'xu.ting' },
+    { id: 1009, name: '远山网络', tier: 'B', group: 'default', quota7d: 180, prev7d: 300, balance: 640, lastActiveH: 72, key: 'ma.lin' },
+    { id: 1010, name: '拾光影像', tier: 'S', group: 'default', quota7d: 96, prev7d: 90, balance: 220, lastActiveH: 4, key: 'huang.qing' },
+    { id: 1011, name: '轻舟科技', tier: 'S', group: 'trial', quota7d: 42, prev7d: 0, balance: 0, lastActiveH: 6, key: 'lin.xin' },
+    { id: 1012, name: '白鹭文创', tier: 'S', group: 'trial', quota7d: 18, prev7d: 60, balance: 40, lastActiveH: 168, key: 'he.yi' },
+    { id: 1013, name: '凡尘工作室', tier: 'S', group: 'trial', quota7d: 0, prev7d: 110, balance: 0, lastActiveH: 640, key: 'guo.fan' },
+    { id: 1014, name: '青柠数据', tier: 'S', group: 'trial', quota7d: 0, prev7d: 35, balance: 0, lastActiveH: 900, key: 'luo.qi' },
+    { id: 1015, name: '北辰智能', tier: 'K', group: 'svip', quota7d: 5200, prev7d: 4980, balance: 9100, lastActiveH: 0.5, key: 'deng.bo' },
+    { id: 1016, name: '潮汐科技', tier: 'A', group: 'vip', quota7d: 1420, prev7d: 1390, balance: 2400, lastActiveH: 3.1, key: 'song.yao' }
+  ];
+  // 7 天请求数：失败数没有分母就不可解释。真实实现里它来自 quota_data.count。
+  // 按每元 20 次请求折算（一次调用约 0.05 元），与 new-api 的实际单价量级相当。
+  ACCOUNTS.forEach(function (a) {
+    a.req7d = Math.max(400, Math.round((a.quota7d > 0 ? a.quota7d : a.prev7d * 0.4) * 20));
+    a.failRate7d = 0;
+  });
+
+  var ACC_BY_KEY = {};
+  ACCOUNTS.forEach(function (a) { ACC_BY_KEY[a.key] = a; });
+  var KEYS = ACCOUNTS.map(function (a) { return a.key; });
+
+  /* 失败按请求量加权分配：一个只发 800 次请求的试用客户不可能背 236 次失败。
+     额度类只落在低频客户身上，故障期偏向大客户（流量集中）。 */
+  function pickUser(layer, fault) {
+    var pool = ACCOUNTS;
+    if (layer === '额度') {
+      pool = ACCOUNTS.filter(function (a) { return a.group === 'trial' || a.tier === 'S'; });
+    } else if ((layer === '渠道' || layer === '上游') && fault) {
+      pool = ACCOUNTS.filter(function (a) { return a.tier === 'K' || a.tier === 'A'; });
+    }
+    var tot = 0, i;
+    for (i = 0; i < pool.length; i++) tot += pool[i].req7d;
+    var x = rnd() * tot;
+    for (i = 0; i < pool.length; i++) {
+      x -= pool[i].req7d;
+      if (x <= 0) return pool[i].key;
+    }
+    return pool[pool.length - 1].key;
+  }
+
+  var FAULT_START = Math.floor((NOW - 8 * HOUR) / BUCKET) * BUCKET;
+  var FAULT_END = FAULT_START + 2 * HOUR;
+  var MINOR_START = Math.floor((NOW - 3 * HOUR) / BUCKET) * BUCKET;
+  var NEW_CODE_START = Math.floor((NOW - 3.5 * HOUR) / BUCKET) * BUCKET;
+  CODES.forEach(function (c) { if (c.code === 'upstream_tls_handshake_failed') c.from = NEW_CODE_START; });
+
+  function inFault(ts) { return ts >= FAULT_START && ts < FAULT_END; }
+  function inMinor(ts) { return ts >= MINOR_START && ts < MINOR_START + 40 * MIN; }
+  function shape(ts) {
+    var d = new Date(ts), h = d.getHours() + d.getMinutes() / 60;
+    return Math.max(0.28, Math.min(1.25, 0.46 + 0.54 * Math.sin(Math.PI * (h - 3) / 18)));
+  }
+
+  var buckets = [];
+  (function build() {
+    for (var i = 0; i < BUCKETS; i++) {
+      var ts = T0 + i * BUCKET;
+      var req = Math.round(jitter(1600 * shape(ts), 0.06));
+      var fr = inFault(ts) ? jitter(0.031, 0.18) : (inMinor(ts) ? jitter(0.0092, 0.15) : jitter(0.0034, 0.30));
+      var failReq = Math.max(0, Math.round(req * fr));
+      var amp = inFault(ts) ? jitter(2.65, 0.10) : (inMinor(ts) ? jitter(2.1, 0.1) : jitter(1.85, 0.12));
+      var failAttempt = Math.max(failReq, Math.round(failReq * amp));
+
+      var w = CODES.map(function (c) {
+        if (c.from && ts < c.from) return 0;
+        return inFault(ts) ? c.faultWeight : c.weight;
+      });
+      var s = w.reduce(function (a, b) { return a + b; }, 0);
+      var counts = [];
+      var expect = w.map(function (x) { return failAttempt * x / s; });
+      expect.forEach(function (e) {
+        var n = Math.floor(e);
+        if (rnd() < e - n) n += 1;
+        counts.push(n);
+      });
+      var sum2 = counts.reduce(function (a, b) { return a + b; }, 0), guard = 0;
+      while (sum2 !== failAttempt && guard++ < 2000) {
+        var big = 0;
+        for (var bj = 1; bj < counts.length; bj++) if (counts[bj] > counts[big]) big = bj;
+        if (sum2 < failAttempt) { counts[big] += 1; sum2 += 1; }
+        else if (counts[big] > 0) { counts[big] -= 1; sum2 -= 1; }
+        else break;
+      }
+
+      var rows = [];
+      CODES.forEach(function (c, ci) {
+        var n = counts[ci];
+        if (!n) return;
+        var parts = n <= 2 ? 1 : (n <= 8 ? 2 : 3), left = n;
+        for (var pi = 0; pi < parts && left > 0; pi++) {
+          var take = pi === parts - 1 ? left : Math.max(1, Math.round(n / parts * jitter(1, 0.3)));
+          take = Math.min(take, left);
+          if (take <= 0) continue;
+          left -= take;
+          var ch = c.ch || 0;
+          if (ch) {
+            if (ch === 12 && ts >= FAULT_END) ch = 21;
+            if (c.layer === '渠道') ch = (inFault(ts) && ch === 12) ? (rnd() < 0.88 ? 12 : 21) : (rnd() < 0.72 ? ch : 21);
+            else ch = rnd() < 0.86 ? ch : 7;
+          }
+          var u = pickUser(c.layer, inFault(ts));
+          rows.push({
+            code: c.code, ch: ch,
+            md: ch && CH_MODELS[ch] ? pick(CH_MODELS[ch]) : c.md,
+            user: u, n: take
+          });
+        }
+      });
+
+      buckets.push({ ts: ts, req: req, failReq: Math.min(failReq, req), failAttempt: failAttempt, rows: rows });
+    }
+  })();
+
+  /* 首现（7 天范围内） */
+  var CODE_FIRST = {};
+  buckets.forEach(function (b) {
+    b.rows.forEach(function (r) {
+      if (!CODE_FIRST[r.code] || b.ts < CODE_FIRST[r.code]) CODE_FIRST[r.code] = b.ts;
+    });
+  });
+
+  /* 按客户汇总：尝试数 + 请求级失败数（把每桶的 failReq 按行占比分摊） */
+  var BY_USER = {};
+  ACCOUNTS.forEach(function (a) {
+    // quotaAtt 单独记：额度不足不是故障，是额度墙。混在一起会把正常客户误判成事故。
+    BY_USER[a.key] = { att: 0, quotaAtt: 0, reqFail: 0, codes: {}, chs: {}, last: 0 };
+  });
+  buckets.forEach(function (b) {
+    var tot = 0, q;
+    for (q = 0; q < b.rows.length; q++) tot += b.rows[q].n;
+    if (!tot) return;
+    // 把该桶的请求级失败数按尝试占比分摊到各客户，保证 Σ客户 ≈ 全局请求级失败数
+    var per = b.failReq / tot;
+    b.rows.forEach(function (r) {
+      var u = BY_USER[r.user];
+      if (!u) return;
+      u.att += r.n;
+      if ((CODE_MAP[r.code] || {}).layer === '额度') u.quotaAtt += r.n;
+      u.reqFail += r.n * per;
+      u.codes[r.code] = (u.codes[r.code] || 0) + r.n;
+      if (r.ch) u.chs[r.ch] = (u.chs[r.ch] || 0) + r.n;
+      if (b.ts > u.last) u.last = b.ts;
+    });
+  });
+
+  /* 基线：按整点小时取 P50/P95 */
+  var BASE = (function () {
+    var byHour = {};
+    buckets.forEach(function (b) {
+      var d = new Date(b.ts), day = Math.floor(b.ts / DAY);
+      var key = day + '-' + d.getHours();
+      var o = byHour[key] || (byHour[key] = { h: d.getHours(), v: 0, n: 0, bad: false });
+      o.v += b.failAttempt; o.n += 1;
+      if (inFault(b.ts) || inMinor(b.ts)) o.bad = true;
+    });
+    var map = {};
+    Object.keys(byHour).forEach(function (k) {
+      var o = byHour[k];
+      if (o.bad || o.n !== 6) return;
+      (map[o.h] || (map[o.h] = [])).push(o.v);
+    });
+    var out = {};
+    for (var h = 0; h < 24; h++) {
+      var arr = (map[h] || []).slice().sort(function (a, b) { return a - b; });
+      out[h] = {
+        p50: arr.length ? arr[Math.round(0.5 * (arr.length - 1))] : 0,
+        p95: arr.length ? arr[Math.round(0.95 * (arr.length - 1))] : 0
+      };
+    }
+    return out;
+  })();
+
+  var CHANGES = [
+    { ts: FAULT_START - 26 * MIN, kind: '发布', label: '网关 v1.8.2 滚动重启' },
+    { ts: FAULT_START - 6 * MIN, kind: '配置', label: 'azure-gpt4o-hk 密钥轮换', near: true },
+    { ts: FAULT_END + 12 * MIN, kind: '系统', label: '渠道 #12 自动禁用', near: true }
+  ];
+
+  /* ============================================================
+   * 二、合并：一条动作队列
+   * ============================================================ */
+  var ALERT_KINDS = {
+    incident: { label: '事故型', hint: '有请求但消耗为 0，或真故障失败率异常' },
+    quota_wall: { label: '额度墙', hint: '失败主要来自额度不足，是转化机会不是故障' },
+    exhausted: { label: '余额耗尽', hint: '余额归零但仍在发起调用' },
+    decline: { label: '用量下滑', hint: '周消耗环比下降超过 40%' },
+    dormant: { label: '沉默', hint: '超过 30 天没有成功调用' }
+  };
+
+  function buildQueue() {
+    var out = [];
+    var w7 = { att: 0, reqFail: 0 };
+    buckets.forEach(function (b) {
+      if (b.ts < NOW - 7 * DAY) return;
+      w7.att += b.failAttempt;
+      w7.reqFail += b.failReq;
+    });
+
+    /* 1) 系统类：渠道故障，影响面来自日志 */
+    var chHit = {};
+    buckets.forEach(function (b) {
+      if (b.ts < NOW - 7 * DAY) return;
+      b.rows.forEach(function (r) {
+        if (r.ch !== 12) return;
+        var o = chHit[r.user] || (chHit[r.user] = { att: 0, last: 0 });
+        o.att += r.n;
+        if (b.ts > o.last) o.last = b.ts;
+      });
+    });
+    var hitKeys = Object.keys(chHit).sort(function (a, b) { return chHit[b].att - chHit[a].att; });
+    var paying = hitKeys.filter(function (k) { var a = ACC_BY_KEY[k]; return a && a.tier !== 'S'; });
+    out.push({
+      id: 'sys-12',
+      kind: 'system',
+      sev: 1,
+      who: '渠道 azure-gpt4o-hk',
+      sub: 'azure · gpt-4o',
+      reason: '<code>channel:invalid_key</code> 密钥被上游拒绝，已自动禁用',
+      impact: '影响 <b>' + hitKeys.length + '</b> 个客户，其中付费 <b>' + paying.length + '</b> 个',
+      money: paying.reduce(function (s, k) { return s + (ACC_BY_KEY[k].quota7d || 0); }, 0),
+      act: '轮换密钥后启用',
+      ts: FAULT_END + 12 * MIN
+    });
+    out.push({
+      id: 'sys-tls',
+      kind: 'system',
+      sev: 2,
+      who: '上游证书过期',
+      sub: 'bailian-cn · qwen-max',
+      reason: '<code>upstream_tls_handshake_failed</code> 今天 19:40 首次出现',
+      impact: '影响 <b>' + Object.keys(BY_USER).filter(function (k) { return BY_USER[k].codes['upstream_tls_handshake_failed']; }).length + '</b> 个客户',
+      money: 0,
+      act: '联系上游换证书',
+      ts: NEW_CODE_START
+    });
+
+    /* 2) 客户类：与 growth 同一套判定 */
+    ACCOUNTS.forEach(function (a) {
+      var u = BY_USER[a.key];
+      if (!u) return;
+      var total = a.quota7d + u.reqFail * 0.0004;   // 粗略：失败请求也占额度成本
+      var failRate = div(u.reqFail, Math.max(1, a.quota7d / 0.0004 + u.reqFail));
+      var lastAt = NOW - a.lastActiveH * HOUR;
+
+      // 事故率排除额度类：客户被额度墙拦住不等于系统坏了
+      var errAtt = u.att - u.quotaAtt;
+      a.failRate7d = div(errAtt, a.req7d);
+      a.quotaRate7d = div(u.quotaAtt, a.req7d);
+      var rateTxt = fmtPct(a.failRate7d, 2);
+      var quotaShare = div(u.quotaAtt, u.att);
+
+      if (a.quota7d === 0 && a.lastActiveH < 72) {
+        out.push({
+          id: 'acc-' + a.id, kind: 'customer', sev: 1, kindLabel: 'incident',
+          who: a.name, sub: a.tier + ' · ' + a.group,
+          reason: '<b>有请求但消耗为 0</b>：失败率 ' + rateTxt + '，疑似被故障打死，或被额度墙拦住',
+          impact: '上周消耗 <b>¥' + fmtNum(a.prev7d) + '</b>，失败 <b>' + fmtNum(u.att) + '</b> / ' +
+            fmtNum(a.req7d) + ' 次请求',
+          money: a.prev7d, act: '立即联系', ts: lastAt, acc: a
+        });
+        return;
+      }
+      if (a.balance <= 0 && a.lastActiveH < 72) {
+        out.push({
+          id: 'acc-' + a.id, kind: 'customer', sev: 1, kindLabel: 'exhausted',
+          who: a.name, sub: a.tier + ' · ' + a.group,
+          reason: '余额已归零，仍在发起调用，下次请求就会失败',
+          impact: '7 天消耗 <b>¥' + fmtNum(a.quota7d) + '</b>，余额 <b>0</b>',
+          money: a.quota7d, act: '提醒充值', ts: lastAt, acc: a
+        });
+        return;
+      }
+      // 额度墙：失败主要来自额度不足时，处置是「推充值」而不是「查故障」。
+      // 但必须先过活跃度——26 天没来的客户，推升配没有意义。
+      if (quotaShare >= 0.6 && a.req7d >= 500 && a.lastActiveH < 168) {
+        out.push({
+          id: 'acc-' + a.id, kind: 'customer', sev: 2, kindLabel: 'quota_wall',
+          who: a.name, sub: a.tier + ' · ' + a.group,
+          reason: '失败的 <b>' + fmtPct(quotaShare, 0) + '</b> 来自额度不足（<b>' + fmtPct(a.quotaRate7d, 1) + '</b> 的请求被额度墙拦住）',
+          impact: '余额 <b>' + (a.balance > 0 ? '¥' + fmtNum(a.balance) : '0') + '</b>，7 天消耗 ¥' + fmtNum(a.quota7d),
+          money: a.quota7d, act: '推升配 / 充值', ts: lastAt, acc: a
+        });
+        return;
+      }
+      // 真故障失败率独立成一条：客户正常在用、余额也够，但失败率显著偏高
+      if (a.failRate7d >= 0.05 && a.req7d >= 500 && a.lastActiveH < 72) {
+        out.push({
+          id: 'acc-' + a.id, kind: 'customer', sev: 1, kindLabel: 'incident',
+          who: a.name, sub: a.tier + ' · ' + a.group,
+          reason: '失败率 <b>' + rateTxt + '</b>，远高于自身常态',
+          impact: '失败 <b>' + fmtNum(u.att) + '</b> / ' + fmtNum(a.req7d) + ' 次请求，7 天消耗 ¥' + fmtNum(a.quota7d),
+          money: a.quota7d, act: '查原因并说明', ts: lastAt, acc: a
+        });
+        return;
+      }
+      if (a.lastActiveH > 720) {
+        out.push({
+          id: 'acc-' + a.id, kind: 'customer', sev: 3, kindLabel: 'dormant',
+          who: a.name, sub: a.tier + ' · ' + a.group,
+          reason: '超过 30 天没有成功调用',
+          impact: '历史消耗 <b>' + fmtNum(a.prev7d) + '</b>',
+          money: a.prev7d * 0.2, act: '低优先触达', ts: lastAt, acc: a
+        });
+        return;
+      }
+      if (a.prev7d > 0 && a.quota7d === 0) {
+        // 从「有量」到「归零」不是下滑，是断裂，级别要更高
+        out.push({
+          id: 'acc-' + a.id, kind: 'customer', sev: 1, kindLabel: 'incident',
+          who: a.name, sub: a.tier + ' · ' + a.group,
+          reason: '消耗从 <b>¥' + fmtNum(a.prev7d) + '</b> 直接归零，失败率 ' + rateTxt,
+          impact: '余额 <b>' + (a.balance > 0 ? '¥' + fmtNum(a.balance) : '0') + '</b>，最后活跃 ' + ago(NOW - a.lastActiveH * HOUR),
+          money: a.prev7d, act: '立即联系', ts: lastAt, acc: a
+        });
+        return;
+      }
+      if (a.prev7d > 0 && a.quota7d < a.prev7d * 0.6) {
+        out.push({
+          id: 'acc-' + a.id, kind: 'customer', sev: 2, kindLabel: 'decline',
+          who: a.name, sub: a.tier + ' · ' + a.group,
+          reason: '周消耗环比下降 <b>' + Math.round((1 - a.quota7d / a.prev7d) * 100) + '%</b>，失败率 ' + rateTxt,
+          impact: '¥' + fmtNum(a.prev7d) + ' → <b>¥' + fmtNum(a.quota7d) + '</b>',
+          money: a.prev7d - a.quota7d, act: '问原因', ts: lastAt, acc: a
+        });
+      }
+    });
+
+    out.sort(function (a, b) {
+      if (a.sev !== b.sev) return a.sev - b.sev;
+      return b.money - a.money;
+    });
+    return { items: out, w7: w7 };
+  }
+
+  var QUEUE = buildQueue();
+  var qFilter = 'all';
+
+  function renderStatus() {
+    var items = QUEUE.items;
+    var sys = items.filter(function (x) { return x.kind === 'system'; });
+    var cus = items.filter(function (x) { return x.kind === 'customer'; });
+    var paying = cus.filter(function (x) { return x.acc && x.acc.tier !== 'S'; });
+    // 队列里的 money 含义各不相同（消耗 / 上周消耗 / 差额），加总没有意义。
+    // 只取「当前 7 天消耗」这一个同口径的列来报。
+    var payingQuota = paying.reduce(function (sum, x) { return sum + (x.acc.quota7d || 0); }, 0);
+
+    document.getElementById('statusLine').innerHTML =
+      '现在有 <b>' + items.length + '</b> 项待处理：系统 <b>' + sys.length + '</b> 项、客户 <b>' + cus.length +
+      '</b> 项，其中 <em>' + paying.length + '</em> 项涉及付费客户。';
+
+    document.getElementById('statusSub').textContent =
+      '这 ' + paying.length + ' 个付费客户近 7 天消耗合计 ¥' + fmtNum(payingQuota) +
+      '，这是风险敞口，不是已损失。系统侧过去 24 小时的失败情况见「系统异常」页。队列按优先级排序，同级按金额。';
+
+    document.getElementById('cTodo').textContent = String(items.length);
+    document.getElementById('cSys').textContent = sys.length ? '异常' : '正常';
+    document.getElementById('qMix').textContent =
+      '系统 ' + sys.length + ' 条 · 客户 ' + cus.length + ' 条';
+    document.getElementById('today').textContent =
+      fmtMD(NOW) + ' ' + ['周日','周一','周二','周三','周四','周五','周六'][new Date(NOW).getDay()] +
+      ' · 数据截至 ' + fmtClock(NOW);
+  }
+
+  function renderQueue() {
+    var list = QUEUE.items.filter(function (x) {
+      if (qFilter === 'system') return x.kind === 'system';
+      if (qFilter === 'customer') return x.kind === 'customer';
+      if (qFilter === 'paying') return x.acc && x.acc.tier !== 'S';
+      return true;
+    });
+
+    document.getElementById('queueRows').innerHTML = list.map(function (x) {
+      var tagCls = x.sev === 1 ? 'new' : (x.sev === 2 ? 'sys' : 'mute');
+      var kindTxt = x.kind === 'system' ? '系统' : (ALERT_KINDS[x.kindLabel] || {}).label || '客户';
+      return '<tr class="click" data-id="' + esc(x.id) + '" tabindex="0" role="button" aria-label="查看 ' + esc(x.who) + ' 详情">' +
+        '<td class="sev s' + x.sev + '" data-l="级">P' + x.sev + '</td>' +
+        '<td class="who" data-l="对象">' + esc(x.who) + '<span>' + esc(x.sub) + ' · ' + kindTxt + '</span></td>' +
+        '<td class="reason" data-l="原因">' + x.reason + '</td>' +
+        '<td class="impact" data-l="影响">' + x.impact + '</td>' +
+        '<td data-l="建议动作"><span class="' + (x.sev === 1 ? 'advice strong' : 'advice') + '">' + esc(x.act) + '</span></td>' +
+        '<td class="act-cell"><button class="btn' + (x.sev === 1 ? ' primary' : '') + '" type="button" data-act="' + esc(x.id) + '">处理</button></td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="6" style="padding:32px 0;color:var(--muted)">这个筛选下没有待处理项。</td></tr>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('#queueRows tr.click'), function (tr) {
+      tr.addEventListener('click', function (ev) {
+        if (ev.target.closest('button')) return;
+        openSheet(tr.getAttribute('data-id'));
+      });
+      tr.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tr.click(); }
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-act]'), function (b) {
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        toast('已认领：' + (QUEUE.items.filter(function (x) { return x.id === b.getAttribute('data-act'); })[0] || {}).who);
+      });
+    });
+  }
+
+  function renderCross() {
+    /* 受影响客户里，按分层与金额切开：这是唯一必须同时用两张表的地方 */
+    // 只看故障窗口内被打中的人。「7 天内有任何失败」会把全部客户都算进来，没有区分度。
+    var hit = {};
+    buckets.forEach(function (b) {
+      if (b.ts < FAULT_START || b.ts >= FAULT_END) return;
+      b.rows.forEach(function (r) { hit[r.user] = (hit[r.user] || 0) + r.n; });
+    });
+
+    var paying = 0, payingMoney = 0, totalHit = 0, topHit = null;
+    Object.keys(hit).forEach(function (k) {
+      var a = ACC_BY_KEY[k];
+      if (!a || hit[k] < 5) return;   // 一两次偶发失败不算被打中
+      totalHit++;
+      if (a.tier === 'S') return;
+      paying++;
+      payingMoney += a.quota7d;
+      if (!topHit || hit[k] > hit[topHit.key]) topHit = a;
+    });
+
+    var G = [
+      { k: '故障期间被打中', v: totalHit, s: fmtClock(FAULT_START) + '–' + fmtClock(FAULT_END) + ' 有失败' },
+      { k: '其中付费', v: paying, s: 'K/A/B 分层' },
+      { k: '这些客户的 7 天消耗', v: '¥' + fmtNum(payingMoney), s: '风险敞口，不是已损失' },
+      { k: '失败最集中', v: topHit ? topHit.name : '无', s: topHit ? (fmtNum(hit[topHit.key]) + ' 次失败') : '' }
+    ];
+    document.getElementById('crossGrid').innerHTML = G.map(function (g) {
+      return '<div><div class="k">' + g.k + '</div><div class="v">' + g.v + '</div><div class="s">' + g.s + '</div></div>';
+    }).join('');
+  }
+
+  /* ── 系统页 ── */
+  function renderSystem() {
+    var w = { from: NOW - 24 * HOUR, to: NOW };
+    var span = w.to - w.from, n = 24, g = HOUR;
+    var pts = [];
+    for (var i = 0; i < n; i++) pts.push({ ts: w.from + i * g, att: 0, failReq: 0 });
+    var totAtt = 0, totReq = 0;
+    buckets.forEach(function (b) {
+      if (b.ts + BUCKET <= w.from || b.ts >= w.to) return;
+      var idx = Math.min(n - 1, Math.max(0, Math.floor((b.ts - w.from) / g)));
+      pts[idx].att += b.failAttempt;
+      pts[idx].failReq += b.failReq;
+      totAtt += b.failAttempt;
+      totReq += b.failReq;
+    });
+
+    var maxV = 1;
+    pts.forEach(function (p) {
+      maxV = Math.max(maxV, p.att, BASE[new Date(p.ts).getHours()].p95);
+    });
+    maxV *= 1.08;
+
+    var wPct = 100 / n, band = '', bars = '', p50 = '';
+    pts.forEach(function (p, i) {
+      var left = (i * wPct).toFixed(3) + '%';
+      var width = 'calc(' + wPct.toFixed(3) + '% - 1px)';
+      var hb = BASE[new Date(p.ts).getHours()];
+      var lo = (hb.p50 / maxV) * 100, hi = (hb.p95 / maxV) * 100;
+      if (hi > 0.5) {
+        band += '<span class="band-seg" style="left:' + left + ';width:' + width +
+          ';height:' + Math.max((3 / 96) * 100, hi - lo).toFixed(2) + '%;bottom:' + lo.toFixed(2) + '%"></span>';
+      }
+      if (hb.p50 > 0) {
+        p50 += '<span class="p50" style="left:' + left + ';width:calc(' + wPct.toFixed(3) +
+          '% + 1px);bottom:' + ((hb.p50 / maxV) * 100).toFixed(2) + '%"></span>';
+      }
+      if (p.att > 0) {
+        bars += '<span class="vbar' + (inFault(p.ts) ? ' hot' : '') + '" style="left:' + left +
+          ';width:' + width + ';height:' + Math.max(1.2, (p.att / maxV) * 100).toFixed(2) +
+          '%;animation-delay:' + Math.min(180, i * 8) + 'ms" title="' + fmtFull(p.ts) + ' · ' +
+          fmtNum(p.att) + ' 次失败尝试"></span>';
+      }
+    });
+    var chg = '';
+    CHANGES.forEach(function (c) {
+      if (c.ts < w.from || c.ts > w.to) return;
+      var x = ((c.ts - w.from) / (w.to - w.from)) * 100;
+      chg += '<span class="chg" style="left:' + x.toFixed(3) + '%" title="' + esc(c.kind + ' · ' + c.label) + '"></span>';
+    });
+    document.getElementById('plot').innerHTML = band + bars + p50 + chg;
+
+    var ax = [0, 6, 12, 18, 23];
+    document.getElementById('chartAxis').innerHTML = ax.map(function (i) {
+      return '<span>' + fmtClock(pts[i].ts) + '</span>';
+    }).join('');
+
+    var p50s = [], p95s = [], peak = 0, peakTs = null;
+    pts.forEach(function (p) {
+      var hb = BASE[new Date(p.ts).getHours()];
+      p50s.push(hb.p50); p95s.push(hb.p95);
+      if (p.att > peak) { peak = p.att; peakTs = p.ts; }
+    });
+    document.getElementById('chartNote').textContent =
+      '常态每小时 ' + Math.min.apply(null, p50s) + '–' + Math.max.apply(null, p95s) + ' 次；峰值 ' +
+      fmtNum(peak) + ' 次，出现在 ' + fmtClock(peakTs) + '。数据截至 ' + fmtClock(NOW) + '，入库延迟约 2 分 40 秒。';
+
+    var mult = (function () {
+      var exp = 0, t = w.from;
+      while (t < w.to) {
+        var end = Math.min(w.to, (Math.floor(t / HOUR) + 1) * HOUR);
+        exp += BASE[new Date(t).getHours()].p50 * ((end - t) / HOUR);
+        t = end;
+      }
+      return exp > 0 ? totAtt / exp : 0;
+    })();
+
+    document.getElementById('sysLine').innerHTML =
+      '过去 24 小时失败尝试是常态的 <em>' + mult.toFixed(1) + ' 倍</em>，' +
+      '折算请求级约 <b>' + fmtNum(totReq) + '</b> 次真正失败。';
+    document.getElementById('sysSub').textContent =
+      '故障从 ' + fmtClock(FAULT_START) + ' 开始，' + fmtClock(FAULT_END) +
+      ' 结束，其间渠道 #12 密钥失效，重试把它兜住了一部分——这就是尝试数高于请求数的原因。';
+
+    /* 聚类 */
+    var map = {};
+    buckets.forEach(function (b) {
+      if (b.ts < NOW - 24 * HOUR) return;
+      b.rows.forEach(function (r) {
+        var o = map[r.code] || (map[r.code] = { code: r.code, att: 0, users: {}, half: [0, 0], first: b.ts });
+        o.att += r.n;
+        o.users[r.user] = 1;
+        if (b.ts < o.first) o.first = b.ts;
+        o.half[b.ts < NOW - 12 * HOUR ? 0 : 1] += r.n;
+      });
+    });
+    var list = Object.keys(map).map(function (k) { return map[k]; });
+    var totalN = list.reduce(function (a, b) { return a + b.att; }, 0) || 1;
+    var maxN = list.reduce(function (a, b) { return Math.max(a, b.att); }, 1);
+    list.forEach(function (o) {
+      o.isNew = CODE_FIRST[o.code] >= NOW - 24 * HOUR && o.att >= 10;
+      o.cooling = !o.isNew && o.half[0] > 0 && o.half[1] < o.half[0] * 0.35;
+    });
+    list.sort(function (a, b) {
+      if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
+      return b.att - a.att;
+    });
+
+    document.getElementById('clusterRows').innerHTML = list.slice(0, 10).map(function (o, i) {
+      var m = CODE_MAP[o.code] || {};
+      var st = o.isNew ? '新增' : (o.cooling ? '已收敛' : '持续');
+      var cls = o.isNew ? 'new' : (o.cooling ? 'fixed' : 'mute');
+      var first = o.isNew ? ('窗口内 ' + fmtClock(o.first)) :
+        (CODE_FIRST[o.code] <= T0 + 6 * HOUR ? '≥7 天' : Math.round((NOW - 24 * HOUR - CODE_FIRST[o.code]) / DAY) + ' 天前');
+      return '<tr class="click" data-code="' + esc(o.code) + '" tabindex="0" role="button" aria-label="查看 ' + esc(o.code) + ' 详情">' +
+        '<td class="mono" data-l="错误">' + esc(o.code) + '</td>' +
+        '<td class="mono" data-l="首现">' + first + '</td>' +
+        '<td class="r" data-l="影响用户">' + Object.keys(o.users).length + '</td>' +
+        '<td class="r" data-l="尝试">' + fmtNum(o.att) + '</td>' +
+        '<td data-l="占比"><span class="share"><span class="share-bar"><i class="' + (i === 0 ? 'hot' : '') +
+          '" style="width:' + ((o.att / maxN) * 100).toFixed(1) + '%"></i></span>' +
+          '<span class="share-num">' + fmtPct(div(o.att, totalN), 1) + '</span></span></td>' +
+        '<td data-l="状态"><span class="tag ' + cls + '">' + st + '</span></td>' +
+        '<td class="mono" data-l="主要渠道">' + esc(m.ch ? (CH_MAP[m.ch] || {}).name : '本地') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    /* 渠道 */
+    var chAgg = {};
+    buckets.forEach(function (b) {
+      b.rows.forEach(function (r) {
+        if (!r.ch) return;
+        var o = chAgg[r.ch] || (chAgg[r.ch] = { att: 0, codes: {} });
+        o.att += r.n;
+        o.codes[r.code] = (o.codes[r.code] || 0) + r.n;
+      });
+    });
+    document.getElementById('channelRows').innerHTML = CHANNELS.map(function (c) {
+      var o = chAgg[c.id] || { att: 0, codes: {} };
+      var top = Object.keys(o.codes).sort(function (a, b) { return o.codes[b] - o.codes[a]; })[0] || '无';
+      var attempts = Math.max(1, Math.round(1600 * 24 * c.share * 0.92));
+      return '<tr>' +
+        '<td class="who" data-l="渠道">' + esc(c.name) + '</td>' +
+        '<td data-l="状态"><span class="tag ' + (c.status === 'disabled' ? 'new' : 'mute') + '">' +
+          (c.status === 'disabled' ? '已自动禁用' : '启用') + '</span></td>' +
+        '<td class="r" data-l="尝试">' + fmtNum(attempts) + '</td>' +
+        '<td class="r" data-l="失败">' + fmtNum(o.att) + '</td>' +
+        '<td class="r" data-l="失败率">' + fmtPct(div(o.att, attempts), 2) + '</td>' +
+        '<td class="mono" data-l="主要错误码">' + esc(top) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  /* ── 客户页 ── */
+  function renderAccounts() {
+    var tierCount = { K: 0, A: 0, B: 0, S: 0 }, tierQuota = { K: 0, A: 0, B: 0, S: 0 };
+    ACCOUNTS.forEach(function (a) { tierCount[a.tier]++; tierQuota[a.tier] += a.quota7d; });
+    var total = ACCOUNTS.reduce(function (s, a) { return s + a.quota7d; }, 0);
+    document.getElementById('tiers').innerHTML = ['K', 'A', 'B', 'S'].map(function (t) {
+      return '<div><div class="k">' + t + ' 层</div><div class="v">' + tierCount[t] + ' 家</div>' +
+        '<div class="s">¥' + fmtNum(tierQuota[t]) + ' · ' + fmtPct(div(tierQuota[t], total), 0) + '</div></div>';
+    }).join('');
+
+    var top5 = ACCOUNTS.slice().sort(function (a, b) { return b.quota7d - a.quota7d; }).slice(0, 5);
+    var top5Sum = top5.reduce(function (s, a) { return s + a.quota7d; }, 0);
+    document.getElementById('accLine').innerHTML =
+      '<b>' + ACCOUNTS.length + '</b> 个客户，7 天消耗 <b>¥' + fmtNum(total) + '</b>，' +
+      '前 5 家占 <em>' + fmtPct(div(top5Sum, total), 0) + '</em>。';
+
+    document.getElementById('accountRows').innerHTML = ACCOUNTS.map(function (a) {
+      var u = BY_USER[a.key] || { att: 0 };
+      var chg = a.prev7d > 0 ? (a.quota7d - a.prev7d) / a.prev7d : 0;
+      var chgColor = chg >= 0 ? 'var(--ok)' : 'var(--accent)';
+      return '<tr class="click" data-acc="' + a.id + '" tabindex="0" role="button" aria-label="查看 ' + esc(a.name) + '">' +
+        '<td class="who" data-l="客户">' + esc(a.name) + '<span>' + a.id + '</span></td>' +
+        '<td data-l="分层"><span class="tag mute">' + a.tier + '</span></td>' +
+        '<td class="r num" data-l="7 天消耗">¥' + fmtNum(a.quota7d) + '</td>' +
+        '<td class="r num" data-l="环比" style="color:' + chgColor + '">' +
+          (chg >= 0 ? '+' : '') + fmtPct(chg, 0) + '</td>' +
+        '<td class="r num" data-l="失败尝试">' + fmtNum(u.att) + '</td>' +
+        '<td class="r num" data-l="失败率">' + fmtPct(div(u.att, a.req7d), 1) + '</td>' +
+        '<td class="r num" data-l="余额">' + (a.balance > 0 ? '¥' + fmtNum(a.balance) : '<span style="color:var(--err)">0</span>') + '</td>' +
+        '<td class="mono" data-l="最后活跃">' + ago(NOW - a.lastActiveH * HOUR) + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  /* ── 抽屉 ── */
+  var lastFocus = null;
+
+  function openSheet(id) {
+    lastFocus = document.activeElement;
+    var item = QUEUE.items.filter(function (x) { return x.id === id; })[0];
+    if (!item) return;
+
+    document.getElementById('sheetTitle').textContent = item.who;
+    document.getElementById('sheetMeta').textContent = item.sub + ' · ' + (item.kind === 'system' ? '系统问题' : '客户');
+
+    var body = '';
+    body += '<h4>为什么进队列</h4><p style="font-size:13px;color:var(--ink-2);line-height:1.65">' +
+      item.reason + '</p>';
+
+    if (item.acc) {
+      var a = item.acc, u = BY_USER[a.key] || { att: 0, reqFail: 0, codes: {}, chs: {} };
+      var codes = Object.keys(u.codes).sort(function (x, y) { return u.codes[y] - u.codes[x]; }).slice(0, 4);
+      body += '<h4>账户</h4><dl class="kv">' +
+        '<dt>分层</dt><dd>' + a.tier + ' · ' + a.group + '</dd>' +
+        '<dt>7 天消耗</dt><dd class="num">¥' + fmtNum(a.quota7d) + '</dd>' +
+        '<dt>上周同期</dt><dd class="num">¥' + fmtNum(a.prev7d) + '</dd>' +
+        '<dt>余额</dt><dd class="num">' + (a.balance > 0 ? '¥' + fmtNum(a.balance) : '0') + '</dd>' +
+        '<dt>最后活跃</dt><dd>' + ago(NOW - a.lastActiveH * HOUR) + '</dd>' +
+        '</dl>';
+      body += '<h4>与错误日志的交点</h4><dl class="kv">' +
+        '<dt>失败尝试</dt><dd class="num">' + fmtNum(u.att) + '</dd>' +
+        '<dt>请求级失败</dt><dd class="num">≈ ' + fmtNum(u.reqFail) + '</dd>' +
+        '<dt>主要错误</dt><dd class="mono">' + (codes[0] || '无') + '</dd>' +
+        '</dl>';
+      if (codes.length) {
+        body += '<ol class="tl">' + codes.map(function (c, i) {
+          return '<li class="' + (i === 0 ? 'warn' : '') + '"><div class="r1"><code class="mono">' + esc(c) +
+            '</code><span class="mono">' + fmtNum(u.codes[c]) + ' 次</span></div>' +
+            '<div class="r2">' + esc((CODE_MAP[c] || {}).msg || '') + '</div></li>';
+        }).join('') + '</ol>';
+      }
+    } else {
+      var hit = {};
+      buckets.forEach(function (b) {
+        b.rows.forEach(function (r) {
+          if (r.ch !== 12) return;
+          hit[r.user] = (hit[r.user] || 0) + r.n;
+        });
+      });
+      var keys = Object.keys(hit).sort(function (x, y) { return hit[y] - hit[x]; });
+      body += '<h4>受影响客户（按失败次数）</h4><ol class="tl">' +
+        keys.slice(0, 6).map(function (k) {
+          var a = ACC_BY_KEY[k];
+          return '<li class="' + (a && a.tier !== 'S' ? 'warn' : '') + '"><div class="r1">' +
+            '<b>' + esc(a ? a.name : k) + '</b>' +
+            '<span class="tag mute">' + (a ? a.tier : '—') + '</span>' +
+            '<span class="mono">' + fmtNum(hit[k]) + ' 次</span></div>' +
+            '<div class="r2">7 天消耗 ¥' + fmtNum(a ? a.quota7d : 0) + '</div></li>';
+        }).join('') + '</ol>';
+      body += '<h4>建议</h4><p style="font-size:13px;color:var(--ink-2);line-height:1.65">' +
+        '轮换密钥后启用渠道，并对上表前 3 位付费客户主动说明。故障期间的失败不计入他们的额度。' + '</p>';
+    }
+
+    document.getElementById('sheetBody').innerHTML = body;
+    document.getElementById('sheet').classList.add('on');
+    document.getElementById('scrim').classList.add('on');
+    document.getElementById('sheet').setAttribute('aria-hidden', 'false');
+    document.getElementById('sheetClose').focus();
+  }
+
+  function closeSheet() {
+    var s = document.getElementById('sheet');
+    if (!s.classList.contains('on')) return;
+    s.classList.remove('on');
+    document.getElementById('scrim').classList.remove('on');
+    s.setAttribute('aria-hidden', 'true');
+    if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+    lastFocus = null;
+  }
+
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove('on'); }, 2200);
+  }
+
+  /* ── 装配 ── */
+  function renderAll() {
+    renderStatus();
+    renderQueue();
+    renderCross();
+    if (view === 'system') renderSystem();
+    if (view === 'accounts') renderAccounts();
+  }
+
+  var view = 'today';
+  function switchView(name) {
+    view = name;
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+      b.setAttribute('aria-selected', b.getAttribute('data-view') === name ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) {
+      v.hidden = v.id !== 'view-' + name;
+    });
+    renderAll();
+  }
+
+  document.getElementById('tabs').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-view]');
+    if (b) switchView(b.getAttribute('data-view'));
+  });
+
+  document.getElementById('qFilters').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-f]');
+    if (!b) return;
+    qFilter = b.getAttribute('data-f');
+    Array.prototype.forEach.call(document.querySelectorAll('#qFilters button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+    renderQueue();
+  });
+
+  document.getElementById('sheetClose').addEventListener('click', closeSheet);
+  document.getElementById('scrim').addEventListener('click', closeSheet);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeSheet();
+    if (e.key === 'Tab' && document.getElementById('sheet').classList.contains('on')) {
+      var box = document.getElementById('sheet');
+      var f = box.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  window.addEventListener('error', function (ev) {
+    var bar = document.getElementById('statusLine');
+    if (bar) bar.innerHTML = '<span style="color:var(--err)">页面脚本出错：' + esc(ev.message) + '</span>';
+  });
+
+  try {
+    renderAll();
+  } catch (err) {
+    document.getElementById('statusLine').innerHTML =
+      '<span style="color:var(--err)">读取数据失败：' + esc(err.message) + '</span>';
+  }
+})();
+</script>
+</body>
+</html>

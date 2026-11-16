@@ -427,6 +427,29 @@ func migrateDB() error {
 			return err
 		}
 	}
+	/* APIDUO:growth:BEGIN */
+	// 增长运营只落两类表：每用户一行的聚合/分层结论，以及触达与批次两张业务表。
+	// 其余（预警队列、概览指标）都是实时派生，不建表。
+	if err := DB.AutoMigrate(
+		&GrowthUserBoard{},
+		&GrowthTouch{},
+		&GrowthBatch{},
+	); err != nil {
+		return fmt.Errorf("migrate growth tables: %w", err)
+	}
+	/* APIDUO:growth:END */
+
+	/* APIDUO:ops:BEGIN */
+	// 服务质量台只加一张变更事件表。错误与延迟都是从 logs 实时聚合的，
+	// 不落派生表——日志库是 ClickHouse，聚合本来就快。
+	if err := DB.AutoMigrate(&ChangeEvent{}, &OpsIncident{}, &ChannelCost{}, &OpsShift{}); err != nil {
+		return fmt.Errorf("migrate ops tables: %w", err)
+	}
+	// 单价配置读进内存：看板每次查成本时不该碰 MySQL。
+	if err := LoadChannelCosts(); err != nil {
+		return fmt.Errorf("load channel costs: %w", err)
+	}
+	/* APIDUO:ops:END */
 	return nil
 }
 
@@ -452,6 +475,7 @@ func migrateClickHouseLogDB() error {
 		common.SysError(common.LogText("log table engine upgrade failed: %s", err.Error()))
 	}
 	// APIDUO:log-final:END
+	ensureClickHouseLogColumns()
 	return syncClickHouseLogTTL(ttlDays)
 }
 
@@ -493,6 +517,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	prompt_tokens Int32 DEFAULT 0,
 	completion_tokens Int32 DEFAULT 0,
 	use_time Int32 DEFAULT 0,
+	use_time_ms Int32 DEFAULT 0,
 	is_stream UInt8 DEFAULT 0,
 	channel_id Int32 DEFAULT 0,
 	token_id Int32 DEFAULT 0,
@@ -872,4 +897,23 @@ func PingDB() error {
 	lastPingTime = time.Now()
 	common.SysLog(common.LogText("Database pinged successfully"))
 	return nil
+}
+
+// ensureClickHouseLogColumns 给已存在的日志表补上后加的列。
+//
+// CREATE TABLE IF NOT EXISTS 不会修改已有表结构，所以新增列必须显式 ALTER。
+// 不加这一步的后果不是报错，而是静默丢数据：写入器用了固定列清单，
+// 列缺失时整条插入失败，而失败只体现在「日志不再增长」上。
+//
+// 用 IF NOT EXISTS 保证可重复执行；失败的场景只有权限不足或表不存在，
+// 这时打印一条错误但不阻断启动——网关本身还能工作。
+func ensureClickHouseLogColumns() {
+	alters := []string{
+		"ALTER TABLE logs ADD COLUMN IF NOT EXISTS use_time_ms Int32 DEFAULT 0",
+	}
+	for _, stmt := range alters {
+		if err := LOG_DB.Exec(stmt).Error; err != nil {
+			common.SysError(common.LogText("clickhouse log column migration failed: %s", err.Error()))
+		}
+	}
 }

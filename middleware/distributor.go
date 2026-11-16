@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -528,11 +529,12 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 	}
 	// The routing name is also the billing name, so a model named in the body
 	// must not replace it: DeepSeek ignores that field.
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/search") {
-		modelRequest.Model = constant.DeepSeekSearchModel
-	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/fetch") {
-		modelRequest.Model = constant.DeepSeekFetchModel
+	// APIDUO:endpoint-registry:BEGIN One table owns every endpoint whose path
+	// implies the model. Adding an endpoint must not add a branch here.
+	if spec, ok := endpoint.Match(c.Request.Method, c.Request.URL.Path); ok {
+		modelRequest.Model = spec.Model
 	}
+	// APIDUO:endpoint-registry:END
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/generations") {
 		modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "dall-e")
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/edits") {

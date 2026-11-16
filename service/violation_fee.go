@@ -155,6 +155,7 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		Content:        []*common.Message{common.NewMessage("Violation fee charged")},
 		TokenId:        relayInfo.TokenId,
 		UseTimeSeconds: int(useTimeSeconds),
+		UseTimeMs:      int(time.Since(relayInfo.StartTime).Milliseconds()),
 		IsStream:       relayInfo.IsStream,
 		Group:          relayInfo.UsingGroup,
 		Other:          other,

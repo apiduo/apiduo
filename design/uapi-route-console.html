@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<!-- 已被 v2 端点方案替代：design/uapi-endpoint-routing.html（Route 对象方案已否决） -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UAPI 路由控制台 · 线路 × 模型 × 端点 · apiduo 产品原型</title>
+<style>
+  :root{
+    --bg:#ffffff;--surface:#fbfbfc;--surface-2:#f4f4f6;--line:#e7e7ea;--line-strong:#d6d6db;
+    --ink:#17171c;--ink-2:#4a4a55;--muted:#8b8b96;--accent:#4f46e5;--accent-soft:#eef0ff;
+    --ok:#0f7a52;--ok-soft:#e6f4ed;--err:#c02a20;--err-soft:#fdeceb;--warn:#9a6200;--warn-soft:#fdf3e0;
+    --radius:10px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  /* sidebar */
+  .side{width:208px;flex:0 0 208px;background:#15151a;color:#c9c9d1;padding:14px 10px;font-size:12.5px;display:flex;flex-direction:column}
+  .side .brand{display:flex;align-items:center;gap:8px;padding:6px 8px 16px;color:#fff;font-weight:600;font-size:13.5px}
+  .side .dot{width:7px;height:7px;border-radius:99px;background:#6d63ff}
+  .side .grp{padding:14px 10px 5px;color:#63636f;font-size:10.5px;letter-spacing:.06em}
+  .side button{appearance:none;border:0;background:transparent;width:100%;text-align:left;display:flex;align-items:center;gap:7px;
+    padding:7px 10px;border-radius:7px;color:#a7a7b4;font-family:inherit;font-size:12.5px;cursor:pointer;margin-bottom:1px}
+  .side button:hover{background:#1f1f27;color:#e6e6ec}
+  .side button.on{background:#26262f;color:#fff}
+  .side button .n{margin-left:auto;font-size:10px;color:#7b7b88;font-variant-numeric:tabular-nums}
+  .side button.on .n{color:#b9b9c6}
+  .side .foot{margin-top:auto;padding:12px 10px 4px;color:#5d5d6a;font-size:10.5px;line-height:1.6;border-top:1px solid #26262f}
+  /* main */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+  .head{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .head h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .ctx{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 8px;font-size:11.5px;color:var(--ink-2)}
+  .ctx b{font-weight:600;color:var(--ink)}
+  .ctx .k{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .tabs{display:flex;gap:2px;padding:0 22px;border-bottom:1px solid var(--line);background:#fff;flex-wrap:wrap}
+  .tabs button{appearance:none;border:0;background:transparent;font-family:inherit;font-size:13px;color:var(--muted);
+    padding:11px 12px;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px;display:flex;align-items:center;gap:6px}
+  .tabs button.on{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+  .tabs .cnt{background:var(--surface-2);color:var(--ink-2);font-size:10px;font-weight:600;padding:0 5px;border-radius:99px;line-height:15px}
+  .tabs button.on .cnt{background:var(--accent-soft);color:var(--accent)}
+  .body{padding:18px 22px 48px;overflow:auto}
+  .panel[hidden]{display:none}
+  /* primitives */
+  .note{display:flex;gap:9px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--ink-2);line-height:1.65}
+  .note b{color:var(--ink);font-weight:600}
+  .note .k{flex:0 0 auto;width:3px;align-self:stretch;border-radius:2px;background:var(--accent)}
+  .note.warn .k{background:var(--warn)}
+  .note.danger .k{background:var(--err)}
+  .note.ok .k{background:var(--ok)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .card+.card{margin-top:14px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:12.5px;font-weight:600}
+  .card-h .desc{color:var(--muted);font-size:11.5px}
+  .card-h .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .card-b{padding:14px}
+  .card-b.tight{padding:0}
+  .grid2{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:14px;align-items:start}
+  .grid2b{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,330px);gap:14px;align-items:start}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);font-size:12.5px;flex-wrap:wrap}
+  .row:last-child{border-bottom:0}
+  .row .lab{flex:1 1 190px;color:var(--ink-2)}
+  .row .lab b{display:block;color:var(--ink);font-weight:600;margin-bottom:2px}
+  .row .lab span{font-size:11.5px;color:var(--muted);line-height:1.5}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:middle}
+  th{color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.02em;background:var(--surface);white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#fcfcfd}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono);font-size:11.5px}
+  .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:99px;font-size:11px;font-weight:600;line-height:1.5;white-space:nowrap}
+  .pill.k{background:#1d1d24;color:#fff}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.b{background:var(--surface-2);color:var(--ink-2)}
+  .pill.mute{background:var(--surface-2);color:var(--muted)}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.err{background:var(--err-soft);color:var(--err)}
+  .btn{appearance:none;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-family:inherit;
+    font-size:11.5px;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--ink-2);color:var(--ink)}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.p:hover{background:#443bc9;color:#fff}
+  .btn.sm{padding:3px 8px;font-size:11px}
+  .btn.danger{border-color:#e7b9b6;color:var(--err);background:#fff}
+  .btn.danger:hover{background:var(--err-soft);border-color:var(--err)}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:2px}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--ink-2);font-size:12px;padding:5px 10px;border-radius:7px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;border:1px solid var(--line)}
+  .inp{border:1px solid var(--line-strong);border-radius:6px;padding:6px 9px;font-size:12px;font-family:inherit;
+    color:var(--ink);background:#fff;font-variant-numeric:tabular-nums;width:100%}
+  .inp.mono{font-family:var(--mono);font-size:11.5px}
+  .mini{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .mini .m{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:11px 13px;flex:1 1 150px}
+  .mini .m .l{font-size:11px;color:var(--muted);margin-bottom:5px}
+  .mini .m .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.2}
+  .mini .m .d{font-size:10.5px;margin-top:4px;color:var(--muted)}
+  .up{color:var(--ok)}.down{color:var(--err)}.flat{color:var(--muted)}.warnc{color:var(--warn)}
+  /* chain */
+  .chain{display:flex;flex-direction:column;gap:0}
+  .ch{display:grid;grid-template-columns:118px 1fr auto;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);align-items:start}
+  .ch:last-child{border-bottom:0}
+  .ch .s{font-family:var(--mono);font-size:10.5px;color:var(--muted);padding-top:2px}
+  .ch .b{font-size:12px;color:var(--ink-2);line-height:1.55;min-width:0}
+  .ch .b b{color:var(--ink);font-weight:600}
+  .ch .b .kv{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;display:inline-block;margin:1px 3px 1px 0;word-break:break-all}
+  .ch .r{font-size:11px;color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .ch.stop .r{color:var(--err);font-weight:600}
+  .ch.hit .r{color:var(--accent);font-weight:600}
+  .arrowdown{height:8px;border-left:1px solid var(--line-strong);margin-left:56px}
+  /* candidate cards */
+  .cand{border:1px solid var(--line);border-radius:8px;padding:10px 11px;margin-bottom:8px;background:#fff}
+  .cand:last-child{margin-bottom:0}
+  .cand .top{display:flex;align-items:center;gap:7px;margin-bottom:5px;flex-wrap:wrap}
+  .cand .nm{font-weight:600;font-size:12.5px}
+  .cand .id{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .cand .meta{display:flex;gap:12px;font-size:11.5px;color:var(--ink-2);flex-wrap:wrap;margin-top:6px}
+  .cand .meta b{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+  .cand.bad{border-color:#ecc9c6;background:#fffafa}
+  .cand .note-line{margin-top:7px;font-size:11px;color:var(--err);line-height:1.5}
+  .cand .bar{height:5px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-top:8px}
+  .cand .bar i{display:block;height:100%;background:var(--accent)}
+  .cand.bad .bar i{background:var(--err)}
+  /* route list */
+  .rlist{display:flex;flex-direction:column}
+  .rlist button{appearance:none;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:left;padding:11px 13px;
+    font-family:inherit;cursor:pointer;display:block;width:100%}
+  .rlist button:last-child{border-bottom:0}
+  .rlist button:hover{background:#fcfcfd}
+  .rlist button.on{background:var(--accent-soft)}
+  .rlist .t{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+  .rlist .t b{font-size:12.5px;font-weight:600}
+  .rlist .s{font-size:11px;color:var(--muted);line-height:1.45}
+  .rlist .m{display:flex;gap:8px;margin-top:5px;font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  /* form */
+  .form{display:grid;grid-template-columns:110px 1fr;gap:0;font-size:12.5px}
+  .form .k{padding:9px 0;color:var(--muted);border-bottom:1px solid var(--line)}
+  .form .v{padding:9px 0;border-bottom:1px solid var(--line);color:var(--ink);min-width:0}
+  .form .k:last-of-type,.form .v:last-of-type{border-bottom:0}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-strong);border-radius:6px;padding:3px 7px;font-size:11px;background:#fff}
+  .chip .x{color:var(--muted);cursor:pointer}
+  .chip.bad{border-color:#e7b9b6;background:#fffafa;color:var(--err)}
+  .check{border:1px solid var(--line);border-radius:8px;padding:10px 11px;font-size:12px;line-height:1.6;background:var(--surface)}
+  .check.ok{border-color:#c5ded0;background:var(--ok-soft);color:#14563c}
+  .check.bad{border-color:#ecc9c6;background:var(--err-soft);color:#8a1d16}
+  .check .h{font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+  .check ul{margin:4px 0 0;padding-left:16px}
+  .stat3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px;background:#fff}
+  .stat3 div{padding:8px 10px;border-right:1px solid var(--line)}
+  .stat3 div:last-child{border-right:0}
+  .stat3 .l{font-size:10.5px;color:var(--muted);margin-bottom:3px}
+  .stat3 .v{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+  .evolve{display:grid;grid-template-columns:1fr 26px 1fr 26px 1fr;align-items:stretch;margin-bottom:14px}
+  .evolve .st{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fff}
+  .evolve .st.cur{background:var(--surface)}
+  .evolve .st.mid{border-color:#eadfc8;background:#fffdf7}
+  .evolve .st.good{border-color:#c5ded0;background:var(--ok-soft)}
+  .evolve .st .h{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:5px}
+  .evolve .st .b{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:4px}
+  .evolve .st .n{font-size:11px;color:var(--ink-2);line-height:1.55}
+  .evolve .ar{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px}
+  .tbl-key th:nth-child(1){width:124px}
+  .tbl-key th:nth-child(3){width:200px}
+  .tbl-key td:nth-child(3){white-space:nowrap}
+  /* matrix */
+  .mx{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+  .mx th,.mx td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:8px 9px;text-align:left}
+  .mx th:last-child,.mx td:last-child{border-right:0}
+  .mx thead th{background:var(--surface);position:sticky;top:0;z-index:1;font-size:11px;color:var(--muted);font-weight:500}
+  .mx tbody th{background:#fff;font-weight:600;font-size:12px;border-right:1px solid var(--line)}
+  .mx td.cell{cursor:pointer;min-width:96px}
+  .mx td.cell:hover{background:#f7f7ff}
+  .mx td.empty{color:#c9c9d1;text-align:center;cursor:default}
+  .cell .c{display:flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums;font-weight:600}
+  .cell .s{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .sq{width:7px;height:7px;border-radius:2px;flex:0 0 auto}
+  .sq.ok{background:var(--ok)}.sq.warn{background:var(--warn)}.sq.err{background:var(--err)}.sq.idle{background:#c9c9d1}
+  .drawer{border:1px solid var(--line);border-radius:var(--radius);background:#fff;overflow:hidden}
+  .drawer .dh{padding:11px 13px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .drawer .dh .t{font-weight:600;font-size:12.5px;margin-bottom:2px}
+  .drawer .dh .s{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .drawer .db{padding:12px 13px}
+  .drawer .empty{color:var(--muted);font-size:12px;line-height:1.7;padding:6px 0}
+  /* logs */
+  .lrow{cursor:pointer}
+  .lrow.open{background:var(--accent-soft)}
+  .det td{background:#fcfcff;padding:0;border-bottom:1px solid var(--line)}
+  .det .in{padding:12px 14px 14px}
+  .snap{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .snap h4{margin:0 0 6px;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.02em}
+  .snap .list{font-size:11.5px;line-height:1.75;color:var(--ink-2)}
+  .snap .list .x{color:var(--err)}
+  .snap .list .y{color:var(--ok)}
+  .snap code{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:1px 4px}
+  .json{font-family:var(--mono);font-size:11px;line-height:1.65;background:#1b1b21;color:#d8d8e0;border-radius:8px;padding:11px 12px;overflow:auto;white-space:pre}
+  .json .k{color:#a5b4fc}.json .v{color:#9ae6b4}.json .n{color:#f6ad55}.json .s{color:#e2e8f0}
+  /* user view */
+  .mcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .mc{border:1px solid var(--line);border-radius:var(--radius);padding:13px 14px;background:#fff;display:flex;flex-direction:column;gap:9px}
+  .mc .h{display:flex;align-items:flex-start;gap:8px}
+  .mc .h .nm{font-weight:600;font-size:13px;line-height:1.35}
+  .mc .h .id{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
+  .mc .tags{display:flex;gap:5px;flex-wrap:wrap}
+  .mc .lines{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line);margin-top:2px}
+  .mc .ln{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px;cursor:pointer}
+  .mc .ln:last-child{border-bottom:0}
+  .mc .ln .nm2{flex:1;color:var(--ink-2)}
+  .mc .ln .pr{font-variant-numeric:tabular-nums;font-weight:600;font-size:12px}
+  .mc .ln .sl{font-size:10.5px;color:var(--muted)}
+  .mc .ln.sel .nm2{color:var(--ink);font-weight:600}
+  .mc .ln.sel .nm2:before{content:"";display:inline-block;width:5px;height:5px;border-radius:99px;background:var(--accent);margin-right:6px;vertical-align:2px}
+  .code{font-family:var(--mono);font-size:11.5px;line-height:1.7;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px 12px;white-space:pre;overflow:auto;color:var(--ink-2)}
+  .code .c{color:var(--muted)}
+  .code .k{color:var(--accent)}
+  .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+  .hint{font-size:11px;color:var(--muted);line-height:1.6;margin-top:6px}
+  @media (max-width:1180px){
+    .grid2,.grid2b,.split{grid-template-columns:1fr}
+    .mcards{grid-template-columns:1fr}
+    .snap{grid-template-columns:1fr}
+  }
+  @media (max-width:860px){
+    .side{display:none}
+    .grid3{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="dot"></span>apiduo · 路由控制台</div>
+    <div class="grp">路由</div>
+    <button data-tab="diag" class="on">现状诊断<span class="n">4 例</span></button>
+    <button data-tab="routes">线路配置<span class="n">5</span></button>
+    <button data-tab="matrix">覆盖矩阵<span class="n">6×6</span></button>
+    <button data-tab="logs">决策日志<span class="n">7</span></button>
+    <div class="grp">对外</div>
+    <button data-tab="user">用户视角<span class="n">3</span></button>
+    <div class="foot">样本：newapi-0to1 · 近 30 天<br>结论按方向读，不按绝对值读</div>
+  </aside>
+
+  <main class="main">
+    <div class="head">
+      <h1>UAPI 路由</h1>
+      <span class="sub">线路 × 模型 × 端点</span>
+      <span class="spacer"></span>
+      <span class="ctx"><span class="k">scope</span><b>default</b> / 生产</span>
+      <span class="ctx"><span class="k">window</span><b>30 天</b></span>
+      <span class="ctx"><span class="k">keys</span><b>33</b> 个 (group, model) · <b>4</b> 个多渠道</span>
+    </div>
+
+    <nav class="tabs">
+      <button data-tab="diag" class="on">现状诊断</button>
+      <button data-tab="routes">线路配置</button>
+      <button data-tab="matrix">覆盖矩阵</button>
+      <button data-tab="logs">决策日志</button>
+      <button data-tab="user">用户视角</button>
+    </nav>
+
+    <div class="body">
+
+      <!-- ============ 现状诊断 ============ -->
+      <section class="panel" id="panel-diag">
+        <div class="note">
+          <span class="k"></span>
+          <div><b>当前路由键是 (group, model)，不是 model。</b>选择 = 最高优先级层内按 <span class="mono">weight + 10</span> 加权随机。
+          选择过程不包含「该渠道能否服务这个端点」「该渠道当前是否健康」。下面四个案例全部取自生产配置与日志。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>请求解析</h2>
+            <span class="desc">从令牌分组到命中渠道</span>
+            <span class="right">
+              <span class="seg" id="caseSeg">
+                <button data-case="flux" class="on">flux-3</button>
+                <button data-case="seedream">seedream-5</button>
+                <button data-case="minimax">minimaxH3</button>
+                <button data-case="seedance">seedance-1.5</button>
+              </span>
+            </span>
+          </div>
+          <div class="card-b">
+            <div class="grid2">
+              <div>
+                <div class="chain" id="chain"></div>
+              </div>
+              <div>
+                <div id="cands"></div>
+              </div>
+            </div>
+            <div class="note" id="verdict" style="margin:14px 0 0"></div>
+          </div>
+        </div>
+
+        <div class="mini" id="diagMetrics" style="margin-top:14px"></div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="card-h"><h2>键的构成</h2><span class="desc">abilities 表主键</span></div>
+            <div class="card-b tight">
+              <table class="tbl-key">
+                <thead><tr><th>字段</th><th>来源</th><th>是否参与选择</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">group</td><td>令牌 group，回落到用户 group</td><td>是（精确等值）</td></tr>
+                  <tr><td class="mono">model</td><td>body.model / Gemini 路径 / 默认值</td><td>是（失败后剥修饰再试）</td></tr>
+                  <tr><td class="mono">channel_id</td><td>abilities 的第三段主键</td><td>否（选择结果）</td></tr>
+                  <tr><td class="mono">request_path</td><td>请求路径</td><td>仅 58 / 8001 / 图片协议 / WS</td></tr>
+                  <tr><td class="mono">tag</td><td>渠道标签</td><td>否（纯运营分组）</td></tr>
+                  <tr><td class="mono" style="white-space:nowrap">priority·weight</td><td>渠道配置</td><td>是（分层 + 加权随机）</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>误判的四个机制</h2><span class="desc">按影响排序</span></div>
+            <div class="card-b">
+              <div class="row"><div class="lab"><b>1 · 键不含意图</b><span>无法表达「我要哪条线路」「这个请求需要什么能力」。</span></div><span class="pill err">结构性</span></div>
+              <div class="row"><div class="lab"><b>2 · 选择不含健康</b><span>30 天零成功的渠道仍在按 50% 概率接流量。</span></div><span class="pill err">已在发生</span></div>
+              <div class="row"><div class="lab"><b>3 · 重试可跨协议族</b><span>降一层优先级可能换到完全不同的上游实现，甚至换模型。</span></div><span class="pill warn">已配置未触发</span></div>
+              <div class="row"><div class="lab"><b>4 · 降级不可见</b><span>计费按原模型，用户拿到的可能是另一个模型。</span></div><span class="pill warn">计费风险</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 线路配置 ============ -->
+      <section class="panel" id="panel-routes" hidden>
+        <div class="note">
+          <span class="k"></span>
+          <div><b>线路不是渠道的别名，而是「同构池」。</b>同一线路内，同一 (模型, 端点) 的渠道必须协议族一致、能力一致、计费口径一致。
+          保存时校验，不一致直接拒绝——这条不变式才是「唯一」的来源。</div>
+        </div>
+
+        <div class="evolve">
+          <div class="st cur">
+            <div class="h">现状</div>
+            <div class="b">(group, model)</div>
+            <div class="n">同一键对应 N 条渠道，最高优先级内加权随机。协议、能力、健康都不在键里。</div>
+          </div>
+          <div class="ar">→</div>
+          <div class="st mid">
+            <div class="h">你的提案</div>
+            <div class="b">(route, model)</div>
+            <div class="n">线路确定后仍可能挂 N 条异构渠道；唯一性取决于 route 是否是「同构池」。</div>
+          </div>
+          <div class="ar">→</div>
+          <div class="st good">
+            <div class="h">建议</div>
+            <div class="b">(route, model, endpoint)</div>
+            <div class="n">cell 内渠道必须同构，选谁结果都一样。唯一性落在语义层，而不是渠道层。</div>
+          </div>
+        </div>
+
+        <div class="grid2b">
+          <div class="card">
+            <div class="card-h">
+              <h2>线路</h2>
+              <span class="desc">对外稳定标识，与渠道解耦</span>
+              <span class="right"><button class="btn p sm">新建线路</button></span>
+            </div>
+            <div class="card-b tight"><div class="rlist" id="routeList"></div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h2>线路摘要</h2><span class="desc">保存前校验</span></div>
+            <div class="card-b">
+              <div class="stat3" id="routeStats"></div>
+              <div id="checkBox"></div>
+              <div class="hint">校验项：协议族一致 · 端点覆盖 · 计费口径唯一 · 健康度可达。任一不满足则不允许保存。</div>
+              <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">
+                <button class="btn sm" id="toggleConflict">演示：混入一条异构渠道</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2 id="routeTitle">线路详情</h2><span class="desc" id="routeSub"></span></div>
+          <div class="card-b">
+            <div class="split">
+              <div class="form" id="routeForm"></div>
+              <div>
+                <div style="font-size:11px;color:var(--muted);margin-bottom:6px">该线路的模型覆盖</div>
+                <div class="card" style="border-radius:8px">
+                  <table id="routeModels"><thead><tr><th>模型</th><th>端点</th><th class="num">渠道</th><th>状态</th></tr></thead><tbody></tbody></table>
+                </div>
+                <div class="hint">未列出的模型走站点默认线路；线路只声明差异部分，不做全量复制。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>与现状的关系</h2><span class="desc">为什么不是再加一个 group</span></div>
+          <div class="card-b tight">
+            <table>
+              <thead><tr><th>维度</th><th>现状 group</th><th>建议 route</th></tr></thead>
+              <tbody>
+                <tr><td>承担语义</td><td>授权 + 定价 + 路由 + 展示（四合一）</td><td>只承担路由与供给质量</td></tr>
+                <tr><td>粒度</td><td>用户级，令牌可覆盖</td><td>请求级，令牌可设默认</td></tr>
+                <tr><td>变更影响</td><td>改一次影响所有模型</td><td>只影响该线路绑定的模型</td></tr>
+                <tr><td>能否表达协议族</td><td>不能</td><td>能，且是保存时的硬约束</td></tr>
+                <tr><td>组合规模</td><td>18 组 × 338 模型</td><td>线路白名单 + 继承，默认全继承</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 覆盖矩阵 ============ -->
+      <section class="panel" id="panel-matrix" hidden>
+        <div class="note">
+          <span class="k"></span>
+          <div><b>这张表回答运营每天真正的问题：哪个模型的哪个入口没有可用供给。</b>
+          行 = 模型，列 = 端点族，格 = 该决策单元的渠道数与健康。点击格子看渠道明细。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>覆盖矩阵</h2>
+            <span class="desc">线路 <b id="mxRouteName">stable</b> · 只显示该线路绑定的模型</span>
+            <span class="right"><span class="seg" id="mxSeg">
+              <button data-mx="stable" class="on">稳定线路</button>
+              <button data-mx="eco">经济线路</button>
+              <button data-mx="all">全部</button>
+            </span></span>
+          </div>
+          <div class="card-b tight" style="overflow:auto;max-height:520px">
+            <table class="mx" id="mxTable"></table>
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-top:14px">
+          <div class="drawer" id="mxDrawer">
+            <div class="dh"><div class="t">选择一个格子</div><div class="s">cell = (route, model, endpoint)</div></div>
+            <div class="db"><div class="empty">点击左侧矩阵中的任意非空格子，查看该决策单元的渠道、健康与可执行动作。</div></div>
+          </div>
+          <div class="card">
+            <div class="card-h"><h2>图例与动作</h2></div>
+            <div class="card-b">
+              <div class="row"><span class="sq ok"></span><div class="lab"><b>健康</b><span>近 30 天错误率 &lt; 5%，至少 1 条渠道。</span></div></div>
+              <div class="row"><span class="sq warn"></span><div class="lab"><b>退化</b><span>错误率 5%–50%，或仅剩 1 条渠道。</span></div></div>
+              <div class="row"><span class="sq err"></span><div class="lab"><b>不可用</b><span>错误率 &gt; 50%，或 30 天零成功。</span></div></div>
+              <div class="row"><span class="sq idle"></span><div class="lab"><b>未覆盖</b><span>该端点没有声明任何渠道。</span></div></div>
+              <div class="hint" style="margin-top:10px">动作只有三个：补渠道、降级到备用线路、显式拒绝。不做「自动补齐」——供给是运营决策，不是系统猜测。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 决策日志 ============ -->
+      <section class="panel" id="panel-logs" hidden>
+        <div class="note">
+          <span class="k"></span>
+          <div><b>P0 的唯一交付物：让每一次选择都能被回放。</b>没有这张表，后面所有优化都无法证明有效。
+          点任意一行展开决策快照：候选、被谁过滤、为什么是它、有没有降级、按什么价格结算。</div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h2>请求记录</h2>
+            <span class="desc">近 1 小时 · 抽样</span>
+            <span class="right"><span class="pill mute">仅展示路由字段，不含 prompt</span></span>
+          </div>
+          <div class="card-b tight">
+            <table id="logTable">
+              <thead><tr><th>时间</th><th>模型</th><th>线路</th><th>端点</th><th>命中渠道</th><th>结果</th><th class="num">耗时</th><th>降级</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <div style="padding:10px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);line-height:1.6">
+              注：seedance-1.5 → MiniMax H3 的跨模型降级路径已配置，但 30 天内无流量命中，因此没有对应请求记录。
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>决策快照结构</h2><span class="desc">写入日志 other 字段，可检索</span></div>
+          <div class="card-b">
+            <div class="json">{
+  <span class="k">"route_decision"</span>: {
+    <span class="k">"key"</span>: { <span class="k">"tenant"</span>: <span class="v">"default"</span>, <span class="k">"route"</span>: <span class="v">"stable"</span>, <span class="k">"model"</span>: <span class="v">"flux-3"</span>, <span class="k">"endpoint"</span>: <span class="v">"images"</span> },
+    <span class="k">"candidates"</span>: [ <span class="n">38</span>, <span class="n">39</span> ],
+    <span class="k">"filtered"</span>: [ { <span class="k">"id"</span>: <span class="n">44</span>, <span class="k">"by"</span>: <span class="v">"protocol_family"</span> } ],
+    <span class="k">"priority"</span>: <span class="n">0</span>,
+    <span class="k">"hash_bucket"</span>: <span class="n">6114</span>,
+    <span class="k">"selected"</span>: <span class="n">38</span>,
+    <span class="k">"fallback_chain"</span>: [],
+    <span class="k">"served_model"</span>: <span class="v">"flux-3"</span>,
+    <span class="k">"billing"</span>: { <span class="k">"basis"</span>: <span class="v">"model_ratio"</span>, <span class="k">"ratio"</span>: <span class="n">0.02</span> }
+  }
+}</div>
+            <div class="hint">这张快照是 P0 的验收标准：给定一条日志，不改代码就能回答「为什么是这条渠道」。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 用户视角 ============ -->
+      <section class="panel" id="panel-user" hidden>
+        <div class="note">
+          <span class="k"></span>
+          <div><b>用户只需要多学一个词：线路。</b>不选就回落默认线路，行为与今天一致。
+          线路卡片直接回答三件事：多少钱、能做什么、稳不稳。</div>
+        </div>
+
+        <div class="mcards" id="modelCards"></div>
+
+        <div class="grid2" style="margin-top:14px">
+          <div class="card">
+            <div class="card-h"><h2>令牌默认线路</h2><span class="desc">创建 / 编辑令牌时</span></div>
+            <div class="card-b">
+              <div class="form">
+                <div class="k">令牌</div><div class="v"><span class="mono">sk-…9f2c</span> <span class="pill mute" style="margin-left:6px">生产</span></div>
+                <div class="k">默认线路</div><div class="v">
+                  <span class="seg" id="defRoute">
+                    <button class="on">stable</button><button>eco</button><button>official</button>
+                  </span>
+                  <div class="hint">不设置 = 站点默认线路。设置后，未带路由头的请求走该线路。</div>
+                </div>
+                <div class="k">覆盖方式</div><div class="v">请求头 <span class="mono">X-Apiduo-Route</span>，优先级高于令牌默认值。</div>
+                <div class="k">不可见线路</div><div class="v">内部线路（如 video-pro）不出现在选择器里，只有被显式授权时才可用。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h2>调用示例</h2><span class="desc">老客户端零改动</span></div>
+            <div class="card-b">
+              <div class="code"><span class="c"># 不指定线路：与今天完全一致</span>
+curl https://api.example.com/v1/images/generations \
+  -H <span class="k">"Authorization: Bearer $KEY"</span> \
+  -d <span class="k">'{"model":"flux-3","prompt":"…"}'</span>
+
+<span class="c"># 指定线路：可选，不是必须</span>
+curl https://api.example.com/v1/images/generations \
+  -H <span class="k">"Authorization: Bearer $KEY"</span> \
+  -H <span class="k">"X-Apiduo-Route: stable"</span> \
+  -d <span class="k">'{"model":"flux-3","prompt":"…"}'</span></div>
+              <div class="hint">响应头回传 <span class="mono">X-Apiduo-Route</span> 与 <span class="mono">X-Apiduo-Served-Model</span>，客户端可感知降级。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- tab 切换 ---------- */
+  var panels = {
+    diag: document.getElementById('panel-diag'),
+    routes: document.getElementById('panel-routes'),
+    matrix: document.getElementById('panel-matrix'),
+    logs: document.getElementById('panel-logs'),
+    user: document.getElementById('panel-user')
+  };
+  function show(tab){
+    Object.keys(panels).forEach(function(k){ panels[k].hidden = k !== tab; });
+    document.querySelectorAll('.side button[data-tab]').forEach(function(b){
+      b.classList.toggle('on', b.dataset.tab === tab);
+    });
+    document.querySelectorAll('.tabs button[data-tab]').forEach(function(b){
+      b.classList.toggle('on', b.dataset.tab === tab);
+    });
+  }
+  document.querySelectorAll('[data-tab]').forEach(function(b){
+    b.addEventListener('click', function(){ show(b.dataset.tab); });
+  });
+  var initialTab = (location.hash || '').replace('#', '');
+  if (panels[initialTab]) { show(initialTab); }
+
+  /* ---------- 诊断案例 ---------- */
+  var cases = {
+    flux: {
+      model: 'flux-3', group: 'default', endpoint: 'POST /v1/images/generations',
+      abilities: 2, filterNote: 'type=1（OpenAI）不参与 request_path 过滤，无条件通过',
+      priority: '0（单层）', weights: 'w=0 → 每条 10 份权重',
+      pick: 'channel 39 · 50%', call: '9',
+      cands: [
+        {id:39, name:'bfl-flux-precise', type:'1 · OpenAI', calls:9, err:100, msg:'404 Not Found ×9', state:'零成功', bad:true},
+        {id:38, name:'image-adapter-fal-flux3', type:'1 · OpenAI', calls:14, err:29, msg:'Upstream 403 ×4', state:'退化', bad:false}
+      ],
+      verdict: {kind:'danger', text:'<b>两条渠道协议族相同，但一条 30 天零成功、一条 29% 失败。</b>选择器看不到健康度，仍按 50/50 分流——用户重试一次可能就成功，也可能连续失败，表现为「时好时坏」。'},
+      metrics: [{l:'同键渠道', v:'2', d:'abilities 命中 2 条'}, {l:'协议族', v:'1', d:'都是 OpenAI 兼容'}, {l:'零成功渠道', v:'1', d:'仍在接收流量'}]
+    },
+    seedream: {
+      model: 'doubao-seedream-5-0-260128', group: 'default', endpoint: 'POST /v1/images/generations',
+      abilities: 2, filterNote: 'type=1 同样不参与路径过滤',
+      priority: '0（单层）', weights: 'w=0 → 50% / 50%',
+      pick: 'channel 2 · 50%', call: '10',
+      cands: [
+        {id:2, name:'image-adapter-ark-seedream', type:'1 · OpenAI', calls:10, err:100, msg:'500 do request failed ×10', state:'零成功', bad:true},
+        {id:42, name:'image-adapter-senseaudio', type:'1 · OpenAI', calls:9, err:100, msg:'400 计费账户已被冻结 ×9', state:'零成功', bad:true}
+      ],
+      verdict: {kind:'danger', text:'<b>两条渠道都是 100% 失败，且都是配置类错误，不会自愈。</b>自动禁用没有把它们摘掉——结果是这个模型名在生产上「存在但不可用」，用户看到的是随机 500 或「账户冻结」。'},
+      metrics: [{l:'同键渠道', v:'2', d:'abilities 命中 2 条'}, {l:'可用渠道', v:'0', d:'30 天无成功记录'}, {l:'错误类型', v:'2', d:'上游 500 / 计费冻结'}]
+    },
+    minimax: {
+      model: 'minimaxH3', group: 'default', endpoint: 'POST /v1/video/generations',
+      abilities: 2, filterNote: 'type=61（task plugin）参与路径过滤，两条都声明了该端点',
+      priority: '0 / 1（两层）', weights: 'w=1 → 11 / 11',
+      pick: 'channel 35 · 约 85%', call: '691',
+      cands: [
+        {id:35, name:'Aivideomaker Direct', type:'61 · task plugin', calls:691, err:0, msg:'无错误', state:'健康', bad:false},
+        {id:44, name:'Aivideomaker Video_copy', type:'61 · task plugin', calls:117, err:0, msg:'无错误', state:'健康', bad:false}
+      ],
+      verdict: {kind:'ok', text:'<b>这是健康的对照组：同模型两条渠道，协议族一致、都健康。</b>分流带来的只是容量分摊，没有语义差异——说明「同模型多渠道」本身不是问题，异构才是。'},
+      metrics: [{l:'同键渠道', v:'2', d:'同一插件类型'}, {l:'错误率', v:'0%', d:'808 次调用零错误'}, {l:'分流比', v:'6:1', d:'按权重而非 1:1'}]
+    },
+    seedance: {
+      model: 'doubao-seedance-1-5-pro-251215', group: 'default', endpoint: 'POST /v1/video/generations',
+      abilities: 3, filterNote: 'type=61 与 type=45 走不同过滤分支，三条都会进入候选',
+      priority: '10 / 9 / 1（三层）', weights: 'w=0 → 同层内等概率',
+      pick: 'channel 44 · 优先', call: '0',
+      cands: [
+        {id:44, name:'Aivideomaker Direct', type:'61 · task plugin', calls:0, err:0, msg:'30 天无流量', state:'待验证', bad:false},
+        {id:35, name:'Aivideomaker Video_copy', type:'61 · task plugin', calls:0, err:0, msg:'30 天无流量', state:'待验证', bad:false},
+        {id:7, name:'seedance-redirect-to-minimaxh3', type:'45 · VolcEngine', calls:0, err:0, msg:'降级路径：Seedance → MiniMax H3', state:'跨模型', bad:true}
+      ],
+      verdict: {kind:'warn', text:'<b>这是一条已经装好、尚未触发的雷。</b>前两层（p10 / p9）失败后，重试会降到 p1 的火山渠道，把 Seedance 请求交给 MiniMax H3——协议族变了，模型也变了，而计费仍按 Seedance 结算。'},
+      metrics: [{l:'同键渠道', v:'3', d:'跨两种渠道类型'}, {l:'协议族', v:'2', d:'task plugin / VolcEngine'}, {l:'降级风险', v:'是', d:'跨模型且未改价'}]
+    }
+  };
+
+  var caseKey = 'flux';
+
+  function renderDiag(){
+    var c = cases[caseKey];
+
+    var chain = document.getElementById('chain');
+    chain.innerHTML =
+      row('1 · tenant', '<span class="kv">token.group</span> → <b>' + c.group + '</b>', '解析自令牌') +
+      arrow() +
+      row('2 · key', '<span class="kv">abilities(group=' + c.group + ', model=' + c.model + ')</span> → <b>' + c.abilities + ' 条渠道</b>', '精确匹配') +
+      arrow() +
+      row('3 · filter', c.filterNote, '过滤后 ' + c.abilities + ' 条') +
+      arrow() +
+      row('4 · priority', c.priority + ' · ' + c.weights, '取最高层') +
+      arrow() +
+      row('5 · pick', '加权随机 → <b>' + c.pick + '</b>', '无健康权重', 'hit');
+
+    document.getElementById('cands').innerHTML = c.cands.map(function(x){
+      return '<div class="cand ' + (x.bad ? 'bad' : '') + '">' +
+        '<div class="top"><span class="nm">' + x.name + '</span><span class="id">#' + x.id + '</span>' +
+        '<span class="pill ' + (x.err === 0 ? 'ok' : x.err >= 90 ? 'err' : 'warn') + '">' + x.state + '</span></div>' +
+        '<div class="meta"><span>' + x.type + '</span><span>30d <b>' + x.calls + '</b> 次</span><span>错误率 <b>' + x.err + '%</b></span></div>' +
+        '<div class="note-line" style="color:' + (x.err === 0 ? 'var(--muted)' : 'var(--err)') + '">' + x.msg + '</div>' +
+        '<div class="bar"><i style="width:' + Math.max(x.err, 2) + '%"></i></div>' +
+        '</div>';
+    }).join('');
+
+    var v = document.getElementById('verdict');
+    v.className = 'note ' + (c.verdict.kind === 'ok' ? 'ok' : c.verdict.kind === 'warn' ? 'warn' : 'danger');
+    v.innerHTML = '<span class="k"></span><div>' + c.verdict.text + '</div>';
+
+    document.getElementById('diagMetrics').innerHTML = c.metrics.map(function(m){
+      return '<div class="m"><div class="l">' + m.l + '</div><div class="v">' + m.v + '</div><div class="d">' + m.d + '</div></div>';
+    }).join('');
+  }
+  function row(s, b, r, cls){
+    return '<div class="ch ' + (cls || '') + '"><div class="s">' + s + '</div><div class="b">' + b + '</div><div class="r">' + r + '</div></div>';
+  }
+  function arrow(){ return ''; }
+
+  document.querySelectorAll('#caseSeg button').forEach(function(b){
+    b.addEventListener('click', function(){
+      caseKey = b.dataset.case;
+      document.querySelectorAll('#caseSeg button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      renderDiag();
+    });
+  });
+  renderDiag();
+
+  /* ---------- 线路 ---------- */
+  var routes = [
+    {slug:'default', name:'默认线路', vis:'内部', proto:'混合（继承现状）', policy:'model_ratio',
+     models:33, channels:12, state:'ok', note:'未指定线路时的兜底，等价于今天的 (group, model) 选择',
+     form:{'稳定标识':'default','可见性':'内部（不出现在用户选择器）','协议族':'不限制（继承渠道）','计费口径':'继承模型倍率','降级策略':'同 cell 内换渠道'},
+     modelsRows:[['全部已上架模型','继承 abilities','12','继承现状']]},
+    {slug:'stable', name:'稳定线路', vis:'公开', proto:'openai', policy:'model_ratio',
+     models:2, channels:2, state:'ok', note:'图片生成专用，只收 OpenAI 兼容渠道',
+     form:{'稳定标识':'stable','可见性':'公开','协议族':'openai（由绑定渠道推导）','计费口径':'model_ratio','降级策略':'同 cell 内换渠道；不跨模型'},
+     modelsRows:[['flux-3','images','2','健康'],['doubao-seedream-5-0-260128','images','2','不可用']]},
+    {slug:'eco', name:'经济线路', vis:'公开', proto:'openai', policy:'model_ratio',
+     models:3, channels:3, state:'bad', note:'混入了 task_plugin 渠道，保存被阻断',
+     conflict:true,
+     form:{'稳定标识':'eco','可见性':'公开','协议族':'混合：openai × task_plugin','计费口径':'model_ratio','降级策略':'同 cell 内换渠道'},
+     modelsRows:[['flux-3','images','2','健康'],['minimaxH3','video','1','健康']]},
+    {slug:'official', name:'官方线路', vis:'公开', proto:'mixed', policy:'model_ratio',
+     models:14, channels:6, state:'ok', note:'按供应商官方接口接入，价格高、能力全',
+     form:{'稳定标识':'official','可见性':'公开','协议族':'按模型分别声明','计费口径':'model_ratio','降级策略':'不降级，直接失败'},
+     modelsRows:[['claude-sonnet-4-5','messages','2','健康'],['gpt-5.1','chat','2','健康'],['gemini-3.1-pro','chat','1','退化']]},
+    {slug:'video-pro', name:'视频专业线', vis:'内部', proto:'task_plugin', policy:'fixed',
+     models:4, channels:4, state:'ok', note:'只对签约客户开放，按次计费',
+     form:{'稳定标识':'video-pro','可见性':'内部（需显式授权）','协议族':'task_plugin','计费口径':'fixed（按次）','降级策略':'不跨模型'},
+     modelsRows:[['doubao-seedance-1-5-pro-251215','video','2','待验证'],['minimaxH3','video','2','健康']]}
+  ];
+
+  var curRoute = 'stable';
+  var conflictOn = false;
+
+  function routeBySlug(s){ return routes.filter(function(r){ return r.slug === s; })[0]; }
+
+  function renderRouteList(){
+    document.getElementById('routeList').innerHTML = routes.map(function(r){
+      return '<button data-route="' + r.slug + '" class="' + (r.slug === curRoute ? 'on' : '') + '">' +
+        '<div class="t"><b>' + r.name + '</b>' +
+        '<span class="pill ' + (r.vis === '公开' ? 'a' : 'mute') + '">' + r.vis + '</span>' +
+        (r.state === 'bad' ? '<span class="pill err">校验失败</span>' : '') + '</div>' +
+        '<div class="s">' + r.note + '</div>' +
+        '<div class="m"><span>' + r.slug + '</span><span>' + r.models + ' 模型</span><span>' + r.channels + ' 渠道</span><span>' + r.proto + '</span></div>' +
+        '</button>';
+    }).join('');
+    document.querySelectorAll('#routeList button').forEach(function(b){
+      b.addEventListener('click', function(){
+        curRoute = b.dataset.route;
+        conflictOn = false;
+        renderRouteList(); renderRouteDetail();
+      });
+    });
+  }
+
+  function renderRouteDetail(){
+    var r = routeBySlug(curRoute);
+    document.getElementById('routeTitle').textContent = r.name;
+    document.getElementById('routeSub').textContent = r.slug + ' · ' + r.vis + ' · ' + r.models + ' 模型 / ' + r.channels + ' 渠道';
+
+    var f = '';
+    Object.keys(r.form).forEach(function(k){
+      f += '<div class="k">' + k + '</div><div class="v">' + r.form[k] + '</div>';
+    });
+
+    var chips = '';
+    if (r.slug === 'stable' || (r.slug === 'eco' && conflictOn)) {
+      chips = '<div class="chips">' +
+        '<span class="chip">#38 image-adapter-fal-flux3 <span class="pill mute">openai</span></span>' +
+        '<span class="chip">#39 bfl-flux-precise <span class="pill mute">openai</span></span>' +
+        (conflictOn || r.slug === 'eco' ? '<span class="chip bad">#44 Aivideomaker Video_copy <span class="pill err">task_plugin</span></span>' : '') +
+        '</div>';
+      f += '<div class="k">绑定渠道</div><div class="v">' + chips + '</div>';
+    } else {
+      f += '<div class="k">绑定渠道</div><div class="v"><span class="chips"><span class="chip">按 tag 绑定：' + r.slug + '</span></span></div>';
+    }
+    document.getElementById('routeForm').innerHTML = f;
+
+    var bad = (r.state === 'bad') || (r.slug === 'stable' && conflictOn);
+    document.getElementById('routeStats').innerHTML =
+      '<div><div class="l">模型</div><div class="v">' + r.models + '</div></div>' +
+      '<div><div class="l">渠道</div><div class="v">' + r.channels + '</div></div>' +
+      '<div><div class="l">协议族</div><div class="v" style="font-size:11.5px;font-weight:600;line-height:1.5">' + (bad ? '2 种' : '1 种') + '</div></div>';
+    var box = document.getElementById('checkBox');
+    if (bad) {
+      box.className = 'check bad';
+      box.innerHTML = '<div class="h">拒绝保存：协议族不一致</div>' +
+        '<ul><li><b>cell</b> (' + r.slug + ', flux-3, images) 命中 3 条渠道</li>' +
+        '<li>#38 / #39 为 <span class="mono">openai</span>，#44 为 <span class="mono">task_plugin</span></li>' +
+        '<li>同一 cell 内混合协议族会让「选谁」重新变成语义差异</li></ul>' +
+        '<div style="margin-top:6px">处理方式：把 #44 移到 <b>video-pro</b>，或为它单独建一条线路。</div>';
+    } else {
+      box.className = 'check ok';
+      box.innerHTML = '<div class="h">通过：可以保存</div>' +
+        '<ul><li>协议族一致（<span class="mono">openai</span> × ' + (r.slug === 'stable' ? 2 : 1) + '）</li>' +
+        '<li>端点覆盖：images 2/2，video 0/0</li>' +
+        '<li>计费口径唯一：model_ratio</li>' +
+        '<li>健康度不阻断保存：1 条零成功，保存后由 P1 摘除</li></ul>';
+    }
+
+    var tb = document.querySelector('#routeModels tbody');
+    tb.innerHTML = r.modelsRows.map(function(x){
+      var st = x[3];
+      var cls = st === '健康' ? 'ok' : st === '不可用' ? 'err' : st === '退化' ? 'warn' : 'mute';
+      return '<tr><td class="mono">' + x[0] + '</td><td>' + x[1] + '</td><td class="num">' + x[2] + '</td>' +
+        '<td><span class="pill ' + cls + '">' + st + '</span></td></tr>';
+    }).join('');
+  }
+
+  document.getElementById('toggleConflict').addEventListener('click', function(){
+    conflictOn = !conflictOn;
+    renderRouteDetail();
+  });
+
+  renderRouteList();
+  renderRouteDetail();
+
+  /* ---------- 覆盖矩阵 ---------- */
+  var eps = ['chat','messages','responses','images','video','embeddings'];
+  var matrix = {
+    'flux-3': {images:{n:2, err:64, state:'err', sub:'可用 1/2', ch:[
+      {id:38,name:'image-adapter-fal-flux3',proto:'openai',err:29,calls:14,cap:'size / n'},
+      {id:39,name:'bfl-flux-precise',proto:'openai',err:100,calls:9,cap:'size / resolution'}
+    ]}},
+    'doubao-seedream-5-0-260128': {images:{n:2, err:100, state:'err', sub:'可用 0/2', ch:[
+      {id:2,name:'image-adapter-ark-seedream',proto:'openai',err:100,calls:10,cap:'1K–4K'},
+      {id:42,name:'image-adapter-senseaudio',proto:'openai',err:100,calls:9,cap:'—'}
+    ]}},
+    'minimaxH3': {video:{n:2, err:0, state:'ok', sub:'可用 2/2', ch:[
+      {id:35,name:'Aivideomaker Direct',proto:'task_plugin',err:0,calls:691,cap:'异步任务'},
+      {id:44,name:'Aivideomaker Video_copy',proto:'task_plugin',err:0,calls:117,cap:'异步任务'}
+    ]}},
+    'doubao-seedance-1-5-pro-251215': {video:{n:3, err:0, state:'warn', sub:'含 1 条跨模型', ch:[
+      {id:44,name:'Aivideomaker Direct',proto:'task_plugin',err:0,calls:0,cap:'异步任务'},
+      {id:35,name:'Aivideomaker Video_copy',proto:'task_plugin',err:0,calls:0,cap:'异步任务'},
+      {id:7,name:'seedance-redirect-to-minimaxh3',proto:'volcengine',err:0,calls:0,cap:'跨模型降级'}
+    ]}},
+    'qwen3.8-max': {chat:{n:1, err:0, state:'ok', sub:'可用 1/1', ch:[
+      {id:12,name:'qwen2api-text',proto:'openai',err:0,calls:0,cap:'tools / stream'}
+    ]}, responses:{n:0, err:0, state:'idle', sub:'0 条渠道', ch:[]}},
+    'claude-sonnet-4-5': {chat:{n:1, err:0, state:'ok', sub:'可用 1/1', ch:[
+      {id:18,name:'anthropic-official',proto:'anthropic',err:0,calls:0,cap:'tools / thinking'}
+    ]}, messages:{n:1, err:0, state:'ok', sub:'可用 1/1', ch:[
+      {id:18,name:'anthropic-official',proto:'anthropic',err:0,calls:0,cap:'tools / thinking'}
+    ]}, responses:{n:1, err:0, state:'ok', sub:'可用 1/1', ch:[
+      {id:18,name:'anthropic-official',proto:'anthropic',err:0,calls:0,cap:'转换到 messages'}
+    ]}}
+  };
+
+  function renderMatrix(){
+    var t = document.getElementById('mxTable');
+    var head = '<thead><tr><th>模型</th>' + eps.map(function(e){ return '<th>' + e + '</th>'; }).join('') + '</tr></thead>';
+    var body = '<tbody>';
+    Object.keys(matrix).forEach(function(model){
+      body += '<tr><th class="mono" style="font-weight:600">' + model + '</th>';
+      eps.forEach(function(e){
+        var cell = matrix[model][e];
+        if (!cell) { body += '<td class="empty">—</td>'; return; }
+        if (cell.n === 0) {
+          body += '<td class="cell" data-model="' + model + '" data-ep="' + e + '"><div class="c"><span class="sq idle"></span>未覆盖</div><div class="s">0 条渠道</div></td>';
+          return;
+        }
+        body += '<td class="cell" data-model="' + model + '" data-ep="' + e + '"><div class="c">' +
+          '<span class="sq ' + cell.state + '"></span>' + cell.n + ' 条</div>' +
+          '<div class="s">' + cell.sub + '</div></td>';
+      });
+      body += '</tr>';
+    });
+    body += '</tbody>';
+    t.innerHTML = head + body;
+    t.querySelectorAll('td.cell').forEach(function(td){
+      td.addEventListener('click', function(){ openCell(td.dataset.model, td.dataset.ep); });
+    });
+  }
+
+  function openCell(model, ep){
+    var cell = (matrix[model] || {})[ep];
+    var d = document.getElementById('mxDrawer');
+    if (!cell) { return; }
+    var rows = cell.ch.length ? cell.ch.map(function(c){
+      var cls = c.err === 0 ? 'ok' : c.err >= 90 ? 'err' : 'warn';
+      return '<div class="cand ' + (c.err >= 90 ? 'bad' : '') + '" style="margin-bottom:6px">' +
+        '<div class="top"><span class="nm">' + c.name + '</span><span class="id">#' + c.id + '</span>' +
+        '<span class="pill ' + cls + '">' + (c.err === 0 ? '健康' : c.err + '% 失败') + '</span></div>' +
+        '<div class="meta"><span class="mono">' + c.proto + '</span><span>30d <b>' + c.calls + '</b> 次</span><span>能力 <b>' + c.cap + '</b></span></div>' +
+        '</div>';
+    }).join('') : '<div class="empty">该端点没有声明任何渠道。要么补渠道，要么在协议矩阵里显式拒绝。</div>';
+
+    d.innerHTML = '<div class="dh"><div class="t">' + (model) + ' · ' + ep + '</div>' +
+      '<div class="s">cell = (stable, ' + model + ', ' + ep + ')</div></div>' +
+      '<div class="db">' + rows +
+      '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">' +
+      '<button class="btn sm p">补渠道</button>' +
+      '<button class="btn sm">降级到备用线路</button>' +
+      '<button class="btn sm danger">显式拒绝</button></div>' +
+      '<div class="hint">这三件事必须由运营决定：系统只负责把缺口摆在台面上。</div>' +
+      '</div>';
+  }
+
+  document.querySelectorAll('#mxSeg button').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('#mxSeg button').forEach(function(x){ x.classList.toggle('on', x === b); });
+      document.getElementById('mxRouteName').textContent = b.dataset.mx === 'all' ? '全部线路' : b.dataset.mx;
+    });
+  });
+
+  renderMatrix();
+
+  /* ---------- 决策日志 ---------- */
+  var logs = [
+    {t:'14:58:22', model:'flux-3', route:'stable', ep:'images', ch:'#38', proto:'openai', ok:true, ms:6120, deg:'—',
+      snap:{key:'(default, stable, flux-3, images)', cands:'#38 · #39', filtered:'#44（协议族 task_plugin）', hash:'6114', billing:'model_ratio × 0.02', note:'同 cell 内健康度优先，38 错误率 29% < 39 的 100%'}},
+    {t:'14:57:41', model:'flux-3', route:'stable', ep:'images', ch:'#39', proto:'openai', ok:false, ms:840, deg:'—',
+      snap:{key:'(default, stable, flux-3, images)', cands:'#38 · #39', filtered:'无', hash:'6114', billing:'未计费', note:'历史请求：健康闸门上线前，100% 失败的渠道仍会被命中'}},
+    {t:'14:55:03', model:'minimaxH3', route:'video-pro', ep:'video', ch:'#35', proto:'task_plugin', ok:true, ms:41200, deg:'—',
+      snap:{key:'(default, video-pro, minimaxH3, video)', cands:'#35 · #44', filtered:'无', hash:'2210', billing:'按次 fixed', note:'两条渠道均健康，哈希把同一会话固定在 35'}},
+    {t:'14:52:18', model:'doubao-seedream-5-0-260128', route:'eco', ep:'images', ch:'#42', proto:'openai', ok:false, ms:310, deg:'—',
+      snap:{key:'(default, eco, seedream-5, images)', cands:'#2 · #42', filtered:'无', hash:'7781', billing:'未计费', note:'配置类错误（计费账户冻结），不应进入重试阶梯，应直接摘除'}},
+    {t:'14:49:55', model:'flux-3', route:'stable', ep:'images', ch:'#38', proto:'openai', ok:true, ms:5210, deg:'—',
+      snap:{key:'(default, stable, flux-3, images)', cands:'#38 · #39', filtered:'#44（协议族 task_plugin）', hash:'6114', billing:'model_ratio × 0.02', note:'同一 tenant + route + model 命中同一个哈希桶：行为稳定、缓存可复用，优于加权随机'}},
+    {t:'14:47:30', model:'claude-sonnet-4-5', route:'official', ep:'messages', ch:'#18', proto:'anthropic', ok:true, ms:2210, deg:'—',
+      snap:{key:'(default, official, claude-sonnet-4-5, messages)', cands:'#18', filtered:'无', hash:'—（单渠道）', billing:'model_ratio × 3.0', note:'原生协议，无转换'}},
+    {t:'14:45:12', model:'qwen3.8-max', route:'stable', ep:'chat', ch:'#12', proto:'openai', ok:true, ms:1730, deg:'—',
+      snap:{key:'(default, stable, qwen3.8-max, chat)', cands:'#12', filtered:'无', hash:'—（单渠道）', billing:'model_ratio × 1.0', note:'单渠道，退化为直连'}}
+  ];
+
+  function renderLogs(){
+    var tb = document.querySelector('#logTable tbody');
+    tb.innerHTML = logs.map(function(l, i){
+      return '<tr class="lrow" data-i="' + i + '">' +
+        '<td class="mono">' + l.t + '</td>' +
+        '<td class="mono">' + l.model + '</td>' +
+        '<td><span class="pill ' + (l.route === 'stable' ? 'a' : l.route === 'eco' ? 'b' : 'mute') + '">' + l.route + '</span></td>' +
+        '<td>' + l.ep + '</td>' +
+        '<td class="mono">' + l.ch + ' <span style="color:var(--muted)">' + l.proto + '</span></td>' +
+        '<td>' + (l.ok ? '<span class="pill ok">成功</span>' : '<span class="pill err">失败</span>') + '</td>' +
+        '<td class="num">' + l.ms + ' ms</td>' +
+        '<td>' + (l.deg === '—' ? '<span class="flat">—</span>' : '<span class="pill err">' + l.deg + '</span>') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    tb.querySelectorAll('tr.lrow').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        var i = Number(tr.dataset.i);
+        var open = tr.classList.contains('open');
+        tb.querySelectorAll('tr.det').forEach(function(x){ x.remove(); });
+        tb.querySelectorAll('tr.lrow').forEach(function(x){ x.classList.remove('open'); });
+        if (open) { return; }
+        tr.classList.add('open');
+        var l = logs[i];
+        var det = document.createElement('tr');
+        det.className = 'det';
+        det.innerHTML = '<td colspan="8"><div class="in"><div class="snap">' +
+          '<div><h4>决策链</h4><div class="list">' +
+            '键 <code>' + l.snap.key + '</code><br>' +
+            '候选 <code>' + l.snap.cands + '</code><br>' +
+            '被过滤 <span class="x">' + l.snap.filtered + '</span><br>' +
+            '哈希桶 <code>' + l.snap.hash + '</code><br>' +
+            '计费 <code>' + l.snap.billing + '</code>' +
+          '</div></div>' +
+          '<div><h4>判定</h4><div class="list">' + l.snap.note + '</div>' +
+          '<div class="hint">快照字段写入日志 other，可按 request_id 检索，不需要复现请求。</div></div>' +
+        '</div></div></td>';
+        tr.parentNode.insertBefore(det, tr.nextSibling);
+      });
+    });
+  }
+  renderLogs();
+
+  /* ---------- 用户视角 ---------- */
+  var models = [
+    {name:'flux-3', id:'bfl · 文生图', tags:['size','n≤4','同步'],
+     lines:[{n:'stable', p:'¥0.14 / 张', s:'99.2%'},{n:'eco', p:'¥0.09 / 张', s:'97.1%'}]},
+    {name:'minimaxH3', id:'异步视频', tags:['异步任务','10s','720p'],
+     lines:[{n:'video-pro', p:'¥1.20 / 次', s:'99.8%'},{n:'stable', p:'¥1.60 / 次', s:'98.4%'}]},
+    {name:'claude-sonnet-4-5', id:'anthropic', tags:['tools','vision','thinking'],
+     lines:[{n:'official', p:'¥21 / 1M in', s:'99.9%'},{n:'eco', p:'¥6 / 1M in', s:'96.2%'}]}
+  ];
+
+  document.getElementById('modelCards').innerHTML = models.map(function(m, idx){
+    var lines = m.lines.map(function(l, i){
+      return '<div class="ln ' + (i === 0 ? 'sel' : '') + '"><span class="nm2">' + l.n + '</span>' +
+        '<span class="pr">' + l.p + '</span><span class="sl">' + l.s + '</span></div>';
+    }).join('');
+    return '<div class="mc"><div class="h"><div><div class="nm">' + m.name + '</div><div class="id">' + m.id + '</div></div></div>' +
+      '<div class="tags">' + m.tags.map(function(t){ return '<span class="pill b">' + t + '</span>'; }).join('') + '</div>' +
+      '<div class="lines">' + lines + '</div>' +
+      '<div class="hint">点线路查看该线路的可用性与限制；未选 = 令牌默认。</div></div>';
+  }).join('');
+
+  document.querySelectorAll('.mc .ln').forEach(function(ln){
+    ln.addEventListener('click', function(){
+      var siblings = ln.parentNode.querySelectorAll('.ln');
+      siblings.forEach(function(x){ x.classList.remove('sel'); });
+      ln.classList.add('sel');
+    });
+  });
+
+  document.querySelectorAll('#defRoute button').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('#defRoute button').forEach(function(x){ x.classList.toggle('on', x === b); });
+    });
+  });
+
+})();
+</script>
+</body>
+</html>

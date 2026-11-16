@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fcfcfa">
+<title>错误看板 · apiduo</title>
+<meta name="description" content="apiduo 网关的错误看板：24 小时失败概览、错误清单、渠道与重试。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* 角色: display 24 / section 18 / body 14 / label 11 · 相邻 ≥1.27
+   密度: operate 模式, 表格 13px · 间距: 4 8 12 16 24 32 48 64 */
+:root {
+  --paper: #fcfcfa;
+  --paper-2: #f4f4f1;
+  --rule: #e4e4de;
+  --rule-2: #cfcfc7;
+  --ink: #1a1c1e;
+  --ink-2: #45484b;
+  --muted: #6b7076;
+  --accent: #9a3412;
+  --accent-soft: #fdf0ea;
+  --ok: #3f6f4a;
+  --err: #a4161a;
+
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px;
+
+  --f-label: 12px;
+  --f-body: 14px;
+  --f-section: 18px;
+  --f-display: 24px;
+
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-press: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur: 200ms;
+  --dur-fast: 160ms;
+  --dur-exit: 180ms;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+html { scrollbar-color: var(--rule-2) var(--paper); scrollbar-width: thin; }
+.skip {
+  position: absolute; left: var(--s-4); top: -100px; z-index: 60;
+  background: var(--ink); color: var(--paper); padding: var(--s-2) var(--s-4);
+  font-size: var(--f-label); text-decoration: none;
+  transition: top var(--dur-fast) var(--ease-out);
+}
+.skip:focus-visible { top: var(--s-2); outline-offset: -3px; outline-color: var(--paper); }
+body { -webkit-tap-highlight-color: transparent; }
+/* 桌面端抑制橡皮筋：滚到看板尽头时整页跟着弹很晃眼；触屏保留下拉刷新 */
+@media (pointer: fine) { html { overscroll-behavior: none; } }
+button, [role="tab"], a, tr.click, input, select { touch-action: manipulation; }
+/* 按压：位移比变色更接近物理反馈，16ms 起步才跟手 */
+button, .btn-clear { transition: transform var(--dur-fast) var(--ease-press); }
+button:active:not(:disabled), .btn-clear:active { transform: scale(0.972); }
+@media (prefers-reduced-motion: reduce) { button:active, .btn-clear:active { transform: none; } }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--f-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  caret-color: var(--accent);
+}
+::selection { background: var(--accent-soft); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; text-wrap: balance; }
+h1 { font-size: var(--f-display); }
+h2 { font-size: var(--f-section); }
+h3 { font-size: var(--f-body); font-weight: 500; }
+p { margin: 0; text-wrap: pretty; }
+button, input, select { font: inherit; color: inherit; }
+svg { display: block; }
+[hidden] { display: none !important; }
+.view { animation: viewfade 140ms var(--ease) both; }
+@keyframes viewfade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .view { animation: none; } }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); font-size: 13px; }
+
+/* ── 顶栏 ─────────────────────────────────── */
+.bar {
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  position: sticky; top: 0; z-index: 30;
+}
+.mark {
+  font-family: var(--mono); font-size: var(--f-label); letter-spacing: 0.04em;
+  text-transform: lowercase; color: var(--muted); text-decoration: none;
+  padding-right: var(--s-3); border-right: 1px solid var(--rule);
+}
+.mark:hover { color: var(--accent); }
+.bar h1 { font-size: var(--f-body); font-weight: 500; letter-spacing: 0; color: var(--ink-2); white-space: nowrap; }
+.verdict {
+  flex: 1; min-width: 0;
+  color: var(--ink-2); font-size: var(--f-body);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.verdict b { color: var(--ink); font-weight: 500; }
+.verdict .num { color: var(--ink); }
+.range { display: flex; gap: var(--s-3); flex: 0 0 auto; }
+.range button {
+  appearance: none; border: 0; background: none; padding: var(--s-1) 0;
+  font-size: var(--f-label); color: var(--muted); cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+.range button:hover { color: var(--ink-2); }
+.range button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+/* ── 标签页 ───────────────────────────────── */
+.tabs {
+  display: flex; gap: var(--s-5); padding: 0 var(--s-5);
+  border-bottom: 1px solid var(--rule); background: var(--paper);
+  position: sticky; top: 46px; z-index: 29;
+}
+.tabs button {
+  appearance: none; border: 0; background: none; padding: var(--s-3) 0;
+  font-size: var(--f-body); color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tabs button:hover { color: var(--ink-2); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+main { max-width: 1220px; margin-inline: auto; padding: var(--s-7) var(--s-5) var(--s-8); }
+
+/* ── 概览：一句话 + 刻度尺 ─────────────────── */
+.brief {
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--s-7); align-items: start;
+  padding-bottom: var(--s-6); border-bottom: 1px solid var(--rule);
+}
+@media (max-width: 900px) { .brief { grid-template-columns: 1fr; gap: var(--s-5); } }
+.brief-line {
+  font-size: var(--f-section); line-height: 1.5; font-weight: 400;
+  color: var(--ink); max-width: 40ch;
+}
+.brief-line b { font-weight: 500; }
+.brief-line .num { font-variant-numeric: tabular-nums; }
+.brief-sub {
+  margin-top: var(--s-3); color: var(--muted); font-size: var(--f-label);
+  max-width: 52ch; line-height: 1.6;
+}
+
+.ticks { border-bottom: 1px solid var(--rule-2); padding-bottom: var(--s-2); }
+.ticks-bars { display: flex; align-items: flex-end; gap: 2px; height: 72px; }
+.ticks-bars i {
+  flex: 1 1 0; min-width: 0; display: block; background: #c2c2b9;
+  border-radius: 1px 1px 0 0; transform-origin: 50% 100%;
+  animation: grow var(--dur) var(--ease) both;
+}
+.ticks-bars i.hot { background: var(--accent); }
+@keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .ticks-bars i { animation: none; } }
+.ticks-axis { display: flex; justify-content: space-between; margin-top: var(--s-1); }
+.ticks-axis span { font-family: var(--mono); font-size: var(--f-label); color: var(--muted); }
+.ticks-cap { margin-top: var(--s-2); font-size: var(--f-label); color: var(--muted); }
+.ticks-nil { flex: 1; align-self: center; text-align: center; font-size: var(--f-label); color: var(--muted); }
+
+/* ── 区块 ─────────────────────────────────── */
+.section { margin-top: var(--s-7); }
+.brief + .section { margin-top: var(--s-7); }
+.section > h2 { max-width: 26ch; }
+.section > .sub { margin-top: var(--s-2); color: var(--muted); font-size: var(--f-label); max-width: 60ch; }
+
+/* ── 表格 ─────────────────────────────────── */
+.table-wrap { margin-top: var(--s-4); overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: var(--s-2) var(--s-3); vertical-align: middle; }
+th {
+  font-size: var(--f-label); font-weight: 500; color: var(--muted);
+  border-bottom: 1px solid var(--rule-2); white-space: nowrap;
+}
+td { font-size: 14px; border-bottom: 1px solid var(--rule); }
+th:first-child, td:first-child { padding-left: 0; }
+th:last-child, td:last-child { padding-right: 0; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+tr.click { cursor: pointer; }
+tr.click:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+tr.click td { transition: background-color 90ms linear; }
+@media (hover: hover) and (pointer: fine) {
+  tr.click:hover td { background: var(--paper-2); }
+}
+tr.click:active td { background: var(--accent-soft); }
+.code { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.msg { color: var(--ink-2); max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 行内比例条：数据本身，不是装饰 */
+.share { display: flex; align-items: center; gap: var(--s-2); }
+.share-bar { flex: 1 1 auto; height: 6px; background: var(--paper-2); position: relative; min-width: 48px; }
+.share-bar i { position: absolute; inset: 0 auto 0 0; background: var(--rule-2); }
+.share-bar i.hot { background: var(--accent); }
+.share-num { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+
+/* 重试表：四行，比例条在格内 */
+.retry-bar { height: 8px; display: flex; gap: 1px; background: var(--paper-2); min-width: 90px; }
+.retry-bar i { display: block; }
+.retry-bar i.ok { background: var(--ok); }
+.retry-bar i.fail { background: var(--rule-2); }
+
+/* ── 空/错状态 ────────────────────────────── */
+.notice {
+  padding: var(--s-4); background: var(--paper-2);
+  font-size: 13px; color: var(--ink-2); border-radius: 2px;
+}
+.notice b { font-weight: 500; color: var(--ink); }
+.empty { padding: var(--s-6) 0; color: var(--muted); font-size: 13px; }
+
+/* ── 四态：加载 / 失败 / 空 / 正常 ──
+   看板最容易漏的不是好看的常态，是「接口挂了显示什么」。 */
+.state-bar { margin: 0 0 var(--s-4); }
+.state-error {
+  border: 1px solid var(--err); background: #fdf3f3; padding: var(--s-3) var(--s-4);
+  display: flex; gap: var(--s-4); align-items: flex-start; flex-wrap: wrap;
+}
+.state-error .t { font-size: var(--f-body); color: var(--ink); font-weight: 500; }
+.state-error .d { font-size: var(--f-label); color: var(--ink-2); margin-top: var(--s-1); line-height: 1.6; }
+.state-error .grow { flex: 1; min-width: 220px; }
+.state-error button {
+  appearance: none; border: 1px solid var(--err); background: var(--paper);
+  color: var(--err); height: 30px; padding: 0 var(--s-3); font-size: 13px; cursor: pointer;
+  transition: background-color var(--dur-fast) linear;
+}
+.state-error button:hover { background: #fbe7e7; }
+.state-error button[disabled] { opacity: 0.6; cursor: progress; }
+
+/* 骨架必须和最终内容同高同列，否则数据到了会整页跳一下 */
+tbody[aria-busy="true"] tr { pointer-events: none; }
+tbody[aria-busy="true"] td { height: 38px; }
+.skel {
+  display: block; height: 9px; background: var(--rule);
+  animation: skelpulse 1.4s ease-in-out infinite;
+}
+.skel.w40 { width: 40%; } .skel.w62 { width: 62%; } .skel.w78 { width: 78%; }
+.skel.w26 { width: 26%; } .skel.w88 { width: 88%; }
+@keyframes skelpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+.is-stale { opacity: 0.55; }
+
+.demo-row { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; margin-top: var(--s-3); }
+.demo-row button {
+  appearance: none; border: 1px solid var(--rule-2); background: var(--paper);
+  height: 30px; padding: 0 var(--s-3); font-size: 13px; color: var(--ink-2); cursor: pointer;
+  transition: background-color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.demo-row button:hover { background: var(--paper-2); }
+.demo-row button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+/* ── 筛选栏：运维第一动作是「找到那一条」，没有搜索等于没有看板 ── */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin: var(--s-4) 0 var(--s-2); }
+.field { display: inline-flex; align-items: center; gap: var(--s-2); }
+.field > span { font-size: var(--f-label); color: var(--muted); white-space: nowrap; }
+.filters input[type="search"], .filters select {
+  height: 32px; padding: 0 var(--s-2);
+  border: 1px solid var(--rule-2); border-radius: 0;
+  background-color: var(--paper); color: var(--ink);
+  font-size: 13px; font-family: inherit; outline: none;
+}
+.filters input[type="search"] { width: 260px; }
+.filters input[type="search"]::placeholder { color: var(--muted); }
+.filters select { min-width: 112px; cursor: pointer; }
+.filters input[type="search"]:hover, .filters select:hover { border-color: var(--ink-2); }
+.filters input[type="search"]:focus-visible, .filters select:focus-visible {
+  border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -1px;
+}
+.filters input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+.btn-clear {
+  appearance: none; border: 1px solid var(--rule-2); background: var(--paper);
+  height: 32px; padding: 0 var(--s-3); font-size: 13px; color: var(--ink-2); cursor: pointer;
+  transition: background-color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.btn-clear:hover { background: var(--paper-2); border-color: var(--ink-2); }
+.filters-count { margin-left: auto; font-size: var(--f-label); color: var(--muted); }
+.filters-count b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ── 侧面板 ───────────────────────────────── */
+.scrim {
+  position: fixed; inset: 0; background: rgba(26, 28, 30, 0.28);
+  opacity: 0; pointer-events: none; transition: opacity var(--dur) var(--ease); z-index: 40;
+}
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; top: 0; right: 0; height: 100%; width: min(520px, 94vw);
+  background: var(--paper); border-left: 1px solid var(--rule-2);
+  transform: translateX(100%);
+  /* 进场慢一点（看得清从哪来），退场快一点（不想等） */
+  transition: transform var(--dur-exit) var(--ease-press);
+  z-index: 41; display: flex; flex-direction: column;
+}
+.sheet.on { transform: none; transition-duration: 260ms; transition-timing-function: var(--ease-out); }
+.sheet-h {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--rule);
+}
+.sheet-h h3 { font-size: var(--f-body); font-weight: 500; }
+.sheet-h .meta { margin-top: var(--s-1); font-size: var(--f-label); color: var(--muted); }
+.sheet-x {
+  margin-left: auto; appearance: none; border: 1px solid var(--rule-2);
+  background: var(--paper); width: 28px; height: 28px; cursor: pointer;
+  color: var(--ink-2); font-size: 15px; line-height: 1; padding: 0; flex: 0 0 28px;
+}
+.sheet-x:hover { background: var(--paper-2); }
+.sheet-b { overflow: auto; overscroll-behavior: contain; padding: var(--s-5); }
+.sheet-b h4 { margin: var(--s-5) 0 var(--s-2); font-size: var(--f-label); font-weight: 500; color: var(--muted); }
+.sheet-b h4:first-child { margin-top: 0; }
+.raw {
+  background: var(--ink); color: #ececea; padding: var(--s-3);
+  font-family: var(--mono); font-size: 12px; line-height: 1.7;
+  white-space: pre-wrap; word-break: break-word;
+}
+dl.kv { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: var(--s-1) var(--s-3); margin: 0; font-size: 13px; }
+dl.kv dt { color: var(--muted); font-size: 12px; }
+dl.kv dd { margin: 0; word-break: break-all; }
+ol.chain { list-style: none; margin: 0; padding: 0 0 0 var(--s-4); border-left: 1px solid var(--rule-2); }
+ol.chain li { position: relative; padding: var(--s-2) 0; }
+ol.chain li::before {
+  content: ""; position: absolute; left: calc(-1 * var(--s-4) - 2.5px); top: 13px;
+  width: 4px; height: 4px; background: var(--rule-2);
+}
+ol.chain li.f { background: none; }
+ol.chain li.f::before { background: var(--err); }
+ol.chain li.o::before { background: var(--ok); }
+ol.chain .r1 { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: baseline; font-size: 13px; }
+ol.chain .r2 { color: var(--muted); font-size: 12px; margin-top: 2px; }
+ol.chain code { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+
+/* ── 口径页 ───────────────────────────────── */
+.prose { max-width: 66ch; }
+.prose h2 { margin-bottom: var(--s-3); }
+.prose h3 { margin-top: var(--s-6); margin-bottom: var(--s-2); }
+.prose p { margin-top: var(--s-2); color: var(--ink-2); line-height: 1.65; }
+.prose ul { margin: var(--s-2) 0 0; padding-left: var(--s-5); color: var(--ink-2); }
+.prose li { margin-block: var(--s-1); line-height: 1.6; }
+.prose code { font-family: var(--mono); font-size: 12px; background: var(--paper-2); padding: 1px 4px; }
+.foot { margin-top: var(--s-6); padding-top: var(--s-3); border-top: 1px solid var(--rule); font-size: var(--f-label); color: var(--muted); line-height: 1.7; }
+.foot a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule-2); }
+.foot a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+@media (max-width: 720px) {
+  .bar { flex-wrap: wrap; gap: var(--s-2); padding: var(--s-3) var(--s-4); }
+  .verdict { order: 3; width: 100%; white-space: normal; }
+  main { padding: var(--s-5) var(--s-4) var(--s-8); }
+  .tabs { padding: 0 var(--s-4); gap: var(--s-4); top: 0; }
+  .brief-line { font-size: var(--f-body); }
+}
+
+/* ── 390px：表格重排为「标签 / 值」块，不靠横向滚动 ── */
+@media (max-width: 560px) {
+  .bar { gap: var(--s-2); }
+  .mark { border-right: 0; padding-right: 0; }
+  .bar h1 { font-size: var(--f-label); }
+  .verdict { order: 5; font-size: 13px; line-height: 1.65; }
+  .range { order: 4; width: 100%; overflow-x: auto; gap: var(--s-4); padding-bottom: 2px; }
+  .range button { white-space: nowrap; flex: 0 0 auto; }
+  .tabs { position: static; overflow-x: auto; }
+  .tabs button { white-space: nowrap; flex: 0 0 auto; }
+  main { padding: var(--s-4) var(--s-4) var(--s-8); }
+  .brief { gap: var(--s-4); }
+  .brief-line { font-size: 16px; line-height: 1.5; max-width: none; }
+  .brief-sub, .section > .sub { max-width: none; }
+  .ticks-bars { height: 56px; gap: 1px; }
+  .ticks-axis span:nth-child(2), .ticks-axis span:nth-child(4) { display: none; }
+  .section { margin-top: var(--s-5); }
+
+  /* iOS Safari 聚焦时若字号 <16px 会自动放大整页，之后缩不回去 */
+  .filters input[type="search"], .filters select { font-size: 16px; height: 38px; }
+  .filters input[type="search"] { width: 100%; }
+  .field { width: 100%; }
+  .field > span:not(.sr-only) { flex: 0 0 52px; }
+  .filters select { flex: 1; }
+  .filters-count { margin-left: 0; }
+  .table-wrap { overflow: visible; }
+  table, thead, tbody, tr, td, th { display: block; }
+  thead { display: none; }
+  tbody tr { padding: var(--s-3) 0; border-bottom: 1px solid var(--rule); }
+  tbody tr:last-child { border-bottom: 1px solid var(--rule-2); }
+  td {
+    border: 0; padding: 3px 0; font-size: 13px;
+    display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4);
+  }
+  td:first-child { padding-left: 0; }
+  td::before {
+    content: attr(data-l); color: var(--muted); font-size: 12px;
+    flex: 0 0 auto; order: -1;
+  }
+  td:not([data-l])::before { content: none; }
+  td { min-width: 0; }
+  td > * { min-width: 0; }
+  td.code { white-space: normal; overflow-wrap: anywhere; text-align: right; }
+  td.msg { white-space: normal; max-width: none; text-align: right; overflow-wrap: anywhere; }
+  .share { justify-content: flex-end; }
+  .share-bar { display: none; }
+  .share-num { font-size: 13px; color: var(--ink-2); }
+  .retry-bar { min-width: 72px; }
+  .sheet { width: 100%; border-left: 0; }
+  .sheet-b { padding: var(--s-4); }
+  .empty { padding: var(--s-5) 0; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="bar">
+  <a class="mark" href="#">apiduo</a>
+  <h1>错误看板</h1>
+  <p class="verdict" id="verdict" role="status" aria-live="polite">正在读取日志…</p>
+  <div class="range" id="range" role="group" aria-label="时间范围">
+    <button data-range="1h" aria-pressed="false">1 小时</button>
+    <button data-range="6h" aria-pressed="false">6 小时</button>
+    <button data-range="24h" aria-pressed="true">24 小时</button>
+    <button data-range="7d" aria-pressed="false">7 天</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist">
+  <button role="tab" data-view="overview" aria-selected="true" aria-controls="view-overview">总览</button>
+  <button role="tab" data-view="stream" aria-selected="false" aria-controls="view-stream">错误清单</button>
+  <button role="tab" data-view="channel" aria-selected="false" aria-controls="view-channel">渠道</button>
+  <button role="tab" data-view="notes" aria-selected="false" aria-controls="view-notes">口径</button>
+</nav>
+
+<main id="main" tabindex="-1">
+  <div class="state-bar" id="stateBar"></div>
+  <section class="view" id="view-overview" role="tabpanel">
+    <div class="brief">
+      <div>
+        <p class="brief-line" id="briefLine">&nbsp;</p>
+        <p class="brief-sub" id="briefSub">&nbsp;</p>
+      </div>
+      <div>
+        <div class="ticks">
+          <div class="ticks-bars" id="tickBars" aria-hidden="true"></div>
+          <div class="ticks-axis" id="tickAxis"></div>
+        </div>
+        <p class="ticks-cap" id="tickCap">每小时失败尝试数，红色为异常时段。</p>
+      </div>
+    </div>
+
+    <section class="section">
+      <h2>错误清单</h2>
+      <p class="sub">按 error_code 归类，点一行看具体请求。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>错误码</th>
+              <th>来源</th>
+              <th class="r">尝试</th>
+              <th>占比</th>
+              <th>主要渠道</th>
+            </tr>
+          </thead>
+          <tbody id="codeRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>重试</h2>
+      <p class="sub">同一请求的多次尝试。未重试指 DecideRelayRetry 判定不可重试、直接返回。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>尝试次数</th>
+              <th class="r">请求</th>
+              <th>成功 / 失败</th>
+              <th class="r">成功率</th>
+              <th class="r">最终失败</th>
+            </tr>
+          </thead>
+          <tbody id="retryRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <section class="view" id="view-stream" role="tabpanel" hidden>
+    <h2>错误清单</h2>
+    <p class="sub">一条错误一行。同一 request_id 可能有多行，那是一个请求打了多个渠道。</p>
+
+    <div class="filters">
+      <label class="field">
+        <span class="sr-only">搜索错误</span>
+        <input type="search" id="q" placeholder="错误码、消息、request_id、用户…"
+               autocomplete="off" spellcheck="false" enterkeyhint="search">
+      </label>
+      <label class="field">
+        <span>错误码</span>
+        <select id="fCode"><option value="">全部</option></select>
+      </label>
+      <label class="field">
+        <span>渠道</span>
+        <select id="fChannel"><option value="">全部</option></select>
+      </label>
+      <button class="btn-clear" id="clearFilters" type="button" hidden>清除筛选</button>
+      <span class="filters-count" id="filterCount"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>错误码</th>
+            <th>消息</th>
+            <th>模型</th>
+            <th>渠道</th>
+            <th class="r">状态</th>
+            <th class="r">耗时</th>
+          </tr>
+        </thead>
+        <tbody id="eventRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-channel" role="tabpanel" hidden>
+    <h2>渠道</h2>
+    <p class="sub">失败率是尝试口径：失败尝试除该渠道总尝试，不是用户感知的失败率。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>渠道</th>
+            <th>状态</th>
+            <th class="r">尝试</th>
+            <th class="r">失败</th>
+            <th class="r">失败率</th>
+            <th>主要错误码</th>
+            <th class="r">最近失败</th>
+          </tr>
+        </thead>
+        <tbody id="channelRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-notes" role="tabpanel" hidden>
+    <div class="prose">
+      <h2>口径</h2>
+      <p>页面上每个数字都能追到一张表和一种算法。以下四件事决定了看板的结构。</p>
+
+      <h3>失败尝试不是失败请求</h3>
+      <p><code>logs</code> 里 type=5 是尝试级的：重试循环里每次 attempt 失败都写一条，同一 <code>request_id</code> 可能有三条。把行数当失败请求数会虚高 1.8 到 2.7 倍，必须先按 <code>request_id</code> 去重。</p>
+
+      <h3>错误率只能来自 perf_metrics</h3>
+      <p>它的 request_count 与 success_count 是一次请求一个样本，重试成功算成功，客户端取消不计入。但唯一键是 (model_name, group, bucket_ts)，没有渠道维度，所以渠道页只能给尝试口径。</p>
+
+      <h3>重试阶梯两端必须守恒</h3>
+      <p>阶梯按经验比例拆分，但两个等式精确成立：失败尝试之和等于 failAttempt，最终失败之和等于 failReq。不成立时，尝试次数和失败数两栏会互相打架。</p>
+
+      <h3>时间窗内的故障是浮动的</h3>
+      <p>示例数据把故障放在打开页面时的八小时前，所以每次刷新看到的时段会移动。真实实现里它由日志决定，不是生成的。</p>
+
+      <h3>四种状态都做过</h3>
+      <p>看板最容易漏的不是好看的常态，是接口挂了显示什么。下面四个按钮可以切过去看：加载中会等 180ms 才出骨架（避免闪一下），出现后至少留 420ms；取数失败保留上一次的结果并标明已过期，同时给重试。</p>
+      <div class="demo-row" id="demoRow" role="group" aria-label="状态演示">
+        <button type="button" data-demo="ready" aria-pressed="true">正常</button>
+        <button type="button" data-demo="loading" aria-pressed="false">加载中</button>
+        <button type="button" data-demo="error" aria-pressed="false">取数失败</button>
+        <button type="button" data-demo="empty" aria-pressed="false">区间无数据</button>
+      </div>
+
+      <p class="foot">示例数据由前端确定性生成，结构与字段对齐 logs、perf_metrics、channels 实际表设计。未使用图库素材。<br>
+        配色、字号、间距、动效与四态规则见 <a href="design-system.html">设计规范</a>。</p>
+    </div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" aria-hidden="true" aria-labelledby="sheetTitle">
+  <div class="sheet-h">
+    <div>
+      <h3 id="sheetTitle">错误详情</h3>
+      <p class="meta" id="sheetMeta"></p>
+    </div>
+    <button class="sheet-x" id="sheetClose" aria-label="关闭详情">×</button>
+  </div>
+  <div class="sheet-b" id="sheetBody"></div>
+</aside>
+
+<noscript>
+  <div class="notice" style="margin:24px">这个页面靠脚本读取并聚合成日志。请启用 JavaScript。</div>
+</noscript>
+
+<script>
+(function () {
+  'use strict';
+
+  var MIN = 60e3, HOUR = 3600e3, BUCKET = 10 * MIN;
+  var BUCKETS = 7 * 24 * 6;
+  var T0 = Math.floor(Date.now() / BUCKET) * BUCKET - BUCKETS * BUCKET;
+  var NOW = T0 + BUCKETS * BUCKET;
+  var MAX_RETRY = 3;
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtNum(n) { return Math.round(n).toLocaleString('zh-CN'); }
+  function fmtPct(v, d) { return (v * 100).toFixed(d == null ? 2 : d) + '%'; }
+  function fmtClock(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function fmtMD(ts) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function fmtFull(ts) { var d = new Date(ts); return fmtMD(ts) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function div(a, b) { return b > 0 ? a / b : 0; }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function fmtDur(ms) {
+    if (ms >= MIN) {
+      var m = Math.floor(ms / MIN), sec = Math.round((ms % MIN) / 1000);
+      return m + 'm' + (sec ? pad(sec) + 's' : '');
+    }
+    return (ms / 1000).toFixed(1) + 's';
+  }
+
+  var _seed = 20261114;
+  function rnd() { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; }
+  function pick(a) { return a[Math.floor(rnd() * a.length)]; }
+  function jitter(base, spread) { return base * (1 - spread + rnd() * spread * 2); }
+
+  var CODES = [
+    { code: 'bad_response_status_code', layer: '上游', weight: 30, faultWeight: 9, ch: 7, md: 'deepseek-v4.1', ms: 1800, status: 503, msg: 'status_code=503, upstream service temporarily unavailable' },
+    { code: 'channel:response_time_exceeded', layer: '渠道', weight: 11, faultWeight: 5, ch: 21, md: 'gpt-4o', ms: 180000, status: 0, msg: 'status_code=0, upstream response time exceeded 300s' },
+    { code: 'empty_response', layer: '上游', weight: 9, faultWeight: 4, ch: 15, md: 'claude-sonnet-4.5', ms: 2400, status: 200, msg: 'status_code=200, upstream returned empty response body' },
+    { code: 'invalid_request', layer: '请求', weight: 10, faultWeight: 3, ch: 7, md: 'deepseek-v4.1', ms: 300, status: 400, msg: 'status_code=400, invalid value for parameter messages[0].role' },
+    { code: 'insufficient_user_quota', layer: '额度', weight: 8, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', ms: 120, status: 403, msg: 'user quota is not enough, current: 312, required: 1840' },
+    { code: 'bad_request_body', layer: '请求', weight: 6, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', ms: 250, status: 400, msg: 'status_code=400, request body is not valid JSON' },
+    { code: 'channel:invalid_key', layer: '渠道', weight: 4, faultWeight: 46, ch: 12, md: 'gpt-4o', ms: 450, status: 401, msg: 'status_code=401, upstream rejected credentials: invalid api key' },
+    { code: 'prompt_blocked', layer: '请求', weight: 5, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', ms: 800, status: 400, msg: 'status_code=400, prompt blocked by upstream safety policy' },
+    { code: 'channel:no_available_key', layer: '渠道', weight: 3, faultWeight: 8, ch: 21, md: 'gpt-4o', ms: 90, status: 0, msg: 'no available key for channel, all keys exhausted' },
+    { code: 'model_not_found', layer: '请求', weight: 4, faultWeight: 1, ch: 21, md: 'claude-sonnet-4.5', ms: 400, status: 404, msg: 'status_code=404, model not found on upstream' },
+    { code: 'do_request_failed', layer: '上游', weight: 3, faultWeight: 2, ch: 18, md: 'qwen-max', ms: 5000, status: 0, msg: 'status_code=0, dial tcp: connection refused' },
+    { code: 'bad_response_body', layer: '上游', weight: 3, faultWeight: 1, ch: 3, md: 'gemini-2.5-pro', ms: 1600, status: 200, msg: 'status_code=200, unable to parse upstream response payload' },
+    { code: 'access_denied', layer: '额度', weight: 2, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', ms: 150, status: 403, msg: 'status_code=403, this token has no permission for model claude-sonnet-4.5' },
+    { code: 'get_channel_failed', layer: '本地', weight: 1, faultWeight: 1, ch: 0, md: '无', ms: 60, status: 500, msg: 'no channel satisfied the request constraints' },
+    { code: 'query_data_error', layer: '本地', weight: 1, faultWeight: 0, ch: 0, md: '无', ms: 300, status: 500, msg: 'status_code=500, failed to query log database' }
+  ];
+  var CODE_MAP = {};
+  CODES.forEach(function (c) { CODE_MAP[c.code] = c; });
+
+  var CHANNELS = [
+    { id: 12, name: 'azure-gpt4o-hk', status: 'auto_disabled', share: 0.10 },
+    { id: 7, name: 'deepseek-official', status: 'enabled', share: 0.28 },
+    { id: 15, name: 'claude-main', status: 'enabled', share: 0.17 },
+    { id: 3, name: 'gemini-pro-pool', status: 'enabled', share: 0.14 },
+    { id: 21, name: 'openrouter-fallback', status: 'enabled', share: 0.11 },
+    { id: 18, name: 'bailian-cn', status: 'enabled', share: 0.07 }
+  ];
+  var CH_MAP = {};
+  CHANNELS.forEach(function (c) { CH_MAP[c.id] = c; });
+  var CH_MODELS = { 12: ['gpt-4o', 'gpt-4o-mini'], 7: ['deepseek-v4.1'], 15: ['claude-sonnet-4.5'], 3: ['gemini-2.5-pro'], 21: ['gpt-4o', 'claude-sonnet-4.5'], 18: ['qwen-max'] };
+
+  var USERS = ['chen.wei', 'li.na', 'wang.lei', 'zhao.min', 'sun.yu', 'zhou.jie', 'wu.hao', 'xu.ting', 'ma.lin', 'huang.qing',
+    'lin.xin', 'he.yi', 'guo.fan', 'luo.qi', 'deng.bo', 'song.yao', 'ye.ning', 'cai.wen', 'pan.yu', 'tang.hao'];
+  var USER_PROFILE = {}, USER_GROUP = {};
+  USERS.forEach(function (u, i) {
+    USER_PROFILE[u] = i < 5 ? 'heavy' : (i < 14 ? 'normal' : 'light');
+    USER_GROUP[u] = USER_PROFILE[u] === 'heavy' ? ((i % 3 === 0) ? 'vip' : 'svip')
+      : (USER_PROFILE[u] === 'normal' ? 'default' : 'trial');
+  });
+  var HEAVY_POOL = USERS.filter(function (u) { return USER_PROFILE[u] !== 'light'; });
+  var LIGHT_POOL = USERS.filter(function (u) { return USER_PROFILE[u] === 'light'; });
+  var TOP_POOL = HEAVY_POOL.slice(0, 5);
+
+  function pickUser(layer, fault) {
+    var r = rnd();
+    if (layer === '额度') return LIGHT_POOL[Math.min(LIGHT_POOL.length - 1, Math.floor(Math.pow(r, 0.75) * LIGHT_POOL.length))];
+    if (layer === '渠道' || layer === '上游') {
+      var pool = fault ? TOP_POOL : HEAVY_POOL;
+      var p = fault ? 1.6 : 1.35;
+      return pool[Math.min(pool.length - 1, Math.floor(Math.pow(r, p) * pool.length))];
+    }
+    return USERS[Math.floor(r * USERS.length)];
+  }
+
+  var FAULT_START = Math.floor((NOW - 8 * HOUR) / BUCKET) * BUCKET;
+  var FAULT_END = FAULT_START + 2 * HOUR;
+  var MINOR_START = Math.floor((NOW - 3 * HOUR) / BUCKET) * BUCKET;
+
+  function inFault(ts) { return ts >= FAULT_START && ts < FAULT_END; }
+  function inMinor(ts) { return ts >= MINOR_START && ts < MINOR_START + 40 * MIN; }
+  function shape(ts) {
+    var d = new Date(ts), h = d.getHours() + d.getMinutes() / 60;
+    return Math.max(0.28, Math.min(1.25, 0.46 + 0.54 * Math.sin(Math.PI * (h - 3) / 18)));
+  }
+
+  function splitInt(total, weights) {
+    total = Math.max(0, Math.round(total));
+    var sum = weights.reduce(function (a, b) { return a + b; }, 0) || 1;
+    var raw = weights.map(function (w) { return total * w / sum; });
+    var base = raw.map(Math.floor);
+    var rest = total - base.reduce(function (a, b) { return a + b; }, 0);
+    var order = raw.map(function (v, i) { return { i: i, frac: v - Math.floor(v) }; })
+      .sort(function (a, b) { return b.frac - a.frac; });
+    for (var i = 0; i < rest; i++) base[order[i % order.length].i] += 1;
+    return base;
+  }
+
+  var buckets = [];
+  (function build() {
+    for (var i = 0; i < BUCKETS; i++) {
+      var ts = T0 + i * BUCKET;
+      var req = Math.round(jitter(1600 * shape(ts), 0.06));
+      var fr = inFault(ts) ? jitter(0.031, 0.18) : (inMinor(ts) ? jitter(0.0092, 0.15) : jitter(0.0034, 0.30));
+      var failReq = Math.max(0, Math.round(req * fr));
+      var amp = inFault(ts) ? jitter(2.65, 0.10) : (inMinor(ts) ? jitter(2.1, 0.1) : jitter(1.85, 0.12));
+      var failAttempt = Math.max(failReq, Math.round(failReq * amp));
+
+      var w = CODES.map(function (c) { return inFault(ts) ? c.faultWeight : c.weight; });
+      var s = w.reduce(function (a, b) { return a + b; }, 0);
+      var raw = w.map(function (x) { return failAttempt * x / s * jitter(1, 0.10); });
+      var rs = raw.reduce(function (a, b) { return a + b; }, 0) || 1;
+      raw = raw.map(function (v) { return v / rs * failAttempt; });
+      var counts = splitInt(failAttempt, raw.map(function (v) { return v / failAttempt; }));
+
+      var rows = [];
+      CODES.forEach(function (c, ci) {
+        var n = counts[ci];
+        if (!n) return;
+        var parts = n <= 2 ? 1 : (n <= 8 ? 2 : 3), left = n;
+        for (var pi = 0; pi < parts && left > 0; pi++) {
+          var take = pi === parts - 1 ? left : Math.max(1, Math.round(n / parts * jitter(1, 0.3)));
+          take = Math.min(take, left);
+          if (take <= 0) continue;
+          left -= take;
+          var ch = c.ch || 0;
+          if (ch) {
+            if (ch === 12 && ts >= FAULT_END) ch = 21;
+            if (c.layer === '渠道') ch = (inFault(ts) && ch === 12) ? (rnd() < 0.88 ? 12 : 21) : (rnd() < 0.72 ? ch : 21);
+            else ch = rnd() < 0.86 ? ch : 7;
+          }
+          var u = pickUser(c.layer, inFault(ts));
+          rows.push({
+            code: c.code, ch: ch,
+            md: ch && CH_MODELS[ch] ? pick(CH_MODELS[ch]) : c.md,
+            user: u, grp: USER_GROUP[u] || 'default', n: take
+          });
+        }
+      });
+
+      buckets.push({ ts: ts, req: req, failReq: Math.min(failReq, req), failAttempt: failAttempt, rows: rows });
+    }
+  })();
+
+  var events = [];
+  (function buildEvents() {
+    var uid = 1;
+    for (var i = 0; i < BUCKETS; i++) {
+      var b = buckets[i];
+      var take = Math.min(3, Math.round(b.failAttempt / 9));
+      if (take <= 0 || !b.rows.length) continue;
+      for (var k = 0; k < take; k++) {
+        var tot = 0, q;
+        for (q = 0; q < b.rows.length; q++) tot += b.rows[q].n;
+        var pn = rnd() * tot, row = b.rows[b.rows.length - 1];
+        for (q = 0; q < b.rows.length; q++) { pn -= b.rows[q].n; if (pn <= 0) { row = b.rows[q]; break; } }
+        var meta = CODE_MAP[row.code] || CODES[0];
+        var ts = b.ts + Math.floor(rnd() * BUCKET);
+        var rescueProb = b.failAttempt > 0 ? Math.max(0, (b.failAttempt - b.failReq) / b.failAttempt) : 0;
+        var retryable = meta.layer === '渠道' || meta.layer === '上游';
+        events.push({
+          id: uid++,
+          ts: ts,
+          code: meta.code,
+          layer: meta.layer,
+          msg: meta.msg,
+          status: meta.code === 'bad_response_status_code' ? pick([500, 502, 503, 429]) : meta.status,
+          model: row.md,
+          channelId: row.ch,
+          channelName: row.ch ? (CH_MAP[row.ch] || CHANNELS[0]).name : '无',
+          user: row.user,
+          ms: Math.round(jitter(meta.ms || 1800, 0.45)),
+          requestId: 'rq_' + Math.floor(ts / 1000).toString(36) + '_' + (uid).toString(36) + Math.floor(rnd() * 1e4).toString(36),
+          rescued: retryable && rnd() < rescueProb
+        });
+      }
+    }
+    events.sort(function (a, b) { return b.ts - a.ts; });
+  })();
+
+  var RANGES = { '1h': 60, '6h': 360, '24h': 1440, '7d': 10080 };
+  var range = '24h';
+  var view = 'overview';
+  var _cache = {};
+
+  function win(key) { var m = RANGES[key] || 1440; return { from: NOW - m * MIN, to: NOW }; }
+  function winFrom() { return win(range).from; }
+
+  function groupMs(span) {
+    var m = span / MIN, unit;
+    if (m <= 90) unit = 10; else if (m <= 480) unit = 30;
+    else if (m <= 2880) unit = 60; else unit = 1440;
+    while (span / (unit * MIN) > 48) unit *= 2;
+    return unit * MIN;
+  }
+
+  function acc() {
+    return { req: 0, failReq: 0, failAttempt: 0, retry: [], byCode: {}, byChannel: {}, rows: [] };
+  }
+  function fold(a, b) {
+    a.req += b.req; a.failReq += b.failReq; a.failAttempt += b.failAttempt;
+    for (var i = 0; i < b.rows.length; i++) {
+      var r = b.rows[i];
+      a.byCode[r.code] = (a.byCode[r.code] || 0) + r.n;
+      if (r.ch) a.byChannel[r.ch] = (a.byChannel[r.ch] || 0) + r.n;
+      a.rows.push(r);
+    }
+  }
+
+  function ladder(A, F, faultShare) {
+    function mix(a, b) { return a.map(function (w, i) { return w * (1 - faultShare) + b[i] * faultShare; }); }
+    var fw = mix([0.34, 0.26, 0.22, 0.18], [0.26, 0.25, 0.24, 0.25]);
+    var fn = splitInt(F, fw);
+    var fc = fn[0] + fn[1] + fn[2] * 2 + fn[3] * 3;
+    var ow = mix([0.66, 0.28, 0.06], [0.50, 0.36, 0.14]);
+    var oavg = ow[0] + ow[1] * 2 + ow[2] * 3;
+    var budget = Math.max(0, A - fc);
+    var on = oavg > 0 ? splitInt(budget / oavg, ow) : [0, 0, 0];
+    var diff = A - (fc + on[0] + on[1] * 2 + on[2] * 3), guard = 0;
+    while (diff !== 0 && guard++ < 400) {
+      if (diff > 0) { on[0] += 1; diff -= 1; }
+      else if (on[0] > 0) { on[0] -= 1; diff += 1; }
+      else if (on[1] > 0) { on[1] -= 1; diff += 2; }
+      else if (on[2] > 0) { on[2] -= 1; diff += 3; }
+      else break;
+    }
+    return [
+      { retries: 0, ok: 0, fail: fn[0] },
+      { retries: 1, ok: on[0], fail: fn[1] },
+      { retries: 2, ok: on[1], fail: fn[2] },
+      { retries: 3, ok: on[2], fail: fn[3] }
+    ];
+  }
+
+  function aggregate(key) {
+    if (_cache[key]) return _cache[key];
+    var w = win(key), span = Math.max(BUCKET, w.to - w.from);
+    var g = groupMs(span), n = Math.max(1, Math.ceil(span / g));
+    var points = [], total = acc();
+    for (var i = 0; i < n; i++) { var p = acc(); p.ts = w.from + i * g; points.push(p); }
+    for (var bi = 0; bi < BUCKETS; bi++) {
+      var b = buckets[bi];
+      if (b.ts + BUCKET <= w.from || b.ts >= w.to) continue;
+      var idx = Math.min(n - 1, Math.max(0, Math.floor((b.ts - w.from) / g)));
+      fold(points[idx], b);
+      fold(total, b);
+    }
+    points.forEach(function (p) { p.failRate = div(p.failReq, p.req); p.attemptRate = div(p.failAttempt, p.req); delete p.rows; });
+    total.failRate = div(total.failReq, total.req);
+    var overlap = Math.max(0, Math.min(w.to, FAULT_END) - Math.max(w.from, FAULT_START));
+    total.retry = ladder(total.failAttempt, total.failReq, div(overlap, span));
+    points.forEach(function (p) { delete p.retry; });
+    var out = { points: points, total: total, groupMs: g };
+    _cache[key] = out;
+    return out;
+  }
+
+  /* ── 渲染 ───────────────────────────────── */
+
+  function renderVerdict(agg) {
+    var t = agg.total;
+    var ch12 = t.byChannel[12] || 0;
+    var txt;
+    if (t.failReq === 0) {
+      // 空窗口是最容易被写坏的状态：同一个模板套下去会得出
+      // 「0 次失败，没有单一来源占主导」这种自相矛盾的句子。
+      txt = '过去 ' + (range === '24h' ? '一天' : RANGES[range] / 60 + ' 小时') +
+        ' <b>' + fmtNum(t.req) + '</b> 次请求全部成功，没有失败记录。';
+    } else if (ch12 > 0) {
+      txt = '过去 ' + (range === '24h' ? '一天' : RANGES[range] / 60 + ' 小时') + '有 <b>' + fmtNum(t.failReq) +
+        '</b> 次失败，主要来自 <b>azure-gpt4o-hk</b> 的密钥失效，该渠道已被自动禁用。';
+    } else {
+      txt = '过去 ' + (RANGES[range] / 60) + ' 小时 ' + fmtNum(t.req) + ' 次请求里 <b>' + fmtNum(t.failReq) +
+        '</b> 次失败，没有单一来源占主导。';
+    }
+    document.getElementById('verdict').innerHTML = txt;
+  }
+
+  function renderBrief(agg) {
+    var t = agg.total;
+    var rescued = 0;
+    (t.retry || []).forEach(function (x) { rescued += x.ok; });
+
+    document.getElementById('briefLine').innerHTML = t.failReq === 0
+      ? '<span class="num">' + fmtNum(t.req) + '</span> 次请求全部成功，没有失败记录。'
+      : '<span class="num">' + fmtNum(t.req) + '</span> 次请求，<span class="num">' + fmtNum(t.failReq) +
+        '</span> 次失败（<span class="num">' + fmtPct(t.failRate) + '</span>），其中 <span class="num">' +
+        fmtNum(rescued) + '</span> 次被重试救回。';
+
+    document.getElementById('briefSub').textContent = t.failAttempt === 0
+      ? '这个窗口内没有任何失败尝试，也没有触发重试。'
+      : '失败尝试共 ' + fmtNum(t.failAttempt) + ' 次。尝试数高于失败数，是因为一个请求会换渠道重试。';
+
+    // 每小时刻度
+    var hours = [];
+    var n = range === '7d' ? 7 : (RANGES[range] / 60);
+    var w = win(range);
+    for (var i = 0; i < n; i++) hours.push(0);
+    var per = Math.max(1, Math.round(60 / (agg.groupMs / MIN)));
+    agg.points.forEach(function (p, i) {
+      var slot = Math.min(n - 1, Math.floor(i / per));
+      hours[slot] += p.failAttempt;
+    });
+    var maxH = Math.max.apply(null, hours) || 1;
+
+    var allZero = hours.every(function (v) { return v === 0; });
+    if (allZero) {
+      // 一排 0 柱子在视觉上就是一块空白，读者分不清是"没数据"还是"渲染坏了"
+      document.getElementById('tickBars').innerHTML =
+        '<span class="ticks-nil">这个窗口内没有失败尝试</span>';
+    } else {
+    document.getElementById('tickBars').innerHTML = hours.map(function (v, i) {
+      // 线性映射，但给一个可见下限：常态小时只有峰值的十分之一，
+      // 纯线性会缩成 1px 的灰点，看不出"平时也在失败"。
+      // 0 必须画成 0：给所有柱子一个 6px 下限，空窗口也会出现一排灰柱，
+      // 再按时间涂红，就成了「0 次失败但有故障时段」的假象。
+      var h = v === 0 ? 0 : Math.max(6, Math.round((v / maxH) * 66));
+      var ts = w.from + i * (60 * MIN) * (range === '7d' ? 24 : 1);
+      var hot = v > 0 && ((range === '7d')
+        ? (ts >= FAULT_START - 24 * HOUR && ts <= FAULT_END)
+        : (ts >= FAULT_START - HOUR && ts <= FAULT_END));
+      return '<i class="' + (hot ? 'hot' : '') + '" style="height:' + h +
+        'px;animation-delay:' + Math.min(180, i * 8) + 'ms" title="' + fmtClock(ts) + ' · ' + fmtNum(v) + ' 次"></i>';
+    }).join('');
+    }
+
+    var ax = [0, Math.floor(n / 4), Math.floor(n / 2), Math.floor(n * 3 / 4), n - 1];
+    document.getElementById('tickAxis').innerHTML = ax.map(function (i) {
+      var ts = w.from + i * (range === '7d' ? 24 * HOUR : HOUR);
+      return '<span>' + (range === '7d' ? fmtMD(ts) : fmtClock(ts)) + '</span>';
+    }).join('');
+
+    document.getElementById('tickCap').textContent = t.failAttempt === 0
+      ? '更新于 ' + fmtClock(NOW) + '。'
+      : (range === '7d' ? '每天失败尝试数' : '每小时失败尝试数') + '，故障 ' +
+        fmtClock(FAULT_START) + ' 至 ' + fmtClock(FAULT_END) + '。更新于 ' + fmtClock(NOW) + '。';
+  }
+
+  function renderCodes(agg) {
+    var t = agg.total;
+    var total = 0;
+    Object.keys(t.byCode).forEach(function (c) { total += t.byCode[c]; });
+    var list = Object.keys(t.byCode).map(function (c) { return { code: c, n: t.byCode[c] }; })
+      .filter(function (x) { return x.n > 0; })
+      .sort(function (a, b) { return b.n - a.n; })
+      .slice(0, 8);
+    var max = list.length ? list[0].n : 1;
+
+    document.getElementById('codeRows').innerHTML = list.map(function (x, i) {
+      var m = CODE_MAP[x.code] || {};
+      var ch = m.ch ? (CH_MAP[m.ch] || {}).name : '无';
+      return '<tr class="click" data-code="' + esc(x.code) + '" tabindex="0" role="button" ' +
+        'aria-label="按错误码 ' + esc(x.code) + ' 筛选">' +
+        '<td class="code" data-l="错误码">' + esc(x.code) + '</td>' +
+        '<td data-l="来源">' + (m.layer || '本地') + '</td>' +
+        '<td class="r" data-l="尝试">' + fmtNum(x.n) + '</td>' +
+        '<td data-l="占比"><span class="share"><span class="share-bar"><i class="' + (i === 0 ? 'hot' : '') +
+        '" style="width:' + ((x.n / max) * 100).toFixed(1) + '%"></i></span>' +
+        '<span class="share-num">' + fmtPct(div(x.n, total), 1) + '</span></span></td>' +
+        '<td class="code" data-l="主要渠道">' + esc(ch) + '</td>' +
+        '</tr>';
+    }).join('') || ('<tr><td colspan="5" class="empty">' +
+      (demoState === 'empty'
+        ? '这个区间没有失败记录。' + (range === '1h' ? '' : '')
+        : '当前区间没有失败记录') + '</td></tr>');
+
+    Array.prototype.forEach.call(document.querySelectorAll('#codeRows tr.click'), function (tr) {
+      tr.addEventListener('click', function () {
+        fq.code = tr.getAttribute('data-code');
+        var sel = document.getElementById('fCode');
+        if (sel) sel.value = fq.code;
+        switchView('stream');
+        syncURL();
+      });
+      // 键盘必须能下钻：td 上没有可聚焦元素，行本身进 tab 序
+      tr.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tr.click(); }
+      });
+    });
+  }
+
+  function renderRetry(agg) {
+    var L = agg.total.retry || [];
+    var maxN = 0;
+    L.forEach(function (x) { maxN = Math.max(maxN, x.ok + x.fail); });
+
+    document.getElementById('retryRows').innerHTML = L.map(function (x) {
+      var n = x.ok + x.fail;
+      var wOk = n ? (x.ok / n) * 100 : 0;
+      return '<tr>' +
+        '<td data-l="尝试次数">' + (x.retries === 0 ? '未重试' : x.retries + ' 次') + '</td>' +
+        '<td class="r" data-l="请求">' + fmtNum(n) + '</td>' +
+        '<td data-l="成功与失败"><span class="retry-bar"><i class="ok" style="width:' + wOk.toFixed(1) + '%"></i>' +
+        '<i class="fail" style="width:' + (100 - wOk).toFixed(1) + '%"></i></span></td>' +
+        '<td class="r" data-l="成功率">' + (x.retries === 0 ? '不可重试' : fmtPct(div(x.ok, n), 0)) + '</td>' +
+        '<td class="r" data-l="最终失败">' + fmtNum(x.fail) + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="5" class="empty">没有失败记录，也就没有重试发生。</td></tr>';
+  }
+
+  /* 筛选状态只存一处：输入框、下拉、表格下钻都写这里，URL 也从这里读回来。
+     三个入口各写各的，是这类看板最常见的 bug —— 点了错误码行，下拉框还显示「全部」。 */
+  var fq = { text: '', code: '', channel: '' };
+
+  function matchEvent(e, q) {
+    if (q.code && e.code !== q.code) return false;
+    if (q.channel && e.channelName !== q.channel) return false;
+    if (!q.text) return true;
+    var hay = (e.code + ' ' + e.msg + ' ' + e.model + ' ' + e.channelName + ' ' +
+      e.user + ' ' + e.requestId + ' ' + e.status).toLowerCase();
+    return hay.indexOf(q.text.toLowerCase()) >= 0;
+  }
+
+  function renderStream() {
+    var from = winFrom();
+    var inWindow = demoState === 'empty' ? [] : events.filter(function (e) { return e.ts >= from; });
+    var list = inWindow.filter(function (e) { return matchEvent(e, fq); });
+    var total = list.length;
+    list = list.slice(0, 80);
+
+    var box = document.getElementById('filterCount');
+    var dirty = !!(fq.text || fq.code || fq.channel);
+    box.innerHTML = dirty
+      ? '筛出 <b>' + fmtNum(total) + '</b> / ' + fmtNum(inWindow.length) + ' 条'
+      : '共 <b>' + fmtNum(inWindow.length) + '</b> 条';
+    document.getElementById('clearFilters').hidden = !dirty;
+
+    document.getElementById('eventRows').innerHTML = list.map(function (e) {
+      return '<tr class="click" data-id="' + e.id + '" tabindex="0" role="button" ' +
+        'aria-label="查看 ' + esc(e.code) + ' 详情">' +
+        '<td class="code" data-l="时间">' + fmtFull(e.ts) + '</td>' +
+        '<td class="code" data-l="错误码">' + esc(e.code) + '</td>' +
+        '<td class="msg" data-l="消息" title="' + esc(e.msg) + '">' + esc(e.msg) + '</td>' +
+        '<td class="code" data-l="模型">' + esc(e.model) + '</td>' +
+        '<td class="code" data-l="渠道">' + esc(e.channelName) + '</td>' +
+        '<td class="r" data-l="状态">' + (e.status === 0 || e.status ? e.status : '无') + '</td>' +
+        '<td class="r" data-l="耗时">' + fmtDur(e.ms) + '</td>' +
+        '</tr>';
+    }).join('') || ('<tr><td colspan="7" class="empty">' +
+      (dirty
+        ? '没有匹配的记录。<button class="btn-clear" type="button" onclick="var b=document.getElementById(\'clearFilters\');if(b)b.click()">清除筛选</button>'
+        : '这个区间没有失败记录，属于正常状态。把时间范围放到 24 小时可对照常态。') +
+      '</td></tr>');
+
+    Array.prototype.forEach.call(document.querySelectorAll('#eventRows tr.click'), function (tr) {
+      tr.addEventListener('click', function () { openSheet(parseInt(tr.getAttribute('data-id'), 10)); });
+      tr.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tr.click(); }
+      });
+    });
+  }
+
+  function renderChannel() {
+    var agg = aggregate(range);
+    if (demoState === 'empty') agg = withoutErrors(agg);
+    var cross = {};
+    agg.total.rows.forEach(function (r) {
+      if (!r.ch) return;
+      if (!cross[r.ch]) cross[r.ch] = {};
+      cross[r.ch][r.code] = (cross[r.ch][r.code] || 0) + r.n;
+    });
+    var totalReq = agg.total.req;
+
+    var rows = CHANNELS.map(function (c) {
+      var fail = agg.total.byChannel[c.id] || 0;
+      var attempts = Math.max(1, Math.round(totalReq * c.share));
+      var cm = cross[c.id] || {};
+      var top = Object.keys(cm).sort(function (a, b) { return cm[b] - cm[a]; })[0];
+      var last = null, w = win(range);
+      for (var i = BUCKETS - 1; i >= 0; i--) {
+        var b = buckets[i];
+        if (b.ts >= w.to) continue;
+        if (b.ts + BUCKET <= w.from) break;
+        for (var j = 0; j < b.rows.length; j++) if (b.rows[j].ch === c.id && b.rows[j].n > 0) { last = b.ts; break; }
+        if (last) break;
+      }
+      return { c: c, fail: fail, attempts: attempts, rate: div(fail, attempts), top: top, last: last };
+    }).sort(function (a, b) { return b.rate - a.rate; });
+
+    document.getElementById('channelRows').innerHTML = rows.map(function (r) {
+      var st = r.c.status === 'auto_disabled'
+        ? '<span style="color:var(--err)">自动禁用</span>'
+        : '<span style="color:var(--ok)">启用</span>';
+      return '<tr>' +
+        '<td class="code" data-l="渠道">' + esc(r.c.name) + '</td>' +
+        '<td data-l="状态">' + st + '</td>' +
+        '<td class="r" data-l="尝试">' + fmtNum(r.attempts) + '</td>' +
+        '<td class="r" data-l="失败">' + fmtNum(r.fail) + '</td>' +
+        '<td class="r" data-l="失败率">' + fmtPct(r.rate, 2) + '</td>' +
+        '<td class="code" data-l="主要错误码">' + esc(r.top || '无') + '</td>' +
+        '<td class="r code" data-l="最近失败">' + (r.last ? fmtClock(r.last) : '无') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  var lastFocus = null;
+  function openSheet(id) {
+    lastFocus = document.activeElement;
+    var e = null;
+    for (var i = 0; i < events.length; i++) if (events[i].id === id) { e = events[i]; break; }
+    if (!e) return;
+    var sib = events.filter(function (x) { return x.requestId === e.requestId; })
+      .sort(function (a, b) { return a.ts - b.ts; });
+
+    document.getElementById('sheetTitle').textContent = e.code;
+    document.getElementById('sheetMeta').textContent = fmtFull(e.ts) + ' · ' + e.model + ' · ' + e.channelName;
+
+    var chain = sib.map(function (s, i) {
+      return '<li class="f"><div class="r1"><code>#' + (i + 1) + '</code><code>' + esc(s.code) + '</code>' +
+        '<span>' + esc(s.channelName) + '</span><span>' + fmtDur(s.ms) + '</span></div>' +
+        '<div class="r2">' + esc(s.msg) + '</div></li>';
+    }).join('');
+    if (e.rescued) {
+      chain += '<li class="o"><div class="r1"><code>#' + (sib.length + 1) + '</code><strong>成功</strong>' +
+        '<span>status_code=200</span></div><div class="r2">换到可用渠道后上游正常返回</div></li>';
+    }
+
+    document.getElementById('sheetBody').innerHTML =
+      '<h4>原始错误</h4><div class="raw">' + esc(e.msg) + '</div>' +
+      '<h4>字段</h4><dl class="kv">' +
+      '<dt>来源</dt><dd>' + e.layer + '</dd>' +
+      '<dt>error_code</dt><dd class="mono">' + esc(e.code) + '</dd>' +
+      '<dt>status_code</dt><dd class="mono">' + (e.status === 0 ? '0（无 HTTP 响应）' : (e.status || '无')) + '</dd>' +
+      '<dt>耗时</dt><dd class="mono">' + fmtDur(e.ms) + '</dd>' +
+      '<dt>最终结果</dt><dd>' + (e.rescued ? '成功，被重试救回' : '失败，客户端收到错误') + '</dd>' +
+      '<dt>request_id</dt><dd class="mono">' + esc(e.requestId) + '</dd>' +
+      '<dt>用户</dt><dd>' + esc(e.user) + '</dd>' +
+      '</dl><h4>尝试顺序</h4><ol class="chain">' + chain + '</ol>';
+
+    document.getElementById('sheet').classList.add('on');
+    document.getElementById('scrim').classList.add('on');
+    document.getElementById('sheet').setAttribute('aria-hidden', 'false');
+    document.getElementById('sheetClose').focus();
+  }
+
+  function closeSheet() {
+    var sheet = document.getElementById('sheet');
+    if (!sheet.classList.contains('on')) return;
+    sheet.classList.remove('on');
+    document.getElementById('scrim').classList.remove('on');
+    sheet.setAttribute('aria-hidden', 'true');
+    // 焦点要回到打开它的那一行，否则键盘用户被丢回页首
+    if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+    lastFocus = null;
+  }
+
+  function switchView(name) {
+    view = name;
+    syncURL();
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+      b.setAttribute('aria-selected', b.getAttribute('data-view') === name ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) {
+      v.hidden = v.id !== 'view-' + name;
+    });
+    paintAll();
+  }
+
+  /* ============================================================
+   * 四态机：ready / loading / error / empty
+   * 真实接口会慢、会失败、会返回空。看板漏掉这三件事，就等于
+   * 只在演示环境里成立。
+   * ============================================================ */
+  var demoState = 'ready';
+  var SKEL_DELAY = 180;      // 低于这个时长不显示骨架，避免闪一下
+  var SKEL_MIN = 320;        // 一旦显示，至少留这么久再换内容
+  var FAKE_LATENCY = 260;    // 原型里固定，真实环境就是接口耗时
+  var lastPaintedAt = 0;
+
+  function rangeLabel() {
+    return { '1h': '最近 1 小时', '6h': '最近 6 小时', '24h': '最近 24 小时', '7d': '最近 7 天' }[range] || range;
+  }
+
+  // 把一段区间当成「一次都没有失败」：用于空态演示，也用于真实的无数据窗口
+  function withoutErrors(agg) {
+    var zero = function () { return { req: agg.total.req, failReq: 0, failAttempt: 0, failRate: 0, attemptRate: 0, byCode: {}, byChannel: {}, byModel: {}, byUser: {}, retry: [] }; };
+    return {
+      points: agg.points.map(function (p) {
+        return { ts: p.ts, req: p.req, failReq: 0, failAttempt: 0, failRate: 0, attemptRate: 0, byCode: {}, byChannel: {}, byModel: {}, byUser: {} };
+      }),
+      total: zero(),
+      label: agg.label,
+      groupMs: agg.groupMs
+    };
+  }
+
+  function showSkeleton() {
+    // 顶栏还是上一次的结论、下面却在转圈，是最典型的自相矛盾
+    document.getElementById('verdict').innerHTML = '正在读取日志…';
+    [['codeRows', 5], ['retryRows', 5], ['eventRows', 7], ['channelRows', 7]].forEach(function (spec) {
+      var tb = document.getElementById(spec[0]);
+      if (!tb) return;
+      tb.setAttribute('aria-busy', 'true');
+      var out = '';
+      for (var i = 0; i < 4; i++) {
+        out += '<tr aria-hidden="true">';
+        for (var c = 0; c < spec[1]; c++) {
+          var w = c === 0 ? 'w40' : (c === 1 ? 'w62' : 'w78');
+          out += '<td><span class="skel ' + w + '"></span></td>';
+        }
+        out += '</tr>';
+      }
+      tb.innerHTML = out;
+    });
+    document.getElementById('briefLine').innerHTML =
+      '<span class="skel" style="height:15px;width:min(420px,72%)"></span>';
+    document.getElementById('briefSub').innerHTML =
+      '<span class="skel w40" style="margin-top:8px"></span>';
+    document.getElementById('tickBars').innerHTML = '';
+    document.getElementById('tickAxis').innerHTML = '';
+    document.getElementById('tickCap').textContent = '正在读取日志…';
+    document.getElementById('filterCount').textContent = '读取中…';
+    document.getElementById('stateBar').innerHTML = '';
+  }
+
+  function renderErrorState() {
+    var last = lastPaintedAt ? fmtClock(lastPaintedAt) : '';
+    document.getElementById('stateBar').innerHTML =
+      '<div class="state-error" role="alert">' +
+        '<div class="grow">' +
+          '<p class="t">读取日志失败</p>' +
+          '<p class="d">聚合 ' + rangeLabel() + ' 的失败数据时上游返回 504，已重试 2 次。' +
+            (last
+              ? '下面保留的是 ' + last + ' 的最后一次成功结果，<b>可能已经过期</b>。'
+              : '还没有成功取到过数据。') +
+          '</p>' +
+        '</div>' +
+        '<button type="button" id="btnRetry">重试</button>' +
+      '</div>';
+    var b = document.getElementById('btnRetry');
+    if (!b) return;
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      b.textContent = '重试中…';
+      demoState = 'ready';
+      setDemoButton('ready');
+      refresh({ loading: true });
+    });
+  }
+
+  function paintAll() {
+    var agg = aggregate(range);
+    if (demoState === 'empty') agg = withoutErrors(agg);
+    lastPaintedAt = Date.now();
+    document.getElementById('stateBar').innerHTML = '';
+    renderVerdict(agg);
+    if (view === 'overview') {
+      renderBrief(agg);
+      renderCodes(agg);
+      renderRetry(agg);
+    }
+    if (view === 'stream') renderStream();
+    if (view === 'channel') renderChannel();
+  }
+
+  /* 取数流程：延迟后才出骨架，出现后保证最短可见时长。
+     这两个时间不是装饰，是为了让 60ms 的快请求不闪、600ms 的慢请求不空。 */
+  function refresh(opts) {
+    opts = opts || {};
+    if (demoState === 'loading') { showSkeleton(); return; }
+    if (demoState === 'error') { renderErrorState(); return; }
+
+    if (!opts.loading) { paintAll(); return; }
+
+    var shown = false, shownAt = 0;
+    var t = setTimeout(function () { shown = true; shownAt = Date.now(); showSkeleton(); }, SKEL_DELAY);
+    setTimeout(function () {
+      clearTimeout(t);
+      var done = function () { paintAll(); };
+      if (shown) setTimeout(done, Math.max(0, SKEL_MIN - (Date.now() - shownAt)));
+      else done();
+    }, FAKE_LATENCY);
+  }
+
+  function setDemoButton(state) {
+    Array.prototype.forEach.call(document.querySelectorAll('#demoRow button'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-demo') === state ? 'true' : 'false');
+    });
+  }
+
+  function setDemo(state) {
+    demoState = state;
+    setDemoButton(state);
+    if (state === 'loading' || state === 'error') {
+      // 这两态要靠 paintAll 之外的分支画，所以直接调一次
+      refresh({});
+    } else {
+      refresh({});
+    }
+  }
+
+  /* ============================================================
+   * URL 即状态：筛选、视图、时间范围都能直接分享
+   * ============================================================ */
+  var _urlOK = true;
+  function syncURL() {
+    if (!_urlOK) return;
+    var parts = ['view=' + view, 'range=' + range];
+    if (fq.code) parts.push('code=' + encodeURIComponent(fq.code));
+    if (fq.channel) parts.push('channel=' + encodeURIComponent(fq.channel));
+    if (fq.text) parts.push('q=' + encodeURIComponent(fq.text));
+    var hash = '#' + parts.join('&');
+    if (location.hash === hash) return;
+    try {
+      history.replaceState(null, '', hash);
+    } catch (err) {
+      // file:// 打开时 origin 是 null，replaceState 会抛 SecurityError。
+      // 原型是本地文件，这里静默降级；http 环境下不会走到这条分支。
+      _urlOK = false;
+    }
+  }
+
+  function readURL() {
+    var h = (location.hash || '').replace(/^#/, '');
+    if (!h) return;
+    h.split('&').forEach(function (kv) {
+      var i = kv.indexOf('=');
+      if (i < 0) return;
+      var k = kv.slice(0, i);
+      var v;
+      try { v = decodeURIComponent(kv.slice(i + 1)); } catch (e) { return; }
+      if (k === 'range' && RANGES[v]) range = v;
+      if (k === 'view' && ['overview', 'stream', 'channel', 'notes'].indexOf(v) >= 0) view = v;
+      if (k === 'code') fq.code = v;
+      if (k === 'channel') fq.channel = v;
+      if (k === 'q') fq.text = v;
+    });
+  }
+
+  function fillFilters() {
+    var sCode = document.getElementById('fCode');
+    Object.keys(CODE_MAP).sort().forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sCode.appendChild(o);
+    });
+    var sCh = document.getElementById('fChannel');
+    CHANNELS.forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c.name; o.textContent = c.name;
+      sCh.appendChild(o);
+    });
+    sCode.value = fq.code || '';
+    sCh.value = fq.channel || '';
+    document.getElementById('q').value = fq.text || '';
+  }
+
+  document.getElementById('tabs').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-view]');
+    if (b) switchView(b.getAttribute('data-view'));
+  });
+
+  /* 输入用 120ms 防抖：每个键都重排 800 条数据没必要，但也不能等回车 */
+  var _qt = null;
+  document.getElementById('q').addEventListener('input', function (ev) {
+    var v = ev.target.value;
+    clearTimeout(_qt);
+    _qt = setTimeout(function () {
+      fq.text = v.trim();
+      if (view !== 'stream') switchView('stream');
+      else renderStream();
+      syncURL();
+    }, 120);
+  });
+
+  document.getElementById('fCode').addEventListener('change', function (ev) {
+    fq.code = ev.target.value;
+    if (view !== 'stream') switchView('stream'); else renderStream();
+    syncURL();
+  });
+
+  document.getElementById('fChannel').addEventListener('change', function (ev) {
+    fq.channel = ev.target.value;
+    if (view !== 'stream') switchView('stream'); else renderStream();
+    syncURL();
+  });
+
+  document.getElementById('clearFilters').addEventListener('click', function () {
+    clearTimeout(_qt);          // 不清会有一个挂起的 input 把旧值写回来
+    fq = { text: '', code: '', channel: '' };
+    document.getElementById('q').value = '';
+    document.getElementById('fCode').value = '';
+    document.getElementById('fChannel').value = '';
+    renderStream();
+    syncURL();
+  });
+
+  document.getElementById('demoRow').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-demo]');
+    if (!b) return;
+    setDemo(b.getAttribute('data-demo'));
+  });
+
+  document.getElementById('range').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-range]');
+    if (!b) return;
+    range = b.getAttribute('data-range');
+    _cache = {};
+    Array.prototype.forEach.call(document.querySelectorAll('#range button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+    syncURL();
+    refresh({ loading: true });
+  });
+
+  document.getElementById('sheetClose').addEventListener('click', closeSheet);
+  document.getElementById('scrim').addEventListener('click', closeSheet);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeSheet();
+    if (e.key === 'Tab' && document.getElementById('sheet').classList.contains('on')) {
+      // 焦点留在面板内
+      var box = document.getElementById('sheet');
+      var f = box.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  // 脚本出错要显式告诉用户，而不是留一个空表格
+  window.addEventListener('error', function (ev) {
+    var bar = document.getElementById('verdict');
+    if (bar) bar.innerHTML = '<span style="color:var(--err)">看板脚本出错：' + esc(ev.message) + '</span>';
+  });
+
+  try {
+    readURL();
+    fillFilters();
+    Array.prototype.forEach.call(document.querySelectorAll('#range button'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-range') === range ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+      b.setAttribute('aria-selected', b.getAttribute('data-view') === view ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) {
+      v.hidden = v.id !== 'view-' + view;
+    });
+    refresh({});
+    syncURL();
+  } catch (err) {
+    document.getElementById('verdict').innerHTML = '<span style="color:var(--err)">读取日志失败：' + esc(err.message) + '</span>';
+  }
+})();
+</script>
+</body>
+</html>

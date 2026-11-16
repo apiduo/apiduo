@@ -45,7 +45,7 @@ const (
 
 	clickHouseLogInsertStatement = "INSERT INTO logs (" +
 		"id, user_id, created_at, type, content, username, token_name, model_name, " +
-		"quota, prompt_tokens, completion_tokens, use_time, is_stream, channel_id, token_id, " +
+		"quota, prompt_tokens, completion_tokens, use_time, use_time_ms, is_stream, channel_id, token_id, " +
 		"`group`, ip, request_id, upstream_request_id, other)"
 )
 
@@ -646,6 +646,7 @@ func (i *clickHouseLogInserter) Insert(ctx context.Context, rows []*Log) error {
 			int32(row.PromptTokens),
 			int32(row.CompletionTokens),
 			int32(row.UseTime),
+			int32(row.UseTimeMs),
 			boolToUInt8(row.IsStream),
 			int32(row.ChannelId),
 			int32(row.TokenId),

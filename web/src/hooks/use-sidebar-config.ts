@@ -63,6 +63,9 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     models: true,
     redemption: true,
     user: true,
+    /* APIDUO:growth-entry:BEGIN */
+    growth: true,
+    /* APIDUO:growth-entry:END */
     setting: true,
     subscription: true,
   },

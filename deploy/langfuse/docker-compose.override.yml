@@ -1,0 +1,17 @@
+# Langfuse ClickHouse 覆盖配置
+#
+# 用法（二选一）：
+#   A. 放到 /opt/langfuse/docker-compose.override.yml，docker-compose 会自动叠加
+#   B. 把下面两段手工并入 /opt/langfuse/docker-compose.yml 的 langfuse-clickhouse 服务
+#
+# 注意：override 里的 volumes 是按容器内路径合并的，不会覆盖掉数据卷那一行。
+#
+# 线上现状（2026-11-14 02:35 起）：/opt/langfuse/docker-compose.yml 已直接写入这两段，
+# 本文件作为可复现的声明保留，重建环境时用它。
+
+services:
+  langfuse-clickhouse:
+    mem_limit: 8g
+    memswap_limit: 16g
+    volumes:
+      - /opt/langfuse/clickhouse-tuning/20-langfuse-tuning.xml:/etc/clickhouse-server/users.d/20-langfuse-tuning.xml:ro

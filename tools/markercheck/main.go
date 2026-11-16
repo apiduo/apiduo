@@ -26,6 +26,7 @@
 //	go run ./tools/markercheck -base <sha>     # 临时指定基线（排查用）
 //	go run ./tools/markercheck -cost           # 按文件打印合并面并与预算比对
 //	go run ./tools/markercheck -cost -update   # 收紧合并面预算
+//	go run ./tools/markercheck -heat           # 合并面按上游热度加权（隐含 -cost）
 //
 // 合并面预算 .apiduo/merge-budget.txt 记总量（上游文件数 / 标记块数 / 新增行 /
 // 删除上游行），只允许下调：功能收尾时跑 -cost -update 把数字压到新的实际值，
@@ -35,6 +36,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,8 +49,9 @@ import (
 // markerPattern 同时匹配 Go 与 TS/TSX 两种注释外壳，只取特征名与方向。
 var markerPattern = regexp.MustCompile(`APIDUO:([a-z0-9-]+):(BEGIN|END)`)
 
-// hunkPattern 取 unified diff 的「新文件起始行号」。
-var hunkPattern = regexp.MustCompile(`^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
+// hunkPattern 取 unified diff 两侧的起始行号：旧文件（base）与新文件（工作区）。
+// 删除行要按旧行号定位到 base 版本才能 blame 作者，所以两边都要。
+var hunkPattern = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 
 const (
 	baseFile     = ".apiduo/sync-base"
@@ -107,7 +110,11 @@ func main() {
 	update := flag.Bool("update", false, "按当前实际情况重写 "+baselineFile)
 	verbose := flag.Bool("v", false, "打印删除上游行的明细")
 	cost := flag.Bool("cost", false, "按文件打印合并面（块数/新增行/删除行）并与预算比对")
+	heat := flag.Bool("heat", false, "按上游改动频率给合并面加权（隐含 -cost，只报数不判定）")
 	flag.Parse()
+	if *heat {
+		*cost = true
+	}
 
 	root, err := repositoryRoot()
 	if err != nil {
@@ -130,7 +137,7 @@ func main() {
 	}
 
 	if *cost {
-		if err := reportCost(reports, *update); err != nil {
+		if err := reportCost(reports, *update, *heat); err != nil {
 			fail("%v", err)
 		}
 		return
@@ -208,12 +215,70 @@ func main() {
 	fmt.Printf("\n标记块覆盖检查通过（遗留欠账 %d 个文件 / %d 行）\n", len(unmarked), sum(unmarked))
 }
 
+// heatWindow 是热度统计窗口。180 天约两个季度：短到能反映当前活跃度，
+// 长到不会被单次重构事件主导。
+const heatWindow = "180 days ago"
+
+// 分档阈值按本仓实测分布定 —— 当前最热的上游文件是 9 次/180 天。
+// 若按教科书式的「≤3 为冷」分档，H2/H3 会永远是空集，"热文件"这个指标
+// 就变成了一个恒为 0 的数字，看了等于没看。
+var heatTiers = []struct {
+	name   string
+	upTo   int // 含上限
+	weight int
+}{
+	{"H0", 2, 1},
+	{"H1", 5, 2},
+	{"H2", 10, 4},
+	{"H3", math.MaxInt, 8},
+}
+
+// heatTierOf 返回热度所属档位与其风险权重。权重是二倍的等比数列：
+// 上游每多改一个数量级，落在该文件里的同一块代码被语义冲突破坏的概率
+// 大致也翻倍，而不是线性增长。
+func heatTierOf(heat int) (string, int) {
+	for _, tier := range heatTiers {
+		if heat <= tier.upTo {
+			return tier.name, tier.weight
+		}
+	}
+	return "H3", heatTiers[len(heatTiers)-1].weight
+}
+
+func isHot(tier string) bool { return tier == "H2" || tier == "H3" }
+
+// upstreamHeat 统计每个文件在上游近 heatWindow 内被多少个提交改过。
+//
+// 一次 git log 拿全量，而不是逐文件调用：146 个文件逐个 log 要十几次进程启动，
+// 而 --name-only 的输出本身就是「提交 × 文件」的展开，计数即可。
+// 同一提交里同一文件只出现一次，所以计数等于「改过它的提交数」。
+//
+// upstream/main 不存在时返回 nil：浅克隆里可能没有这个 ref，热度是观测项，
+// 不该让检查因此失败。
+func upstreamHeat() map[string]int {
+	out, err := gitOutput("log", "--since="+heatWindow, "--name-only", "--format=", "upstream/main")
+	if err != nil {
+		return nil
+	}
+	heat := make(map[string]int)
+	for line := range strings.SplitSeq(out, "\n") {
+		if file := strings.TrimSpace(line); file != "" {
+			heat[file]++
+		}
+	}
+	return heat
+}
+
 // costRow 是一个上游文件的合并面：块越多、删得越多，未来 rebase 越难。
 type costRow struct {
 	file      string
 	blocks    int
 	added     int
 	deletions int
+	heat      int
+	tier      string
+	weight    int
+	weighted  int
 }
 
 func countBlocks(path string) int {
@@ -230,15 +295,31 @@ func countBlocks(path string) int {
 	return count
 }
 
-func costRows(reports []fileReport) []costRow {
+func costRows(reports []fileReport, heat map[string]int) []costRow {
 	rows := make([]costRow, 0, len(reports))
 	for _, report := range reports {
-		rows = append(rows, costRow{
+		row := costRow{
 			file:      report.file,
 			blocks:    countBlocks(report.file),
 			added:     report.added,
 			deletions: report.deletions,
+		}
+		if heat != nil {
+			row.heat = heat[report.file]
+			row.tier, row.weight = heatTierOf(row.heat)
+			row.weighted = row.blocks * row.weight
+		}
+		rows = append(rows, row)
+	}
+	// 有热度时分档优先：块数相同但一个在冷文件、一个在热文件，代价差一个量级。
+	if heat != nil {
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].weighted != rows[j].weighted {
+				return rows[i].weighted > rows[j].weighted
+			}
+			return rows[i].file < rows[j].file
 		})
+		return rows
 	}
 	// 删除上游行排最前：新增行通常还能和上游的改动共存，删掉的行必然冲突。
 	sort.Slice(rows, func(i, j int) bool {
@@ -319,16 +400,33 @@ func budgetGrowth(reports []fileReport) []string {
 	return grew
 }
 
-func reportCost(reports []fileReport, update bool) error {
-	rows := costRows(reports)
-	fmt.Printf("%-6s %-6s %-6s %s\n", "blocks", "added", "del", "file")
-	for _, row := range rows {
-		fmt.Printf("%-6d %-6d %-6d %s\n", row.blocks, row.added, row.deletions, row.file)
+func reportCost(reports []fileReport, update, withHeat bool) error {
+	var heat map[string]int
+	if withHeat {
+		if heat = upstreamHeat(); heat == nil {
+			fmt.Println("upstream/main 不可用，跳过热度分档")
+		}
+	}
+	rows := costRows(reports, heat)
+	if heat != nil {
+		fmt.Printf("%-7s %-6s %-6s %-5s %-6s %s\n", "heat", "blocks", "added", "del", "w", "file")
+		for _, row := range rows {
+			fmt.Printf("%-7s %-6d %-6d %-5d %-6d %s\n",
+				fmt.Sprintf("%s/%d", row.tier, row.heat), row.blocks, row.added, row.deletions, row.weighted, row.file)
+		}
+	} else {
+		fmt.Printf("%-6s %-6s %-6s %s\n", "blocks", "added", "del", "file")
+		for _, row := range rows {
+			fmt.Printf("%-6d %-6d %-6d %s\n", row.blocks, row.added, row.deletions, row.file)
+		}
 	}
 
 	totals := budgetTotals(reports)
 	fmt.Printf("\n合计：上游文件 %d 个，标记块 %d 个，新增 %d 行，删除上游 %d 行\n",
 		totals["files"], totals["blocks"], totals["added"], totals["deleted"])
+	if heat != nil {
+		reportHeat(rows)
+	}
 
 	if update {
 		if err := writeBudget(totals); err != nil {
@@ -361,6 +459,28 @@ func reportCost(reports []fileReport, update bool) error {
 	return nil
 }
 
+// reportHeat 只报数，不参与任何判定。
+//
+// 热度的分母（上游提交数）每天都在变，把它写进预算会让检查随上游活动随机失败 ——
+// 那不是信号，是噪声。它的用途是排优先级，不是设闸门。
+func reportHeat(rows []costRow) {
+	var hotFiles, hotBlocks, blocks, weighted int
+	for _, row := range rows {
+		blocks += row.blocks
+		weighted += row.weighted
+		if isHot(row.tier) {
+			hotFiles++
+			hotBlocks += row.blocks
+		}
+	}
+	share := 0
+	if blocks > 0 {
+		share = hotBlocks * 100 / blocks
+	}
+	fmt.Printf("热文件（H2+H3）：%d 个 / %d 块，占合并面 %d%%\n", hotFiles, hotBlocks, share)
+	fmt.Printf("加权合并面：%d（H0=1 H1=2 H2=4 H3=8）\n", weighted)
+}
+
 func repositoryRoot() (string, error) {
 	out, err := gitOutput("rev-parse", "--show-toplevel")
 	if err != nil {
@@ -388,25 +508,40 @@ func resolveBase(override string) (string, error) {
 }
 
 // scan 逐个检查上游已有的、且自基线以来被改过的文件。
+//
+// 三处批量化是必须的：改动文件可能有 800 个，逐个 git 调用（cat-file 判存在、
+// diff 取差异）合计 20 秒以上，而检查器一旦跑得久就会被跳过，跳过的闸门等于没有。
+// 现在用一次 ls-tree 判存在、一次 diff 取全部差异，实测回到 3 秒级。
 func scan(base string, verbose bool) ([]fileReport, error) {
 	changed, err := changedFiles(base)
 	if err != nil {
 		return nil, fmt.Errorf("读取改动文件失败: %w", err)
 	}
+	baseSet, err := baseFiles(base)
+	if err != nil {
+		return nil, fmt.Errorf("读取基线文件清单失败: %w", err)
+	}
 
-	var reports []fileReport
+	// 基线提交里不存在 = 我方新增的文件，上游永远不会碰，没有冲突面。
+	targets := make([]string, 0, len(changed))
 	for _, file := range changed {
-		// 基线提交里不存在 = 我方新增的文件，上游永远不会碰，没有冲突面。
-		if !existsAt(base, file) {
+		if _, ok := baseSet[file]; !ok {
 			continue
 		}
 		if skipByFormat(file) {
 			continue
 		}
-		added, deletions, err := diffCounts(base, file)
-		if err != nil {
-			return nil, fmt.Errorf("读取 %s 的差异失败: %w", file, err)
-		}
+		targets = append(targets, file)
+	}
+
+	diffs, err := diffByFile(base, targets)
+	if err != nil {
+		return nil, fmt.Errorf("读取差异失败: %w", err)
+	}
+
+	var reports []fileReport
+	for _, file := range targets {
+		added, deleted := countDiff(diffs[file])
 		if len(added) == 0 {
 			continue
 		}
@@ -426,10 +561,68 @@ func scan(base string, verbose bool) ([]fileReport, error) {
 			added:     len(added),
 			covered:   len(added) - len(outside),
 			unmarked:  len(outside),
-			deletions: deletions,
+			deletions: upstreamDeletions(base, file, deleted),
 		})
 	}
 	return reports, nil
+}
+
+// baseFiles 返回基线提交里的全部路径，用于判断某个文件是不是上游本来就有的。
+func baseFiles(base string) (map[string]struct{}, error) {
+	out, err := gitOutput("ls-tree", "-r", "--name-only", base)
+	if err != nil {
+		return nil, err
+	}
+	files := make(map[string]struct{}, 1<<13)
+	for file := range strings.SplitSeq(out, "\n") {
+		if file = strings.TrimSpace(file); file != "" {
+			files[file] = struct{}{}
+		}
+	}
+	return files, nil
+}
+
+// diffByFile 一次取回全部文件的差异，按工作区路径索引。
+func diffByFile(base string, files []string) (map[string]string, error) {
+	if len(files) == 0 {
+		return map[string]string{}, nil
+	}
+	args := make([]string, 0, len(files)+4)
+	args = append(args, "diff", "-U0", base, "--")
+	args = append(args, files...)
+	out, err := gitOutput(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	diffs := make(map[string]string, len(files))
+	var current string
+	var body strings.Builder
+	flush := func() {
+		if current != "" {
+			diffs[current] = body.String()
+		}
+		body.Reset()
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		if rest, ok := strings.CutPrefix(line, "diff --git a/"); ok {
+			flush()
+			// "a/<old> b/<new>"：取右侧路径，重命名后要的是工作区这一侧。
+			_, after, found := strings.Cut(rest, " b/")
+			if found {
+				current = after
+			} else {
+				current = ""
+			}
+			continue
+		}
+		if current != "" {
+			body.WriteString(line)
+			body.WriteString("\n")
+		}
+	}
+	flush()
+	return diffs, nil
 }
 
 func changedFiles(base string) ([]string, error) {
@@ -449,12 +642,6 @@ func changedFiles(base string) ([]string, error) {
 	return files, nil
 }
 
-// existsAt 判断文件在基线提交里是否已存在，即它是不是上游的文件。
-func existsAt(base, file string) bool {
-	_, err := gitOutput("cat-file", "-e", base+":"+file)
-	return err == nil
-}
-
 func skipByFormat(file string) bool {
 	if _, ok := skipName[filepath.Base(file)]; ok {
 		return true
@@ -466,22 +653,17 @@ func skipByFormat(file string) bool {
 	return ok
 }
 
-// diffCounts 返回新增行在新文件里的行号，以及删除的行数。二进制文件返回空切片。
+// countDiff 从一段 unified diff 里取出新增行（工作区行号）与被删行（基线行号）。
+// 二进制文件与纯删除都没有新增行，返回空切片。
 //
-// 比较的是「基线 vs 工作区」，不是「基线 vs HEAD」：markedLines 读的是工作区文件，
-// 两边对齐才能算准行号。早先写成 HEAD，本地只要有一点未提交改动，行号就会整体
-// 错位，把已标记的行误判成违规。
-func diffCounts(base, file string) ([]int, int, error) {
-	out, err := gitOutput("diff", "-U0", base, "--", file)
-	if err != nil {
-		return nil, 0, err
-	}
-	var added []int
-	deletions := 0
-	next := 0
-	for _, line := range strings.Split(out, "\n") {
+// 行号必须按「基线 vs 工作区」对齐：markedLines 读的是工作区文件，两边错位就会把
+// 已标记的行误判成违规。早先比较的是 HEAD，本地只要有一点未提交改动就会整体偏移。
+func countDiff(diff string) (added, deleted []int) {
+	next, oldNext := 0, 0
+	for line := range strings.SplitSeq(diff, "\n") {
 		if match := hunkPattern.FindStringSubmatch(line); match != nil {
-			next, _ = strconv.Atoi(match[1])
+			oldNext, _ = strconv.Atoi(match[1])
+			next, _ = strconv.Atoi(match[2])
 			continue
 		}
 		switch {
@@ -490,12 +672,90 @@ func diffCounts(base, file string) ([]int, int, error) {
 			added = append(added, next)
 			next++
 		case strings.HasPrefix(line, "-"):
-			deletions++
+			deleted = append(deleted, oldNext)
+			oldNext++
 		case strings.HasPrefix(line, " "):
 			next++
+			oldNext++
 		}
 	}
-	return added, deletions, nil
+	return added, deleted
+}
+
+// upstreamCommitSet 是 upstream/main 的全部提交，用于判断某一行是不是上游写的。
+//
+// 一次 rev-list 拿全量，比逐行 merge-base 快两个数量级；几万条字符串几 MB，
+// 只在进程内活一次。返回 nil 表示上游引用不可用（浅克隆 / 没配 remote），
+// 此时无法判断作者，调用方退回「全部算上游」的旧口径。
+var upstreamCommitSet map[string]struct{}
+
+func loadUpstreamCommits() map[string]struct{} {
+	if upstreamCommitSet != nil {
+		return upstreamCommitSet
+	}
+	out, err := gitOutput("rev-list", "upstream/main")
+	if err != nil {
+		return nil
+	}
+	set := make(map[string]struct{}, 1<<14)
+	for sha := range strings.SplitSeq(out, "\n") {
+		if sha = strings.TrimSpace(sha); sha != "" {
+			set[sha] = struct{}{}
+		}
+	}
+	upstreamCommitSet = set
+	return set
+}
+
+// contiguousRanges 把有序行号合并成连续区间。blame 的 -L 只接受区间，
+// 逐行调用会让进程启动开销压过计算本身。
+func contiguousRanges(lines []int) [][2]int {
+	var ranges [][2]int
+	for _, n := range lines {
+		if len(ranges) > 0 {
+			last := &ranges[len(ranges)-1]
+			if last[1]+1 == n {
+				last[1] = n
+				continue
+			}
+		}
+		ranges = append(ranges, [2]int{n, n})
+	}
+	return ranges
+}
+
+// upstreamDeletions 统计被删的行里有多少行真的是上游写的。
+//
+// 为什么不直接数 diff 的「-」行：等价重构（把标记块里的代码搬进新文件）会让这些行
+// 从原文件消失，但上游从未写过它们，删掉不增加任何冲突面。只有覆盖掉上游那行，
+// 才是一次必然冲突 —— 那两个数字在预算里差一个量级，混在一起就没法判断风险。
+//
+// 判断不了上游引用时返回总数：宁可高估，也不能把真实冲突藏起来。
+func upstreamDeletions(base, file string, deleted []int) int {
+	if len(deleted) == 0 {
+		return 0
+	}
+	commits := loadUpstreamCommits()
+	if commits == nil {
+		return len(deleted)
+	}
+	total := 0
+	for _, span := range contiguousRanges(deleted) {
+		// --abbrev=40：blame 默认输出 10 位缩写，而 rev-list 给的是完整 SHA，
+		// 两边长度不一致会让判断恒为「不是上游」—— 这个 bug 曾让 deleted 静默归零。
+		out, err := gitOutput("blame", "-s", "--abbrev=40", "-L", fmt.Sprintf("%d,%d", span[0], span[1]), base, "--", file)
+		if err != nil {
+			return len(deleted)
+		}
+		for line := range strings.SplitSeq(out, "\n") {
+			sha, _, _ := strings.Cut(strings.TrimSpace(line), " ")
+			// blame 会给「引入边界」的提交打 ^ 前缀，判断所属前先摘掉。
+			if _, ok := commits[strings.TrimPrefix(sha, "^")]; ok {
+				total++
+			}
+		}
+	}
+	return total
 }
 
 // markedLines 返回落在标记块内的行号（含标记行本身）。用栈校验配对——写错一个

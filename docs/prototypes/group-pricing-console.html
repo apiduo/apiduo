@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>四维定价配置台</title>
+<style>
+:root{
+  --bg:#f5f6f8;--card:#fff;--line:#e4e6eb;--line2:#eef0f3;
+  --ink:#14161a;--ink2:#5b6270;--ink3:#8b92a0;
+  --brand:#2563eb;--brandbg:#eff4ff;
+  --ok:#0f8a4d;--okbg:#e9f7ef;
+  --warn:#b45309;--warnbg:#fdf4e3;
+  --mute:#a3a9b4;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 24px 60px}
+h1{font-size:19px;font-weight:500;margin:0 0 6px}
+.sub{color:var(--ink2);font-size:13px;margin:0 0 18px}
+
+.bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.barlabel{font-size:12px;color:var(--ink3);min-width:62px}
+.ug{display:flex;gap:8px;flex-wrap:wrap}
+.ugitem{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:7px 13px;transition:.14s}
+.ugitem[data-ug]{cursor:pointer}
+.ugitem[data-ug]:hover{border-color:#cfd5e0}
+.ugitem.on{border-color:var(--brand);background:var(--brandbg);box-shadow:0 0 0 1px var(--brand) inset}
+.ugitem .n{font-size:12px;font-weight:500}
+.ugitem .m{font-size:11px;color:var(--ink3);margin-top:1px}
+.ugitem.on .m{color:var(--brand)}
+
+.main{display:grid;grid-template-columns:1fr 384px;gap:14px;align-items:start;margin-top:12px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.phead{padding:10px 15px;border-bottom:1px solid var(--line);font-size:12px;color:var(--ink3);display:flex;justify-content:space-between;gap:10px}
+
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:500;color:var(--ink3);padding:9px 8px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+th:first-child{text-align:left;padding-left:15px}
+th .thm{display:block;color:var(--brand);font-variant-numeric:tabular-nums;font-size:11px;margin-top:1px}
+th.nog{color:var(--mute)}
+th.nog .thm{color:var(--mute)}
+
+td{border-bottom:1px solid var(--line2);padding:0}
+tr:last-child td{border-bottom:0}
+
+.mcell{padding:10px 15px}
+.mname{font-size:13px;font-weight:500;white-space:nowrap}
+.mratio{font-size:11px;color:var(--ink3);margin-top:1px;font-variant-numeric:tabular-nums}
+
+.cell{padding:9px 6px;text-align:center;cursor:pointer;transition:background .12s}
+.cell:hover{background:#fafbfd}
+.cell.on{background:var(--brandbg);box-shadow:inset 0 0 0 1px var(--brand)}
+.cell.off{cursor:default;background:#fbfbfc}
+.cell.off:hover{background:#fbfbfc}
+.cv{font-size:13px;font-variant-numeric:tabular-nums;font-weight:500}
+.cell.off .cv{color:#c8ccd4;font-weight:400}
+.ct{font-size:10px;color:var(--mute);margin-top:1px;height:13px;line-height:13px}
+.ct.dn{color:var(--ok);font-weight:500}
+
+.editor{padding:16px 17px}
+.etitle{font-size:13px;font-weight:500;margin-bottom:1px}
+.esub{font-size:11px;color:var(--ink3);margin-bottom:13px}
+.step{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line2);font-size:12px}
+.step .l{color:var(--ink2)}
+.step .l small{color:var(--mute);font-size:10px;margin-left:4px}
+.step .v{font-variant-numeric:tabular-nums}
+.total{display:flex;justify-content:space-between;align-items:flex-end;padding:13px 0 2px;border-top:1px solid var(--line);margin-top:8px}
+.total .l{font-size:12px;color:var(--ink2)}
+.total .v{font-size:25px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.1}
+
+.chan{margin-top:14px;background:#f4f6f9;border-radius:8px;padding:10px 11px}
+.chhead{display:flex;justify-content:space-between;font-size:11px;color:var(--ink3);margin-bottom:7px;gap:8px}
+.chhead b{font-weight:500;color:var(--ink2)}
+.chrow{display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);padding:2.5px 0;font-variant-numeric:tabular-nums;gap:8px}
+.chnote{font-size:10px;color:var(--mute);margin-top:7px;line-height:1.5;padding-top:7px;border-top:1px dashed #e0e4ea}
+
+.ctl{margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+.ctlrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ctlrow label{font-size:12px;color:var(--ink2)}
+.ratebig{font-size:15px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--brand)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;background:#e3e7ee;outline:none;margin:2px 0 4px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--brand);cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--brand)}
+.scale{display:flex;justify-content:space-between;font-size:10px;color:var(--mute);margin-bottom:11px}
+input[type=date]{font:inherit;font-size:12px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;width:100%;outline:none;color:var(--ink)}
+input[type=date]:focus{border-color:var(--brand)}
+.btns{display:flex;gap:8px;margin-top:11px}
+button{font:inherit;font-size:12px;padding:7px 13px;border-radius:7px;border:1px solid var(--brand);background:var(--brand);color:#fff;cursor:pointer;flex:1}
+button:hover{background:#1d4ed8}
+button.ghost{background:#fff;color:var(--ink2);border-color:var(--line)}
+button.ghost:hover{background:#f6f7f9}
+
+.hint{margin-top:10px;background:#f4f6f9;border-radius:7px;padding:8px 10px;font-size:11px;color:var(--ink3);line-height:1.6}
+.hint code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;background:#e9edf3;padding:1px 4px;border-radius:4px;color:#3b4350}
+
+.rsec{margin-top:20px}
+.rhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+.rtitle{font-size:13px;font-weight:500;color:var(--ink2)}
+.rhint{font-size:11px;color:var(--ink3)}
+td.r{padding:9px 10px;font-size:12px}
+td.r.mono{font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px}
+.dot.live{background:var(--ok)}
+.dot.wait{background:var(--warn)}
+.dot.dead{background:var(--mute)}
+.dim{color:var(--mute)}
+.rm{font-size:11px;color:var(--ink3);cursor:pointer;background:none;border:0;padding:2px 4px;flex:none}
+.rm:hover{color:#b91c1c}
+
+.prio{margin-top:0;padding:11px 15px;border-top:1px solid var(--line);background:#fbfcfd;font-size:11px;color:var(--ink2);line-height:1.8}
+.prio b{font-weight:500;color:var(--ink)}
+.prio code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;background:#eceff4;padding:1px 4px;border-radius:4px;color:#3b4350}
+
+@media(max-width:1060px){
+  .main{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>四维定价配置台</h1>
+  <p class="sub">价格由四个维度共同决定。切换用户分组看授权与折扣，点格子改例外折扣。</p>
+
+  <div class="bar">
+    <span class="barlabel">用户分组</span>
+    <div class="ug" id="ug"></div>
+  </div>
+  <div class="bar">
+    <span class="barlabel">模型分组</span>
+    <div class="ug" id="mg"></div>
+  </div>
+
+  <div class="main">
+    <div class="panel">
+      <div class="phead">
+        <span>行 = 具体模型 · 列 = 模型分组</span>
+        <span>数值越低越便宜</span>
+      </div>
+      <table>
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="editor" id="editor"></div>
+    </div>
+  </div>
+
+  <div class="rsec">
+    <div class="rhead">
+      <div class="rtitle">例外规则</div>
+      <div class="rhint">只有偏离默认乘法时才写一条</div>
+    </div>
+    <div class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px"></th>
+            <th style="text-align:left;padding-left:6px">用户分组</th>
+            <th style="text-align:left">模型分组</th>
+            <th style="text-align:left">具体模型</th>
+            <th>折扣</th>
+            <th>生效期</th>
+            <th>状态</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody id="rules"></tbody>
+      </table>
+      <div class="prio">
+        <b>命中顺序</b>（从上到下，第一个命中即停，不相乘）：<br>
+        <code>用户分组 + 模型分组 + 具体模型</code> → <code>用户分组 + 模型分组</code> → <code>* + 模型分组 + 具体模型</code> → <code>* + 模型分组</code><br>
+        都没命中，才回落到默认公式 <code>模型基准 × 用户分组倍率 × 模型分组倍率</code>。用户级私有折扣（一对一谈价）永远排在这四条之前。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const userGroups = [
+  {key:'default', name:'default', label:'普通用户', mult:1.0,  can:['lite','std']},
+  {key:'vip',     name:'vip',     label:'VIP',      mult:0.9,  can:['lite','std','plus']},
+  {key:'corp',    name:'corp',    label:'企业',     mult:1.0,  can:['std','plus','ent']}
+];
+
+const modelGroups = [
+  {key:'lite', name:'lite', mult:0.5, desc:'国产与低价通道'},
+  {key:'std',  name:'std',  mult:1.0, desc:'国际主流'},
+  {key:'plus', name:'plus', mult:1.8, desc:'高速高可用'},
+  {key:'ent',  name:'ent',  mult:7.0, desc:'企业专属池'}
+];
+
+const models = [
+  {name:'gpt-5.2', ratio:0.875, groups:['std','plus'],
+   chans:[{n:'azure-us',cost:0.72,w:70},{n:'azure-eu',cost:0.78,w:20},{n:'openai-direct',cost:1.0,w:10}]},
+  {name:'claude-sonnet-4-5', ratio:1.5, groups:['std','plus','ent'],
+   chans:[{n:'anthropic-direct',cost:1.4,w:60},{n:'ccmax-pool',cost:0.9,w:40}]},
+  {name:'gemini-3.6-flash', ratio:0.75, groups:['std','plus'],
+   chans:[{n:'vertex-global',cost:1.1,w:80},{n:'google-ai',cost:0.95,w:20}]},
+  {name:'kimi-k2.5', ratio:2, groups:['lite','std'],
+   chans:[{n:'moonshot-direct',cost:0.55,w:50},{n:'volcengine-cn',cost:0.48,w:50}]},
+  {name:'deepseek-v3', ratio:1, groups:['lite','std'],
+   chans:[{n:'aliyun-bailian',cost:0.3,w:60},{n:'volcengine-cn',cost:0.35,w:40}]},
+  {name:'glm-5.3', ratio:4, groups:['lite','std'],
+   chans:[{n:'zhipu-direct',cost:0.42,w:100}]},
+  {name:'grok-4.5', ratio:1, groups:['plus','ent'],
+   chans:[{n:'xai-direct',cost:0.95,w:100}]}
+];
+
+const today = new Date().toISOString().slice(0,10);
+
+let rules = [
+  {id:1, ug:'*',    mg:'std',  model:'gpt-5.2',          rate:0.85, from:'2026-10-01', to:'2026-12-31', note:'新版预热', on:true},
+  {id:2, ug:'*',    mg:'lite', model:'kimi-k2.5',        rate:0.70, from:'2026-09-01', to:'2027-06-01', note:'老模型清仓', on:true},
+  {id:3, ug:'vip',  mg:'lite', model:'*',                rate:0.92, from:'2026-09-01', to:'2027-12-31', note:'VIP 折上折', on:true},
+  {id:4, ug:'*',    mg:'lite', model:'*',                rate:0.95, from:'2026-09-01', to:'2027-03-01', note:'轻量全场 95 折', on:true},
+  {id:5, ug:'*',    mg:'plus', model:'claude-sonnet-4-5',rate:0.80, from:'2026-01-01', to:'2026-05-01', note:'已过期示例', on:true},
+  {id:6, ug:'corp', mg:'ent',  model:'*',                rate:0.94, from:'2026-11-01', to:'2027-12-31', note:'企业合约价', on:true}
+];
+
+let state = {ug:'default', mg:'std', model:'gpt-5.2'};
+
+function status(r){
+  if(!r.on) return 'off';
+  if(today < r.from) return 'wait';
+  if(today > r.to) return 'dead';
+  return 'live';
+}
+
+function matchRule(ugKey, mgKey, modelName){
+  const live = rules.filter(r=>r.on && status(r)==='live' && r.mg===mgKey);
+  return live.find(r=>r.ug===ugKey && r.model===modelName)
+      || live.find(r=>r.ug===ugKey && r.model==='*')
+      || live.find(r=>r.ug==='*'    && r.model===modelName)
+      || live.find(r=>r.ug==='*'    && r.model==='*')
+      || null;
+}
+
+function calc(modelName, mgKey, ugKey){
+  const m = models.find(x=>x.name===modelName);
+  const mg = modelGroups.find(x=>x.key===mgKey);
+  const ug = userGroups.find(x=>x.key===ugKey);
+  if(!m || !mg || !ug) return null;
+  if(!m.groups.includes(mgKey)) return null;
+  if(!ug.can.includes(mgKey)) return null;
+  const rule = matchRule(ugKey, mgKey, modelName);
+  const ruleRate = rule ? rule.rate : 1;
+  return {base:m.ratio, ugMult:ug.mult, mgMult:mg.mult, ruleRate, rule,
+          final:m.ratio * ug.mult * mg.mult * ruleRate};
+}
+
+function fmt(n){
+  if(n === null || n === undefined) return '—';
+  return n.toFixed(3).replace(/0+$/,'').replace(/\.$/,'');
+}
+function pct(mul){ return Math.round(Math.abs(1-mul)*100); }
+
+function renderUG(){
+  document.getElementById('ug').innerHTML = userGroups.map(u=>
+    '<div class="ugitem'+(state.ug===u.key?' on':'')+'" data-ug="'+u.key+'">'
+    +'<div class="n">'+u.name+' · '+u.label+'</div>'
+    +'<div class="m">×'+u.mult.toFixed(1)+' · '+u.can.join(' / ')+'</div></div>'
+  ).join('');
+  document.querySelectorAll('[data-ug]').forEach(el=>{
+    el.onclick = ()=>{ state.ug = el.dataset.ug; render(); };
+  });
+}
+
+function renderMG(){
+  document.getElementById('mg').innerHTML = modelGroups.map(g=>
+    '<div class="ugitem"><div class="n">'+g.name+' · ×'+g.mult.toFixed(1)+'</div>'
+    +'<div class="m">'+g.desc+'</div></div>'
+  ).join('');
+}
+
+function renderHead(){
+  const ug = userGroups.find(u=>u.key===state.ug);
+  document.getElementById('thead').innerHTML =
+    '<tr><th>具体模型 / 基准倍率</th>'
+    + modelGroups.map(g=>'<th class="'+(ug.can.includes(g.key)?'':'nog')+'">'
+        +g.name+'<span class="thm">×'+g.mult.toFixed(1)+'</span></th>').join('')
+    + '</tr>';
+}
+
+function renderBody(){
+  const ug = userGroups.find(u=>u.key===state.ug);
+  document.getElementById('tbody').innerHTML = models.map(m=>{
+    const cells = modelGroups.map(g=>{
+      const c = calc(m.name, g.key, state.ug);
+      if(!c){
+        const why = !ug.can.includes(g.key) ? '无权' : '不提供';
+        return '<td class="cell off"><div class="cv">—</div><div class="ct">'+why+'</div></td>';
+      }
+      const on = state.model===m.name && state.mg===g.key ? ' on' : '';
+      const tag = c.ruleRate < 1 ? '<div class="ct dn">−'+pct(c.ruleRate)+'%</div>' : '<div class="ct"></div>';
+      return '<td class="cell'+on+'" data-m="'+m.name+'" data-g="'+g.key+'">'
+        +'<div class="cv">'+fmt(c.final)+'</div>'+tag+'</td>';
+    }).join('');
+    return '<tr><td><div class="mcell"><div class="mname">'+m.name+'</div>'
+      +'<div class="mratio">'+fmt(m.ratio)+'</div></div></td>'+cells+'</tr>';
+  }).join('');
+
+  document.querySelectorAll('.cell[data-m]').forEach(el=>{
+    if(el.classList.contains('off')) return;
+    el.onclick = ()=>{ state.model = el.dataset.m; state.mg = el.dataset.g; render(); };
+  });
+}
+
+function renderEditor(){
+  const m = models.find(x=>x.name===state.model);
+  const ug = userGroups.find(u=>u.key===state.ug);
+  const box = document.getElementById('editor');
+  const c = calc(m.name, state.mg, state.ug);
+
+  if(!c){
+    const why = !ug.can.includes(state.mg) ? '当前用户分组无权访问此模型分组' : '此模型分组不提供该模型';
+    box.innerHTML = '<div class="etitle">'+m.name+'</div>'
+      +'<div class="esub">'+ug.name+' · '+state.mg+'</div>'
+      +'<div class="hint">'+why+'。授权由用户分组的可访问范围决定，与价格无关。</div>';
+    return;
+  }
+
+  const ruleRow = c.rule
+    ? '<div class="step"><div class="l">例外规则<small>'+c.rule.note+'</small></div>'
+      +'<div class="v" style="color:var(--ok);font-weight:500">×'+c.ruleRate+'</div></div>'
+    : '<div class="step"><div class="l">例外规则<small>无命中，走默认乘法</small></div>'
+      +'<div class="v" style="color:var(--mute)">—</div></div>';
+
+  const chans = m.chans.map(ch=>'<div class="chrow"><span>'+ch.n+'</span>'
+    +'<span>成本 '+ch.cost.toFixed(2)+' · 权重 '+ch.w+'</span></div>').join('');
+
+  box.innerHTML = '<div class="etitle">'+m.name+'</div>'
+    +'<div class="esub">'+ug.name+' 用户 · '+state.mg+' 档</div>'
+    +'<div class="step"><div class="l">模型基准<small>model_ratio</small></div><div class="v">'+fmt(c.base)+'</div></div>'
+    +'<div class="step"><div class="l">用户分组<small>'+ug.name+'</small></div><div class="v">×'+c.ugMult.toFixed(2)+'</div></div>'
+    +'<div class="step"><div class="l">模型分组<small>'+state.mg+'</small></div><div class="v">×'+c.mgMult.toFixed(1)+'</div></div>'
+    + ruleRow
+    +'<div class="total"><span class="l">最终倍率</span><span class="v">'+fmt(c.final)+'</span></div>'
+    +'<div class="chan"><div class="chhead"><b>服务此格的渠道</b><span>内部 · 不计入售价</span></div>'
+    + chans
+    +'<div class="chnote">渠道只决定成本和可用性，由调度器按权重挑选。换渠道不改变用户看到的价格。</div></div>'
+    +'<div class="ctl">'
+    +'<div class="ctlrow"><label>例外折扣</label><span class="ratebig" id="rateTxt"'
+      +(c.ruleRate>=0.999?' style="color:var(--ink3)"':'')+'>'+c.ruleRate.toFixed(2)+'</span></div>'
+    +'<input type="range" id="slider" min="0.5" max="1" step="0.01" value="'+c.ruleRate+'">'
+    +'<div class="scale"><span>5 折</span><span>8 折</span><span>原价</span></div>'
+    +'<div class="ctlrow"><label>到期日</label></div>'
+    +'<input type="date" id="toDate" value="'+(c.rule&&c.rule.model===m.name&&c.rule.ug===state.ug?c.rule.to:'2027-06-30')+'">'
+    +'<div class="btns"><button id="applyBtn">写给这一格</button>'
+    +'<button class="ghost" id="clearBtn">清除</button></div>'
+    +'</div>'
+    +'<div class="hint">写入的是 <code>('+ug.name+', '+state.mg+', '+m.name+')</code> 这一条三元例外，只影响这一个组合。</div>';
+
+  const slider = document.getElementById('slider');
+  const rateTxt = document.getElementById('rateTxt');
+  slider.oninput = ()=>{
+    const v = +slider.value;
+    rateTxt.textContent = v.toFixed(2);
+    rateTxt.style.color = v >= 0.999 ? 'var(--ink3)' : 'var(--brand)';
+  };
+
+  document.getElementById('applyBtn').onclick = ()=>{
+    const rate = Math.round(+slider.value*100)/100;
+    const to = document.getElementById('toDate').value || '2027-06-30';
+    const ex = rules.find(r=>r.ug===state.ug && r.mg===state.mg && r.model===m.name);
+    if(rate >= 0.999){
+      rules = rules.filter(r=>!(r.ug===state.ug && r.mg===state.mg && r.model===m.name));
+    }else if(ex){
+      ex.rate = rate; ex.to = to; ex.from = today; ex.on = true;
+    }else{
+      rules.unshift({id:Date.now(), ug:state.ug, mg:state.mg, model:m.name,
+                     rate, from:today, to, note:'单独定价', on:true});
+    }
+    render();
+  };
+
+  document.getElementById('clearBtn').onclick = ()=>{
+    rules = rules.filter(r=>!(r.ug===state.ug && r.mg===state.mg && r.model===m.name));
+    render();
+  };
+}
+
+function renderRules(){
+  document.getElementById('rules').innerHTML = rules.map(r=>{
+    const st = status(r);
+    const map = {live:['live','生效中'], wait:['wait','未开始'], dead:['dead','已过期'], off:['dead','已停用']}[st];
+    const cls = (st==='dead'||st==='off') ? 'dim' : '';
+    const knob = r.on ? 'left:15px' : 'left:2px';
+    const bg = r.on ? 'var(--brand)' : '#d7dbe2';
+    const ugTxt = r.ug==='*' ? '<span class="dim">* 全部</span>' : r.ug;
+    const mTxt = r.model==='*' ? '<span class="dim">* 全档</span>' : r.model;
+    return '<tr class="'+cls+'">'
+      +'<td style="padding-left:15px"><div data-sw="'+r.id+'" style="width:30px;height:17px;border-radius:9px;background:'+bg+';position:relative;cursor:pointer">'
+      +'<span style="position:absolute;top:2px;'+knob+';width:13px;height:13px;border-radius:50%;background:#fff;transition:.15s"></span></div></td>'
+      +'<td class="r" style="text-align:left">'+ugTxt+'</td>'
+      +'<td class="r" style="text-align:left">'+r.mg+'</td>'
+      +'<td class="r" style="text-align:left">'+mTxt
+        +'<div class="dim" style="font-size:11px">'+r.note+'</div></td>'
+      +'<td class="r mono" style="text-align:center">×'+r.rate+'</td>'
+      +'<td class="r mono" style="text-align:center;font-size:11px;color:var(--mute)">'+r.from+' → '+r.to+'</td>'
+      +'<td class="r" style="text-align:center"><span class="dot '+map[0]+'"></span>'+map[1]+'</td>'
+      +'<td style="text-align:center"><button class="rm" data-rm="'+r.id+'">删除</button></td></tr>';
+  }).join('');
+
+  document.querySelectorAll('[data-sw]').forEach(el=>{
+    el.onclick = e=>{
+      e.stopPropagation();
+      const r = rules.find(x=>x.id === +el.dataset.sw);
+      r.on = !r.on; render();
+    };
+  });
+  document.querySelectorAll('[data-rm]').forEach(el=>{
+    el.onclick = e=>{
+      e.stopPropagation();
+      rules = rules.filter(x=>x.id !== +el.dataset.rm);
+      render();
+    };
+  });
+}
+
+function render(){
+  renderUG(); renderMG(); renderHead(); renderBody(); renderEditor(); renderRules();
+}
+
+render();
+</script>
+</body>
+</html>

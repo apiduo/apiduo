@@ -36,6 +36,9 @@ import {
   Settings,
   ShieldCheck,
   Ticket,
+  /* APIDUO:growth-entry:BEGIN */
+  TrendingUp,
+  /* APIDUO:growth-entry:END */
   User,
   Users,
   Wallet,
@@ -165,6 +168,18 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             url: '/users',
             icon: Users,
           },
+          /* APIDUO:growth-entry:BEGIN */
+          {
+            title: t('Growth'),
+            url: '/growth',
+            icon: TrendingUp,
+          },
+          {
+            title: t('Service health'),
+            url: '/service-health',
+            icon: Activity,
+          },
+          /* APIDUO:growth-entry:END */
           {
             title: t('Redemption Codes'),
             url: '/redemption-codes',

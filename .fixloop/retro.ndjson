@@ -1,0 +1,1 @@
+{"ts": "2026-11-16T15:51:11+08:00", "task": "ops-performance-audit", "kind": "bugfix", "rounds": 5, "stop": "all-green", "dominant_layer": "IMPL", "criteria_rework": 2, "user_pushback": false, "notes": "两次优化才收敛：先加缓存治标，再下推CH治本。P2阈值一次定对，返工都在实现层；未覆盖项是E9浏览器复验"}

@@ -26,75 +26,14 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)
-		// APIDUO:agent-key:BEGIN
-		// Anonymous by design: these only mint a random nonce and verify a
-		// signature, so there is nothing to protect with a token. Both are
-		// rate-limited because they are reachable without credentials.
-		agentRoute := apiRouter.Group("/agent")
-		{
-			agentRoute.POST("/challenge", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.RequestAgentChallenge)
-			agentRoute.POST("/exchange", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.ExchangeAgentSignature)
-
-			// Managing keys is a browser action, so the same prefix carries a
-			// session guard. Keeping it here rather than under /api/user means the
-			// whole feature lives behind one path an operator can remember.
-			agentKeyRoute := agentRoute.Group("/keys")
-			agentKeyRoute.Use(middleware.DisableCache(), middleware.UserAuth())
-			{
-				agentKeyRoute.GET("", controller.ListAgentKeys)
-				agentKeyRoute.POST("", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("access-token"), controller.CreateAgentKey)
-				agentKeyRoute.DELETE("/:id", middleware.CriticalRateLimit(), middleware.UserCriticalRateLimit("access-token"), controller.RevokeAgentKey)
-			}
-		}
-		// APIDUO:agent-key:END
+		// APIDUO:routes:BEGIN
+		// 自有路由全部在 router/apiduo_routes.go 的注册表里。这里只留挂接点：
+		// 新增接口往那个切片里加一行，不再往本文件插块 —— 本文件是上游的，
+		// 每多一块就多一处未来要解冲突的位置。
+		registerApiduoRoutes(apiRouter)
+		// APIDUO:routes:END
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
-		// APIDUO:appearance:BEGIN
-		// Public by design: the effect is drawn on apiduo's own surfaces, some of
-		// which render before sign-in. The reply carries a colour and three
-		// numbers, so there is nothing here to keep from an anonymous visitor.
-		apiRouter.GET("/appearance", controller.GetApiduoAppearance)
-		// APIDUO:appearance:END
-		// APIDUO:dynamic-nav:BEGIN
-		// Stored in the existing option table (CustomNavApps), so no schema
-		// change is involved. Reads are authenticated: entries may point at
-		// internal hosts that must not be exposed to anonymous visitors.
-		apiRouter.GET("/nav_apps", middleware.UserAuth(), controller.GetNavApps)
-		// Editing uses RootAuth to match the option endpoints: these entries are
-		// global appearance configuration, the same class as SidebarModulesAdmin.
-		apiRouter.GET("/nav_apps/all", middleware.RootAuth(), controller.GetAllNavApps)
-		apiRouter.PUT("/nav_apps", middleware.RootAuth(), controller.SaveNavApps)
-		// APIDUO:dynamic-nav:END
-		// APIDUO:sk-analytics:BEGIN
-		// SK x model x user cross-section over quota_data. Admin-scoped to match
-		// /api/data: that endpoint already exposes every user's usage to admins,
-		// so this adds no new reach. The token key is masked server-side.
-		apiRouter.GET("/data/sk", middleware.AdminAuth(), controller.GetSkQuotaDates)
-		// Self-scoped variant for resellers: the owner boundary comes from the
-		// session, so it is safe for every logged-in user.
-		apiRouter.GET("/data/sk/self", middleware.UserAuth(), controller.GetSelfSkQuotaDates)
-		// APIDUO:sk-analytics:END
-		// APIDUO:capacity-forecast:BEGIN
-		// Daily series feeding the capacity planner and the balance runway. Same
-		// reach as /api/data/sk; /self is scoped to the caller's own rows.
-		apiRouter.GET("/data/series", middleware.AdminAuth(), controller.GetUsageSeries)
-		apiRouter.GET("/data/series/self", middleware.UserAuth(), controller.GetSelfUsageSeries)
-		// Per-user balance + daily series for the retention board.
-		apiRouter.GET("/data/user-balances", middleware.AdminAuth(), controller.GetUserBalanceSeries)
-		// APIDUO:capacity-forecast:END
-		// APIDUO:trace:BEGIN
-		// Trace jump-link config for the log page. AdminAuth because
-		// /api/status is public-by-design and must not leak the internal
-		// Langfuse host.
-		apiRouter.GET("/apiduo/trace/config", middleware.AdminAuth(), controller.GetApiduoTraceConfig)
-		// detail/ is a literal segment on purpose: Gin panics when a static and a
-		// wildcard segment share a level, so /apiduo/trace/:id cannot coexist with
-		// /apiduo/trace/config.
-		apiRouter.GET("/apiduo/trace/detail/:trace_id", middleware.AdminAuth(), controller.GetApiduoTraceDetail)
-		// 图片外置后的唯一公开入口：URL 写在 span 正文里，Langfuse 是从另一个
-		// 源、没有 apiduo 会话去加载它的。id 由 Langfuse 按内容生成、不可枚举。
-		apiRouter.GET("/apiduo/trace/media/:media_id", controller.GetApiduoTraceMedia)
-		// APIDUO:trace:END
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)

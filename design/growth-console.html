@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>增长运营 · apiduo 产品原型 v0.2</title>
+<style>
+  :root{
+    --bg:#ffffff;--surface:#fbfbfc;--surface-2:#f4f4f6;--line:#e7e7ea;--line-strong:#d6d6db;
+    --ink:#17171c;--ink-2:#4a4a55;--muted:#8b8b96;--accent:#4f46e5;--accent-soft:#eef0ff;
+    --ok:#0f7a52;--ok-soft:#e6f4ed;--err:#c02a20;--err-soft:#fdeceb;--warn:#9a6200;--warn-soft:#fdf3e0;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--surface-2);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  .side{width:196px;flex:0 0 196px;background:#15151a;color:#c9c9d1;padding:14px 10px;font-size:12.5px}
+  .side .brand{display:flex;align-items:center;gap:8px;padding:6px 8px 16px;color:#fff;font-weight:600;font-size:13.5px}
+  .side .dot{width:7px;height:7px;border-radius:99px;background:#6d63ff}
+  .side .grp{padding:14px 10px 5px;color:#63636f;font-size:10.5px;letter-spacing:.06em}
+  .side a{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:7px;color:#a7a7b4;text-decoration:none;margin-bottom:1px}
+  .side a.on{background:#26262f;color:#fff}
+  .side .tag{margin-left:auto;background:#3a2f7a;color:#b9b1ff;font-size:9.5px;padding:1px 5px;border-radius:4px;letter-spacing:.04em}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+  .head{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .head h1{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:2px}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--ink-2);font-size:12.5px;padding:5px 11px;border-radius:7px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;border:1px solid var(--line)}
+  .tabs{display:flex;gap:2px;padding:0 22px;border-bottom:1px solid var(--line);background:#fff}
+  .tabs button{appearance:none;border:0;background:transparent;font-family:inherit;font-size:13px;color:var(--muted);
+    padding:11px 12px;border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px;display:flex;align-items:center;gap:6px}
+  .tabs button.on{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+  .tabs .cnt{background:var(--err-soft);color:var(--err);font-size:10px;font-weight:600;padding:0 5px;border-radius:99px;line-height:15px}
+  .body{padding:18px 22px 44px;overflow:auto}
+  .note{display:flex;gap:8px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--ink-2);line-height:1.6}
+  .note b{color:var(--ink);font-weight:600}
+  .note .k{flex:0 0 auto;width:3px;align-self:stretch;border-radius:2px;background:var(--accent)}
+  .note.warn .k{background:var(--warn)}
+  .note.danger .k{background:var(--err)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .card + .card{margin-top:14px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:12.5px;font-weight:600}
+  .card-h .desc{color:var(--muted);font-size:11.5px}
+  .card-b{padding:14px}
+  .mini{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .mini .m{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:11px 13px;flex:1 1 150px}
+  .mini .m .l{font-size:11px;color:var(--muted);margin-bottom:5px}
+  .mini .m .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.2}
+  .mini .m .d{font-size:10.5px;margin-top:4px}
+  .up{color:var(--ok)}.down{color:var(--err)}.flat{color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:stretch;margin-top:14px}
+  .grid2>.card{display:flex;flex-direction:column}
+  .grid2>.card>.card-b{flex:1}
+  .grid2b{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,346px);gap:14px;align-items:stretch}
+  .grid2b>.card{display:flex;flex-direction:column}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);font-size:12.5px;vertical-align:middle}
+  th{color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.02em;background:var(--surface)}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#fcfcfd}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:99px;font-size:11px;font-weight:600;line-height:1.5}
+  .pill.k{background:#1d1d24;color:#fff}
+  .pill.a{background:var(--accent-soft);color:var(--accent)}
+  .pill.b{background:var(--surface-2);color:var(--ink-2)}
+  .pill.mute{background:var(--surface-2);color:var(--muted)}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.err{background:var(--err-soft);color:var(--err)}
+  .u{display:flex;flex-direction:column;gap:1px}
+  .u .n{font-weight:600;font-size:12.5px}
+  .u .i{color:var(--muted);font-size:10.5px;font-variant-numeric:tabular-nums}
+  .bar{display:flex;height:10px;border-radius:99px;overflow:hidden;background:var(--surface-2);margin:4px 0 10px}
+  .bar i{display:block;height:100%}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:11.5px;color:var(--ink-2)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .sw{width:8px;height:8px;border-radius:2px}
+  .funnel{display:flex;flex-direction:column;gap:9px}
+  .fn{display:grid;grid-template-columns:82px 1fr 78px 46px;align-items:center;gap:10px;font-size:12px}
+  .fn .t{color:var(--ink-2)}
+  .fn .tr{height:20px;background:var(--surface-2);border-radius:4px;overflow:hidden}
+  .fn .tr i{display:block;height:100%;background:linear-gradient(90deg,#6d63ff,#9289ff);border-radius:4px}
+  .fn .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .fn .p{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:11px}
+  .act{display:flex;gap:6px}
+  .btn{appearance:none;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-family:inherit;
+    font-size:11.5px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--ink-2);color:var(--ink)}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.p:hover{background:#443bc9;color:#fff}
+  .task{display:grid;grid-template-columns:52px 1fr auto;border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;margin-bottom:9px;background:#fff}
+  .task:last-child{margin-bottom:0}
+  .task .pr{font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;
+    border-right:1px solid var(--line);background:var(--surface-2);color:var(--muted);text-align:center;line-height:1.35}
+  .task.p1 .pr{background:var(--err-soft);color:var(--err)}
+  .task.p2 .pr{background:var(--warn-soft);color:var(--warn)}
+  .task .in{padding:11px 13px;min-width:0}
+  .task .top{display:flex;align-items:center;gap:7px;margin-bottom:4px;flex-wrap:wrap}
+  .task .nm{font-weight:600;font-size:12.5px}
+  .task .why{font-size:12px;color:var(--ink-2);line-height:1.6}
+  .task .why em{font-style:normal;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+  .task .rt{padding:11px 13px;display:flex;flex-direction:column;gap:5px;align-items:flex-end;
+    justify-content:center;border-left:1px solid var(--line);background:var(--surface)}
+  .task .tm{font-size:10.5px;color:var(--muted)}
+  .row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);font-size:12.5px;flex-wrap:wrap}
+  .row:last-child{border-bottom:0}
+  .row .lab{flex:1 1 200px;color:var(--ink-2)}
+  .row .lab b{display:block;color:var(--ink);font-weight:600;margin-bottom:2px}
+  .row .lab span{font-size:11.5px;color:var(--muted);line-height:1.5}
+  .inp{border:1px solid var(--line-strong);border-radius:6px;padding:5px 9px;font-size:12px;font-family:inherit;
+    color:var(--ink);background:#fff;font-variant-numeric:tabular-nums;width:92px;text-align:right}
+  .inp.w{width:100%;text-align:left}
+  .sw-t{position:relative;width:34px;height:19px;border-radius:99px;background:var(--line-strong);cursor:pointer;flex:0 0 auto}
+  .sw-t.on{background:var(--accent)}
+  .sw-t::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:99px;background:#fff;transition:left .15s}
+  .sw-t.on::after{left:17px}
+  .foot{margin-top:12px;color:var(--muted);font-size:11px;line-height:1.7}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+  .tagx{display:inline-block;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);
+    font-size:10px;padding:1px 5px;border-radius:4px;margin-left:5px;font-weight:500;vertical-align:1px}
+  .tl{position:relative;padding-left:22px;margin:2px 0}
+  .tl::before{content:"";position:absolute;left:6px;top:8px;bottom:10px;width:1px;background:var(--line)}
+  .tl .ev{position:relative;padding-bottom:15px}
+  .tl .ev:last-child{padding-bottom:0}
+  .tl .ev::before{content:"";position:absolute;left:-19px;top:5px;width:7px;height:7px;border-radius:99px;
+    background:var(--line-strong);box-shadow:0 0 0 2px #fff}
+  .tl .ev.hi::before{background:var(--err)}
+  .tl .ev.ok::before{background:var(--ok)}
+  .tl .ev .d{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .tl .ev .t{font-size:12.5px;font-weight:600;margin:1px 0 2px}
+  .tl .ev .x{font-size:12px;color:var(--ink-2);line-height:1.6}
+  .who{display:flex;align-items:center;gap:11px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+  .who .av{width:36px;height:36px;border-radius:8px;background:#1d1d24;color:#fff;display:flex;align-items:center;
+    justify-content:center;font-size:13px;font-weight:600;flex:0 0 auto}
+  .who .nm{font-size:14px;font-weight:600;letter-spacing:-.01em}
+  .who .mt{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .stat3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .stat3 div{padding:10px 14px;border-right:1px solid var(--line)}
+  .stat3 div:last-child{border-right:0}
+  .stat3 .l{font-size:10.5px;color:var(--muted);margin-bottom:3px}
+  .stat3 .v{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .roi{font-variant-numeric:tabular-nums;font-weight:600}
+  .roi.bad{color:var(--err)}
+  .roi.good{color:var(--ok)}
+  @media (max-width:1080px){
+    .mini .m{flex:1 1 46%}
+    .grid2,.grid2b{grid-template-columns:minmax(0,1fr)}
+    .side{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<aside class="side">
+  <div class="brand"><span class="dot"></span>apiduo</div>
+  <div class="grp">概览</div>
+  <a href="#">仪表盘</a>
+  <div class="grp">管理</div>
+  <a href="#">用户管理</a>
+  <a href="#">令牌</a>
+  <a href="#">渠道</a>
+  <a href="#">模型</a>
+  <div class="grp">运营</div>
+  <a href="#">使用日志</a>
+  <a class="on" href="#">增长运营<span class="tag">new</span></a>
+  <a href="#">兑换码</a>
+  <a href="#">订阅</a>
+  <div class="grp">系统</div>
+  <a href="#">系统设置</a>
+</aside>
+
+<main class="main">
+  <header class="head">
+    <h1>增长运营</h1>
+    <span class="sub">今天该做什么 · 谁值得投入 · 干预有没有用</span>
+    <div class="spacer"></div>
+    <span class="sub">2026-11-14 周六 · 数据截至 04:00</span>
+  </header>
+
+  <nav class="tabs">
+    <button class="on" data-t="td">今日<span class="cnt">5</span></button>
+    <button data-t="sg">分层</button>
+    <button data-t="ac">客户档案</button>
+    <button data-t="rc">触达与归因</button>
+    <button data-t="rl">规则</button>
+  </nav>
+
+  <div class="body">
+
+  <!-- ================= 今日 ================= -->
+  <section id="td">
+    <div class="note">
+      <span class="k"></span>
+      <div><b>这个页签回答一个问题：现在做什么。</b>
+      排序依据是「不做会损失多少」，不是「什么时候触发」。昨日未处理的自动升级到今日，并保留原触发时间。</div>
+    </div>
+
+    <div class="mini">
+      <div class="m"><div class="l">待处理</div><div class="v down">5</div><div class="d down">其中 2 件昨日遗留</div></div>
+      <div class="m"><div class="l">今日已处理</div><div class="v">3</div><div class="d up">本轮挽回 2 个</div></div>
+      <div class="m"><div class="l">预计损失避免</div><div class="v">¥7,420</div><div class="d">按被挽回账户月消耗计</div></div>
+      <div class="m"><div class="l">本周节奏</div><div class="v" style="font-size:13px;padding-top:3px">周三回访日</div><div class="d">K 层 12 人 · 已联系 4 人</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">
+        <h2>待办队列</h2>
+        <span class="desc">按损失潜力与可挽回性排序</span>
+      </div>
+      <div class="card-b">
+
+        <div class="task p1">
+          <div class="pr">立即</div>
+          <div class="in">
+            <div class="top">
+              <span class="nm">云雀科技</span>
+              <span class="pill k">K</span>
+              <span class="down">↓18%</span>
+              <span class="pill mute">余额型</span>
+              <span class="tagx">昨日遗留</span>
+            </div>
+            <div class="why">余额 <em>¥1,240</em>，按近 7 天速率 <em>2.1 天</em>后耗尽。该账户占全站消耗 <em>12.6%</em>，
+              断供会造成调用直接 402。上次人工触达是 <em>6 天前</em>，反馈「在评估其他供应商」。</div>
+          </div>
+          <div class="rt">
+            <span class="tm">11-13 09:12 触发</span>
+            <div class="act"><button class="btn p">联系并记录</button></div>
+          </div>
+        </div>
+
+        <div class="task p1">
+          <div class="pr">立即</div>
+          <div class="in">
+            <div class="top">
+              <span class="nm">tianyu-api</span>
+              <span class="pill a">A</span>
+              <span class="down">↓68%</span>
+              <span class="pill mute">事故型</span>
+              <span class="tagx">昨日遗留</span>
+            </div>
+            <div class="why">错误率从 <em>0.4%</em> 升至 <em>11.2%</em>，以 429 与 504 为主，余额充足。
+              <b style="color:var(--ink)">大概率是我方稳定性问题，不是客户流失。</b>这类必须由人出面说明，自动补偿无效。</div>
+          </div>
+          <div class="rt">
+            <span class="tm">11-13 16:40 触发</span>
+            <div class="act"><button class="btn p">查看错误</button></div>
+          </div>
+        </div>
+
+        <div class="task p2">
+          <div class="pr">今日</div>
+          <div class="in">
+            <div class="top">
+              <span class="nm">恒信数据</span>
+              <span class="pill k">K</span>
+              <span class="tagx">人工覆盖</span>
+              <span class="pill mute">POC</span>
+            </div>
+            <div class="why">POC 第 <em>12 天</em>，商务已过、技术未过。当前用量 <em>¥3,120/月</em>，但合同规模预估 <em>¥30,000/月</em>。
+              机器判定为 A，已人工上调为 K。需要技术侧主动对接。</div>
+          </div>
+          <div class="rt">
+            <span class="tm">11-14 02:00 生成</span>
+            <div class="act"><button class="btn">记录进展</button></div>
+          </div>
+        </div>
+
+        <div class="task p2">
+          <div class="pr">今日</div>
+          <div class="in">
+            <div class="top">
+              <span class="nm">hexin-lab</span>
+              <span class="pill a">A</span>
+              <span class="down">↓24%</span>
+              <span class="pill mute">渐退型</span>
+              <span class="pill ok">已联系</span>
+            </div>
+            <div class="why">连续 3 周衰减，11-12 已电话联系，对方称「在测另一家」并承诺本周给结论。
+              <b style="color:var(--ink)">今天是承诺到期日</b>，需要跟进结果，否则这条记录就废了。</div>
+          </div>
+          <div class="rt">
+            <span class="tm">11-12 15:20 联系</span>
+            <div class="act"><button class="btn">记录结果</button></div>
+          </div>
+        </div>
+
+        <div class="task p3">
+          <div class="pr">自动</div>
+          <div class="in">
+            <div class="top">
+              <span class="nm">nova-studio</span>
+              <span class="pill b">B</span>
+              <span class="pill mute">未激活</span>
+              <span class="pill ok">已自动处理</span>
+            </div>
+            <div class="why">首充后 14 天无调用，已按模板发放 <em>¥20</em> 额度券并附接入示例。无需人工介入，
+              观察 7 天，仍无调用则归档。</div>
+          </div>
+          <div class="rt">
+            <span class="tm">11-14 04:10 发放</span>
+            <div class="act"><button class="btn">查看</button></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>处理质量</h2><span class="desc">近 30 天 · 按类型</span></div>
+        <div class="card-b">
+          <table>
+            <thead><tr><th>类型</th><th class="num">触发</th><th class="num">已闭环</th><th class="num">挽回率</th><th class="num">平均响应</th></tr></thead>
+            <tbody>
+              <tr><td>余额型</td><td class="num">86</td><td class="num">61</td><td class="num up">70.9%</td><td class="num">1.4 小时</td></tr>
+              <tr><td>事故型</td><td class="num">14</td><td class="num">9</td><td class="num up">64.3%</td><td class="num">3.2 小时</td></tr>
+              <tr><td>渐退型</td><td class="num">31</td><td class="num">7</td><td class="num down">22.6%</td><td class="num">2.8 天</td></tr>
+              <tr><td>未激活</td><td class="num">612</td><td class="num">48</td><td class="num">7.8%</td><td class="num">全自动</td></tr>
+            </tbody>
+          </table>
+          <div class="foot">渐退型响应最慢、挽回率最低。这不是执行问题——
+            <b style="color:var(--ink)">它说明「衰减中」的信号来得太晚</b>。等连降三周再介入，人已经在别家跑通了。</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>运营节奏</h2><span class="desc">把动作固化成习惯</span></div>
+        <div class="card-b">
+          <div class="row"><div class="lab"><b>周一 04:00</b><span>分层重算，人工复核 K 层变动</span></div><span class="pill ok">自动</span></div>
+          <div class="row"><div class="lab"><b>周三</b><span>K 层回访日，12 人按名单逐个触达</span></div><span class="pill warn">待办</span></div>
+          <div class="row"><div class="lab"><b>周五</b><span>触达批次结算，ROI 低于 1 的停投</span></div><span class="pill mute">周期</span></div>
+          <div class="row"><div class="lab"><b>每月 1 日</b><span>集中度与流失复盘，调整下月优先级</span></div><span class="pill mute">周期</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 分层 ================= -->
+  <section id="sg" hidden>
+    <div class="note">
+      <span class="k"></span>
+      <div><b>分层只回答「谁」，不回答「怎么办」。</b>
+      动作在「今日」页签里按损失排序，不按层级分配。分层每周一 04:00 重算，不实时——实时会抖动，运营看到今天 K 明天 A 就会失去信任。</div>
+    </div>
+
+    <div class="mini">
+      <div class="m"><div class="l">周有效调用用户</div><div class="v">1,284</div><div class="d up">↑ 6.2%</div></div>
+      <div class="m"><div class="l">首周激活率</div><div class="v">41.4%</div><div class="d down">↓ 1.1pt</div></div>
+      <div class="m"><div class="l">首充转化率</div><div class="v">8.7%</div><div class="d up">↑ 0.4pt</div></div>
+      <div class="m"><div class="l">Top 10 营收集中度</div><div class="v down">52%</div><div class="d down">↑ 3pt · 超阈值</div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>分层分布</h2><span class="desc">滚动 30 天消耗 · 含沉默</span></div>
+        <div class="card-b">
+          <div class="bar">
+            <i style="width:58%;background:#1d1d24"></i>
+            <i style="width:27%;background:#6d63ff"></i>
+            <i style="width:9%;background:#c7c7d2"></i>
+            <i style="width:6%;background:#ececf0"></i>
+          </div>
+          <div class="legend">
+            <span><i class="sw" style="background:#1d1d24"></i>K · 12 人 · 58% 消耗</span>
+            <span><i class="sw" style="background:#6d63ff"></i>A · 96 人 · 27%</span>
+            <span><i class="sw" style="background:#c7c7d2"></i>B · 743 人 · 9%</span>
+            <span><i class="sw" style="background:#ececf0"></i>沉默 · 2,110 人 · 6%</span>
+          </div>
+          <div class="foot" style="border-top:1px solid var(--line);padding-top:11px">
+            12 个账户贡献 58% 消耗。任一个 K 层流失，需要新增约 40 个 A 层客户才能补平。
+            <b style="color:var(--ink)">集中度超过 50% 时，增长优先级应让位于保留。</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>拉新漏斗</h2><span class="desc">近 30 天注册 1,842 人</span></div>
+        <div class="card-b">
+          <div class="funnel">
+            <div class="fn"><span class="t">注册</span><span class="tr"><i style="width:100%"></i></span><span class="v">1,842</span><span class="p">—</span></div>
+            <div class="fn"><span class="t">建令牌</span><span class="tr"><i style="width:64.9%"></i></span><span class="v">1,196</span><span class="p">64.9%</span></div>
+            <div class="fn"><span class="t">首次成功</span><span class="tr"><i style="width:41.4%"></i></span><span class="v">763</span><span class="p">41.4%</span></div>
+            <div class="fn"><span class="t">次日再调</span><span class="tr"><i style="width:22.9%"></i></span><span class="v">421</span><span class="p">22.9%</span></div>
+            <div class="fn"><span class="t">首充</span><span class="tr"><i style="width:8.7%"></i></span><span class="v">160</span><span class="p">8.7%</span></div>
+          </div>
+          <div class="foot">最大流失在<b style="color:var(--ink)">建令牌 → 首次成功</b>，29.5 个百分点。失败码可从日志直接取，
+            属工程修复项，不是营销项。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-h">
+        <h2>K 关键层</h2>
+        <span class="desc">12 人 · 58% 消耗 · 点击进入档案</span>
+        <div class="spacer"></div>
+        <div class="seg"><button class="on">全部</button><button>上升</button><button>平稳</button><button>下降</button></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:78px">层级</th><th>用户</th>
+            <th class="num" style="width:92px">30 天消耗</th>
+            <th class="num" style="width:68px">环比</th>
+            <th class="num" style="width:82px">毛利率</th>
+            <th class="num" style="width:74px">余额</th>
+            <th style="width:80px">最后调用</th>
+            <th style="width:98px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="pill k">K</span> <span class="down">↓</span></td>
+            <td><div class="u"><span class="n">云雀科技</span><span class="i">uid 1024 · 企业 · 34 周连续</span></div></td>
+            <td class="num">¥23,480</td><td class="num down">-18%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥1,240</td><td>2 分钟前</td>
+            <td><button class="btn p">进入档案</button></td>
+          </tr>
+          <tr>
+            <td><span class="pill k">K</span> <span class="up">↑</span></td>
+            <td><div class="u"><span class="n">radar-labs</span><span class="i">uid 2043 · 团队 · 19 周连续</span></div></td>
+            <td class="num">¥18,900</td><td class="num up">+34%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥8,600</td><td>刚刚</td>
+            <td><button class="btn">进入档案</button></td>
+          </tr>
+          <tr>
+            <td><span class="pill k">K</span> <span class="flat">→</span></td>
+            <td><div class="u"><span class="n">youma 优码</span><span class="i">uid 1187 · 企业 · 41 周连续</span></div></td>
+            <td class="num">¥14,260</td><td class="num flat">+2%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥5,120</td><td>1 小时前</td>
+            <td><button class="btn">进入档案</button></td>
+          </tr>
+          <tr>
+            <td><span class="pill k">K</span> <span class="down">↓</span></td>
+            <td><div class="u"><span class="n">恒信数据<span class="tagx">人工</span></span><span class="i">uid 3091 · 企业 · POC 第 12 天</span></div></td>
+            <td class="num">¥3,120</td><td class="num down">-41%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥420</td><td>6 小时前</td>
+            <td><button class="btn p">进入档案</button></td>
+          </tr>
+          <tr>
+            <td><span class="pill k">K</span> <span class="up">↑</span></td>
+            <td><div class="u"><span class="n">moonshot-fan</span><span class="i">uid 1552 · 个人 · 27 周连续</span></div></td>
+            <td class="num">¥9,740</td><td class="num up">+11%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥2,300</td><td>12 分钟前</td>
+            <td><button class="btn">进入档案</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>A 成长层</h2><span class="desc">96 人 · 27% 消耗 · 增长主来源</span><div class="spacer"></div><span class="desc">显示 4 / 96</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:78px">层级</th><th>用户</th>
+            <th class="num" style="width:92px">30 天消耗</th>
+            <th class="num" style="width:68px">环比</th>
+            <th class="num" style="width:82px">毛利率</th>
+            <th class="num" style="width:74px">余额</th>
+            <th style="width:80px">最后调用</th>
+            <th style="width:98px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="pill a">A</span> <span class="up">↑</span></td>
+            <td><div class="u"><span class="n">hexin-lab</span><span class="i">uid 4412 · 团队 · 11 周连续</span></div></td>
+            <td class="num">¥2,860</td><td class="num up">+62%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥640</td><td>刚刚</td><td><button class="btn">进入档案</button></td>
+          </tr>
+          <tr>
+            <td><span class="pill a">A</span> <span class="down">↓</span></td>
+            <td><div class="u"><span class="n">nova-studio</span><span class="i">uid 3877 · 个人 · 已自动发券</span></div></td>
+            <td class="num">¥1,940</td><td class="num down">-27%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥90</td><td>9 天前</td><td><button class="btn">进入档案</button></td>
+          </tr>
+          <tr>
+            <td><span class="pill a">A</span> <span class="flat">→</span></td>
+            <td><div class="u"><span class="n">qingzhou-ai</span><span class="i">uid 2761 · 团队 · 23 周连续</span></div></td>
+            <td class="num">¥1,380</td><td class="num flat">+3%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥410</td><td>3 小时前</td><td><button class="btn">进入档案</button></td>
+          </tr>
+          <tr>
+            <td><span class="pill a">A</span> <span class="down">↓</span></td>
+            <td><div class="u"><span class="n">tianyu-api</span><span class="i">uid 5120 · 团队 · 错误率异常</span></div></td>
+            <td class="num">¥1,120</td><td class="num down">-68%</td>
+            <td class="num"><span class="pill warn">待接入</span></td>
+            <td class="num">¥1,900</td><td>4 天前</td><td><button class="btn p">进入档案</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>B 长尾 · 沉默</h2><span class="desc">743 人 / 2,110 人 · 走自动化，不投人力</span></div>
+      <div class="card-b">
+        <div class="row"><div class="lab"><b>B 长尾</b><span>有稳定调用但消耗低，按额度阶梯引导首充升级，不设专属对接</span></div><span class="pill mute">自动化</span></div>
+        <div class="row"><div class="lab"><b>沉默</b><span>注册后无调用，或连续 30 天无调用。邮件 + 额度券挽回，失败即归档</span></div><span class="pill mute">自动化</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 客户档案 ================= -->
+  <section id="ac" hidden>
+    <div class="note">
+      <span class="k"></span>
+      <div><b>档案的价值是「换个人也不丢记忆」。</b>
+      指标会变，历史不会。每次触达、每个承诺、每次事故都必须留痕，否则运营离职就等于客户关系归零。</div>
+    </div>
+
+    <div class="card">
+      <div class="who">
+        <div class="av">云</div>
+        <div>
+          <div class="nm">云雀科技</div>
+          <div class="mt">uid 1024 · 企业账户 · 2026-03-18 注册 · 决策人 王工 / 技术负责人 李工</div>
+        </div>
+        <div class="spacer"></div>
+        <span class="pill k">K 关键层</span>
+        <span class="down">↓ 18%</span>
+        <span class="pill err">余额 2.1 天</span>
+        <div class="act" style="margin-left:8px">
+          <button class="btn p">新增触达</button>
+          <button class="btn">调整层级</button>
+        </div>
+      </div>
+      <div class="stat3">
+        <div><div class="l">30 天消耗</div><div class="v">¥23,480</div></div>
+        <div><div class="l">连续活跃</div><div class="v">34 周</div></div>
+        <div><div class="l">在用模型</div><div class="v">6 个</div></div>
+      </div>
+    </div>
+
+    <div class="grid2b" style="margin-top:14px">
+      <div class="card">
+        <div class="card-h"><h2>账户时间线</h2><span class="desc">倒序 · 含业务事件与人工干预</span></div>
+        <div class="card-b">
+          <div class="tl">
+            <div class="ev hi">
+              <div class="d">2026-11-14 04:00</div>
+              <div class="t">余额预警触发</div>
+              <div class="x">按近 7 天速率预测 2.1 天后耗尽。系统建议：优先联系，可提出年框换预充。</div>
+            </div>
+            <div class="ev hi">
+              <div class="d">2026-11-12</div>
+              <div class="t">消耗环比 -18%</div>
+              <div class="x">单日请求从 18,400 降至 15,100，降幅集中在 22:00–02:00 时段，疑似批处理任务减少。</div>
+            </div>
+            <div class="ev ok">
+              <div class="d">2026-11-08 · 张（运营）</div>
+              <div class="t">电话回访</div>
+              <div class="x">反馈两点：在评估其他供应商的价格；希望支持批量图片任务。已记录需求，未承诺时间。</div>
+            </div>
+            <div class="ev">
+              <div class="d">2026-10-28</div>
+              <div class="t">错误率 3.1%，发送说明邮件</div>
+              <div class="x">上游渠道 429 导致，已补偿 ¥500 额度。客户未回复。</div>
+            </div>
+            <div class="ev">
+              <div class="d">2026-09-02</div>
+              <div class="t">月消耗突破 ¥20,000</div>
+              <div class="x">自动升级为 K 层，进入月度回访名单。</div>
+            </div>
+            <div class="ev">
+              <div class="d">2026-06-11</div>
+              <div class="t">首次充值 ¥5,000</div>
+              <div class="x">通过邀请码注册，邀请人 radar-labs。</div>
+            </div>
+            <div class="ev">
+              <div class="d">2026-03-18</div>
+              <div class="t">注册</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>记录一次触达</h2><span class="desc">必填，否则下次没人知道发生过什么</span></div>
+        <div class="card-b">
+          <div class="row"><div class="lab"><b>方式</b><span>电话 / 微信 / 邮件</span></div>
+            <div class="seg"><button class="on">电话</button><button>微信</button><button>邮件</button></div>
+          </div>
+          <div class="row"><div class="lab"><b>对象</b><span>决策人或技术负责人，影响后续话术</span></div>
+            <div class="seg"><button class="on">决策人</button><button>技术</button></div>
+          </div>
+          <div style="padding:11px 0;border-bottom:1px solid var(--line)">
+            <div class="lab" style="margin-bottom:7px"><b>对方反馈</b>
+              <span style="font-size:11.5px;color:var(--muted)">原话优先，不要转述成结论</span></div>
+            <textarea class="inp w" rows="3" style="resize:vertical;line-height:1.65">价格能再谈的话可以继续，另外批处理图片那个需求你们什么时候能上</textarea>
+          </div>
+          <div class="row" style="display:block">
+            <div class="lab" style="margin-bottom:7px"><b>结论</b><span>决定这单进入哪个流程</span></div>
+            <div class="seg"><button>续费</button><button class="on">待跟进</button><button>流失</button></div>
+          </div>
+          <div class="row"><div class="lab"><b>下次跟进</b><span>到期自动生成待办，不允许空着</span></div>
+            <input class="inp" value="11-17">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn p" style="flex:1;padding:7px">保存并生成待办</button>
+            <button class="btn">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>干预记录</h2><span class="desc">全部人工动作的留痕与效果</span></div>
+      <table>
+        <thead><tr><th style="width:92px">日期</th><th style="width:68px">方式</th><th style="width:60px">执行人</th><th>反馈摘要</th><th style="width:74px">结论</th><th style="width:92px">效果</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">2026-11-08</td><td>电话</td><td>张</td>
+            <td>在评估其他供应商价格；需要批量图片任务</td>
+            <td><span class="pill warn">待跟进</span></td>
+            <td class="down">消耗 -18%</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-10-28</td><td>邮件</td><td>系统</td>
+            <td>429 事故说明 + 补偿 ¥500</td>
+            <td><span class="pill mute">已发送</span></td>
+            <td>未回复，消耗持平</td>
+          </tr>
+          <tr>
+            <td class="mono">2026-09-05</td><td>微信</td><td>张</td>
+            <td>祝贺破 2 万，询问是否需要专属渠道</td>
+            <td><span class="pill ok">已接受</span></td>
+            <td class="up">次月 +31%</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="card-b" style="border-top:1px solid var(--line)">
+        <div class="foot" style="margin:0">三条记录里只有一条带来增长。没有这张表，没人知道哪种话术有效——
+          <b style="color:var(--ink)">有了它，有效的话术才可能被复用。</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 触达与归因 ================= -->
+  <section id="rc" hidden>
+    <div class="note warn">
+      <span class="k"></span>
+      <div><b>发出去的每一份额度都必须能算回来。</b>
+      没有批次的发放是成本，有批次的发放才是投资。同一个模板对不同人群的 ROI 可以差 7 倍。</div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>发放批次</h2><span class="desc">近 90 天 · ROI = 增量消耗 ÷ 权益成本</span></div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:80px">批次</th><th>对象</th><th style="width:124px">权益</th>
+            <th class="num" style="width:60px">人数</th><th class="num" style="width:80px">成本</th>
+            <th class="num" style="width:68px">使用率</th><th class="num" style="width:92px">增量消耗</th>
+            <th class="num" style="width:58px">ROI</th><th style="width:62px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">B-1101</td>
+            <td><div class="u"><span class="n">A 层 · 90 天未升级</span><span class="i">消耗 &gt; ¥800 且层级未变</span></div></td>
+            <td>¥20 券 + 专属价</td>
+            <td class="num">86</td><td class="num">¥1,720</td>
+            <td class="num">61%</td><td class="num">¥8,940</td>
+            <td class="num roi good">5.2</td>
+            <td><button class="btn">明细</button></td>
+          </tr>
+          <tr>
+            <td class="mono">B-1020</td>
+            <td><div class="u"><span class="n">首充后 14 天未激活</span><span class="i">含大量个人开发者</span></div></td>
+            <td>¥20 券</td>
+            <td class="num">212</td><td class="num">¥4,240</td>
+            <td class="num">23%</td><td class="num">¥3,180</td>
+            <td class="num roi bad">0.75</td>
+            <td><button class="btn">停投</button></td>
+          </tr>
+          <tr>
+            <td class="mono">B-1008</td>
+            <td><div class="u"><span class="n">邀请渠道新客</span><span class="i">首月 9 折，仅限有真实调用者</span></div></td>
+            <td>首月 9 折</td>
+            <td class="num">340</td><td class="num">¥6,100</td>
+            <td class="num">44%</td><td class="num">¥21,300</td>
+            <td class="num roi good">3.5</td>
+            <td><button class="btn">明细</button></td>
+          </tr>
+          <tr>
+            <td class="mono">B-0915</td>
+            <td><div class="u"><span class="n">K 层年框预充</span><span class="i">充 ¥50,000 赠 8%</span></div></td>
+            <td>8% 赠额</td>
+            <td class="num">4</td><td class="num">¥16,000</td>
+            <td class="num">100%</td><td class="num">¥112,000</td>
+            <td class="num roi good">7.0</td>
+            <td><button class="btn">明细</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="card-b" style="border-top:1px solid var(--line)">
+        <div class="foot" style="margin:0">
+          <b style="color:var(--ink)">B-1020 的 ROI 是 0.75，应该停。</b>
+          同样的 ¥20 券，发给「A 层未升级」是 5.2 倍回报，发给「首充未激活」是 0.75 倍。
+          这不是券的问题，是人群的问题——首充未激活的人缺的是跑通，不是钱。
+          另：当前 ROI 用营收近似毛利，<b style="color:var(--ink)">会系统性高估</b>，接入渠道成本后需重算。
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>新建批次</h2><span class="desc">选人群 → 选权益 → 设观察窗</span></div>
+        <div class="card-b">
+          <div class="row"><div class="lab"><b>人群</b><span>从分层或筛选条件生成，不支持手填名单</span></div>
+            <div class="seg"><button class="on">A 层未升级</button><button>沉默 30 天</button><button>自定义</button></div>
+          </div>
+          <div class="row"><div class="lab"><b>权益</b><span>券、折扣、专属通道</span></div>
+            <input class="inp" value="¥20"> <span class="sub">× 86 人 = ¥1,720 上限</span>
+          </div>
+          <div class="row"><div class="lab"><b>观察窗</b><span>到期自动结算 ROI，低于阈值提醒停投</span></div>
+            <input class="inp" value="14"> <span class="sub">天</span>
+          </div>
+          <div class="row"><div class="lab"><b>停投阈值</b><span>ROI 低于此值不再追加</span></div>
+            <input class="inp" value="1.0">
+          </div>
+          <div style="margin-top:12px"><button class="btn p" style="padding:7px 16px">创建并发放</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>触达模板</h2><span class="desc">与预警类型绑定</span></div>
+        <div class="card-b">
+          <div class="row"><div class="lab"><b>余额预警</b><span>提前 3 天，附余额与推荐充值档位</span></div><span class="pill ok">启用</span></div>
+          <div class="row"><div class="lab"><b>事故说明</b><span>错误率异常时人工启用，含补偿方案</span></div><span class="pill ok">启用</span></div>
+          <div class="row"><div class="lab"><b>首充未激活</b><span>发券 + 三行接入示例，不发长文</span></div><span class="pill ok">启用</span></div>
+          <div class="row"><div class="lab"><b>渐退挽回</b><span>连续两周下滑时触发，人工确认后发送</span></div><span class="pill warn">待确认</span></div>
+          <div class="foot">模板只负责送达，<b style="color:var(--ink)">要不要发由人决定</b>。
+            对 K 层自动群发，是最快毁掉关系的方式。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 规则 ================= -->
+  <section id="rl" hidden>
+    <div class="note">
+      <span class="k"></span>
+      <div><b>配置即生效，不需要改代码。</b>分层切点用分位而非固定金额，规模变化时自动适配。
+      修改后在下一次重算生效，历史分层结果保留可回溯。</div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>分层切点</h2><span class="desc">按滚动 30 天消耗排名</span></div>
+      <div class="card-b">
+        <div class="row"><div class="lab"><b>K 关键层</b><span>当前 Top 3%，命中 12 人。建议保持 5–20 人区间</span></div>
+          <input class="inp" value="3"> <span class="sub">%</span></div>
+        <div class="row"><div class="lab"><b>A 成长层</b><span>当前 Top 15%，命中 96 人</span></div>
+          <input class="inp" value="15"> <span class="sub">%</span></div>
+        <div class="row"><div class="lab"><b>B 长尾</b><span>其余有成功调用的账户，命中 743 人</span></div><span class="pill b">自动</span></div>
+        <div class="row"><div class="lab"><b>沉默判定</b><span>无成功调用达到以下天数即归入沉默</span></div>
+          <input class="inp" value="30"> <span class="sub">天</span></div>
+        <div class="row"><div class="lab"><b>趋势窗口</b><span>近 N 天消耗对比前 N 天</span></div>
+          <input class="inp" value="7"> <span class="sub">天</span></div>
+        <div class="row"><div class="lab"><b>重算频率</b><span>不实时计算，避免层级抖动</span></div><span class="pill mute">每周一 04:00</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>预警规则</h2><span class="desc">触发后进入「今日」队列</span></div>
+      <div class="card-b">
+        <div class="row"><div class="lab"><b>余额耗尽预警</b><span>按近 7 天速率预测剩余可用天数</span></div>
+          <span class="sub">剩 &lt;</span> <input class="inp" value="3"> <span class="sub">天</span><span class="sw-t on"></span></div>
+        <div class="row"><div class="lab"><b>调用归零预警</b><span>此前有稳定调用，突然归零视为强流失信号</span></div>
+          <span class="sub">连续</span> <input class="inp" value="7"> <span class="sub">天</span><span class="sw-t on"></span></div>
+        <div class="row"><div class="lab"><b>错误率异常</b><span>环比上升超过阈值，归为事故型，必须人工</span></div>
+          <span class="sub">+</span> <input class="inp" value="5"> <span class="sub">pt</span><span class="sw-t on"></span></div>
+        <div class="row"><div class="lab"><b>首充后未激活</b><span>已付费未形成调用习惯，自动挽回</span></div>
+          <span class="sub">沉默</span> <input class="inp" value="14"> <span class="sub">天</span><span class="sw-t on"></span></div>
+        <div class="row"><div class="lab"><b>单周下滑预警</b><span>提前到「单周下滑」而非「连降三周」，牺牲精度换时间</span></div>
+          <span class="sub">单周 &gt;</span> <input class="inp" value="15"> <span class="sub">%</span><span class="sw-t on"></span></div>
+        <div class="row"><div class="lab"><b>毛利异常</b><span>需要渠道成本字段，当前不可用</span></div>
+          <span class="pill warn">待接入成本</span><span class="sw-t"></span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>人工覆盖</h2><span class="desc">机器分层会误判，必须保留人工口</span></div>
+      <table>
+        <thead><tr><th>用户</th><th style="width:78px">机器</th><th style="width:78px">人工</th><th>原因</th><th style="width:60px"></th></tr></thead>
+        <tbody>
+          <tr><td>恒信数据</td><td><span class="pill b">A</span></td><td><span class="pill k">K</span></td><td>POC 中，合同在谈，用量暂低</td><td><button class="btn">撤销</button></td></tr>
+          <tr><td>yunqi-agent</td><td><span class="pill mute">沉默</span></td><td><span class="pill a">A</span></td><td>季节性业务，每年 11 月启动</td><td><button class="btn">撤销</button></td></tr>
+          <tr><td>test-account</td><td><span class="pill b">B</span></td><td><span class="pill mute">排除</span></td><td>内部测试账户，不计入统计</td><td><button class="btn">撤销</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="foot">
+      原型说明：静态设计稿，所有数值为虚构样例，不含任何后端调用。
+      接入时按「分层」页签的数据可用性逐项对接；毛利维度在渠道成本落地前保持「待接入」。
+    </div>
+  </section>
+
+  </div>
+</main>
+</div>
+
+<script>
+  var tabs = document.querySelectorAll('.tabs button');
+  function show(t){
+    tabs.forEach(function(b){ b.classList.toggle('on', b.dataset.t === t); });
+    ['td','sg','ac','rc','rl'].forEach(function(k){
+      var el = document.getElementById(k);
+      if (el) el.hidden = (k !== t);
+    });
+    window.scrollTo(0,0);
+  }
+  tabs.forEach(function(b){
+    b.addEventListener('click', function(){
+      show(b.dataset.t);
+      history.replaceState(null, '', '#' + b.dataset.t);
+    });
+  });
+  if (location.hash) show(location.hash.slice(1));
+</script>
+</body>
+</html>

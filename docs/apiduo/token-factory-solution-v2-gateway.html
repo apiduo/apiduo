@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token 工厂技术方案 · 网关篇（不含 GPU 侧）</title>
+<style>
+  :root{
+    --paper:#fcfcfa; --paper-2:#f4f4f1;
+    --rule:#e4e4de; --rule-2:#cfcfc7;
+    --ink:#1a1c1e; --ink-2:#45484b; --muted:#6b7076;
+    --accent:#9a3412; --accent-soft:#fdf0ea;
+    --ok:#3f6f4a; --err:#a4161a;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  a{color:var(--ink); text-decoration:underline; text-decoration-color:var(--rule-2); text-underline-offset:3px}
+  a:hover{text-decoration-color:var(--accent); color:var(--accent)}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.8; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px; margin:0 auto; padding:0 32px 120px}
+
+  .doc-head{padding:72px 0 28px; border-bottom:1px solid var(--rule-2)}
+  .eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 20px}
+  h1{font-size:34px; line-height:1.28; letter-spacing:-.01em; margin:0 0 14px; font-weight:600}
+  .sub{font-size:17px; line-height:1.7; color:var(--ink-2); margin:0 0 28px; max-width:780px}
+  .meta{display:flex; flex-wrap:wrap; gap:8px 28px; font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .meta b{color:var(--ink-2); font-weight:500}
+
+  nav.toc{padding:22px 0 26px; border-bottom:1px solid var(--rule)}
+  nav.toc ol{list-style:none; margin:0; padding:0; columns:2; column-gap:40px}
+  nav.toc li{margin:0 0 7px; font-size:13.5px; break-inside:avoid}
+  nav.toc a{color:var(--ink-2); text-decoration:none; display:flex; gap:10px}
+  nav.toc a:hover{color:var(--accent)}
+  nav.toc .i{font-family:var(--mono); font-size:11.5px; color:var(--muted); min-width:22px; padding-top:2px}
+
+  section{padding-top:56px}
+  h2{font-size:21px; line-height:1.4; font-weight:600; margin:0 0 8px; padding-top:18px; border-top:1px solid var(--rule-2)}
+  h2 .i{font-family:var(--mono); font-size:12px; color:var(--accent); font-weight:400; margin-right:12px; letter-spacing:.04em}
+  h3{font-size:15.5px; font-weight:600; margin:34px 0 10px; letter-spacing:.01em}
+  h3 .k{font-family:var(--mono); font-size:11.5px; color:var(--muted); font-weight:400; margin-right:8px}
+  p{margin:12px 0; color:var(--ink-2)}
+  .lead{font-size:16px; line-height:1.75; color:var(--ink); margin:14px 0 18px}
+  strong{color:var(--ink); font-weight:600}
+  em{font-style:normal; background:linear-gradient(transparent 62%, var(--accent-soft) 62%); padding:0 .1em}
+  ul,ol.bul{margin:12px 0; padding-left:22px}
+  li{margin:6px 0; color:var(--ink-2)}
+  li::marker{color:var(--rule-2)}
+
+  .formula{background:var(--paper-2); border-left:2px solid var(--rule-2); padding:16px 20px; margin:18px 0; font-family:var(--mono); font-size:13px; line-height:1.9; color:var(--ink); overflow-x:auto}
+  .formula .lbl{display:block; font-size:11px; letter-spacing:.08em; color:var(--muted); margin-bottom:8px}
+  .formula b{color:var(--accent); font-weight:600}
+  code{font-family:var(--mono); font-size:12.8px; background:var(--paper-2); padding:1px 5px; color:var(--ink)}
+
+  .tbl-wrap{margin:20px 0 8px; overflow-x:auto}
+  table{width:100%; border-collapse:collapse; font-size:13.5px; line-height:1.65}
+  caption{caption-side:top; text-align:left; font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--muted); padding-bottom:8px}
+  th{text-align:left; font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); padding:0 12px 8px 0; border-bottom:1px solid var(--rule-2); vertical-align:bottom}
+  td{padding:9px 12px 9px 0; border-bottom:1px solid var(--rule); color:var(--ink-2); vertical-align:top}
+  th:last-child,td:last-child{padding-right:0}
+  td.num{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink); white-space:nowrap}
+  td.nm{color:var(--ink); font-weight:500}
+  td.nw{white-space:nowrap}
+  .up{color:var(--accent)}
+  .down{color:var(--ok)}
+
+  /* 条形图 */
+  .bars{margin:22px 0 8px; border-top:1px solid var(--rule-2)}
+  .brow{display:grid; grid-template-columns:290px 1fr 92px; align-items:center; gap:14px; padding:9px 0; border-bottom:1px solid var(--rule)}
+  .brow .bl{font-size:13px; color:var(--ink-2)}
+  .btrack{height:9px; background:var(--paper-2); position:relative}
+  .btrack i{position:absolute; top:0; bottom:0; left:0; display:block}
+  .bfill.neg{background:var(--accent)}
+  .bfill.pos{background:var(--ok)}
+  .brow .bv{font-family:var(--mono); font-size:12px; text-align:right; font-variant-numeric:tabular-nums}
+  .bv.neg{color:var(--accent)}
+  .bv.pos{color:var(--ok)}
+
+  .note{border-left:2px solid var(--accent); padding:2px 0 2px 16px; margin:18px 0; font-size:14px; color:var(--ink-2)}
+  .note .h{display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-bottom:5px}
+  .note.plain{border-left-color:var(--rule-2)}
+  .note.plain .h{color:var(--muted)}
+
+  .arch{margin:26px 0 10px; border-top:1px solid var(--rule-2)}
+  .arow{display:grid; grid-template-columns:96px 1fr; gap:16px; padding:11px 0; border-bottom:1px solid var(--rule)}
+  .arow .lb{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; color:var(--muted); padding-top:6px; text-transform:uppercase}
+  .cells{display:flex; flex-wrap:wrap; gap:6px}
+  .cells span{font-size:12.5px; line-height:1.5; padding:5px 10px; color:var(--ink-2); border:1px solid var(--rule-2); background:var(--paper)}
+  .cells span.hot{border-color:var(--accent); color:var(--accent)}
+  .cells span.solid{background:var(--paper-2); color:var(--ink)}
+  .cells span.ext{border-style:dashed; color:var(--muted)}
+  .arch-cap{font-family:var(--mono); font-size:11px; color:var(--muted); margin:10px 0 0}
+
+  .flow{display:grid; grid-template-columns:1fr 28px 1fr 28px 1fr; align-items:stretch; margin:24px 0 6px}
+  .fbox{border:1px solid var(--rule-2); padding:14px 16px}
+  .fbox .t{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; color:var(--muted); display:block; margin-bottom:6px}
+  .fbox .d{font-size:12.5px; line-height:1.7; color:var(--ink-2)}
+  .fbox .d b{color:var(--ink)}
+  .arrow{display:flex; align-items:center; justify-content:center; color:var(--rule-2); font-size:15px}
+  .arrow svg{display:block; flex:none}
+
+  .findings{margin:26px 0 0; border-top:1px solid var(--rule-2)}
+  .f{display:grid; grid-template-columns:26px 1fr; gap:14px; padding:16px 0; border-bottom:1px solid var(--rule)}
+  .f .n{font-family:var(--mono); font-size:11px; color:var(--accent); padding-top:4px}
+  .f p{margin:0; font-size:14.5px; line-height:1.75; color:var(--ink-2)}
+  .f p b{color:var(--ink)}
+
+  .kpis{display:grid; grid-template-columns:repeat(4,1fr); margin:24px 0 6px; border-top:1px solid var(--rule-2); border-bottom:1px solid var(--rule-2)}
+  .kpi{padding:16px 18px 16px 0; border-right:1px solid var(--rule)}
+  .kpi:last-child{border-right:0}
+  .kpi .v{font-family:var(--mono); font-size:23px; line-height:1.2; color:var(--ink); font-variant-numeric:tabular-nums; display:block}
+  .kpi .v small{font-size:12px; color:var(--muted); margin-left:3px}
+  .kpi .l{font-size:11.5px; color:var(--muted); line-height:1.5; display:block; margin-top:4px}
+
+  .road{margin:26px 0 8px; border-top:1px solid var(--rule-2)}
+  .rrow{display:grid; grid-template-columns:64px 130px 1fr; gap:16px; padding:14px 0; border-bottom:1px solid var(--rule); font-size:13.5px}
+  .rrow .p{font-family:var(--mono); font-size:11.5px; color:var(--accent)}
+  .rrow .w{font-family:var(--mono); font-size:11.5px; color:var(--muted)}
+  .rrow .c{color:var(--ink-2); line-height:1.7}
+  .rrow .c b{color:var(--ink)}
+
+  footer{margin-top:72px; padding-top:22px; border-top:1px solid var(--rule-2); font-family:var(--mono); font-size:11px; color:var(--muted); line-height:1.9}
+
+  @media (max-width:720px){
+    .wrap{padding:0 20px 80px}
+    h1{font-size:26px} .sub{font-size:15px}
+    nav.toc ol{columns:1}
+    .arow{grid-template-columns:1fr; gap:6px}
+    .arow .lb{padding-top:0}
+    .flow{grid-template-columns:1fr; gap:0}
+    .arrow{height:26px; transform:rotate(90deg)}
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .kpi:nth-child(2){border-right:0}
+    .rrow{grid-template-columns:1fr; gap:4px}
+    .brow{grid-template-columns:1fr; gap:4px}
+    .brow .bv{text-align:left}
+    table{font-size:12.5px}
+  }
+  @media print{
+    body{font-size:10.5pt}
+    .wrap{max-width:none; padding:0}
+    nav.toc{display:none}
+    section{padding-top:24pt}
+    h2{page-break-after:avoid}
+    .tbl-wrap,.fbox,.arow,.brow{page-break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <p class="eyebrow">Architecture Proposal · v2.1 · Gateway Scope</p>
+  <h1>Token 工厂技术方案 · 网关篇</h1>
+  <p class="sub">本版把 GPU 侧整体移出讨论：推理平台与资源调度视为外部供给，只保留接口契约。论证重心落在网关真正能控制的三个量上——上游采购价、重试放大、计费覆盖。对应岗位职责第 6–9 项。</p>
+  <div class="meta">
+    <span><b>范围</b> 计量计费 / 多租户 / SLA / 交付（不含推理平台）</span>
+    <span><b>基线</b> apiduo（new-api）</span>
+    <span><b>日期</b> 2026-11-14</span>
+    <span><b>另见</b> <a href="token-factory-solution.html">v1 完整版（含推理平台章节）</a></span>
+  </div>
+</header>
+
+<nav class="toc">
+  <ol>
+    <li><a href="#s0"><span class="i">00</span><span>一页纸结论</span></a></li>
+    <li><a href="#s1"><span class="i">01</span><span>第一性原理：薄毛利的三个漏点</span></a></li>
+    <li><a href="#s2"><span class="i">02</span><span>总体架构与上游三契约</span></a></li>
+    <li><a href="#s3"><span class="i">03</span><span>计量计费与账务闭环</span></a></li>
+    <li><a href="#s4"><span class="i">04</span><span>多租户、配额与权限</span></a></li>
+    <li><a href="#s5"><span class="i">05</span><span>可观测性与 SLA</span></a></li>
+    <li><a href="#s6"><span class="i">06</span><span>售前：容量、承诺与报价</span></a></li>
+    <li><a href="#s7"><span class="i">07</span><span>落地路线与验收</span></a></li>
+    <li><a href="#s8"><span class="i">08</span><span>对抗审查：脆弱假设</span></a></li>
+    <li><a href="#s9"><span class="i">09</span><span>与现有代码的差距清单</span></a></li>
+  </ol>
+</nav>
+
+<!-- ============ 00 ============ -->
+<section id="s0">
+  <h2><span class="i">00</span>一页纸结论</h2>
+  <p class="lead">不拥有 GPU，就等于不拥有成本曲线的分母。网关能动的只剩分子——采购价、重试浪费、计费覆盖。因此本方案的目标函数不是「更便宜」，而是<em>让「赚了多少、漏在哪」成为一个可以每天回答的问题</em>。</p>
+
+  <div class="findings">
+    <div class="f"><span class="n">01</span><p><b>薄毛利生意的弹性全在成本侧。</b>售价 10、上游 7、放大 1.10 时毛利约 18%。上游成本基数是售价的 70%，所以重试放大 10 个百分点，等于吃掉 <b>39% 的利润</b>；而固定成本砍 20%，只换来 6%。</p></div>
+    <div class="f"><span class="n">02</span><p><b>计费精度的价值不在那 2%，在它是否可信。</b>漏计的直接损失有限，但它会让「上游成本对不对、重试有没有放大」失去基准。所有优化都建立在同一份事实上，否则连赚没赚钱都判断不了。</p></div>
+    <div class="f"><span class="n">03</span><p><b>收入与成本必须分账核算，不能强行对齐。</b>上游按自己的 tokenizer 计费，本地按自己的估算收费，2–8% 的偏差是常态。强行对齐会让两边都不准；正确做法是各自成账，在批次层算毛利。</p></div>
+    <div class="f"><span class="n">04</span><p><b>SLA 等级 = 冗余等级。</b>不拥有算力时，可用性只能靠「异构上游 + 独立账号池」堆出来。同一供应商多开账号不是冗余。</p></div>
+    <div class="f"><span class="n">05</span><p><b>fallback 有静默降质风险。</b>不同上游对 tool-calling、长上下文、结构化输出的支持不一致，切换成功但能力缺失，比直接报错更难被发现。</p></div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><span class="v">18<small>%</small></span><span class="l">示例毛利率<br>售价 10 / 上游 7 / A=1.10</span></div>
+    <div class="kpi"><span class="v">1.10</span><span class="l">重试放大系数 A<br>恶化到 1.20 利润 −39%</span></div>
+    <div class="kpi"><span class="v">0.1<small>%</small></span><span class="l">对账差异红线<br>超过即按事故处理</span></div>
+    <div class="kpi"><span class="v">2<small>家</small></span><span class="l">99.9% SLA 所需<br>异构上游数量下限</span></div>
+  </div>
+  <p class="arch-cap">注：售价与采购价为示意值，落地前须以实际价目表替换；结论对具体数值不敏感，依赖的是成本基数占比这一结构。</p>
+</section>
+
+<!-- ============ 01 ============ -->
+<section id="s1">
+  <h2><span class="i">01</span>第一性原理：薄毛利的三个漏点</h2>
+  <p class="lead">网关的毛利等于「售价减上游成本」，而成本基数占售价七成以上。这个结构决定了：<strong>任何作用在成本侧的比例损耗，都会被毛利的小分母放大</strong>。这就是为什么网关的运营重点永远是「堵漏」，而不是「省固定开销」。</p>
+
+  <div class="formula">
+    <span class="lbl">单位毛利（每百万 Token）</span>
+    m = Price × B − P<sub>up</sub> × A − F<br><br>
+    Price　对外售价　　　　B　计费覆盖率（已结算 ÷ 实际消耗）<br>
+    P<sub>up</sub>　上游单价（按 Token 或按次折算）　　A　<b>重试放大系数</b>（上游计费量 ÷ 已结算量）<br>
+    F　　固定成本分摊（带宽、存储、日志、人力）
+  </div>
+
+  <p>A 这个指标值得单独定义，因为它是网关特有、且几乎没人放在看板上的量。<strong>A = 上游实际计费 Token ÷ 平台已结算 Token</strong>，理想值 1.00。它把四类浪费合并成一个可比数字：上游失败后重试、流式中断后的重发、客户断连后服务端继续生成、以及对冲请求（hedging）。</p>
+
+  <h3><span class="k">1.1</span>敏感性：利润被什么吃掉</h3>
+  <p>基准取值：售价 10 元/百万、上游 7 元/百万、A=1.10、固定成本 0.5 元/百万，利润 1.8 元/百万（毛利率 18%）。逐项单变量扰动：</p>
+
+  <div class="bars">
+    <div class="brow"><span class="bl">重试放大 1.10 → 1.20</span><span class="btrack"><i class="bfill neg" style="width:78%"></i></span><span class="bv neg">−0.70</span></div>
+    <div class="brow"><span class="bl">售价 +5%（分层定价，量不变）</span><span class="btrack"><i class="bfill pos" style="width:56%"></i></span><span class="bv pos">+0.50</span></div>
+    <div class="brow"><span class="bl">重试放大 1.10 → 1.03</span><span class="btrack"><i class="bfill pos" style="width:55%"></i></span><span class="bv pos">+0.49</span></div>
+    <div class="brow"><span class="bl">上游采购价 −5%</span><span class="btrack"><i class="bfill pos" style="width:43%"></i></span><span class="bv pos">+0.39</span></div>
+    <div class="brow"><span class="bl">漏计率 2% → 0.5%</span><span class="btrack"><i class="bfill pos" style="width:17%"></i></span><span class="bv pos">+0.15</span></div>
+    <div class="brow"><span class="bl">固定成本 −20%</span><span class="btrack"><i class="bfill pos" style="width:11%"></i></span><span class="bv pos">+0.10</span></div>
+  </div>
+  <p class="arch-cap">图 1 · 各动作对单位利润的绝对影响（元/百万 Token），基准利润 1.8 元。</p>
+
+  <p>这个算例仍然偏乐观：它没有计入支付通道费（约 0.6%）、发票税负、免费额度消耗与退款。补齐之后，真实毛利率通常再低 2–4 个百分点。<strong>18% 应理解为上限估计，而非经营现状</strong>——这也是后文结论一律用「相对变化」表述、不依赖绝对值的原因。</p>
+
+  <div class="note">
+    <span class="h">判断</span>
+    优先级由此确定：<strong>重试治理 &gt; 采购议价 &gt; 定价分层 &gt; 计费精度 &gt; 固定成本优化</strong>。把效率工程放在前面是典型误判——省下的运维开销在利润表上几乎看不见，而一次上游批量 5xx 引发的重试风暴可以在几小时内抹掉一个月的利润。
+  </div>
+
+  <h3><span class="k">1.2</span>计费精度为什么仍要排进第一梯队</h3>
+  <p>从图 1 看，把漏计从 2% 压到 0.5% 只值 0.15 元。这个数字不足以支撑「计费是核心」的说法，但漏计还有一个二阶效应：<em>它同时污染了判断其它一切的基准</em>。</p>
+  <ul>
+    <li>漏计与「上游成本偏高」在账面上长得一模一样，都会表现为毛利偏低。分不清是哪一种，就无法决定该去谈判还是该去修 bug。</li>
+    <li>漏计通常不均匀：流式、长上下文、多模态是重灾区。整体 2% 的偏差，在这些场景可能到 10%，导致单模型毛利被严重误判。</li>
+    <li>B 端客户会审计账单。一次「说不清为什么是这个数」的争议，损失的是续约，不是那 0.15 元。</li>
+  </ul>
+  <p>所以计费的定位不是「多赚钱」，而是<strong>让所有其它决策有一个可信的度量基</strong>。这也是路线图把它排进 P0 的唯一理由。</p>
+
+  <h3><span class="k">1.3</span>A 不是一个数，是五项浪费的合计</h3>
+  <p>把 A 当成一个可以直接「优化」的指标是危险的：它只会引出「加强重试管理」这一条对策，而重试通常只占三分之一。必须先拆到可归因的分项，才能决定该改哪一段代码。</p>
+
+  <div class="formula">
+    <span class="lbl">损耗分解</span>
+    A = 1 + ( W₁ + W₂ + W₃ + W₄ + W₅ ) ÷ 已结算量<br><br>
+    W₁ 重试重复　上游失败后重发，前一次已产生的消耗<br>
+    W₂ 中断残值　上游中途断开，已计费但未交付<br>
+    W₃ 断连继续　客户端断开后服务端未及时停止生成<br>
+    W₄ 对冲请求　同一请求并发发往两家<br>
+    W₅ 计量缺口　上游已计费，本地未记录
+  </div>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 1 · 损耗分项：占比、采集与治理</caption>
+  <thead><tr><th>分项</th><th>典型占比</th><th>采集方式</th><th>治理手段</th><th>见效周期</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">W₁ 重试重复</td><td class="num">30–50%</td><td>attempt 序号 + 每次 attempt 的用量</td><td>不可重试判定、重试预算</td><td>周</td></tr>
+    <tr><td class="nm">W₂ 中断残值</td><td class="num">15–30%</td><td>失败原因 + 已接收长度</td><td>熔断、降级链</td><td>月</td></tr>
+    <tr><td class="nm">W₃ 断连继续</td><td class="num">10–25%</td><td>断开信号到实际停止的时长 × 速率</td><td>宽限期收紧</td><td>天</td></tr>
+    <tr><td class="nm">W₄ 对冲请求</td><td class="num">0–10%</td><td>对冲标记</td><td>按租户开关，默认关闭</td><td>即时</td></tr>
+    <tr><td class="nm">W₅ 计量缺口</td><td class="num">5–15%</td><td>上游账单与本地用量的差额</td><td>事件先落盘再响应</td><td>周</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p class="arch-cap">占比为经验区间，须以自测数据替换；长上下文场景的 W₂ 会显著高于表中值。</p>
+
+  <div class="note">
+    <span class="h">归因陷阱</span>
+    W₅ 会同时让 B 下降、A 上升——同一个漏记事件在两个指标里各出现一次。做损耗分析时只能选一个口径归因，否则会把同一个漏洞算两遍，得出「漏损比实际严重一倍」的结论。
+  </div>
+
+  <p>另一条容易被忽略：<strong>A 的目标值必须按模型分档</strong>。长上下文模型的 W₂ 占比高（一次中断的绝对损失大），短请求模型由 W₁ 主导。全局设 1.08，会掩盖某个模型其实已经 1.30 的事实——应按「模型 × 渠道」双维度看。</p>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s2">
+  <h2><span class="i">02</span>总体架构与上游三契约</h2>
+  <p class="lead">四层结构，纵向是请求路径，横向是控制面。与自建推理平台相比，这里多了一个必须显式处理的问题：<strong>你不拥有上游，所以你的控制力只能来自契约</strong>。</p>
+
+  <div class="arch">
+    <div class="arow">
+      <div class="lb">接入层</div>
+      <div class="cells"><span class="solid">OpenAI 兼容</span><span class="solid">Anthropic</span><span class="solid">Gemini</span><span class="solid">多模态 / 异步任务</span><span>MCP / Agent</span></div>
+    </div>
+    <div class="arow">
+      <div class="lb">治理层</div>
+      <div class="cells"><span class="hot">鉴权 · 配额 · 预算</span><span>路由与熔断</span><span class="hot">重试治理</span><span>分层队列</span><span>内容安全</span></div>
+    </div>
+    <div class="arow">
+      <div class="lb">上游层</div>
+      <div class="cells"><span class="solid">Provider 池</span><span>账号 / 渠道 / 区域</span><span class="hot">配额与限额</span><span>协议转换</span><span class="ext">自建推理平台</span><span class="ext">第三方 Provider</span></div>
+    </div>
+    <div class="arow">
+      <div class="lb">计量层</div>
+      <div class="cells"><span class="solid">usage 采集</span><span>结算 ledger</span><span>价格版本</span><span>账单与对账</span></div>
+    </div>
+    <div class="arow">
+      <div class="lb">运营层</div>
+      <div class="cells"><span>指标 · 追踪</span><span class="hot">成本归因</span><span>SLO · 告警</span><span>租户控制台</span><span>审计</span></div>
+    </div>
+  </div>
+  <p class="arch-cap">图 2 · 虚线为外部供给，本方案不实现，只定义接口契约；赭红为本方案的主要改造点。</p>
+
+  <h3><span class="k">2.1</span>上游三契约：不拥有算力时唯一能拿到的控制权</h3>
+  <p>把 GPU 移出范围之后，网关的很多能力会退化成猜测。避免退化的唯一办法是：把需要上游提供的信息写成契约，作为接入的准入条件。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 2 · 三份契约及其缺失后果</caption>
+  <thead><tr><th>契约</th><th>要求</th><th>缺失后果</th><th>降级手段</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">用量契约</td><td>每次响应返回可核对的 usage（输入/输出 Token）</td><td>只能估算，成本归因失真，毛利不可算</td><td>本地 tokenizer 估算 + 标记 <code>estimated</code></td></tr>
+    <tr><td class="nm">限流契约</td><td>429 携带 <code>retry-after</code> 与剩余配额头</td><td>无法排队，只能盲重试，A 直接上升</td><td>滑动窗口观测 + 保守令牌桶</td></tr>
+    <tr><td class="nm">健康契约</td><td>可观测的首 Token 时延与失败分类</td><td>熔断只能靠错误率，滞后一个故障周期</td><td>客户端侧探测 + 周期探针</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <p>这三条的价值在于：<strong>每一份缺失的契约，都会在账上变成一笔看不见的成本</strong>。接入评审时把「是否满足三契约」列为必填项，比事后调优便宜一个数量级。</p>
+
+  <h3><span class="k">2.2</span>三条贯穿原则</h3>
+  <ul>
+    <li><strong>临界路径只做加法和查表。</strong>扣费、限流、路由判定必须在微秒级完成，任何跨服务调用一律前置或异步。</li>
+    <li><strong>事实只存一次。</strong>usage 事件是计费、监控、成本核算的唯一源。三处各算一遍，必然出现两套数字。</li>
+    <li><strong>失败要有序且不可放大。</strong>换上游 → 降规格 → 排队 → 明确拒绝。任何一层都不得「重试到底」。</li>
+  </ul>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s3">
+  <h2><span class="i">03</span>计量计费与账务闭环</h2>
+  <p class="lead">现有实现已经解决了「算得出来」：按次、按秒、按 token 三种模式可以共存，预扣与结算也跑得通。本方案要补的是<em>「算得过去」</em>——流式、缓存、重试、改价四种情况同时出现时，账仍然对得上、且能逐条解释。</p>
+
+  <div class="flow">
+    <div class="fbox"><span class="t">采集 · collect</span><span class="d"><b>usage 事件</b><br>请求级、幂等、不可变<br>带计价快照与来源标记</span></div>
+    <div class="arrow"><svg width="24" height="10" viewBox="0 0 24 10" aria-hidden="true"><path d="M0 5h15" stroke="#cfcfc7" stroke-width="1"/><path d="M14 2l5.5 3-5.5 3z" fill="#cfcfc7"/></svg></div>
+    <div class="fbox"><span class="t">结算 · settle</span><span class="d"><b>双分录 ledger</b><br>预扣 → 结算 → 释放<br>余额只能由流水推导</span></div>
+    <div class="arrow"><svg width="24" height="10" viewBox="0 0 24 10" aria-hidden="true"><path d="M0 5h15" stroke="#cfcfc7" stroke-width="1"/><path d="M14 2l5.5 3-5.5 3z" fill="#cfcfc7"/></svg></div>
+    <div class="fbox"><span class="t">账单 · bill</span><span class="d"><b>可解释明细</b><br>按租户 / Key / 模型聚合<br>支持逐条下钻与争议</span></div>
+  </div>
+  <p class="arch-cap">图 3 · 主链路之外有两条旁路：成本侧对账（上游账单）与收入侧对账（支付渠道），两者在批次层汇合算毛利。</p>
+
+  <h3><span class="k">3.1</span>三个口径，三本账</h3>
+  <p>网关最容易犯的结构性错误，是试图用一个数字同时承担三件事。正确做法是明确分开，再在对账层收口：</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 3 · 三本账的定义与关系</caption>
+  <thead><tr><th>账本</th><th>计量口径</th><th>数据来源</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">收入账</td><td>本地 tokenizer（或上游回传）</td><td>usage 事件 × 价格快照</td><td>客户账单、余额</td></tr>
+    <tr><td class="nm">成本账</td><td>上游计费口径</td><td>上游账单 / usage 回传</td><td>毛利核算、采购决策</td></tr>
+    <tr><td class="nm">损耗账</td><td>差异量（A 的分解）</td><td>两侧差额按失败类型归因</td><td>重试治理、稳定性投入</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p><strong>不要在单请求层算毛利。</strong>单请求的两个口径必然不等，强行对齐只会得到一个既不准也无法审计的数。正确粒度是「模型 × 日」，两侧各自汇总后相减，差异再按失败类型分解。</p>
+
+  <h3><span class="k">3.2</span>流式计费：四种结束方式，四套口径</h3>
+  <p>流式的计费难点不是计数，而是「请求什么时候算结束」。四种结束方式必须各自定义，否则每次异常都要人工仲裁：</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 4 · 流式场景的计费归属</caption>
+  <thead><tr><th>场景</th><th>计量方式</th><th>计费口径</th><th>实现要点</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">正常完成</td><td>优先采信上游 usage</td><td>全额</td><td>缺失时本地重算并标记 estimated</td></tr>
+    <tr><td class="nm">客户端断开</td><td>已推送 delta 的累计量</td><td>按已交付部分</td><td>服务端 1s 宽限再停，避免半句截断</td></tr>
+    <tr><td class="nm">上游中断</td><td>已收到 delta 的累计量</td><td>已交付部分，未交付不计</td><td>标记 upstream_error，进损耗账</td></tr>
+    <tr><td class="nm">策略拦截</td><td>不计量或仅计输入</td><td>不计费</td><td>标记 policy_blocked，与失败区分</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <span class="h">工程细节</span>
+    <strong>不要对每个 chunk 单独 tokenize。</strong>BPE 合并与多字节 UTF-8 会跨 chunk 边界，逐块编码必然多算或少算。做法是维持滑动窗口缓冲（保留尾部重叠区），用「累计编码长度差」算增量，最终以完整文本重算收敛。增量计数只服务于过程中的预扣校验，结算一律以完整文本为准。
+  </div>
+
+  <h3><span class="k">3.3</span>预扣：现有半量预扣的透支风险</h3>
+  <p>当前实现对按 token 计费的模型按 <code>ratio / 2 × QuotaPerUnit</code> 预扣，即预扣约等于「半个价格单位」的额度。这在短输出下够用，但存在两个边界：</p>
+  <ul>
+    <li><strong>长输出透支</strong>：输出 4K Token 的请求，实际消耗远超预扣量，高并发下会出现「余额已为负但请求仍在跑」。</li>
+    <li><strong>预扣与 max_tokens 脱钩</strong>：请求里声明的 <code>max_tokens</code> 是最坏情况上界，预扣却按常量给，两者没有关系。</li>
+  </ul>
+  <p>建议改为<strong>按请求上界预扣</strong>：<code>hold = 输入估算 × 输入价 + min(max_tokens, 模型上限) × 输出价</code>，结束时按实际结算并释放差额。代价是并发请求的冻结额度变高，需要同时把「冻结额度」纳入余额展示，否则用户会误以为被多扣。</p>
+
+  <h3><span class="k">3.4</span>非标计量：统一到成本当量</h3>
+  <p>文本、图片、音频、视频的计量单位不同，但成本都来自上游的计费口径。内部需要一个归一单位（<code>credit</code>），把所有模态折算成同一把尺子，对外再用各自习惯的单位报价。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 5 · 非标计量归一口径</caption>
+  <thead><tr><th>模态</th><th>原生单位</th><th>归一口径</th><th>定价依据</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">文本生成</td><td>Token</td><td>1 credit / 1K Token</td><td>上游单价 × 目标倍率</td></tr>
+    <tr><td class="nm">图片理解</td><td>image_tokens</td><td>按上游分块公式折算</td><td>等价 Token 成本</td></tr>
+    <tr><td class="nm">图片生成</td><td>张 × 分辨率档</td><td>按档位实测上游成本折算</td><td><b>实测成本反推</b></td></tr>
+    <tr><td class="nm">语音合成 / 识别</td><td>字符 · 秒 · 分钟</td><td>按实测 RTF 折算</td><td>实测成本反推</td></tr>
+    <tr><td class="nm">视频生成</td><td>秒 × 分辨率 × 帧率</td><td>按上游计费单位直接折算</td><td><b>唯一必须按成本定价的模态</b></td></tr>
+    <tr><td class="nm">向量 / 重排</td><td>输入 Token</td><td>1 : 1</td><td>等价 Token 成本</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <div class="note">
+    <span class="h">亏损高发区</span>
+    图片与视频若照抄竞品价目表，几乎必然亏损：同一档分辨率在不同上游的计费差 3–10 倍，而客户的比价对象是「最便宜那家」。<strong>每一档都必须跑一次实测</strong>（固定请求、固定时长、读上游账单），得到成本下限再定价。
+  </div>
+
+  <h3><span class="k">3.5</span>改价与缓存：两个最容易被忽略的漏点</h3>
+  <p><strong>改价。</strong>当前的价格由 <code>ModelRatio</code> / <code>ModelPrice</code> 与分组倍率相乘得到，都是全局可改的配置。请求结算后若没有价格快照，一旦运营调整倍率，历史账就无法重算，退款与审计都失去依据。解决方式很轻：结算时把实际生效的倍率写进 usage 事件，<strong>价格表可变，已结算事实不可变</strong>。</p>
+  <p><strong>缓存。</strong>上游的 prompt caching 有独立的计费口径（cache write 与 cache read 单价不同）。如果网关只透传 <code>cache_control</code> 而不区分计量，就会出现「按全价卖、按折扣价买」的额外收益；一旦上游调整策略或反向涨价，这笔收益会瞬间变成亏损，而账面上看不出来。要求是：<strong>usage 事件必须区分 cached 与 uncached 的输入 Token</strong>，定价表也必须能对两者分别定价。</p>
+
+  <h3><span class="k">3.6</span>账务三条不变式</h3>
+  <ol class="bul">
+    <li><strong>余额只能由流水推导。</strong>禁止直接改写余额字段，任何变动必须同时产生一条 ledger 分录，余额是物化视图。退款用反向分录，不改历史。</li>
+    <li><strong>预扣恒大于实扣。</strong>预扣按请求上界冻结，结算按实际用量多退少补。这保证超支不发生，也天然容忍结算延迟。</li>
+    <li><strong>日终对账必须收敛。</strong>Σledger、支付渠道实收、客户账单三方差异不超过 0.1%，差异分类为漏单 / 重单 / 金额差 / 汇率差，各自有自动处置策略。</li>
+  </ol>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 6 · 常见账务异常与处置</caption>
+  <thead><tr><th>异常</th><th>根因</th><th>处置</th><th>预防</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">重复扣费</td><td>重试未归组</td><td>反向分录冲正</td><td><code>billing_group_id</code> 幂等键</td></tr>
+    <tr><td class="nm">漏计</td><td>事件写入失败</td><td>补采 + 标记来源</td><td>本地先落盘再响应</td></tr>
+    <tr><td class="nm">余额漂移</td><td>缓存与库不一致</td><td>以 ledger 为准重建</td><td>预扣模型 + 每小时全量校验</td></tr>
+    <tr><td class="nm">免费额度侵蚀毛利</td><td>赠送金未隔离成本中心</td><td>毛利报表剔除</td><td>赠送金单独科目，不计收入只计成本</td></tr>
+    <tr><td class="nm">汇率损失</td><td>跨境上游按外币结算</td><td>汇兑损益单列</td><td>结算时快照汇率，不做实时重估</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <h3><span class="k">3.7</span>预付与后付</h3>
+  <p>两者共用同一套 ledger，差异只在结算时点与信用敞口：预付按余额实时扣减，余额不足在入口直接返回 402；后付按月结账期出账，需要押金或信用额度，额度用尽自动降级为预付，逾期冻结调用。<strong>两种模式不能靠开关在运行时混用</strong>，必须绑定在租户合同上，否则财务无法判断应收。</p>
+
+  <h3><span class="k">3.8</span>计费异常补偿</h3>
+  <p>对账负责发现问题，补偿决定问题会不会演变成事故。这里的原则与常规财务相反：<strong>多收必退，少收不追</strong>。理由不是慷慨，而是两类错误的代价不对称——多收一次，客户会重新审计你所有的历史账单；少收一次，只是一笔可计入损耗的成本。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 7 · 四类计费异常的处置口径</caption>
+  <thead><tr><th>类型</th><th>判定</th><th>处理</th><th>客户沟通</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">多计</td><td>自检发现或申诉成立</td><td>反向分录冲正，优先退款</td><td>主动告知，附明细，不辩解</td></tr>
+    <tr><td class="nm">少计（小额）</td><td>差额 &lt; 月账单 0.5%</td><td>计入损耗，不追缴</td><td>不通知</td></tr>
+    <tr><td class="nm">少计（大额）</td><td>差额 ≥ 阈值</td><td>商务沟通后分期调整</td><td><b>不得在下一期账单突然补扣</b></td></tr>
+    <tr><td class="nm">服务未达标</td><td>未达承诺矩阵档位</td><td>按条款赔付，优先赔付额度</td><td>附统计口径与原始数据</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <p>三条执行约束：</p>
+  <ul>
+    <li><strong>补偿走反向分录与独立科目</strong>，不改历史账单。直接改数会让审计链断裂，也会让「这个月为什么和上个月对不上」变成永久的解释成本。</li>
+    <li><strong>少计不自动追缴。</strong>突然补扣是信任事件，不是财务事件。大额差异宁可谈成折扣，也不要出现在账单里。</li>
+    <li><strong>赔付优先用额度而非现金。</strong>保留收入、降低现金流压力，且额度最终会被消费掉。</li>
+  </ul>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="s4">
+  <h2><span class="i">04</span>多租户、配额与权限</h2>
+  <p class="lead">网关的租户隔离比推理平台简单——没有显存这类不可切分的资源。但它有另一个难点：<em>流式请求的长连接特性，让「按 QPS 限流」失去意义</em>。一个 30 秒的流式请求占用的不是一次调用，而是一段持续的上游配额。</p>
+
+  <h3><span class="k">4.1</span>三层模型</h3>
+  <div class="formula">
+    <span class="lbl">层级与职责</span>
+    Organization（合同主体 · 结算单位 · 数据边界）<br>
+    　└─ Project（成本中心 · 配额单位 · 权限范围）<br>
+    　　　└─ API Key（调用凭证 · 最小授权 · 可轮换）<br>
+    <span style="color:#6b7076">任意层可独立设置预算、模型白名单、IP 白名单与速率上限；子层约束不得超过父层。</span>
+  </div>
+  <p>把「结算单位」放在 Organization 而非 Key，是因为发票、账期、信用额度天然属于合同主体；把「配额单位」放在 Project，是因为成本归集发生在团队粒度。这两件事混在一起，会导致财务与研发互相不认账。</p>
+
+  <h3><span class="k">4.2</span>配额：三个维度，缺一不可</h3>
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 8 · 配额维度与失效后果</caption>
+  <thead><tr><th>维度</th><th>单位</th><th>为什么必须有</th><th>典型取值</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">金额预算</td><td>元 / 周期</td><td>最终兜底，防止账单超预期</td><td>按合同，80% 预警</td></tr>
+    <tr><td class="nm">并发请求数</td><td>在途请求</td><td>流式长连接的真实资源占用</td><td>按档位 5 / 50 / 500</td></tr>
+    <tr><td class="nm">Token 速率</td><td>TPM / RPM</td><td>与上游配额对齐，防单租户打满渠道</td><td>按档位阶梯</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>只做 RPM 限制是常见的错误：100 个 RPM 的租户若每个请求都跑 60 秒，等效于 100 个常驻连接，足以耗尽一个渠道的并发。<strong>并发数才是与上游能力对齐的那个量。</strong></p>
+
+  <h3><span class="k">4.3</span>权限：RBAC 定功能，ABAC 定范围</h3>
+  <ul>
+    <li><strong>RBAC</strong>：角色 = 一组功能权限（owner / admin / developer / billing / viewer），回答「能不能做这个动作」。</li>
+    <li><strong>ABAC</strong>：策略 = 对资源与条件的约束（Project、模型、时段、来源 IP、预算余量），回答「能对哪些对象、在什么条件下做」。</li>
+  </ul>
+  <p>实现上复用既有策略引擎，不自研表达式解释器。策略变更必须留审计，且支持 dry-run：先记录「本会被拒绝」的请求，观察一周无异常再真正生效。</p>
+
+  <h3><span class="k">4.4</span>模型权限：三层交集与状态码语义</h3>
+  <p>模型黑白名单不是一张表，而是三层的交集：<strong>合同允许集</strong>（Org 上，来自签约）→ <strong>Key 白名单</strong>（子集，最小授权）→ <strong>请求级条件</strong>（时段、IP、预算余量）。任何一层拒绝即拒绝，且内部拒绝原因不回传给调用方。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 9 · 拒绝语义：状态码本身是信息</caption>
+  <thead><tr><th>情形</th><th>返回</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">模型不在合同允许集</td><td class="num">404</td><td>不泄露模型是否存在，避免被枚举</td></tr>
+    <tr><td class="nm">在允许集但不在 Key 白名单</td><td class="num">403</td><td>租户内部配置问题，需要可操作提示</td></tr>
+    <tr><td class="nm">已授权但配额或预算耗尽</td><td class="num">429 / 402</td><td>可恢复，附重置时间或充值入口</td></tr>
+    <tr><td class="nm">已授权但内容策略拦截</td><td class="num">400</td><td>请求本身不合法，与权限无关</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>把「未授权」与「不存在」统一返回 404，是这里唯一不能妥协的安全细节：<strong>可枚举的模型清单本身就是情报</strong>，攻击者据此判断哪些上游在用、哪些还没上线。</p>
+
+  <h3><span class="k">4.5</span>API Key 的六条硬规则</h3>
+  <ol class="bul">
+    <li>只存哈希不存明文，展示时仅给前缀与后四位。</li>
+    <li>支持 scope：模型白名单、端点白名单、额度上限、速率上限、过期时间。</li>
+    <li>支持轮换：新旧 Key 并行有效期可配（默认 24h）。</li>
+    <li>支持绑定来源：IP / CIDR 越界直接 401，而非 429。</li>
+    <li>异常检测：用量突增、跨地域调用、公开仓库泄漏扫描，命中可一键吊销。</li>
+    <li>吊销即失效：走缓存失效广播，收敛目标 &lt; 5s，不依赖 TTL 自然过期。</li>
+  </ol>
+
+  <h3><span class="k">4.6</span>数据与内容安全</h3>
+  <div class="tbl-wrap">
+  <table>
+  <thead><tr><th>控制项</th><th>做法</th><th>默认值</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">传输</td><td>TLS 1.2+，内部服务 mTLS</td><td>强制</td></tr>
+    <tr><td class="nm">静态加密</td><td>KMS 信封加密，按租户 DEK</td><td>开启</td></tr>
+    <tr><td class="nm">Prompt 留存</td><td>默认不落原文，仅存长度、哈希、采样片段</td><td>关闭</td></tr>
+    <tr><td class="nm">日志脱敏</td><td>手机号 / 身份证 / 邮箱 / 密钥模式替换</td><td>强制</td></tr>
+    <tr><td class="nm">内容审核</td><td>输入同步判定，输出异步并命中终止</td><td>高风险模型同步</td></tr>
+    <tr><td class="nm">审计日志</td><td>追加写 + 哈希链，保留 ≥ 180 天</td><td>强制</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>内容安全的工程要点是<strong>不阻塞主链路</strong>：输入审核同步（毫秒级），输出审核与生成并行，命中后终止流并标记。若一律等生成完再整体审核，流式体验不复存在。</p>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s5">
+  <h2><span class="i">05</span>可观测性与 SLA</h2>
+  <p class="lead">不拥有上游时，可观测性的作用从「调优」变成「举证」：既要向客户证明服务达标，也要向自己证明成本没有漏。所以指标必须同时覆盖<em>体验、健康、成本</em>三类，且都与计费同源。</p>
+
+  <h3><span class="k">5.1</span>指标字典</h3>
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 10 · 四层指标与责任边界</caption>
+  <thead><tr><th>层</th><th>核心指标</th><th>责任方</th><th>典型用途</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">体验</td><td>L2 首 Token 成功率、L3 完整完成率、TTFT P95、中断率</td><td>网关组</td><td>SLO 与赔付</td></tr>
+    <tr><td class="nm">上游</td><td>分 Provider 成功率、429 率、TTFT 分布、配额逼近度</td><td>网关组</td><td>熔断与采购</td></tr>
+    <tr><td class="nm">成本</td><td><b>重试放大 A</b>、漏计率、单模型毛利、缓存命中占比</td><td>架构组</td><td>定价与止损</td></tr>
+    <tr><td class="nm">业务</td><td>活跃租户、ARPU、流失预警、客单价分布</td><td>产品</td><td>经营决策</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>A 与漏计率是这套字典里最不该缺席、也最常缺席的两个。它们都不需要新采集，只需要在既有数据上加一层归因。</p>
+
+  <h3><span class="k">5.2</span>流式健康度：三个口径不能混用</h3>
+  <div class="tbl-wrap">
+  <table>
+  <thead><tr><th>口径</th><th>定义</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">L1 连接成功</td><td>HTTP 200 且收到首个 SSE 事件</td><td>定位网络与鉴权</td></tr>
+    <tr><td class="nm">L2 首 Token 成功</td><td>收到首个非空 delta</td><td>告警主指标</td></tr>
+    <tr><td class="nm">L3 完整完成</td><td>收到 finish_reason 且正常关闭</td><td><b>SLO 与赔付的唯一口径</b></td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>中断率必须区分<strong>客户端主动取消</strong>与<strong>平台侧中断</strong>。混在一个分母里，会让「用户关掉页面」把 SLO 拉爆，团队随后学会忽略这个指标——这是 SLO 体系最常见的死亡方式。</p>
+
+  <h3><span class="k">5.3</span>SLA 等级 = 冗余等级</h3>
+  <p>不拥有算力，可用性只能靠冗余堆出来。这决定了 SLA 不是「服务水平」的表述，而是一个<strong>采购决策</strong>：承诺几个 9，就要买几份冗余。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 11 · SLA 档位与冗余配置的对应</caption>
+  <thead><tr><th>档位</th><th>可用性</th><th>冗余配置</th><th>成本系数</th><th>关键约束</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">基础</td><td class="num">99.5%</td><td>单 Provider + 多渠道重试</td><td class="num">1.00</td><td>同一供应商故障即中断</td></tr>
+    <tr><td class="nm">标准</td><td class="num">99.9%</td><td>2 家异构 Provider，独立账号池</td><td class="num">1.15–1.30</td><td>需能力等价矩阵支撑 fallback</td></tr>
+    <tr><td class="nm">高可用</td><td class="num">99.95%</td><td>3 家 + 独立入口 / DNS 双活</td><td class="num">1.50</td><td>需常态化切流演练</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <div class="note">
+    <span class="h">常见误判</span>
+    同一供应商开多个账号<strong>不构成冗余</strong>——控制面、鉴权、计费往往共用同一套基础设施，故障会同时发生。冗余的判据是「故障域独立」，不是「账号独立」。
+  </div>
+
+  <h3><span class="k">5.4</span>告警与错误预算</h3>
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 12 · 服务等级目标（月度统计）</caption>
+  <thead><tr><th>SLI</th><th>目标</th><th>错误预算</th><th>预算耗尽动作</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">文本可用性（L3）</td><td class="num">99.9%</td><td class="num">43.2 min</td><td>冻结非紧急变更</td></tr>
+    <tr><td class="nm">TTFT P99（&lt;2K prompt）</td><td class="num">≤ 1.5s</td><td class="num">1% 请求</td><td>触发容量评审</td></tr>
+    <tr><td class="nm">流式中断率（平台侧）</td><td class="num">≤ 0.3%</td><td class="num">0.3%</td><td>熔断问题上游</td></tr>
+    <tr><td class="nm">重试放大 A</td><td class="num">≤ 1.08<br><span style="font-size:11px;color:#6b7076">按模型分档</span></td><td class="num">—</td><td>停止灰度，排查重试路径</td></tr>
+    <tr><td class="nm">计费准确率</td><td class="num">≥ 99.99%</td><td class="num">—</td><td>暂停自动结算，人工复核</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>告警应以症状为主、原因为辅：用户感知的是「失败」和「首 Token 慢」，不是「某台机器温度高」。因此告警全部基于 SLI 的多窗口燃烧率（1h 14.4× / 6h 6× / 3d 1×），原因类指标只进看板，不进值班通道。</p>
+
+  <h3><span class="k">5.5</span>成本归因看板</h3>
+  <p>一张表回答三个问题：哪个模型在亏、亏在上游还是亏在重试、亏在哪些租户。三列必须同源同期，否则又会变成两套数字。</p>
+  <div class="formula">
+    <span class="lbl">按 模型 × 租户 × 日 聚合</span>
+    收入 ＝ Σ(结算 Token × 价格快照)<br>
+    成本 ＝ Σ(上游计费 Token × 上游单价 × 汇率快照)<br>
+    <b>损耗 ＝ 成本 − 基准成本（A=1.00 时）</b>　←　这一列是重试治理的入口<br>
+    毛利 ＝ 收入 − 成本 − 分摊固定成本
+  </div>
+
+  <h3><span class="k">5.6</span>渠道调权与自动摘除</h3>
+  <p>这是「自动扩缩容」在网关侧的实际形态：不扩机器，只调流量分配。判据不能只看成功率——成功率对慢渠道不敏感，用户早就走了它仍然是 100%。</p>
+
+  <div class="formula">
+    <span class="lbl">健康分与权重</span>
+    H = w₁ × 成功率 + w₂ × ( 1 − TTFT_p95 ÷ 基准 ) − w₃ × 429率<br>
+    权重 = H × 成本系数　　（成本系数仅在 H 达标时参与排序）<br>
+    <span style="color:#6b7076">建议 w₁=0.5、w₂=0.3、w₃=0.2；权重每 60s 重算，按业务调。</span>
+  </div>
+
+  <p>三条防震荡约束，缺一条都会得到「权重来回跳、流量打摆」的结果：</p>
+  <ul>
+    <li><strong>最小驻留</strong>：单渠道权重调整后 5 分钟内不再变动。</li>
+    <li><strong>幅度限制</strong>：单次调整不超过当前权重的 20%；严重异常直接摘除，不走降权。</li>
+    <li><strong>半开恢复</strong>：摘除后按指数退避放 1% 流量探测，连续成功 3 次恢复，而不是等定时器。</li>
+  </ul>
+
+  <div class="note plain">
+    <span class="h">与成本的关系</span>
+    成本系数只能在健康度达标后参与排序。若把「便宜」并进健康分，结果必然是「便宜渠道一直有量，即使它已经在超时」——成本优化必须建立在可用性约束之上，不能与之并列。
+  </div>
+
+  <h3><span class="k">5.7</span>多维用量统计：三层存储</h3>
+  <p>「按 Key 查过去 12 个月用量」这类需求，如果直接扫明细表，会在数据量上来后彻底失效。正确做法是三层存储 + 查询路由，而不是给明细表加索引。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 13 · 统计的三层存储</caption>
+  <thead><tr><th>层</th><th>粒度</th><th>保留</th><th>用途</th><th>查询路径</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">明细</td><td>请求级</td><td class="num">30–90 天</td><td>逐条下钻、争议仲裁</td><td>近 7 天直接查</td></tr>
+    <tr><td class="nm">小时聚合</td><td>租户 × 项目 × Key × 模型 × 端点 × 状态</td><td class="num">13 个月</td><td>用量趋势、异常定位</td><td>7 天前路由到此</td></tr>
+    <tr><td class="nm">日聚合</td><td>租户 × 项目 × 模型</td><td class="num">24–36 个月</td><td>账单、同比、留存分析</td><td>账单与年报</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <span class="h">不变式</span>
+    聚合表必须是明细的<strong>纯函数</strong>，任何时刻都能从明细全量重建。不要写「增量更新聚合」的逻辑——一次回补或一次重试就会让聚合永久偏移，且再也对不回去。性能不够就加并行，不要加状态。
+  </div>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s6">
+  <h2><span class="i">06</span>售前：容量、承诺与报价</h2>
+  <p class="lead">这一项要把工程能力翻译成客户可审计的承诺。没有 GPU 之后，售前最关键的三个数字变成：<em>要几个渠道、要不要签承诺量、能承诺几个 9</em>。三者互相约束。</p>
+
+  <h3><span class="k">6.1</span>容量规划：从 QPS 到渠道数</h3>
+  <div class="formula">
+    <span class="lbl">四步换算</span>
+    ① Token 需求　TPM = QPS × 60 × (输入 + 输出 Token 均值)<br>
+    ② 并发需求　　N = QPS × 平均请求时长（流式按时长算，不是按次）<br>
+    ③ 单渠道上限　取实测 TPM 与实测并发的小值（<b>不用标称值</b>）<br>
+    ④ 渠道数　　　= ceil(峰值 × 1.3 ÷ 单渠道上限) × 冗余等级系数
+  </div>
+  <p>第 ③ 步的「实测」是整条链路上最容易被跳过、也最容易出事的一步。供应商标称的 TPM 通常标注了「共享池」前提，实际可用额度取决于同池其他租户。做法是：接入后跑 72 小时基线，取 P95 的实际吞吐作为单渠道上限，而不是产品文档上的数字。</p>
+
+  <h3><span class="k">6.2</span>承诺用量：什么时候该签</h3>
+  <p>预留折扣看起来总是划算，但它把「按量付」变成了「固定成本」，风险从供应商转移到自己身上。盈亏平衡点很简单：</p>
+  <div class="formula">
+    <span class="lbl">承诺量决策</span>
+    设按量单价 p，预留折扣 d，承诺量 Q<sub>c</sub>，实际用量 Q<br><br>
+    Q ≥ Q<sub>c</sub>　→　节省 ＝ p × d × Q<sub>c</sub><br>
+    Q &lt; Q<sub>c</sub>　→　多付 ＝ p × [(1−d)Q<sub>c</sub> − Q]<br><br>
+    <b>盈亏平衡：Q* = (1 − d) × Q<sub>c</sub></b>
+  </div>
+  <p>算例：折扣 20%、承诺 1000 万 Token/月，则月用量低于 <strong>800 万</strong>时，按量反而更便宜。决策规则应写进售前流程：<strong>只有过去 3 个月用量的 P10 分位不低于 (1−d)Q<sub>c</sub> 时，才签承诺量</strong>。这条规则能挡掉大部分「为了拿折扣而承诺、结果闲置」的浪费。</p>
+
+  <h3><span class="k">6.3</span>承诺矩阵</h3>
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 14 · 档位与承诺范围（示例结构，数值须按成本模型校准）</caption>
+  <thead><tr><th>档位</th><th>可用性</th><th>TTFT P99</th><th>支持</th><th>相对价格</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">基础</td><td class="num">99.5%</td><td>尽力而为</td><td>工单</td><td class="num">1.0×</td></tr>
+    <tr><td class="nm">标准</td><td class="num">99.9%</td><td class="num">≤ 2.0s</td><td>工单 + IM</td><td class="num">1.8×</td></tr>
+    <tr><td class="nm">高可用</td><td class="num">99.95%</td><td class="num">≤ 1.2s</td><td>专属群 + 值班</td><td class="num">4.5×</td></tr>
+    <tr><td class="nm">私有化</td><td>按合同</td><td>按验收</td><td>驻场 / 远程</td><td>项目制</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>矩阵的工程含义是：<strong>每个承诺都必须对应一种冗余配置</strong>。销售若在「基础」档承诺 99.95%，架构上无法兑现——单 Provider 的故障域覆盖不了这个数字。因此矩阵由架构组维护，销售只能引用，不允许自行组合。</p>
+
+  <h3><span class="k">6.4</span>交付物</h3>
+  <ol class="bul">
+    <li><strong>技术方案书</strong>：逻辑架构、请求链路、上游冗余拓扑三张图。</li>
+    <li><strong>压测报告</strong>：混合负载（长短 prompt、多租户、突发），给 P50/P95/P99 与吞吐曲线，而非单点延迟。</li>
+    <li><strong>成本测算表</strong>：输入 QPS 与模型分布即输出月成本与毛利，可复算。</li>
+    <li><strong>SLA 条款</strong>：与承诺矩阵一一对应，含统计口径、排除条款、赔付计算方式。</li>
+    <li><strong>私有化清单</strong>：离线镜像、License、升级通道、运维移交文档。</li>
+  </ol>
+  <p>其中<strong>成本测算表</strong>最容易被低估：它同时是售前工具与内部定价依据，两边共用同一份模型，报价与成本才不会脱节。</p>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s7">
+  <h2><span class="i">07</span>落地路线与验收</h2>
+  <p class="lead">排序依据是「错了以后最难补救」。账错了无法追溯，重试放大无法回滚，所以前两期都在修漏水；能随时补的能力往后排。</p>
+
+  <div class="road">
+    <div class="rrow"><span class="p">P0</span><span class="w">0–2 月</span><span class="c"><b>把事实立起来。</b>usage 事件模型（含 billing_group、price_version、usage_source）、流式四场景计数、ledger、A 与漏计率上线。验收：对账差异 &lt; 0.1%，任一请求可逐条下钻。</span></div>
+    <div class="rrow"><span class="p">P1</span><span class="w">3–5 月</span><span class="c"><b>把漏水堵住。</b>重试治理（不可重试判定、重试预算、全局过载信号）、预扣改上界、缓存分账。验收：A ≤ 1.08 且成功率不降。</span></div>
+    <div class="rrow"><span class="p">P2</span><span class="w">6–9 月</span><span class="c"><b>把租户做厚。</b>Org / Project / Key 三层、配额三维度、价格版本、预算告警。验收：单租户无法影响他人 P99（同档抖动 &lt; 1.2×）。</span></div>
+    <div class="rrow"><span class="p">P3</span><span class="w">10–12 月</span><span class="c"><b>把交付标准化。</b>异构冗余与切流演练、SLA 分级、容量计算器进销售流程。验收：标准项目交付周期缩短 50%。</span></div>
+  </div>
+
+  <h3><span class="k">7.1</span>为什么重试治理排在多租户之前</h3>
+  <p>多租户影响的是「能不能卖给企业」，重试放大影响的是「每一笔交易赚不赚钱」。前者是增长问题，后者是存活问题——在毛利 18% 的结构下，A 从 1.10 恶化到 1.20 会让利润腰斩，而多租户晚三个月上线只是少签几单。</p>
+
+  <h3><span class="k">7.2</span>先测量：七天拿到 A 的真实值</h3>
+  <p>整套方案依赖一个前提——A 现在到底是多少。这个数不需要等账务系统建好才能知道：一张埋点表加一周真实流量就够。建议在任何代码改造之前先做，因为它同时给出「值不值得做」的答案。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 15 · 七天测量计划</caption>
+  <thead><tr><th>日</th><th>动作</th><th>产出</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">D1–D2</td><td>转发层加埋点：请求 ID、重试组 ID、attempt 序号、各段用量、结束原因、断开时间</td><td>一张只写不读的临时表</td></tr>
+    <tr><td class="nm">D3</td><td>放真实流量 24h，不做任何策略变更</td><td>基线样本</td></tr>
+    <tr><td class="nm">D4</td><td>算 A 的五个分项，按模型与渠道切片</td><td>A 的真实值与结构</td></tr>
+    <tr><td class="nm">D5</td><td>抽样 200 条请求本地重算，与上游回传对比</td><td>W₅ 的量级与方向</td></tr>
+    <tr><td class="nm">D6</td><td>定位最大分项，估算可回收金额</td><td>按金额排序的清单</td></tr>
+    <tr><td class="nm">D7</td><td>出结论：A 的真实值、可回收利润、需改的代码点</td><td>是否启动 P0 的依据</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>这一步常被跳过，理由是「先把系统建好再谈数据」。但埋点表的成本大约是账务系统的 5%，而它能回答的那个问题——这块值不值得投人——恰恰是账务系统回答不了的。</p>
+</section>
+
+<!-- ============ 08 ============ -->
+<section id="s8">
+  <h2><span class="i">08</span>对抗审查：脆弱假设</h2>
+  <p class="lead">方案的价值不在于证明它对，而在于提前说清它在什么条件下会错，并为每个假设配一个可观测的证伪指标。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 16 · 六个关键假设、失效后果与反制</caption>
+  <thead><tr><th>#</th><th>假设</th><th>若不成立的后果</th><th>反制</th><th>证伪指标</th></tr></thead>
+  <tbody>
+    <tr><td class="num">1</td><td class="nm">上游 usage 与本地计量的偏差可解释</td><td>毛利报表不可信，所有优化失去基准</td><td>三本账分离，批次层对账</td><td>偏差 &gt; 5% 且无法按场景归类</td></tr>
+    <tr><td class="num">2</td><td class="nm">重试能提升成功率</td><td>上游整体过载时，重试只放大成本，成功率不变</td><td>重试预算 + 全局过载信号熔断</td><td>A 上升但 L3 完成率不变</td></tr>
+    <tr><td class="num">3</td><td class="nm">fallback 的目标上游能力等价</td><td>切换成功但 tool-calling / 长上下文失效，静默降质</td><td>能力等价矩阵 + 降级明示</td><td>fallback 后工具调用失败率上升</td></tr>
+    <tr><td class="num">4</td><td class="nm">客户接受按 Token 计价</td><td>计量体系白做，商务被迫改按次 / 席位</td><td>计量单位与计价单位分离，加映射层</td><td>要求改计价方式的客户占比 &gt; 30%</td></tr>
+    <tr><td class="num">5</td><td class="nm">多上游能提升可用性</td><td>同供应商多账号仍是同一故障域</td><td>只认「异构 + 独立入口」为冗余</td><td>切流演练中出现同时不可用</td></tr>
+    <tr><td class="num">6</td><td class="nm">私有化能带来溢价</td><td>交付与运维成本吃掉溢价</td><td>私有化单独核算人力成本</td><td>单项目毛利率 &lt; 20%</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <h3><span class="k">8.1</span>三个反向指标</h3>
+  <div class="tbl-wrap">
+  <table>
+  <thead><tr><th>现象</th><th>表面解读</th><th>真实含义</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">成功率上升，A 同步上升</td><td>稳定性变好了</td><td>在用钱买成功率，毛利被悄悄侵蚀</td></tr>
+    <tr><td class="nm">SLA 达标，fallback 率高</td><td>冗余起了作用</td><td>主上游能力不足，指标靠降质维持</td></tr>
+    <tr><td class="nm">毛利稳定，客单价下降</td><td>业务健康</td><td>高价值客户在流失，留下的是低毛利流量</td></tr>
+    <tr><td class="nm">收入增长，单租户毛利转负</td><td>规模效应</td><td>定价低于成本，在用增长掩盖亏损</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <h3><span class="k">8.2</span>主动放弃的东西</h3>
+  <ul>
+    <li><strong>不做语义缓存。</strong>跨租户的语义命中存在串话与数据泄漏风险，收益远小于责任。只做上游 prompt cache 的透传。</li>
+    <li><strong>不做统一 tokenizer 对齐。</strong>上游按自己的口径计费，本地按自己的口径收费，强行统一只会两边都不准。分账核算即可。</li>
+    <li><strong>不做实时毛利。</strong>成本以账单为准，必然是 T+1。实时只能给「估算毛利」，且必须明确标注，否则会与财务报表打架。</li>
+    <li><strong>不做对冲请求（hedging）默认开启。</strong>它用成本换长尾延迟，只在明确付费的高价值场景按租户开启。</li>
+  </ul>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="s9">
+  <h2><span class="i">09</span>与现有代码的差距清单</h2>
+  <p class="lead">本方案不以重写为前提。现有多数能力可以复用，缺口集中在「事实模型」与「成本可见性」两处，且都能以增量方式接入。</p>
+
+  <div class="tbl-wrap">
+  <table>
+  <caption>表 17 · 能力现状与改造方式（基于 apiduo / new-api 现有形态）</caption>
+  <thead><tr><th>能力</th><th>现状</th><th>缺口</th><th>改造方式</th></tr></thead>
+  <tbody>
+    <tr><td class="nm">定价计算</td><td>ModelRatio / ModelPrice × 分组倍率</td><td>无版本、无结算快照</td><td>结算时写入生效倍率</td></tr>
+    <tr><td class="nm">计费模式</td><td>按次 / 按秒 / 按 token 三模式共存</td><td>流式增量、缓存分账</td><td>事件化改造</td></tr>
+    <tr><td class="nm">预扣</td><td>按 ratio 常量预扣</td><td>与 max_tokens 脱钩，长输出可能透支</td><td>改按请求上界预扣</td></tr>
+    <tr><td class="nm">账务</td><td>额度字段直接增减</td><td>无双分录、无幂等归组</td><td><b>新增账务层</b></td></tr>
+    <tr><td class="nm">日志</td><td>记录额度与分组</td><td>缺 price_version、usage_source、billing_group</td><td>字段扩展</td></tr>
+    <tr><td class="nm">重试</td><td>渠道级重试</td><td><b>需核对：流式已输出后是否仍会重试</b></td><td>加「已产生输出禁止重试」判定</td></tr>
+    <tr><td class="nm">多租户</td><td>user / group / token</td><td>无 Org / Project 与预算树</td><td>模型扩展</td></tr>
+    <tr><td class="nm">可观测</td><td>请求日志与渠道健康</td><td>缺 A、漏计率、成本归因</td><td>新增看板</td></tr>
+  </tbody>
+  </table>
+  </div>
+
+  <p>按此映射，P0 的真实工作量是<strong>事件模型 + 账务层</strong>两块，不涉及网关主链路重写。这正是把「计费可信」放第一位的可行性依据：它不是一个大工程，而是一个必须先做的小工程。</p>
+
+  <div class="note plain">
+    <span class="h">待核实项</span>
+    表中「重试」一行标记为待核对：<strong>流式响应已经开始向客户端输出后，若上游中断，当前实现是否会重新发起上游请求</strong>。若会，则每一次这类重试都会产生整段重复成本，是 A 的最大单一来源。这条应在 P0 期间用日志验证，而不是靠代码推断。
+  </div>
+</section>
+
+<footer>
+  Token 工厂技术方案 · v2.1 网关篇 · 2026-11-14<br>
+  本版不含 GPU 推理平台与资源调度（岗位职责第 5 项），该部分仅以「上游三契约」形式出现。<br>
+  文中价格与毛利为示意值，落地前须以实际价目表与账单替换。<br>
+  设计语言遵循项目既有契约：纸 #fcfcfa / 墨 #1a1c1e / 一根线 #e4e4de，单一强调色 #9a3412。
+</footer>
+
+</div>
+</body>
+</html>

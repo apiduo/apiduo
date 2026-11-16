@@ -587,6 +587,30 @@ Quota: 0,
 
 **可见性**：`relay_request_id` 放在 `admin_info` 内，`logOtherVisibilityUser` 会把整个 `admin_info` 从用户视角剥离（`model/log_other.go:246`），因此不会泄露给终端用户，仅管理员可见。
 
+**生产验证（2026-11-14 22:52，0.0.141）**：用 `qwen-image-3.0` 真实出站一次（成本 `quota=5000` ≈ $0.01），两条日志同秒写入：
+
+```
+type  model           channel_id  quota  request_id                            relay_request_id
+2     qwen-image-3.0  27          5000   202611141451028799385588268d9d6URR82dhs  （空）
+2     qwen-image-3.0  -1          0      202611141452160358313178268d9d69CxIXdys  202611141451028799385588268d9d6URR82dhs
+```
+
+上一行是 relay 的真实消费，下一行是 MCP 的观察记录：`channel_id = -1`、`quota = 0`，且 `relay_request_id` **精确等于** relay 那条的 `request_id`。两条记录的 `request_id` 本身不同（`…URR82dhs` vs `…9CxIXdys`），这正是改前无法关联的原因。
+
+JOIN 可用（ClickHouse）：
+
+```sql
+SELECT m.created_at, m.channel_id AS mcp_ch, m.quota AS mcp_q,
+       r.channel_id AS relay_ch, r.quota AS relay_q,
+       substring(r.content, 1, 40) AS relay_content
+FROM logs AS m
+INNER JOIN logs AS r
+  ON r.request_id = JSONExtractString(m.other, 'admin_info', 'relay_request_id')
+WHERE m.channel_id = -1 AND m.created_at >= toUnixTimestamp(now() - INTERVAL 1 DAY)
+```
+
+注意 `relay_request_id` 在 `other` JSON 内，不是顶层列——要 JOIN 必须用 `JSONExtractString` 现算，无法走索引。若 P1 把它提升为顶层列，这个 JOIN 才具备可用性能。
+
 **合并面**：改动全部位于 `mcp/`（apiduo 自有目录），`markercheck -cost` 复核为 `files 142 / blocks 426 / added 4054 / deleted 221`，与基线一致。
 
 ### 9.6 转换错误归因：500 → 400（已实施）

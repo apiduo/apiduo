@@ -33,7 +33,9 @@ import {
   FILE_RELAY_PURPOSES,
   defaultFileRelayPurposes,
   readFileRelayConfig,
+  readFileUploadPurposes,
   supportsFileRelay,
+  withFileUploadPurpose,
   type FileRelayConfig,
 } from '../lib/file-relay'
 
@@ -66,10 +68,10 @@ function parseSettingsObject(raw: unknown): Record<string, unknown> {
 /**
  * Declares which /v1/files purposes this channel serves.
  *
- * The value is written into the channel's settings JSON under file_relay, so it
- * rides along with the normal channel save instead of needing its own endpoint.
- * buildSettingsJSON starts from the existing JSON and only touches the keys it
- * knows, which is why this field survives a save that does not mention it.
+ * A purpose is written into the channel's model list as "@files/upload/<purpose>"
+ * and nowhere else: that list is the routing table, so the checkbox edits the
+ * same field an operator would edit by hand. The per-file ceiling is a number
+ * rather than a capability, so it stays in the settings blob.
  */
 export function FileRelaySetting(props: {
   channelType: number
@@ -78,15 +80,21 @@ export function FileRelaySetting(props: {
   const { t } = useTranslation()
   const form = useFormContext<ChannelFormValues>()
   const settings = parseSettingsObject(form.watch('settings'))
+  const models = form.watch('models') ?? ''
   const config = readFileRelayConfig(settings)
+  const purposes = readFileUploadPurposes(models)
 
   if (!supportsFileRelay(props.channelType)) return null
 
-  const write = (next: FileRelayConfig) => {
+  const writeMaxBytes = (next: FileRelayConfig) => {
     form.setValue('settings', JSON.stringify({ ...settings, file_relay: next }), {
       shouldDirty: true,
       shouldTouch: true,
     })
+  }
+
+  const writeModels = (next: string) => {
+    form.setValue('models', next, { shouldDirty: true, shouldTouch: true })
   }
 
   const suggested = defaultFileRelayPurposes(props.channelType)
@@ -99,7 +107,7 @@ export function FileRelaySetting(props: {
             <FormLabel>{t('File relay purposes')}</FormLabel>
             <FormDescription>
               {t(
-                'Only the selected purposes are forwarded to this channel. Leaving every box clear keeps it out of /v1/files traffic.'
+                'Each selected purpose is added to the model list as @files/upload/<purpose>. A file is routed only to a channel that declares its purpose.'
               )}
             </FormDescription>
           </div>
@@ -107,7 +115,15 @@ export function FileRelaySetting(props: {
             type='button'
             className='text-muted-foreground hover:text-foreground shrink-0 text-xs underline underline-offset-4'
             disabled={props.disabled}
-            onClick={() => write({ ...config, purposes: [...suggested] })}
+            onClick={() =>
+              writeModels(
+                suggested.reduce(
+                  (current, purpose) =>
+                    withFileUploadPurpose(current, purpose, true),
+                  models
+                )
+              )
+            }
           >
             {t('Use suggested')}
           </button>
@@ -116,17 +132,13 @@ export function FileRelaySetting(props: {
           {FILE_RELAY_PURPOSES.map((purpose) => (
             <label key={purpose} className='flex items-center gap-2 text-sm'>
               <Checkbox
-                checked={config.purposes.includes(purpose)}
+                checked={purposes.includes(purpose)}
                 disabled={props.disabled}
-                onCheckedChange={(checked) => {
-                  write({
-                    ...config,
-                    purposes:
-                      checked === true
-                        ? [...config.purposes, purpose]
-                        : config.purposes.filter((item) => item !== purpose),
-                  })
-                }}
+                onCheckedChange={(checked) =>
+                  writeModels(
+                    withFileUploadPurpose(models, purpose, checked === true)
+                  )
+                }
               />
               <span>{t(PURPOSE_LABELS[purpose] ?? purpose)}</span>
             </label>
@@ -159,8 +171,7 @@ export function FileRelaySetting(props: {
             }
             onChange={(event) => {
               const megabytes = Number(event.target.value)
-              write({
-                ...config,
+              writeMaxBytes({
                 max_upload_bytes:
                   Number.isFinite(megabytes) && megabytes > 0
                     ? Math.round(megabytes * MEGABYTE)

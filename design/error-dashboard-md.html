@@ -1,0 +1,2489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>错误看板 · 产品原型 v0.1</title>
+<style>
+  /* ============================================================
+     Material Design 3 — light color scheme (baseline roles)
+     色板取自 M3 baseline palette，语义角色直接沿用规范命名，
+     不做"自己的品牌色 + 圆角"这种伪 Material。
+     ============================================================ */
+  :root{
+    --md-primary:#6750A4;
+    --md-on-primary:#FFFFFF;
+    --md-primary-container:#EADDFF;
+    --md-on-primary-container:#21005D;
+    --md-secondary:#625B71;
+    --md-on-secondary:#FFFFFF;
+    --md-secondary-container:#E8DEF8;
+    --md-on-secondary-container:#1D192B;
+    --md-tertiary:#7D5260;
+    --md-tertiary-container:#FFD8E4;
+    --md-on-tertiary-container:#31111D;
+    --md-error:#B3261E;
+    --md-on-error:#FFFFFF;
+    --md-error-container:#F9DEDC;
+    --md-on-error-container:#410E0B;
+    --md-surface:#FEF7FF;
+    --md-surface-container-lowest:#FFFFFF;
+    --md-surface-container-low:#F7F2FA;
+    --md-surface-container:#F3EDF7;
+    --md-surface-container-high:#ECE6F0;
+    --md-surface-container-highest:#E6E0E9;
+    --md-on-surface:#1D1B20;
+    --md-on-surface-variant:#49454F;
+    --md-outline:#79747E;
+    --md-outline-variant:#CAC4D0;
+    --md-inverse-surface:#322F35;
+    --md-inverse-on-surface:#F5EFF7;
+    --md-scrim:rgba(0,0,0,.32);
+
+    /* 业务语义色：M3 没有 success 角色，用 tonal 自行派生 */
+    --ok:#1B6C3A;      --ok-container:#DCF2E3;
+    --warn:#8B5000;    --warn-container:#FFE0B2;
+    --info:#0B57D0;    --info-container:#DDE6FF;
+
+    /* shape scale */
+    --shape-xs:4px; --shape-sm:8px; --shape-md:12px; --shape-lg:16px; --shape-xl:28px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden}
+  body{
+    font-family:Roboto,"Helvetica Neue","PingFang SC","Hiragino Sans GB","Noto Sans SC",system-ui,sans-serif;
+    font-size:14px;line-height:20px;
+    background:var(--md-surface-container-low);
+    color:var(--md-on-surface);
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{display:flex;height:100vh;height:100dvh;overflow:hidden}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;height:100%;overflow:hidden}
+
+  /* ---------- Top app bar (small, 64dp) ---------- */
+  .head{
+    display:flex;align-items:center;gap:12px;height:64px;padding:0 16px;
+    background:var(--md-surface);flex:0 0 auto;position:relative;z-index:6;
+  }
+  .brand{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500;
+    color:var(--md-on-surface-variant);padding-right:14px;border-right:1px solid var(--md-outline-variant)}
+  .brand .dot{width:8px;height:8px;border-radius:99px;background:var(--md-primary)}
+  .head h1{margin:0;font-size:22px;line-height:28px;font-weight:400;letter-spacing:0}
+  .env{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--shape-sm);
+    font-size:12px;line-height:16px;font-weight:500;background:var(--ok-container);color:var(--ok)}
+  .env i{width:6px;height:6px;border-radius:99px;background:currentColor}
+  .sub{color:var(--md-on-surface-variant);font-size:12px;line-height:16px}
+  .spacer{flex:1}
+
+  /* ---------- Segmented button ---------- */
+  .seg{display:inline-flex;border:1px solid var(--md-outline);border-radius:20px;overflow:hidden;background:transparent}
+  .seg button{
+    appearance:none;border:0;border-right:1px solid var(--md-outline);background:transparent;
+    height:40px;padding:0 16px;font-family:inherit;font-size:14px;line-height:20px;font-weight:500;
+    color:var(--md-on-surface);cursor:pointer;white-space:nowrap;
+  }
+  .seg button:last-child{border-right:0}
+  .seg button:hover:not(.on){background:rgba(29,27,32,.08)}
+  .seg button.on{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    appearance:none;height:40px;padding:0 16px;border:0;border-radius:20px;background:transparent;
+    color:var(--md-primary);font-family:inherit;font-size:14px;line-height:20px;font-weight:500;
+    cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+  }
+  .btn:hover{background:rgba(103,80,164,.08)}
+  .btn.ghost{color:var(--md-on-surface-variant)}
+  .btn.ghost:hover{background:rgba(29,27,32,.08)}
+  .icon-btn{
+    width:40px;height:40px;border-radius:20px;border:0;background:transparent;cursor:pointer;
+    color:var(--md-on-surface-variant);display:inline-flex;align-items:center;justify-content:center;
+  }
+  .icon-btn:hover{background:rgba(29,27,32,.08)}
+
+  /* ---------- Primary tabs ---------- */
+  .tabs{
+    display:flex;height:48px;padding:0 8px;background:var(--md-surface);
+    border-bottom:1px solid var(--md-outline-variant);flex:0 0 auto;
+    overflow-x:auto;position:relative;z-index:5;
+  }
+  .tabs button{
+    position:relative;appearance:none;border:0;background:transparent;height:48px;padding:0 16px;
+    font-family:inherit;font-size:14px;line-height:20px;font-weight:500;
+    color:var(--md-on-surface-variant);cursor:pointer;white-space:nowrap;
+  }
+  .tabs button:hover{background:rgba(29,27,32,.08)}
+  .tabs button.on{color:var(--md-primary)}
+  .tabs button.on::after{
+    content:"";position:absolute;left:8px;right:8px;bottom:0;height:3px;border-radius:3px 3px 0 0;
+    background:var(--md-primary);
+  }
+
+  .body{flex:1 1 auto;min-height:0;overflow:auto;padding:16px 16px 96px}
+  .view{display:none}
+  .view.on{display:block}
+
+  /* ---------- Cards ---------- */
+  .card{background:var(--md-surface-container-lowest);border-radius:var(--shape-md);overflow:hidden}
+  .card + .card{margin-top:16px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:16px 16px 8px;flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:16px;line-height:24px;font-weight:500}
+  .card-h .desc{color:var(--md-on-surface-variant);font-size:12px;line-height:16px}
+  .card-h .src{
+    font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:var(--md-surface-container-high);color:var(--md-on-surface-variant);
+    padding:2px 8px;border-radius:var(--shape-sm);
+  }
+  .card-b{padding:0 16px 16px}
+  .card-b.flush{padding:0;overflow-x:auto}
+
+  /* ---------- KPI ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+  @media (max-width:1180px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .kpi{background:var(--md-surface-container);border-radius:var(--shape-lg);padding:16px;position:relative;overflow:hidden}
+  .kpi .lab{display:flex;align-items:center;gap:6px;font-size:12px;line-height:16px;font-weight:500;
+    color:var(--md-on-surface-variant)}
+  .kpi .lab .q{width:16px;height:16px;border-radius:99px;background:rgba(29,27,32,.14);
+    color:var(--md-on-surface-variant);font-size:10px;display:flex;align-items:center;justify-content:center;
+    cursor:help;font-weight:600;flex:0 0 16px}
+  .kpi .val{font-size:36px;line-height:44px;font-weight:400;letter-spacing:0;
+    font-variant-numeric:tabular-nums;margin-top:8px}
+  .kpi .val small{font-size:14px;font-weight:400;color:var(--md-on-surface-variant);margin-left:4px}
+  .kpi .meta{margin-top:4px;padding-right:64px;font-size:12px;line-height:16px;
+    color:var(--md-on-surface-variant);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .delta{font-weight:500;font-variant-numeric:tabular-nums}
+  .delta.up{color:var(--md-error)}
+  .delta.down{color:var(--ok)}
+  .delta.flat{color:var(--md-on-surface-variant)}
+  .kpi .spark{position:absolute;right:12px;bottom:12px;opacity:.85}
+
+  /* ---------- Charts ---------- */
+  .chart-wrap{position:relative}
+  .chart-wrap svg{display:block;width:100%;height:auto}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;line-height:16px;
+    color:var(--md-on-surface-variant);padding:2px 0 12px}
+  .legend span{display:inline-flex;align-items:center;gap:8px}
+  .legend i{width:16px;height:3px;border-radius:2px;display:block}
+  .legend i.dash{background:none;border-top:3px dashed currentColor;height:0}
+  .axis{display:flex;justify-content:space-between;font-size:11px;line-height:16px;
+    color:var(--md-on-surface-variant);padding:6px 1px 0;font-variant-numeric:tabular-nums}
+
+  /* ---------- Data table ---------- */
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:0 16px;vertical-align:middle}
+  th{height:56px;font-size:14px;line-height:20px;font-weight:500;color:var(--md-on-surface-variant);
+    white-space:nowrap;background:transparent}
+  td{height:52px;font-size:14px;line-height:20px;border-bottom:1px solid var(--md-outline-variant)}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr.click{cursor:pointer}
+  tbody tr.click:hover{background:rgba(29,27,32,.08)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--md-on-surface-variant)}
+
+  /* ---------- Chips / badges ---------- */
+  .pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;
+    border-radius:var(--shape-sm);font-size:12px;line-height:16px;font-weight:500;white-space:nowrap}
+  .pill.ok{background:var(--ok-container);color:var(--ok)}
+  .pill.warn{background:var(--warn-container);color:var(--warn)}
+  .pill.err{background:var(--md-error-container);color:var(--md-on-error-container)}
+  .pill.blue{background:var(--info-container);color:var(--info)}
+  .pill.purple{background:var(--md-primary-container);color:var(--md-on-primary-container)}
+  .pill.dark{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container)}
+  .pill.mute{background:var(--md-surface-container-highest);color:var(--md-on-surface-variant)}
+  .pill.accent{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+  .dotlayer{width:6px;height:6px;border-radius:99px;display:inline-block;flex:0 0 6px}
+
+  /* ---------- Bars ---------- */
+  .bar-row{display:grid;grid-template-columns:minmax(0,1fr) 56px 52px;gap:12px;align-items:center;padding:8px 0}
+  .bar-row .name{display:flex;align-items:center;gap:8px;min-width:0}
+  .bar-row .name b{font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar-track{height:8px;border-radius:4px;background:var(--md-surface-container-highest);overflow:hidden;margin-top:6px}
+  .bar-fill{height:100%;border-radius:4px}
+  .bar-row .n{text-align:right;font-variant-numeric:tabular-nums;font-size:14px;font-weight:500}
+  .bar-row .p{text-align:right;font-variant-numeric:tabular-nums;font-size:12px;color:var(--md-on-surface-variant)}
+
+  /* ---------- Alert rows ---------- */
+  .alert{display:grid;grid-template-columns:4px 1fr;border-radius:var(--shape-md);overflow:hidden;
+    background:var(--md-surface-container)}
+  .alert + .alert{margin-top:12px}
+  .alert .stripe{background:var(--md-tertiary)}
+  .alert.crit .stripe{background:var(--md-error)}
+  .alert .in{padding:14px 16px}
+  .alert .t{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;line-height:20px;font-weight:500}
+  .alert .d{color:var(--md-on-surface-variant);font-size:13px;line-height:20px;margin-top:6px}
+  .alert .d b{font-variant-numeric:tabular-nums;color:var(--md-on-surface)}
+
+  /* ---------- Toolbar & fields ---------- */
+  .toolbar{display:flex;gap:8px;align-items:center;padding:12px 16px;background:transparent;flex-wrap:wrap}
+  input[type=search],select,input[type=datetime-local]{
+    height:44px;padding:0 16px;border:1px solid var(--md-outline);border-radius:var(--shape-xs);
+    background:transparent;color:var(--md-on-surface);
+    font-family:inherit;font-size:14px;line-height:20px;outline:none;
+  }
+  input[type=search]{width:260px}
+  input[type=search]::placeholder{color:var(--md-on-surface-variant)}
+  input[type=search]:hover,select:hover,input[type=datetime-local]:hover{border-color:var(--md-on-surface)}
+  input[type=search]:focus,select:focus,input[type=datetime-local]:focus{
+    border-color:var(--md-primary);border-width:2px;padding:0 15px;
+  }
+  select{min-width:120px;cursor:pointer}
+  .custom-range{display:none;align-items:center;gap:12px;padding:12px 16px;
+    background:var(--md-surface);border-bottom:1px solid var(--md-outline-variant);flex-wrap:wrap;flex:0 0 auto}
+  .custom-range.on{display:flex}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .chip{height:32px;padding:0 12px;border-radius:var(--shape-sm);border:1px solid var(--md-outline);
+    background:transparent;color:var(--md-on-surface-variant);
+    font-family:inherit;font-size:13px;line-height:16px;font-weight:500;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px}
+  .chip:hover{background:rgba(29,27,32,.08)}
+  .chip.on{background:var(--md-secondary-container);border-color:transparent;color:var(--md-on-secondary-container)}
+  .chip .x{font-size:12px;opacity:.7}
+
+  .empty{padding:48px 16px;text-align:center;color:var(--md-on-surface-variant);font-size:14px}
+
+  /* ---------- Side sheet (details) ---------- */
+  .scrim{position:fixed;inset:0;background:var(--md-scrim);opacity:0;pointer-events:none;
+    transition:opacity .2s;z-index:40}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .drawer{
+    position:fixed;top:0;right:0;height:100vh;width:min(560px,94vw);
+    background:var(--md-surface-container-low);border-radius:var(--shape-lg) 0 0 var(--shape-lg);
+    box-shadow:0 8px 24px rgba(0,0,0,.16);
+    transform:translateX(100%);transition:transform .3s cubic-bezier(.2,0,0,1);
+    z-index:41;display:flex;flex-direction:column;
+  }
+  .drawer.on{transform:none}
+  .dh{display:flex;align-items:flex-start;gap:12px;padding:16px 16px 12px}
+  .dh h3{margin:0;font-size:16px;line-height:24px;font-weight:500}
+  .dh .sub2{color:var(--md-on-surface-variant);font-size:12px;line-height:16px;margin-top:4px}
+  .dh .xbtn{margin-left:auto;width:40px;height:40px;border-radius:20px;border:0;background:transparent;
+    color:var(--md-on-surface-variant);cursor:pointer;font-size:20px;line-height:1;flex:0 0 40px}
+  .dh .xbtn:hover{background:rgba(29,27,32,.08)}
+  .db{overflow:auto;padding:0 16px 32px}
+  .sec{padding:16px 0;border-bottom:1px solid var(--md-outline-variant)}
+  .sec:last-child{border-bottom:0}
+  .sec h4{margin:0 0 12px;font-size:12px;line-height:16px;font-weight:500;
+    letter-spacing:.04em;color:var(--md-on-surface-variant)}
+  .kv{display:grid;grid-template-columns:104px minmax(0,1fr);gap:8px 12px;font-size:14px;line-height:20px}
+  .kv dt{color:var(--md-on-surface-variant);font-size:13px}
+  .kv dd{margin:0;word-break:break-all}
+  .msgbox{background:var(--md-inverse-surface);color:var(--md-inverse-on-surface);
+    border-radius:var(--shape-md);padding:14px 16px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:20px;
+    white-space:pre-wrap;word-break:break-word}
+  .chain{position:relative;padding-left:20px}
+  .chain:before{content:"";position:absolute;left:5px;top:10px;bottom:10px;width:2px;background:var(--md-outline-variant)}
+  .chain .step{position:relative;padding:8px 0}
+  .chain .step:before{content:"";position:absolute;left:-19px;top:14px;width:10px;height:10px;border-radius:99px;
+    background:var(--md-surface-container-low);border:2px solid var(--md-outline-variant)}
+  .chain .step.ok:before{border-color:var(--ok);background:var(--ok)}
+  .chain .step.fail:before{border-color:var(--md-error);background:var(--md-error)}
+  .chain .step .r1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;line-height:20px}
+  .chain .step .r2{color:var(--md-on-surface-variant);font-size:12px;line-height:18px;margin-top:2px}
+
+  .note{background:var(--md-surface-container-high);border-radius:var(--shape-md);
+    padding:14px 16px;font-size:13px;line-height:20px;color:var(--md-on-surface-variant)}
+  .note b{color:var(--md-on-surface)}
+  .note.info{background:var(--md-primary-container);color:var(--md-on-primary-container)}
+  .note.info b{color:var(--md-on-primary-container)}
+  .linkish{color:var(--md-primary);cursor:pointer;text-decoration:none}
+  .linkish:hover{text-decoration:underline}
+
+  /* ---------- Layout helpers ---------- */
+  .grid-2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+  @media (max-width:1180px){.grid-2{grid-template-columns:1fr}}
+  .retry-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:16px}
+  .retry-sum > div{background:var(--md-surface-container);border-radius:var(--shape-md);padding:14px 16px}
+  .retry-sum .k{font-size:12px;line-height:16px;font-weight:500;color:var(--md-on-surface-variant)}
+  .retry-sum .v{font-size:28px;line-height:36px;font-weight:400;font-variant-numeric:tabular-nums;margin-top:4px}
+  .retry-sum .s{font-size:12px;line-height:16px;color:var(--md-on-surface-variant);margin-top:2px}
+  .retry-row{display:grid;grid-template-columns:92px minmax(0,1fr) 112px 76px;gap:12px;align-items:center;padding:8px 0}
+  .retry-row .lab{font-size:13px;line-height:20px;color:var(--md-on-surface-variant);white-space:nowrap}
+  .retry-row .lab b{font-weight:600;color:var(--md-on-surface)}
+  .retry-row .track{display:flex;gap:2px;height:12px;border-radius:6px;overflow:hidden;
+    background:var(--md-surface-container-highest)}
+  .retry-row .track i{display:block;height:100%}
+  .retry-row .num{text-align:right;font-size:13px;line-height:20px;font-variant-numeric:tabular-nums;
+    color:var(--md-on-surface-variant);white-space:nowrap}
+  .retry-row .rate{text-align:right;font-size:14px;line-height:20px;font-weight:500;font-variant-numeric:tabular-nums}
+  @media (max-width:760px){.retry-sum{grid-template-columns:1fr}.retry-row{grid-template-columns:78px minmax(0,1fr) 72px}}
+
+  .trap{display:grid;grid-template-columns:28px 1fr;gap:12px;padding:12px 0;
+    border-bottom:1px solid var(--md-outline-variant)}
+  .trap:last-child{border-bottom:0}
+  .trap .no{width:24px;height:24px;border-radius:99px;background:var(--md-error-container);
+    color:var(--md-on-error-container);font-size:11px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .trap .tt{font-size:14px;line-height:20px;font-weight:500}
+  .trap .td{font-size:13px;line-height:20px;color:var(--md-on-surface-variant);margin-top:4px}
+  .trap .td code{background:var(--md-surface-container-high);border-radius:4px;padding:1px 5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  .plan{margin:0;padding-left:20px;font-size:13px;line-height:22px;color:var(--md-on-surface-variant)}
+  .plan b{color:var(--md-on-surface);font-weight:500}
+  .badge-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+
+  .foot{padding:16px 4px 0;margin-top:24px;color:var(--md-on-surface-variant);
+    font-size:12px;line-height:20px;border-top:1px solid var(--md-outline-variant)}
+  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+    background:var(--md-surface-container-high);border-radius:4px;padding:1px 6px}
+
+  /* ---------- Snackbar ---------- */
+  .toast{
+    position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);
+    background:var(--md-inverse-surface);color:var(--md-inverse-on-surface);
+    border-radius:var(--shape-xs);padding:14px 16px;font-size:14px;line-height:20px;
+    box-shadow:0 4px 8px rgba(0,0,0,.15);opacity:0;pointer-events:none;transition:.2s;
+    z-index:60;max-width:min(600px,90vw);
+  }
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+
+  /* ---------- FAB ---------- */
+  .fab{
+    position:fixed;right:24px;bottom:24px;width:56px;height:56px;border-radius:var(--shape-lg);
+    border:0;background:var(--md-primary-container);color:var(--md-on-primary-container);
+    box-shadow:0 4px 8px rgba(0,0,0,.15);cursor:pointer;z-index:20;
+    display:flex;align-items:center;justify-content:center;
+    transition:box-shadow .2s,background .2s;
+  }
+  .fab:hover{box-shadow:0 6px 12px rgba(0,0,0,.22);background:#DFD1FF}
+  .fab:active{box-shadow:0 2px 4px rgba(0,0,0,.15)}
+
+  /* 表格列宽策略（沿用） */
+  #view-stream table td,#view-channel table td,
+  #view-overview .card-b.flush table td{white-space:nowrap}
+  #view-stream table td.col-msg{width:100%;max-width:0}
+  #view-stream table td.col-msg > div{max-width:100%}
+  @media (max-width:1280px){
+    #view-stream table td.col-msg{width:240px;max-width:none;min-width:240px}
+  }
+  #view-stream table{min-width:940px}
+  #view-channel table{min-width:800px}
+  #view-overview .card-b.flush table{min-width:610px}
+  #view-meta table th:first-child,#view-meta table td:first-child{white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <main class="main">
+    <header class="head">
+      <span class="brand"><span class="dot"></span>apiduo</span>
+      <h1>错误看板</h1>
+      <span class="env"><i></i>生产</span>
+      <span class="sub" id="headSub">加载中</span>
+      <div class="spacer"></div>
+      <div class="seg" id="rangeSeg">
+        <button data-range="1h">1 小时</button>
+        <button data-range="6h">6 小时</button>
+        <button data-range="24h" class="on">24 小时</button>
+        <button data-range="7d">7 天</button>
+        <button data-range="custom">自定义</button>
+      </div>
+      <button class="icon-btn" id="btnFull" title="进入沉浸式全屏（Esc 退出）" aria-label="全屏">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M5 5h5V3H3v7h2V5zm9-2v2h5v5h2V3h-7zM5 14H3v7h7v-2H5v-5zm16 5h-5v2h7v-7h-2v5z"/>
+        </svg>
+      </button>
+      <button class="btn" id="btnExport">导出 CSV</button>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button data-view="overview" class="on">总览</button>
+      <button data-view="stream">错误流</button>
+      <button data-view="channel">渠道健康</button>
+      <button data-view="meta">口径与数据源</button>
+    </nav>
+
+    <div class="custom-range" id="customRange">
+      <span class="sub">时间区间</span>
+      <input type="datetime-local" id="crFrom">
+      <span class="sub">→</span>
+      <input type="datetime-local" id="crTo">
+      <button class="btn" id="crApply">应用</button>
+      <button class="btn ghost" id="crCancel">取消</button>
+      <span class="sub">数据仅覆盖最近 7 天</span>
+    </div>
+
+    <div class="body">
+
+      <!-- ================= 总览 ================= -->
+      <section class="view on" id="view-overview">
+        <div class="kpis" id="kpis"></div>
+
+        <div class="card" style="margin-top:14px">
+          <div class="card-h">
+            <h2>错误率趋势</h2>
+            <span class="desc">请求口径与尝试口径并列，差值即重试吞掉的失败</span>
+            <div class="spacer"></div>
+            <span class="src">perf_metrics</span>
+            <span class="src">logs:type=5</span>
+          </div>
+          <div class="card-b">
+            <div class="legend">
+              <span><i style="background:#6750A4"></i>请求失败率（用户可感知）</span>
+              <span style="color:#8B5000"><i class="dash"></i>尝试失败率（含被重试吞掉的）</span>
+              <span style="color:#79747E"><i style="background:#F9DEDC"></i>异常时段</span>
+            </div>
+            <div class="chart-wrap" id="chartWrap"></div>
+            <div class="axis" id="chartAxis"></div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:14px">
+          <div class="card">
+            <div class="card-h">
+              <h2>错误层级归因</h2>
+              <span class="desc">先定位坏在哪一层，再谈具体渠道</span>
+            </div>
+            <div class="card-b">
+              <div id="layerBars"></div>
+              <div class="note info" style="margin-top:12px">
+                归因口径：把 <code>error_code</code> 前缀映射到失败发生的位置。渠道层占比高说明是供应商或密钥问题，上游层占比高说明是对端返回异常，客户端层高则说明是自己用户传错了参数——三者的处置动作完全不同。
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h2>正在恶化</h2>
+              <div class="spacer"></div>
+              <span class="desc">独立于上方时间窗 · 最近 30 分钟 vs 7 天同时段基线</span>
+            </div>
+            <div class="card-b" id="alerts"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px">
+          <div class="card-h">
+            <h2>重试效果</h2>
+            <span class="desc">重试 N 次之后还救得回来吗</span>
+            <div class="spacer"></div>
+            <span class="src">logs:type=5</span>
+            <span class="src">按 request_id 聚合</span>
+          </div>
+          <div class="card-b">
+            <div class="retry-sum" id="retrySum"></div>
+            <div id="retryLadder"></div>
+            <div class="note info" style="margin-top:12px">
+              <b>第 0 层不是"重试次数为 0 的成功"</b>，而是 <code>DecideRelayRetry</code> 判定不可重试、直接返回的错误——参数非法、额度不足、权限拒绝都属于这一类。它们从没进过重试流程，混进"重试成功率"会把分母做脏。
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px">
+          <div class="card-h">
+            <h2>维度分布</h2>
+            <span class="desc">换个维度就是换个切片轴，点任意行下钻到错误流</span>
+            <div class="spacer"></div>
+            <div class="seg" id="dimSeg">
+              <button data-dim="code" class="on">错误码</button>
+              <button data-dim="channel">渠道</button>
+              <button data-dim="model">模型</button>
+              <button data-dim="user">用户</button>
+              <button data-dim="group">分组</button>
+            </div>
+            <span class="src">logs:type=5</span>
+          </div>
+          <div class="card-b flush">
+            <table>
+              <thead>
+                <tr>
+                  <th style="padding-left:14px" id="dimHead">错误码</th>
+                  <th>主导层级</th>
+                  <th class="num">失败尝试</th>
+                  <th class="num">占比</th>
+                  <th id="secHead">主要渠道</th>
+                  <th class="num">趋势</th>
+                </tr>
+              </thead>
+              <tbody id="dimRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 错误流 ================= -->
+      <section class="view" id="view-stream">
+        <div class="card">
+          <div class="toolbar">
+            <input type="search" id="q" placeholder="搜索错误消息 / request_id / 用户">
+            <select id="fCode"><option value="">全部错误码</option></select>
+            <select id="fLayer">
+              <option value="">全部层级</option>
+              <option value="渠道">渠道层</option>
+              <option value="上游">上游层</option>
+              <option value="客户端">客户端层</option>
+              <option value="额度">额度权限</option>
+              <option value="系统">本地系统</option>
+            </select>
+            <select id="fChannel"><option value="">全部渠道</option></select>
+            <select id="fModel"><option value="">全部模型</option></select>
+            <select id="fUser"><option value="">全部用户</option></select>
+            <select id="fGroup"><option value="">全部分组</option></select>
+            <select id="fStatus">
+              <option value="">全部状态码</option>
+              <option value="4xx">4xx</option>
+              <option value="5xx">5xx</option>
+              <option value="0">无状态码</option>
+            </select>
+            <div class="spacer"></div>
+            <span class="sub" id="streamCount"></span>
+            <button class="btn ghost" id="btnReset">重置</button>
+          </div>
+          <div id="activeChips" class="toolbar" style="border-bottom:1px solid var(--line);padding-top:0;padding-bottom:8px;background:#fff"></div>
+          <div class="card-b flush" style="max-height:none;overflow:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th style="padding-left:14px">时间</th>
+                  <th>错误码</th>
+                  <th>消息</th>
+                  <th>模型</th>
+                  <th>渠道</th>
+                  <th>用户</th>
+                  <th class="num">状态</th>
+                  <th class="num">耗时</th>
+                  <th>request_id</th>
+                </tr>
+              </thead>
+              <tbody id="eventRows"></tbody>
+            </table>
+            <div id="streamEmpty" class="empty" style="display:none">没有匹配的错误记录</div>
+          </div>
+          <div class="toolbar" style="border-top:1px solid var(--line);border-bottom:0;justify-content:space-between">
+            <span class="sub" id="pageInfo"></span>
+            <div style="display:flex;gap:6px">
+              <button class="btn" id="prevPage">上一页</button>
+              <button class="btn" id="nextPage">下一页</button>
+            </div>
+          </div>
+        </div>
+        <div class="note" style="margin-top:12px">
+          <b>为什么这里还有「重试链」？</b>一次客户端请求可能打 3 个渠道，每次失败都写一条错误日志，<code>request_id</code> 相同。点开任意一行可以看到完整尝试链——这是判断「渠道坏了」还是「整个模型都坏了」的唯一依据。
+        </div>
+      </section>
+
+      <!-- ================= 渠道健康 ================= -->
+      <section class="view" id="view-channel">
+        <div class="note" style="margin-bottom:12px">
+          <b>口径提醒：</b>本页的失败率是 <b>尝试口径</b>（失败尝试 ÷ 该渠道尝试总数），不是用户可感知的请求失败率。一个渠道失败率高但被重试兜住了，用户其实无感；反过来，渠道失败率低但它是唯一可用渠道，影响反而大。<code>perf_metrics</code> 没有 channel 维度，这里无法给出请求口径。
+        </div>
+        <div class="card">
+          <div class="card-h">
+            <h2>渠道健康度</h2>
+            <span class="desc">按尝试失败率降序</span>
+            <div class="spacer"></div>
+            <span class="src">logs:type=5</span>
+            <span class="src">channels</span>
+          </div>
+          <div class="card-b flush">
+            <table>
+              <thead>
+                <tr>
+                  <th style="padding-left:14px">渠道</th>
+                  <th>状态</th>
+                  <th class="num">尝试数</th>
+                  <th class="num">失败尝试</th>
+                  <th class="num">尝试失败率</th>
+                  <th class="num">P95 耗时</th>
+                  <th>Top 错误码</th>
+                  <th class="num">最近失败</th>
+                </tr>
+              </thead>
+              <tbody id="channelRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h">
+            <h2>渠道状态变更</h2>
+            <span class="desc">当前仅有状态快照，无事件表</span>
+          </div>
+          <div class="card-b">
+            <div class="chain" id="channelEvents"></div>
+            <div class="note info" style="margin-top:12px">
+              <b>这张时间线暴露的是监控缺口：</b>密钥从失效到被自动禁用隔了约 2 小时，期间完全靠重试硬扛——用户侧看起来「只是偶尔慢」，运维侧却在持续产生错误日志。错误看板的价值就是把这段窗口从「事后翻日志」提前到「5 分钟内可见」。
+            </div>
+            <div class="note" style="margin-top:8px">
+              <b>能力缺口：</b><code>DisableChannel</code> 目前只写系统日志并发通知，没有把「谁在什么时候被禁用、原因、被谁恢复」落成结构化记录。上面只有最后一条能直接从 <code>channels.status</code> 读到，其余节点是根据错误时间推断的示意。<b>若要真正的时间线，需新增 <code>channel_events</code> 表</b>（渠道 ID / 事件类型 / 原因 / 错误码 / 触发错误日志 ID / 操作者 / 时间）。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 口径 ================= -->
+      <section class="view" id="view-meta">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-h">
+              <h2>指标口径表</h2>
+              <span class="desc">每个数字都必须能追到一张表和一种算法</span>
+            </div>
+            <div class="card-b flush">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="padding-left:14px">指标</th>
+                    <th>定义</th>
+                    <th>数据源</th>
+                    <th>粒度</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="padding-left:14px"><b>请求失败率</b></td>
+                    <td><code>1 - success_count / request_count</code>，一次请求一个样本，重试成功算成功</td>
+                    <td class="mono">perf_metrics</td>
+                    <td>小时 / model+group</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px"><b>尝试失败数</b></td>
+                    <td>每条 <code>type=5</code> 日志 = 一次上游尝试失败</td>
+                    <td class="mono">logs</td>
+                    <td>每条尝试</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px"><b>失败请求数</b></td>
+                    <td><code>COUNT(DISTINCT request_id)</code>，去重后才是客户端看到的失败次数</td>
+                    <td class="mono">logs</td>
+                    <td>每个 request</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px"><b>层级归因</b></td>
+                    <td><code>error_code</code> 前缀映射：<code>channel:</code> → 渠道层；<code>bad_response*</code>/<code>empty_response</code>/<code>do_request_failed</code> → 上游层；<code>invalid_request</code>/<code>bad_request_body</code>/<code>model_not_found</code> → 客户端层；<code>insufficient_user_quota</code>/<code>access_denied</code> → 额度层；其余 → 本地系统</td>
+                    <td class="mono">logs.other</td>
+                    <td>每条尝试</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px"><b>渠道尝试失败率</b></td>
+                    <td>该渠道失败尝试 ÷ 该渠道总尝试（分母 = 成功消费日志 + 错误日志，按 channel_id 聚合）</td>
+                    <td class="mono">logs</td>
+                    <td>渠道</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px"><b>重试阶梯</b></td>
+                    <td>按 <code>request_id</code> 聚合：同一 request 的 <code>type=5</code> 条数 = 失败尝试数；该 request 是否出现 <code>type=2</code> 决定最终成败。<b>层内拆分是估算，但 Σ失败尝试 与 Σ最终失败 必须与日志精确相等</b></td>
+                    <td class="mono">logs</td>
+                    <td>每 request</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px"><b>维度分布</b></td>
+                    <td>按 <code>channel_id</code> / <code>model_name</code> / <code>username</code> / <code>group</code> / <code>error_code</code> 分别 <code>GROUP BY</code>，各维度求和恒等于区间失败尝试总数</td>
+                    <td class="mono">logs</td>
+                    <td>单维度</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px"><b>恶化信号</b></td>
+                    <td>最近 30 分钟错误率 ≥ 7 天同时段基线 × 3 且绝对次数 ≥ 10，两个条件同时满足才报，避免小样本噪音</td>
+                    <td class="mono">logs 聚合</td>
+                    <td>渠道 × 错误码</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h2>八个必须显式处理的陷阱</h2>
+              <span class="desc">不处理就会做出一个"看起来很专业但结论是错的"看板</span>
+            </div>
+            <div class="card-b" id="traps"></div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:14px">
+          <div class="card">
+            <div class="card-h">
+              <h2>MVP 后端接口清单</h2>
+              <span class="desc">只读，五个接口足够支撑本原型全部视图</span>
+            </div>
+            <div class="card-b flush">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="padding-left:14px">接口</th>
+                    <th>用途</th>
+                    <th>实现要点</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="padding-left:14px" class="mono">GET /api/error/summary</td>
+                    <td>KPI + 双口径时间序列</td>
+                    <td>perf_metrics 按桶求和取失败率；logs 按桶 count 取尝试数。两路各查一次，在 handler 合流</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px" class="mono">GET /api/error/breakdown</td>
+                    <td>按错误码 / 渠道 / 模型 / 用户 / 分组分布</td>
+                    <td><code>dim</code> 必须是白名单枚举（code/channel/model/user/group），不要接受任意列名拼接</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px" class="mono">GET /api/error/events</td>
+                    <td>错误流分页</td>
+                    <td>复用 <code>GetAllLogs</code> 的过滤条件 + <code>channel</code>/<code>error_code</code> 条件；CH 上走 LIMIT</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px" class="mono">GET /api/error/request/:rid</td>
+                    <td>单请求全链路（重试链）</td>
+                    <td>按 <code>request_id</code> 查同表所有 type in (2,5) 行，按 id 升序即尝试顺序</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px" class="mono">GET /api/error/retry-ladder</td>
+                    <td>重试 N 次后的成败分布</td>
+                    <td>一条 <code>GROUP BY request_id</code> 的子查询先算出每次请求的失败次数与最终结果，再按失败次数分桶</td>
+                  </tr>
+                  <tr>
+                    <td style="padding-left:14px" class="mono">GET /api/error/channels</td>
+                    <td>渠道健康排行</td>
+                    <td>分母要和错误分母同源，否则跨渠道不可比</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h2>落地顺序与边界</h2>
+            </div>
+            <div class="card-b">
+              <ol class="plan">
+                <li><b>先做只读四视图</b>：总览、错误流、渠道健康、口径。不碰写入，不改表结构，纯查询层。</li>
+                <li><b>JSON 抽取要双实现</b>：<code>error_code</code> 藏在 <code>logs.other</code> 里。CH 用 <code>JSONExtractString(other,'error_code')</code>，MySQL 用 <code>JSON_UNQUOTE(JSON_EXTRACT(other,'$.error_code'))</code>。两套都要有测试，否则换库就静默出错。</li>
+                <li><b>聚合必须走预聚合</b>：线上 <code>logs</code> 已 8 万+行/天且 TTL 180 天，24h 视图每次全表 JSON 抽取撑不住。要么扩 <code>perf_metrics</code> 加 <code>channel_id</code> 与 <code>error_code</code> 维度，要么新建 <code>error_rollup_10m</code>。</li>
+                <li><b>维度一次查全</b>：四个维度用 <code>GROUPING SETS</code> 一条 SQL 出全，避免五个接口各查一次导致总数对不上，也省掉四次往返。</li>
+                <li><b>暂不做</b>：处置按钮、告警规则、认领状态。这三项都要新表 + 权限模型，先把"看得见"做对。</li>
+                <li><b>明确不做</b>：不重复实现渠道自动禁用判断。现有 <code>ShouldDisableChannel</code> 已经覆盖，看板只呈现结果。</li>
+              </ol>
+              <div class="badge-row">
+                <span class="pill ok">只读</span>
+                <span class="pill blue">不需要新表（MVP）</span>
+                <span class="pill warn">需新增聚合接口</span>
+                <span class="pill mute">SQLite / MySQL / PG / CH 四库兼容</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="foot">
+        原型数据为演示用假数据，由前端确定性生成；结构与字段名对齐 <span class="mono">logs</span> / <span class="mono">perf_metrics</span> / <span class="mono">channels</span> 实际表设计。
+        维度切换不发起新查询——所有视图共用同一份区间聚合，因此各维度求和恒等。
+        快捷键：<span class="kbd">1</span>–<span class="kbd">4</span> 切视图，<span class="kbd">Esc</span> 关详情。
+      </div>
+    </div>
+  </main>
+</div>
+
+<button class="fab" id="fabRefresh" aria-label="刷新数据" title="刷新数据">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+  </svg>
+</button>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="dh">
+    <div>
+      <h3 id="dTitle">—</h3>
+      <div class="sub2" id="dSub">—</div>
+    </div>
+    <button class="xbtn" id="dClose" aria-label="关闭">×</button>
+  </div>
+  <div class="db" id="dBody"></div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+   * 1. 基础工具
+   * ============================================================ */
+  var MIN = 60 * 1000;
+  var HOUR = 60 * MIN;
+  var DAY = 24 * HOUR;
+  var BUCKET = 10 * MIN;
+  var BUCKETS = 7 * 24 * 6;              // 7 天，10 分钟一桶
+  var T0 = Math.floor(Date.now() / BUCKET) * BUCKET - BUCKETS * BUCKET;
+  var NOW = T0 + BUCKETS * BUCKET;
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtNum(n) { return Math.round(n).toLocaleString('zh-CN'); }
+  function fmtPct(v, d) { return (v * 100).toFixed(d == null ? 2 : d) + '%'; }
+  function fmtClock(ts) {
+    var d = new Date(ts);
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function fmtMD(ts) {
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  }
+  function fmtDur(ms) {
+    if (ms >= 60000) {
+      var m = Math.floor(ms / 60000);
+      var sec = Math.round((ms % 60000) / 1000);
+      return m + 'm' + (sec ? pad(sec) + 's' : '');
+    }
+    return (ms / 1000).toFixed(1) + 's';
+  }
+  function fmtEventTime(ts) {
+    var w = rangeWindow(currentRange);
+    // 跨度超过 6 小时就必须带日期，否则同一屏会出现两个 23:xx
+    return (w.to - w.from) > 6 * HOUR ? fmtMD(ts) + ' ' + fmtClock(ts) : fmtClock(ts);
+  }
+  function fmtFull(ts) {
+    var d = new Date(ts);
+    return fmtMD(ts) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function div(a, b) { return b > 0 ? a / b : 0; }
+
+  var _seed = 20261114;
+  function rnd() {
+    _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+    return _seed / 0x7fffffff;
+  }
+  function pick(arr) { return arr[Math.floor(rnd() * arr.length)]; }
+  function jitter(base, spread) { return base * (1 - spread + rnd() * spread * 2); }
+
+  var toastTimer = null;
+  function toast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('on'); }, 1800);
+  }
+
+  /* ============================================================
+   * 2. 元数据：错误码 → 层级 / 配色 / 默认消息模板
+   * ============================================================ */
+  var LAYERS = {
+    '客户端': { tone: 'blue', color: '#0B57D0' },
+    '渠道': { tone: 'warn', color: '#8B5000' },
+    '上游': { tone: 'err', color: '#B3261E' },
+    '额度': { tone: 'purple', color: '#6750A4' },
+    '系统': { tone: 'dark', color: '#7D5260' }
+  };
+
+  // weight = 常态占比；faultWeight = 故障窗口占比
+  // ch / md = 该错误码最常见的来源渠道与模型，用于保证各视图的口径一致
+  var CODES = [
+    { code: 'bad_response_status_code', ms: 1800, layer: '上游', weight: 30, faultWeight: 9, ch: 7, md: 'deepseek-v4.1', msg: 'status_code=503, upstream service temporarily unavailable', status: 503 },
+    { code: 'channel:response_time_exceeded', ms: 180000, layer: '渠道', weight: 11, faultWeight: 5, ch: 21, md: 'gpt-4o', msg: 'status_code=0, upstream response time exceeded 300s', status: 0 },
+    { code: 'empty_response', ms: 2400, layer: '上游', weight: 9, faultWeight: 4, ch: 15, md: 'claude-sonnet-4.5', msg: 'status_code=200, upstream returned empty response body', status: 200 },
+    { code: 'invalid_request', ms: 300, layer: '客户端', weight: 10, faultWeight: 3, ch: 7, md: 'deepseek-v4.1', msg: 'status_code=400, invalid value for parameter messages[0].role', status: 400 },
+    { code: 'insufficient_user_quota', ms: 120, layer: '额度', weight: 8, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', msg: 'user quota is not enough, current: 312, required: 1840', status: 403 },
+    { code: 'bad_request_body', ms: 250, layer: '客户端', weight: 6, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', msg: 'status_code=400, request body is not valid JSON', status: 400 },
+    { code: 'channel:invalid_key', ms: 450, layer: '渠道', weight: 4, faultWeight: 46, ch: 12, md: 'gpt-4o', msg: 'status_code=401, upstream rejected credentials: invalid api key', status: 401 },
+    { code: 'prompt_blocked', ms: 800, layer: '客户端', weight: 5, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', msg: 'status_code=400, prompt blocked by upstream safety policy', status: 400 },
+    { code: 'channel:no_available_key', ms: 90, layer: '渠道', weight: 3, faultWeight: 8, ch: 21, md: 'gpt-4o', msg: 'no available key for channel, all keys exhausted', status: 0 },
+    { code: 'model_not_found', ms: 400, layer: '客户端', weight: 4, faultWeight: 1, ch: 21, md: 'claude-sonnet-4.5', msg: 'status_code=404, model not found on upstream', status: 404 },
+    { code: 'do_request_failed', ms: 5000, layer: '上游', weight: 3, faultWeight: 2, ch: 18, md: 'qwen-max', msg: 'status_code=0, dial tcp: connection refused', status: 0 },
+    { code: 'bad_response_body', ms: 1600, layer: '上游', weight: 3, faultWeight: 1, ch: 3, md: 'gemini-2.5-pro', msg: 'status_code=200, unable to parse upstream response payload', status: 200 },
+    { code: 'access_denied', ms: 150, layer: '额度', weight: 2, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', msg: 'status_code=403, this token has no permission for model claude-sonnet-4.5', status: 403 },
+    { code: 'get_channel_failed', ms: 60, layer: '系统', weight: 1, faultWeight: 1, ch: 0, md: '—', msg: 'no channel satisfied the request constraints', status: 500 },
+    { code: 'query_data_error', ms: 300, layer: '系统', weight: 1, faultWeight: 0, ch: 0, md: '—', msg: 'status_code=500, failed to query log database', status: 500 }
+  ];
+  var CODE_MAP = {};
+  CODES.forEach(function (c) { CODE_MAP[c.code] = c; });
+
+  // 渠道只承载它能承载的模型，否则"某渠道跑着别家模型"会立刻被看出是假数据
+  // error_type 由错误产生的位置决定，不是按错误码随便给的
+  var LAYER_ERROR_TYPE = {
+    '渠道': 'new_api_error',
+    '系统': 'new_api_error',
+    '额度': 'new_api_error',
+    '客户端': 'openai_error',
+    '上游': 'openai_error'
+  };
+
+  var CH_MODELS = {
+    12: ['gpt-4o', 'gpt-4o-mini'],
+    7: ['deepseek-v4.1'],
+    15: ['claude-sonnet-4.5'],
+    3: ['gemini-2.5-pro'],
+    21: ['gpt-4o', 'claude-sonnet-4.5', 'deepseek-v4.1'],
+    18: ['qwen-max']
+  };
+
+  var CHANNELS = [
+    { id: 12, name: 'azure-gpt4o-hk', type: 'Azure', status: 'auto_disabled', reason: 'status_code=401, upstream rejected credentials: invalid api key', baseShare: 0.14 },
+    { id: 7, name: 'deepseek-official', type: 'DeepSeek', status: 'enabled', reason: '', baseShare: 0.31 },
+    { id: 15, name: 'claude-main', type: 'Anthropic', status: 'enabled', reason: '', baseShare: 0.19 },
+    { id: 3, name: 'gemini-pro-pool', type: 'Gemini', status: 'enabled', reason: '', baseShare: 0.16 },
+    { id: 21, name: 'openrouter-fallback', type: 'OpenRouter', status: 'enabled', reason: '', baseShare: 0.12 },
+    { id: 18, name: 'bailian-cn', type: 'Alibaba', status: 'enabled', reason: '', baseShare: 0.08 }
+  ];
+  var CH_MAP = {};
+  CHANNELS.forEach(function (c) { CH_MAP[c.id] = c; });
+
+  var MODELS = ['gpt-4o', 'deepseek-v4.1', 'claude-sonnet-4.5', 'gemini-2.5-pro', 'qwen-max', 'gpt-4o-mini'];
+
+  var USERS = ['chen.wei', 'li.na', 'wang.lei', 'zhao.min', 'sun.yu', 'zhou.jie', 'wu.hao', 'xu.ting', 'ma.lin', 'huang.qing',
+    'lin.xin', 'he.yi', 'guo.fan', 'luo.qi', 'deng.bo', 'song.yao', 'ye.ning', 'cai.wen', 'pan.yu', 'tang.hao',
+    'fang.rui', 'bai.jun'];
+
+  // 用户分组（logs.group）：计费与限流的分群依据，也是排障时最常用的切片。
+  // 分组是用户的固有属性，不是每次请求随机抽的 —— 同一个用户既有 default
+  // 又有 svip，任何看过日志的人都会立刻判定这份数据是假的。
+  var GROUPS = ['default', 'vip', 'svip', 'trial'];
+
+  var USER_PROFILE = {};
+  var USER_GROUP = {};
+  USERS.forEach(function (u, i) {
+    USER_PROFILE[u] = i < 5 ? 'heavy' : (i < 14 ? 'normal' : 'light');
+    if (USER_PROFILE[u] === 'heavy') USER_GROUP[u] = (i % 3 === 0) ? 'vip' : 'svip';
+    else if (USER_PROFILE[u] === 'normal') USER_GROUP[u] = 'default';
+    else USER_GROUP[u] = 'trial';
+  });
+
+  // 用户画像决定错误归谁：渠道/上游故障主要落在跑量的大客户身上，
+  // 额度不足几乎只发生在试用用户身上。让每个用户摊到相同比例的错误码，
+  // 用户维度就退化成"同一张表按名字重排"，没有分析价值。
+  // 预分组，避免每行都 filter 一次（造数阶段会被调用上万次）
+  var HEAVY_POOL = USERS.filter(function (u) { return USER_PROFILE[u] !== 'light'; });
+  var LIGHT_POOL = USERS.filter(function (u) { return USER_PROFILE[u] === 'light'; });
+
+  // 故障期与常态必须分开抽样：渠道故障时跑量最大的几个账号承担几乎全部
+  // 失败（流量集中），常态错误则分散在长尾上。不做这个区分，用户维度里
+  // 每个人排第一的错误码都会是同一个，这张表就没有分析价值。
+  var TOP_POOL = HEAVY_POOL.slice(0, 5);
+
+  function pickUserByLayer(layer, inFaultPeriod) {
+    var r = rnd();
+    if (layer === '额度') {
+      return LIGHT_POOL[Math.min(LIGHT_POOL.length - 1, Math.floor(Math.pow(r, 0.75) * LIGHT_POOL.length))];
+    }
+    if (layer === '渠道' || layer === '上游') {
+      if (inFaultPeriod) {
+        return TOP_POOL[Math.min(TOP_POOL.length - 1, Math.floor(Math.pow(r, 1.6) * TOP_POOL.length))];
+      }
+      return HEAVY_POOL[Math.min(HEAVY_POOL.length - 1, Math.floor(Math.pow(r, 1.35) * HEAVY_POOL.length))];
+    }
+    return USERS[Math.floor(r * USERS.length)];
+  }
+
+  /* ============================================================
+   * 3. 造数：时间桶（7 天）
+   *    结构 = 总请求 / 失败请求（请求口径）/ 失败尝试（尝试口径）
+   *    以及按错误码、按渠道的分解
+   * ============================================================ */
+  var FAULT_START = Math.floor((NOW - 8 * HOUR) / BUCKET) * BUCKET;
+  var FAULT_END = FAULT_START + 2 * HOUR;          // 持续 2 小时
+  var MINOR_START = Math.floor((NOW - 3 * HOUR) / BUCKET) * BUCKET;
+
+  function inFault(ts) { return ts >= FAULT_START && ts < FAULT_END; }
+  function inMinor(ts) { return ts >= MINOR_START && ts < MINOR_START + 40 * MIN; }
+
+  // 一天内的流量形状：凌晨低，白天高
+  function trafficShape(ts) {
+    var d = new Date(ts);
+    var h = d.getHours() + d.getMinutes() / 60;
+    var base = 0.46 + 0.54 * Math.sin(Math.PI * (h - 3) / 18);
+    return Math.max(0.28, Math.min(1.25, base));
+  }
+
+  /* ---------------- 重试阶梯 ----------------
+   * 真实日志能算出的只有两个事实：
+   *   1. 失败尝试总数 A = 该区间 error 日志条数；
+   *   2. 最终失败请求数 F = 区间内既有 error 日志、又没有后续 consume 日志的 request_id 数。
+   * 这里按经验比例把 A / F 拆成「重试 1/2/3 次后成功还是放弃」。
+   * 拆分是估算，但 Σ retries×(ok+fail)=A 与 Σ fail=F 两个等式必须成立，
+   * 否则"重试次数"和"失败数"两栏自己就对不上。
+   */
+  var MAX_RETRY = 3;                       // 对应 common.RetryTimes，线上通常配 3，默认 0
+
+  // 最大余数法拆整数，保证 Σ 结果 === total
+  function splitInt(total, weights) {
+    total = Math.max(0, Math.round(total));
+    var sum = weights.reduce(function (a, b) { return a + b; }, 0) || 1;
+    var raw = weights.map(function (w) { return total * w / sum; });
+    var base = raw.map(Math.floor);
+    var rest = total - base.reduce(function (a, b) { return a + b; }, 0);
+    var order = raw.map(function (v, i) { return { i: i, frac: v - Math.floor(v) }; })
+      .sort(function (a, b) { return b.frac - a.frac; });
+    for (var i = 0; i < rest; i++) base[order[i % order.length].i] += 1;
+    return base;
+  }
+
+  /* 重试阶梯，四层：
+   *   r=0  不可重试错误，DecideRelayRetry 直接 stop，只有 1 次失败尝试
+   *   r=1  重试 1 次 → 成功 / 仍失败
+   *   r=2  重试 2 次 → 成功 / 仍失败
+   *   r=3  用满重试预算（RetryTimes=3）→ 成功 / 耗尽
+   *
+   * 真实日志只能给出两个硬事实：失败尝试总数 A（error 日志条数）和最终失败
+   * 请求数 F（有 error 但没有后续 consume 的 request_id）。阶梯是拿这两个数
+   * 按经验比例拆出来的，但必须满足 Σ 失败尝试 = A、Σ 失败请求 = F，
+   * 否则"重试次数"和"失败数"两栏自己就对不上。
+   */
+  function buildRetryLadder(totalAttempts, finalFails, faultShare) {
+    // 24 小时窗口里可能只有 2 小时是故障，按占比混合两套权重；
+    // 一刀切成"故障模式"会把整天的救活率系统性地压低。
+    function mix(normal, fault) {
+      return normal.map(function (w, i) { return w * (1 - faultShare) + fault[i] * faultShare; });
+    }
+    var failW = mix([0.34, 0.26, 0.22, 0.18], [0.26, 0.25, 0.24, 0.25]);
+    var failN = splitInt(finalFails, failW);
+    // 失败请求各自消耗的失败尝试次数
+    var failContrib = failN[0] + failN[1] + failN[2] * 2 + failN[3] * 3;
+
+    var okW = mix([0.66, 0.28, 0.06], [0.50, 0.36, 0.14]);
+    var okAvg = okW[0] + okW[1] * 2 + okW[2] * 3;
+    var okBudget = Math.max(0, totalAttempts - failContrib);
+    var okN = okAvg > 0 ? splitInt(okBudget / okAvg, okW) : [0, 0, 0];
+
+    // 取整会让总贡献偏离 1–3 次。守恒优先于权重：差额按 1 次层 → 2 次层 → 3 次层
+    // 依次吸收，否则"阶梯合计"和"尝试失败数"会差那么一两个，评审一眼就看出来。
+    var diff = totalAttempts - (failContrib + okN[0] + okN[1] * 2 + okN[2] * 3);
+    var guard = 0;
+    while (diff !== 0 && guard++ < 500) {
+      if (diff > 0) { okN[0] += 1; diff -= 1; }
+      else if (okN[0] > 0) { okN[0] -= 1; diff += 1; }
+      else if (okN[1] > 0) { okN[1] -= 1; diff += 2; }
+      else if (okN[2] > 0) { okN[2] -= 1; diff += 3; }
+      else break;
+    }
+
+    return [
+      { retries: 0, ok: 0, fail: failN[0] },
+      { retries: 1, ok: okN[0],          fail: failN[1] },
+      { retries: 2, ok: okN[1],          fail: failN[2] },
+      { retries: 3, ok: okN[2],          fail: failN[3] }
+    ];
+  }
+
+  var buckets = [];
+  (function buildBuckets() {
+    for (var i = 0; i < BUCKETS; i++) {
+      var ts = T0 + i * BUCKET;
+      var req = Math.round(jitter(1600 * trafficShape(ts), 0.06));
+
+      var failRate;
+      if (inFault(ts)) {
+        failRate = jitter(0.031, 0.18);
+      } else if (inMinor(ts)) {
+        failRate = jitter(0.0092, 0.15);
+      } else {
+        failRate = jitter(0.0034, 0.30);
+      }
+      var failReq = Math.max(0, Math.round(req * failRate));
+
+      // 放大系数：故障期更多重试（渠道连续失败会触发换渠道）
+      var amp = inFault(ts) ? jitter(2.65, 0.10) : (inMinor(ts) ? jitter(2.1, 0.1) : jitter(1.85, 0.12));
+      var failAttempt = Math.max(failReq, Math.round(failReq * amp));
+
+      // 错误码分解：先算浮点期望，再归一化，最后用最大余数法取整。
+      // 直接用 round 会让每项 0.5 的截断误差全部堆到最后一个错误码上，
+      // 结果就是 query_data_error 这种低频错误凭空涨到 10% 以上。
+      var codeCounts = {};
+      var weights = CODES.map(function (c) { return inFault(ts) ? c.faultWeight : c.weight; });
+      var sum = weights.reduce(function (a, b) { return a + b; }, 0);
+      var raw = weights.map(function (w) { return failAttempt * w / sum * jitter(1, 0.10); });
+      var rawSum = raw.reduce(function (a, b) { return a + b; }, 0) || 1;
+      raw = raw.map(function (v) { return v / rawSum * failAttempt; });
+      var base = raw.map(Math.floor);
+      var assigned = base.reduce(function (a, b) { return a + b; }, 0);
+      var rest = failAttempt - assigned;
+      var order = raw.map(function (v, i) { return { i: i, frac: v - Math.floor(v) }; })
+        .sort(function (a, b) { return b.frac - a.frac; });
+      for (var oi = 0; oi < rest && oi < order.length; oi++) base[order[oi].i] += 1;
+      for (var ri = 0; ri < -rest; ri++) {
+        base[order[order.length - 1 - (ri % order.length)].i] -= 1;
+      }
+      CODES.forEach(function (c, i) { codeCounts[c.code] = Math.max(0, base[i]); });
+
+      // 把计数摊成「明细行」：一行 = 一组同构的失败尝试，同时带 code / channel /
+      // model / user / group。任意维度切片都从这份行数据来，所以「按用户求和」
+      // 「按模型求和」「按渠道求和」必然相等 —— 真实实现里这就是一条日志一行、
+      // 五次 GROUP BY 的结果。分开造边际分布会得到互相对不上的假数据。
+      var rows = [];
+      CODES.forEach(function (c) {
+        var n = codeCounts[c.code];
+        if (!n) return;
+        var parts = n <= 2 ? 1 : (n <= 8 ? 2 : 3);
+        var left = n;
+        for (var pi = 0; pi < parts && left > 0; pi++) {
+          var takeN = pi === parts - 1 ? left : Math.max(1, Math.round(n / parts * jitter(1, 0.30)));
+          takeN = Math.min(takeN, left);
+          if (takeN <= 0) continue;
+          left -= takeN;
+
+          var chId = c.ch || 0;
+          if (chId) {
+            // 已自动禁用的渠道不会再有新失败：不修这条，#12 在禁用之后仍会
+            // 冒出失败记录，"已禁用"和"最近失败 20:10"就自相矛盾。
+            if (chId === 12 && ts >= FAULT_END) chId = 21;
+            if (c.layer === '渠道') {
+              // 渠道层错误高度集中在故障渠道；故障期更集中
+              if (inFault(ts) && chId === 12) chId = rnd() < 0.88 ? 12 : 21;
+              else chId = rnd() < 0.72 ? chId : 21;
+            } else {
+              chId = rnd() < 0.86 ? chId : 7;
+            }
+          }
+          var rowUser = pickUserByLayer(c.layer, inFault(ts));
+          rows.push({
+            code: c.code,
+            ch: chId,
+            md: chId && CH_MODELS[chId] ? pick(CH_MODELS[chId]) : c.md,
+            user: rowUser,
+            grp: USER_GROUP[rowUser] || 'default',
+            n: takeN
+          });
+        }
+      });
+
+      buckets.push({
+        ts: ts,
+        req: req,
+        failReq: Math.min(failReq, req),
+        failAttempt: failAttempt,
+        rows: rows
+      });
+    }
+  })();
+
+  /* ============================================================
+   * 4. 造数：错误明细（最近 24 小时抽样）
+   *    同一 request_id 会有多条尝试记录 → 重试链
+   * ============================================================ */
+  var events = [];
+  (function buildEvents() {
+    var startIdx = 0;
+    var uid = 1;
+    for (var i = startIdx; i < BUCKETS; i++) {
+      var b = buckets[i];
+      var take = Math.min(3, Math.round(b.failAttempt / 9));
+      if (take <= 0 || !b.rows.length) continue;
+      for (var k = 0; k < take; k++) {
+        // 从桶的明细行里按 n 加权抽一行，保证明细的 code / channel / model /
+        // user / group 与聚合口径完全一致，不会出现"点开明细看到的用户，
+        // 在按用户统计里找不到"的情况。
+        var rTotal = 0;
+        for (var q = 0; q < b.rows.length; q++) rTotal += b.rows[q].n;
+        var pickN = rnd() * rTotal;
+        var row = b.rows[b.rows.length - 1];
+        for (var q2 = 0; q2 < b.rows.length; q2++) {
+          pickN -= b.rows[q2].n;
+          if (pickN <= 0) { row = b.rows[q2]; break; }
+        }
+
+        var code = row.code;
+        var meta = CODE_MAP[code] || { layer: '系统', msg: 'unknown error', status: 500, ms: 500 };
+        var chId = row.ch || 0;
+        var model = row.md;
+        var status = meta.status;
+        if (code === 'bad_response_status_code') status = pick([500, 502, 503, 429]);
+        var ts = b.ts + Math.floor(rnd() * BUCKET);
+        // 带上自增 uid：只用"秒级时间戳 + 6 位随机"会产生碰撞，
+        // 一旦撞上，详情抽屉的重试链就会混进完全不相关的事件。
+        var requestId = 'rq_' + Math.floor(ts / 1000).toString(36) + '_' +
+          uid.toString(36) + Math.floor(rnd() * 1e4).toString(36);
+        // 这条失败是否被后续重试救活：直接用该桶的 尝试失败-最终失败 比例。
+        // 真实实现里要查同一 request_id 有没有后续 consume 日志。
+        // 只有渠道层/上游层的错误会进重试流程；参数非法、额度不足这类
+        // 由 DecideRelayRetry 直接 stop，不可能出现"重试后成功"。
+        var rescuedProb = b.failAttempt > 0 ? Math.max(0, (b.failAttempt - b.failReq) / b.failAttempt) : 0;
+        var retryable = (meta.layer === '渠道' || meta.layer === '上游');
+        var rescued = retryable && rnd() < rescuedProb;
+
+        events.push({
+          id: uid++,
+          ts: ts,
+          code: code,
+          layer: meta.layer,
+          msg: meta.msg,
+          status: status,
+          model: model,
+          channelId: chId,
+          channelName: chId ? (CH_MAP[chId] || CHANNELS[0]).name : '—',
+          user: row.user,
+          grp: row.grp,
+          ms: Math.round(jitter(meta.ms || 1800, 0.45)),
+          requestId: requestId,
+          attempt: 1,
+          rescued: rescued,
+          stream: rnd() > 0.42
+        });
+      }
+    }
+
+    // 把一部分事件做成重试链：同一 request_id 追加前序失败尝试
+    var chainPool = events.filter(function (e) {
+      return inFault(e.ts) && (e.layer === '渠道' || e.layer === '上游');
+    }).slice(0, 26);
+    var extra = [];
+    chainPool.forEach(function (e, idx) {
+      if (idx % 2 !== 0) return;
+      var n = 1 + Math.floor(rnd() * 2);
+      for (var j = 0; j < n; j++) {
+        e.attempt = 2;
+        extra.push({
+          id: uid++,
+          ts: e.ts - (j + 1) * Math.round(400 + rnd() * 2200),
+          code: j === 0 ? 'bad_response_status_code' : 'channel:response_time_exceeded',
+          layer: j === 0 ? '上游' : '渠道',
+          msg: j === 0 ? 'status_code=502, upstream returned bad gateway' : 'status_code=0, upstream response time exceeded 300s',
+          status: j === 0 ? 502 : 0,
+          model: e.model,
+          channelId: j === 0 ? 7 : 21,
+          channelName: j === 0 ? 'deepseek-official' : 'openrouter-fallback',
+          user: e.user,
+          grp: e.grp,
+          ms: j === 0 ? Math.round(jitter(1800, 0.4)) : Math.round(jitter(180000, 0.18)),
+          requestId: e.requestId,
+          attempt: 1,
+          rescued: e.rescued,
+          stream: e.stream
+        });
+      }
+    });
+    events = events.concat(extra);
+    events.sort(function (a, b) { return b.ts - a.ts; });
+  })();
+
+  /* ============================================================
+   * 5. 区间聚合
+   *    维度是看板的核心：时间、渠道、模型、用户、分组都是「切片轴」，
+   *    聚合结果按轴各存一份，任何视图都从同一份 total 取数。
+   * ============================================================ */
+  var RANGES = {
+    '1h': { minutes: 60, label: '最近 1 小时' },
+    '6h': { minutes: 360, label: '最近 6 小时' },
+    '24h': { minutes: 1440, label: '最近 24 小时' },
+    '7d': { minutes: 10080, label: '最近 7 天' }
+  };
+  var currentRange = '24h';
+  var currentView = 'overview';
+  var customWindow = null;          // {from, to}，仅 currentRange === 'custom' 时生效
+
+  function rangeWindow(key) {
+    if (key === 'custom' && customWindow) return { from: customWindow.from, to: customWindow.to };
+    var cfg = RANGES[key] || RANGES['24h'];
+    return { from: NOW - cfg.minutes * MIN, to: NOW };
+  }
+  function windowFrom() { return rangeWindow(currentRange).from; }
+  function rangeLabel(key) {
+    if (key === 'custom' && customWindow) {
+      return fmtMD(customWindow.from) + ' ' + fmtClock(customWindow.from) + ' → ' +
+        fmtMD(customWindow.to) + ' ' + fmtClock(customWindow.to);
+    }
+    return (RANGES[key] || RANGES['24h']).label;
+  }
+
+  // 聚合粒度自适应：目标 6–48 个点。7 天视图画 1008 个点既没必要也看不清。
+  function bucketMsFor(spanMs) {
+    var mins = spanMs / MIN;
+    var unit;
+    if (mins <= 90) unit = 10;
+    else if (mins <= 480) unit = 30;
+    else if (mins <= 2880) unit = 60;
+    else unit = 1440;
+    while (spanMs / (unit * MIN) > 48) unit *= 2;
+    return unit * MIN;
+  }
+
+  function newAcc() {
+    return {
+      req: 0, failReq: 0, failAttempt: 0, retry: [],
+      byCode: {}, byChannel: {}, byModel: {}, byUser: {}, byGroup: {}
+    };
+  }
+  function addRow(acc, r) {
+    acc.byCode[r.code] = (acc.byCode[r.code] || 0) + r.n;
+    if (r.ch) acc.byChannel[r.ch] = (acc.byChannel[r.ch] || 0) + r.n;
+    acc.byModel[r.md] = (acc.byModel[r.md] || 0) + r.n;
+    acc.byUser[r.user] = (acc.byUser[r.user] || 0) + r.n;
+    acc.byGroup[r.grp] = (acc.byGroup[r.grp] || 0) + r.n;
+  }
+  function foldBucket(acc, b, keepRows) {
+    acc.req += b.req;
+    acc.failReq += b.failReq;
+    acc.failAttempt += b.failAttempt;
+    for (var i = 0; i < b.rows.length; i++) {
+      addRow(acc, b.rows[i]);
+      if (keepRows) acc.rows.push(b.rows[i]);
+    }
+  }
+
+  var _aggCache = {};
+  function aggregate(key) {
+    var ck = (key === 'custom' && customWindow)
+      ? 'custom:' + customWindow.from + ':' + customWindow.to
+      : key;
+    if (_aggCache[ck]) return _aggCache[ck];
+    var built = _aggregate(key);
+    _aggCache[ck] = built;
+    return built;
+  }
+  function clearAggCache() { _aggCache = {}; }
+
+  function _aggregate(key) {
+    var win = rangeWindow(key);
+    var span = Math.max(BUCKET, win.to - win.from);
+    var groupMs = bucketMsFor(span);
+    var nPoints = Math.max(1, Math.ceil(span / groupMs));
+
+    var points = [];
+    for (var i = 0; i < nPoints; i++) {
+      var p = newAcc();
+      p.ts = win.from + i * groupMs;
+      p.failRate = 0;
+      p.attemptRate = 0;
+      points.push(p);
+    }
+
+    var total = newAcc();
+    total.rows = [];
+
+    for (var bi = 0; bi < BUCKETS; bi++) {
+      var b = buckets[bi];
+      if (b.ts + BUCKET <= win.from) continue;
+      if (b.ts >= win.to) continue;
+      var idx = Math.min(nPoints - 1, Math.max(0, Math.floor((b.ts - win.from) / groupMs)));
+      foldBucket(points[idx], b, false);
+      foldBucket(total, b, true);
+    }
+
+    points.forEach(function (p) {
+      p.failRate = div(p.failReq, p.req);
+      p.attemptRate = div(p.failAttempt, p.req);
+    });
+    total.failRate = div(total.failReq, total.req);
+    total.attemptRate = div(total.failAttempt, total.req);
+    // 阶梯在区间级拆一次，而不是每桶拆：桶内数字很小，逐桶取整的误差
+    // 累积 144 次后能让总数偏差 40%。
+    var overlap = Math.max(0, Math.min(win.to, FAULT_END) - Math.max(win.from, FAULT_START));
+    total.retry = buildRetryLadder(total.failAttempt, total.failReq, div(overlap, win.to - win.from));
+
+    return { points: points, total: total, label: rangeLabel(key), groupMs: groupMs };
+  }
+
+  // 上一个等长区间，用于环比
+  function previousTotal(key) {
+    var win = rangeWindow(key);
+    var span = win.to - win.from;
+    var from = win.from - span;
+    var t = { req: 0, failReq: 0, failAttempt: 0 };
+    for (var i = 0; i < BUCKETS; i++) {
+      var b = buckets[i];
+      if (b.ts + BUCKET <= from) continue;
+      if (b.ts >= win.from) continue;
+      t.req += b.req;
+      t.failReq += b.failReq;
+      t.failAttempt += b.failAttempt;
+    }
+    t.failRate = div(t.failReq, t.req);
+    t.attemptRate = div(t.failAttempt, t.req);
+    return t;
+  }
+
+  /* ============================================================
+   * 6. 渲染：迷你折线 / 主图
+   * ============================================================ */
+  function spark(values, color, w, h) {
+    if (!values.length) return '';
+    var max = Math.max.apply(null, values) * 1.15 || 1;
+    var min = Math.min.apply(null, values) * 0.85;
+    var span = max - min || 1;
+    var pts = values.map(function (v, i) {
+      var x = (i / (values.length - 1 || 1)) * w;
+      var y = h - ((v - min) / span) * h;
+      return [x, y];
+    });
+    var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
+    var area = d + ' L' + w + ' ' + h + ' L0 ' + h + ' Z';
+    return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<path d="' + area + '" fill="' + color + '" opacity="0.10"/>' +
+      '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '</svg>';
+  }
+
+  function renderChart(agg) {
+    var pts = agg.points;
+    var W = 900, H = 210, PT = 12, PB = 8;
+    var maxV = 0;
+    pts.forEach(function (p) { maxV = Math.max(maxV, p.attemptRate); });
+    maxV = Math.max(maxV * 1.18, 0.004);
+
+    function X(i) { return (i / (pts.length - 1 || 1)) * W; }
+    function Y(v) { return H - PB - (v / maxV) * (H - PT - PB); }
+
+    function pathOf(key) {
+      return pts.map(function (p, i) {
+        return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p[key]).toFixed(1);
+      }).join(' ');
+    }
+
+    // 故障窗高亮
+    var bands = '';
+    pts.forEach(function (p, i) {
+      if (!inFault(p.ts) && !inMinor(p.ts)) return;
+      var x0 = X(Math.max(0, i - 0.5));
+      var x1 = X(Math.min(pts.length - 1, i + 0.5));
+      var op = inFault(p.ts) ? '0.07' : '0.04';
+      bands += '<rect x="' + x0.toFixed(1) + '" y="' + PT + '" width="' + Math.max(1, x1 - x0).toFixed(1) +
+        '" height="' + (H - PT - PB) + '" fill="#B3261E" opacity="' + op + '"/>';
+    });
+
+    var grid = '';
+    for (var g = 0; g <= 4; g++) {
+      var y = PT + (H - PT - PB) * g / 4;
+      grid += '<line x1="0" y1="' + y.toFixed(1) + '" x2="' + W + '" y2="' + y.toFixed(1) +
+        '" stroke="#E6E0E9" stroke-width="1" vector-effect="non-scaling-stroke"/>';
+    }
+
+    var dAttempt = pathOf('attemptRate');
+    var dReq = pathOf('failRate');
+    var areaReq = dReq + ' L' + W + ' ' + (H - PB) + ' L0 ' + (H - PB) + ' Z';
+
+    // 悬停热区
+    var hits = '';
+    pts.forEach(function (p, i) {
+      var w = W / pts.length;
+      hits += '<rect class="hit" data-i="' + i + '" x="' + (X(i) - w / 2).toFixed(1) + '" y="' + PT +
+        '" width="' + w.toFixed(1) + '" height="' + (H - PT - PB) + '" fill="transparent"/>';
+    });
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="height:210px">' +
+      bands + grid +
+      '<path d="' + areaReq + '" fill="#6750A4" opacity="0.07"/>' +
+      '<path d="' + dAttempt + '" fill="none" stroke="#8B5000" stroke-width="2" stroke-dasharray="6 5" ' +
+      'vector-effect="non-scaling-stroke" stroke-linejoin="round"/>' +
+      '<path d="' + dReq + '" fill="none" stroke="#6750A4" stroke-width="2.5" ' +
+      'vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<g id="hoverLayer"></g>' +
+      hits +
+      '</svg>';
+
+    document.getElementById('chartWrap').innerHTML = svg;
+
+    var axis = document.getElementById('chartAxis');
+    var labelIdx = [0, Math.floor(pts.length / 4), Math.floor(pts.length / 2), Math.floor(pts.length * 3 / 4), pts.length - 1];
+    axis.innerHTML = labelIdx.map(function (i) {
+      var p = pts[i];
+      return '<span>' + (agg.groupMs >= DAY ? fmtMD(p.ts) : fmtClock(p.ts)) + '</span>';
+    }).join('');
+
+    // 悬停
+    var wrap = document.getElementById('chartWrap');
+    wrap.querySelectorAll('.hit').forEach(function (r) {
+      r.addEventListener('mouseenter', function () {
+        var i = parseInt(r.getAttribute('data-i'), 10);
+        var p = pts[i];
+        var layer = document.getElementById('hoverLayer');
+        if (!layer) return;
+        var x = X(i);
+        var tips = '<line x1="' + x.toFixed(1) + '" y1="' + PT + '" x2="' + x.toFixed(1) + '" y2="' + (H - PB) +
+          '" stroke="#CAC4D0" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>';
+        tips += '<circle cx="' + x.toFixed(1) + '" cy="' + Y(p.attemptRate).toFixed(1) + '" r="3.2" fill="#fff" stroke="#8B5000" stroke-width="1.8" vector-effect="non-scaling-stroke"/>';
+        tips += '<circle cx="' + x.toFixed(1) + '" cy="' + Y(p.failRate).toFixed(1) + '" r="3.2" fill="#fff" stroke="#6750A4" stroke-width="1.8" vector-effect="non-scaling-stroke"/>';
+        layer.innerHTML = tips;
+        toast(fmtClock(p.ts) + '　请求失败率 ' + fmtPct(p.failRate) + '　尝试失败率 ' + fmtPct(p.attemptRate) +
+          '　失败 ' + fmtNum(p.failReq) + ' / 请求 ' + fmtNum(p.req));
+      });
+    });
+    wrap.addEventListener('mouseleave', function () {
+      var layer = document.getElementById('hoverLayer');
+      if (layer) layer.innerHTML = '';
+    });
+  }
+
+  /* ============================================================
+   * 7. 渲染：总览
+   * ============================================================ */
+  function deltaHtml(cur, prev, unit, invert, prevN) {
+    if (prevN === 0) return '<span class="delta flat">无对比数据</span>';
+    var d = cur - prev;
+    if (Math.abs(d) < 1e-9) return '<span class="delta flat">持平</span>';
+    // 错误类指标一律"升=坏"，所以正增量用红色
+    var cls = d > 0 ? 'up' : 'down';
+    var sign = d > 0 ? '+' : '−';
+    return '<span class="delta ' + cls + '">' + sign + (unit === 'pct'
+      ? (Math.abs(d) * 100).toFixed(2) + 'pp'
+      : fmtNum(Math.abs(d))) + '</span>';
+  }
+
+  function renderOverview() {
+    var agg = aggregate(currentRange);
+    var prev = previousTotal(currentRange);
+    var t = agg.total;
+
+    var failReqSeries = agg.points.map(function (p) { return p.failRate; });
+    var attemptSeries = agg.points.map(function (p) { return p.attemptRate; });
+
+    // 受影响用户数只能从请求级数据去重得到，而 perf_metrics 没有用户维度，
+    // 错误日志明细又是抽样。所以这里不给"用户数"，改给聚合能精确算的渠道数。
+    var codeCount = 0;
+    Object.keys(agg.total.byCode).forEach(function (c) {
+      if (agg.total.byCode[c] > 0) codeCount++;
+    });
+
+    var chSet = {};
+    agg.points.forEach(function (p) {
+      Object.keys(p.byChannel).forEach(function (id) {
+        if (id !== '0' && p.byChannel[id] > 0) chSet[id] = 1;
+      });
+    });
+    var affectedChannels = Object.keys(chSet).length;
+
+    var extraRetry = t.failAttempt - t.failReq;
+
+    document.getElementById('headSub').textContent =
+      agg.label + ' · 共 ' + fmtNum(t.req) + ' 次请求';
+
+    var kpi = [
+      {
+        lab: '请求失败率',
+        val: fmtPct(t.failRate),
+        meta: deltaHtml(t.failRate, prev.failRate, 'pct', false, prev.req) + '<span>较上一周期</span>',
+        spark: spark(failReqSeries, '#6750A4', 62, 22),
+        tip: '一次请求一个样本，重试成功算成功。来源 perf_metrics，与用户实际感知一致。'
+      },
+      {
+        lab: '失败请求数',
+        val: fmtNum(t.failReq),
+        meta: '<span>占 ' + fmtNum(t.req) + ' 次请求</span>',
+        spark: spark(agg.points.map(function (p) { return p.failReq; }), '#B3261E', 62, 22),
+        tip: '客户端最终拿到错误的请求数。按 request_id 去重后的口径。'
+      },
+      {
+        lab: '尝试失败数',
+        val: fmtNum(t.failAttempt),
+        meta: '<span class="delta up">+' + fmtNum(extraRetry) + '</span><span>次被重试吞掉</span>',
+        spark: spark(attemptSeries, '#8B5000', 62, 22),
+        tip: '每条 type=5 错误日志计一次。比失败请求多出来的部分，是重试后成功、用户无感的失败。'
+      },
+      {
+        lab: '受影响渠道',
+        val: String(affectedChannels),
+        unit: '个',
+        meta: '<span>涉及 ' + codeCount + ' 类错误码</span>',
+        spark: '',
+        tip: '按 channel_id 去重，聚合口径，不受明细抽样影响。用户维度需要请求级去重，当前数据源不支持，故不展示。'
+      }
+    ];
+
+    document.getElementById('kpis').innerHTML = kpi.map(function (k) {
+      return '<div class="kpi">' +
+        '<div class="lab"><span>' + esc(k.lab) + '</span><span class="q" title="' + esc(k.tip) + '">?</span></div>' +
+        '<div class="val">' + k.val + (k.unit ? '<small>' + k.unit + '</small>' : '') + '</div>' +
+        '<div class="meta">' + k.meta + '</div>' +
+        (k.spark ? '<div class="spark">' + k.spark + '</div>' : '') +
+        '</div>';
+    }).join('');
+
+    renderChart(agg);
+    renderRetry(agg);
+    renderLayers(agg);
+    renderAlerts(agg);
+    renderDimTable(currentDim, agg);
+  }
+
+  function renderRetry(agg) {
+    var L = agg.total.retry || [];
+    if (!L.length) {
+      document.getElementById('retrySum').innerHTML = '';
+      document.getElementById('retryLadder').innerHTML = '<div class="empty">当前区间无失败记录</div>';
+      return;
+    }
+
+    var totalReq = agg.total.req;
+    var retried = 0, rescued = 0, exhausted = 0, exhaustedFail = 0;
+    L.forEach(function (x) {
+      retried += x.ok + x.fail;
+      rescued += x.ok;
+      if (x.retries >= MAX_RETRY) {
+        exhausted += x.ok + x.fail;
+        exhaustedFail += x.fail;
+      }
+    });
+
+    var sum = [
+      {
+        k: '重试请求占比',
+        v: fmtPct(div(retried, totalReq), 2),
+        s: fmtNum(retried) + ' / ' + fmtNum(totalReq) + ' 个请求'
+      },
+      {
+        k: '重试后救活率',
+        v: fmtPct(div(rescued, retried), 1),
+        s: fmtNum(rescued) + ' 个请求最终成功，用户无感'
+      },
+      {
+        k: '重试耗尽',
+        v: fmtNum(exhausted),
+        s: '用满 ' + MAX_RETRY + ' 次，其中 ' + fmtNum(exhaustedFail) + ' 个最终失败'
+      }
+    ];
+    document.getElementById('retrySum').innerHTML = sum.map(function (x) {
+      return '<div><div class="k">' + x.k + '</div><div class="v">' + x.v +
+        '</div><div class="s">' + x.s + '</div></div>';
+    }).join('');
+
+    document.getElementById('retryLadder').innerHTML = L.map(function (x) {
+      var n = x.ok + x.fail;
+      var okPct = n > 0 ? (x.ok / n) * 100 : 0;
+      var lab = x.retries === 0 ? '<b>未重试</b>' : ('重试 <b>' + x.retries + '</b> 次');
+      var rate = x.retries === 0 ? '<span style="color:#79747E">—</span>'
+        : '<span style="color:' + (okPct >= 50 ? '#1B6C3A' : (okPct >= 20 ? '#8B5000' : '#B3261E')) + '">' +
+          fmtPct(div(x.ok, n), 1) + '</span>';
+      return '<div class="retry-row">' +
+        '<div class="lab">' + lab + '</div>' +
+        '<div class="track" title="成功 ' + fmtNum(x.ok) + ' · 失败 ' + fmtNum(x.fail) + '">' +
+        '<i style="flex:0 0 ' + okPct.toFixed(2) + '%;background:#1B6C3A"></i>' +
+        '<i style="flex:1 1 auto;background:#B3261E;opacity:.72"></i>' +
+        '</div>' +
+        '<div class="num">' + fmtNum(n) + ' 个请求</div>' +
+        '<div class="rate">' + rate + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderLayers(agg) {
+    var byLayer = { '上游': 0, '渠道': 0, '客户端': 0, '额度': 0, '系统': 0 };
+    var total = 0;
+    Object.keys(agg.total.byCode).forEach(function (code) {
+      var meta = CODE_MAP[code];
+      if (!meta) return;
+      byLayer[meta.layer] += agg.total.byCode[code];
+      total += agg.total.byCode[code];
+    });
+    var order = ['上游', '渠道', '客户端', '额度', '系统'];
+    var max = Math.max.apply(null, order.map(function (l) { return byLayer[l]; })) || 1;
+
+    var ACTION = {
+      '上游': '查对端状态页与错误原文，判断是供应商故障还是协议不兼容',
+      '渠道': '查密钥有效性、余额、限流；必要时先禁用再看请求是否恢复',
+      '客户端': '多为参数错误，看是否需要更清晰的报错文档，不是运维问题',
+      '额度': '业务信号，不是故障；关注是否有大客户余额耗尽',
+      '系统': '自身缺陷，需要看服务端日志与 trace'
+    };
+
+    document.getElementById('layerBars').innerHTML = order.map(function (l) {
+      var w = (byLayer[l] / max) * 100;
+      var meta = LAYERS[l];
+      return '<div class="bar-row" style="grid-template-columns:minmax(0,1fr) 56px 46px">' +
+        '<div><div class="name"><span class="dotlayer" style="background:' + meta.color + '"></span><b>' + l +
+        '层</b></div><div class="bar-track"><div class="bar-fill" style="width:' + w.toFixed(1) +
+        '%;background:' + meta.color + '"></div></div>' +
+        '<div style="font-size:10.5px;color:#79747E;margin-top:4px;line-height:1.5">' + esc(ACTION[l]) + '</div></div>' +
+        '<div class="n">' + fmtNum(byLayer[l]) + '</div>' +
+        '<div class="p">' + fmtPct(div(byLayer[l], total), 1) + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderAlerts(agg) {
+    var list = [];
+
+    // 用聚合数据推一个「最近窗口」与「历史基线」的对比
+    var recent = agg.points.slice(-3);
+    var recentAttempt = 0, recentReq = 0;
+    recent.forEach(function (p) { recentAttempt += p.failAttempt; recentReq += p.req; });
+    var histAttempt = 0, histReq = 0;
+    agg.points.slice(0, Math.max(1, agg.points.length - 3)).forEach(function (p) {
+      histAttempt += p.failAttempt; histReq += p.req;
+    });
+    var recentRate = div(recentAttempt, recentReq);
+    var histRate = div(histAttempt, histReq);
+    var ratio = histRate > 0 ? recentRate / histRate : 1;
+
+    if (ratio >= 1.4) {
+      list.push({
+        crit: ratio >= 2.2,
+        title: '整体尝试失败率高于基线 ' + ratio.toFixed(1) + ' 倍',
+        desc: '最近 3 个桶 <b>' + fmtPct(recentRate) + '</b> vs 区间基线 <b>' + fmtPct(histRate) +
+          '</b>。先看层级归因：若渠道层占比同步上升，优先怀疑密钥或限流。'
+      });
+    }
+
+    // 渠道 #12 的故事
+    var ch12 = agg.total.byChannel[12] || 0;
+    var ch12Share = div(ch12, agg.total.failAttempt);
+    if (ch12Share > 0.25) {
+      list.push({
+        crit: true,
+        title: '渠道 #12 azure-gpt4o-hk 贡献 ' + fmtPct(ch12Share, 0) + ' 的失败尝试',
+        desc: '主导错误码 <span class="pill warn">channel:invalid_key</span> 401。该渠道已被自动禁用（<span class="mono">status=auto_disabled</span>），' +
+          '但错误集中在被禁用前的 2 小时窗口。处置：确认密钥轮换后手动启用，或直接摘除。'
+      });
+    }
+
+    var timeout = agg.total.byCode['channel:response_time_exceeded'] || 0;
+    if (timeout > 0) {
+      list.push({
+        crit: false,
+        title: 'channel:response_time_exceeded 共 ' + fmtNum(timeout) + ' 次',
+        desc: '集中在 openrouter-fallback。超时类错误会拉长整个请求耗时，即使被重试兜住，用户也感知到变慢。建议核对 P95 与渠道超时配置。'
+      });
+    }
+
+    var quota = agg.total.byCode['insufficient_user_quota'] || 0;
+    if (quota > 0) {
+      list.push({
+        crit: false,
+        title: 'insufficient_user_quota 共 ' + fmtNum(quota) + ' 次',
+        desc: '这是业务信号而非故障。<span class="mono">error_code</span> 归在额度层，不应当计入渠道健康度。'
+      });
+    }
+
+    document.getElementById('alerts').innerHTML = list.length
+      ? list.map(function (a) {
+        return '<div class="alert' + (a.crit ? ' crit' : '') + '">' +
+          '<div class="stripe"></div><div class="in">' +
+          '<div class="t">' + a.title + '</div>' +
+          '<div class="d">' + a.desc + '</div></div></div>';
+      }).join('')
+      : '<div class="empty">当前区间无显著恶化信号</div>';
+  }
+
+  /* ---------------- 维度：时间之外的四根切片轴 ---------------- */
+  var DIMS = {
+    code:    { label: '错误码', head: '错误码', filter: 'fCode' },
+    channel: { label: '渠道',   head: '渠道',   filter: 'fChannel' },
+    model:   { label: '模型',   head: '模型',   filter: 'fModel' },
+    user:    { label: '用户',   head: '用户',   filter: 'fUser' },
+    group:   { label: '分组',   head: '分组',   filter: 'fGroup' }
+  };
+  var currentDim = 'code';
+
+  // 明细行与事件用同一套字段名：code / ch / md / user / grp
+  function dimValueOf(dim, r) {
+    if (dim === 'code') return r.code || '';
+    if (dim === 'channel') return r.ch ? String(r.ch) : '';
+    if (dim === 'model') return r.md || '';
+    if (dim === 'user') return r.user || '';
+    if (dim === 'group') return r.grp || '';
+    return '';
+  }
+  function dimDisplay(dim, v) {
+    if (!v) return '—';
+    if (dim === 'channel') {
+      var c = CH_MAP[parseInt(v, 10)];
+      return c ? ('#' + c.id + ' ' + c.name) : ('#' + v);
+    }
+    return v;
+  }
+  function dimMapOfPoint(point, dim) {
+    if (dim === 'code') return point.byCode;
+    if (dim === 'channel') return point.byChannel;
+    if (dim === 'model') return point.byModel;
+    if (dim === 'user') return point.byUser;
+    return point.byGroup;
+  }
+
+  function renderDimTable(dim, agg) {
+    currentDim = dim;
+    agg = agg || aggregate(currentRange);
+    var tot = agg.total;
+
+    var map = {};        // 维度值 → 失败尝试数
+    var sec = {};        // 维度值 → { 次要维度值: 次数 }
+    tot.rows.forEach(function (r) {
+      var v = dimValueOf(dim, r);
+      if (!v) return;
+      map[v] = (map[v] || 0) + r.n;
+      var sv = dim === 'code' ? (r.ch ? String(r.ch) : '') : r.code;
+      if (!sv) return;
+      if (!sec[v]) sec[v] = {};
+      sec[v][sv] = (sec[v][sv] || 0) + r.n;
+    });
+
+    var list = Object.keys(map).map(function (v) {
+      var sm = sec[v] || {};
+      var topSec = Object.keys(sm).sort(function (a, b) { return sm[b] - sm[a]; })[0] || '';
+      var layer = dim === 'code'
+        ? ((CODE_MAP[v] || {}).layer || '系统')
+        : ((CODE_MAP[topSec] || {}).layer || '系统');
+      return { v: v, n: map[v], sec: topSec, layer: layer };
+    }).sort(function (a, b) { return b.n - a.n; });
+
+    var totalN = list.reduce(function (a, b) { return a + b.n; }, 0);
+    var top = list.slice(0, 12);
+    var half = Math.max(1, Math.floor(agg.points.length / 2));
+
+    document.getElementById('dimHead').textContent = DIMS[dim].head;
+    document.getElementById('secHead').textContent = dim === 'code' ? '主要渠道' : '主要错误码';
+
+    document.getElementById('dimRows').innerHTML = top.map(function (r) {
+      var first = 0, second = 0;
+      var pm = dimMapOfPoint;
+      agg.points.forEach(function (p, i) {
+        var v = pm(p, dim)[r.v] || 0;
+        if (i < half) first += v; else second += v;
+      });
+      var up = second > first * 1.15;
+      var down = second < first * 0.85;
+      var tColor = up ? '#B3261E' : (down ? '#1B6C3A' : '#79747E');
+      var tIcon = up ? '↑' : (down ? '↓' : '→');
+      var layer = LAYERS[r.layer] || LAYERS['系统'];
+      return '<tr class="click" data-v="' + esc(r.v) + '">' +
+        '<td style="padding-left:14px"><span class="mono" style="font-size:11.5px;color:#1D1B20">' +
+        esc(dimDisplay(dim, r.v)) + '</span></td>' +
+        '<td><span class="pill ' + layer.tone + '">' + r.layer + '</span></td>' +
+        '<td class="num">' + fmtNum(r.n) + '</td>' +
+        '<td class="num">' + fmtPct(div(r.n, totalN), 1) + '</td>' +
+        '<td><span class="mono">' + esc(dimDisplay(dim === 'code' ? 'channel' : 'code', r.sec)) + '</span></td>' +
+        '<td class="num" style="color:' + tColor + ';font-weight:600">' + tIcon + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="6" class="empty">当前区间无失败记录</td></tr>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('#dimRows tr.click'), function (tr) {
+      tr.addEventListener('click', function () {
+        drillInto(dim, tr.getAttribute('data-v'));
+      });
+    });
+  }
+
+  // 从任意维度行下钻到错误流：把维度值塞进对应筛选器
+  function drillInto(dim, raw) {
+    var el = document.getElementById(DIMS[dim].filter);
+    if (!el) return;
+    var val = raw;
+    if (dim === 'channel') {
+      var c = CH_MAP[parseInt(raw, 10)];
+      val = c ? c.name : raw;
+    }
+    switchView('stream');
+    ['fCode', 'fChannel', 'fModel', 'fUser', 'fGroup'].forEach(function (id) {
+      var x = document.getElementById(id);
+      if (x) x.value = '';
+    });
+    el.value = val;
+    page = 0;
+    applyFilters();
+    toast('已按' + DIMS[dim].label + '「' + dimDisplay(dim, raw) + '」过滤');
+  }
+
+  /* ============================================================
+   * 8. 渲染：错误流
+   * ============================================================ */
+  var PAGE_SIZE = 14;
+  var page = 0;
+
+  function filteredEvents() {
+    var q = document.getElementById('q').value.trim().toLowerCase();
+    var fCode = document.getElementById('fCode').value;
+    var fLayer = document.getElementById('fLayer').value;
+    var fCh = document.getElementById('fChannel').value;
+    var fModel = document.getElementById('fModel').value;
+    var fUser = document.getElementById('fUser').value;
+    var fGroup = document.getElementById('fGroup').value;
+    var fSt = document.getElementById('fStatus').value;
+    var fromTs = windowFrom();
+
+    return events.filter(function (e) {
+      if (e.ts < fromTs) return false;
+      if (fCode && e.code !== fCode) return false;
+      if (fLayer && e.layer !== fLayer) return false;
+      if (fCh && e.channelName !== fCh) return false;
+      if (fModel && e.model !== fModel) return false;
+      if (fUser && e.user !== fUser) return false;
+      if (fGroup && e.grp !== fGroup) return false;
+      if (fSt) {
+        if (fSt === '4xx' && !(e.status >= 400 && e.status < 500)) return false;
+        if (fSt === '5xx' && !(e.status >= 500 && e.status < 600)) return false;
+        if (fSt === '0' && e.status !== 0 && e.status !== 200) return false;
+      }
+      if (q) {
+        var hay = (e.msg + ' ' + e.requestId + ' ' + e.user + ' ' + e.code + ' ' + e.model).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderStream() {
+    var list = filteredEvents();
+    var pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (page >= pages) page = pages - 1;
+    if (page < 0) page = 0;
+    var slice = list.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
+    document.getElementById('streamCount').textContent =
+      '抽样明细 ' + fmtNum(list.length) + ' 条 · 区间失败尝试 ' + fmtNum(aggregate(currentRange).total.failAttempt) + ' 次';
+    document.getElementById('pageInfo').textContent = '第 ' + (page + 1) + ' / ' + pages + ' 页';
+    document.getElementById('streamEmpty').style.display = list.length ? 'none' : 'block';
+
+    document.getElementById('eventRows').innerHTML = slice.map(function (e) {
+      var tone = LAYERS[e.layer].tone;
+      var isRetry = e.attempt > 1;
+      return '<tr class="click" data-id="' + e.id + '">' +
+        '<td style="padding-left:14px;white-space:nowrap"><span class="mono">' + fmtEventTime(e.ts) + '</span></td>' +
+        '<td><span class="pill ' + tone + '"><span class="dotlayer" style="background:currentColor"></span>' +
+        esc(e.code) + '</span>' + (isRetry ? ' <span class="pill mute" style="font-size:10px">尝试 ' + e.attempt + '</span>' : '') + '</td>' +
+        '<td class="col-msg"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#49454F;font-size:11.5px" title="' + esc(e.msg) + '">' + esc(e.msg) + '</div></td>' +
+        '<td><span class="mono">' + esc(e.model) + '</span></td>' +
+        '<td><span class="mono">' + esc(e.channelName) + '</span></td>' +
+        '<td><span class="mono">' + esc(e.user) + '</span></td>' +
+        '<td class="num"><span class="mono">' + (e.status || '—') + '</span></td>' +
+        '<td class="num"><span class="mono">' + fmtDur(e.ms) + '</span></td>' +
+        '<td><span class="mono" style="font-size:10.5px">' + esc(e.requestId.slice(0, 16)) + '…</span></td>' +
+        '</tr>';
+    }).join('');
+
+    document.querySelectorAll('#eventRows tr.click').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        openDrawer(parseInt(tr.getAttribute('data-id'), 10));
+      });
+    });
+
+    renderChips();
+  }
+
+  function renderChips() {
+    var items = [];
+    var q = document.getElementById('q').value.trim();
+    if (q) items.push({ k: 'q', label: '“' + q + '”' });
+    var fCode = document.getElementById('fCode').value;
+    if (fCode) items.push({ k: 'fCode', label: fCode });
+    var fLayer = document.getElementById('fLayer').value;
+    if (fLayer) items.push({ k: 'fLayer', label: fLayer + '层' });
+    var fCh = document.getElementById('fChannel').value;
+    if (fCh) items.push({ k: 'fChannel', label: fCh });
+    var fModel = document.getElementById('fModel').value;
+    if (fModel) items.push({ k: 'fModel', label: '模型 ' + fModel });
+    var fUser = document.getElementById('fUser').value;
+    if (fUser) items.push({ k: 'fUser', label: '用户 ' + fUser });
+    var fGroup = document.getElementById('fGroup').value;
+    if (fGroup) items.push({ k: 'fGroup', label: '分组 ' + fGroup });
+    var fSt = document.getElementById('fStatus').value;
+    if (fSt) items.push({ k: 'fStatus', label: '状态 ' + fSt });
+
+    var el = document.getElementById('activeChips');
+    if (!items.length) {
+      el.innerHTML = '<span class="sub">未设过滤条件 · 显示全部错误</span>';
+      return;
+    }
+    el.innerHTML = '<span class="sub" style="margin-right:2px">已筛选</span>' +
+      items.map(function (i) {
+        return '<button class="chip on" data-clear="' + i.k + '">' + esc(i.label) + ' <span class="x">×</span></button>';
+      }).join('') +
+      '<button class="chip" data-clear="all">清空</button>';
+
+    el.querySelectorAll('[data-clear]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-clear');
+        if (k === 'all') {
+          document.getElementById('q').value = '';
+          ['fCode', 'fLayer', 'fChannel', 'fModel', 'fUser', 'fGroup', 'fStatus'].forEach(function (id) { document.getElementById(id).value = ''; });
+        } else {
+          document.getElementById(k).value = '';
+        }
+        page = 0;
+        applyFilters();
+      });
+    });
+  }
+
+  function applyFilters() {
+    page = 0;
+    renderStream();
+  }
+
+  /* ============================================================
+   * 9. 渲染：详情抽屉（含重试链）
+   * ============================================================ */
+  function openDrawer(id) {
+    var e = null;
+    for (var i = 0; i < events.length; i++) {
+      if (events[i].id === id) { e = events[i]; break; }
+    }
+    if (!e) return;
+
+    var meta = CODE_MAP[e.code] || { layer: e.layer };
+    var tone = LAYERS[meta.layer].tone;
+
+    document.getElementById('dTitle').innerHTML =
+      '错误详情 <span class="pill ' + tone + '" style="margin-left:8px;vertical-align:2px">' +
+      esc(e.code) + '</span>';
+    document.getElementById('dSub').textContent =
+      fmtFull(e.ts) + ' · ' + e.model + ' · 渠道 ' + e.channelName;
+
+    var siblings = events.filter(function (x) { return x.requestId === e.requestId; })
+      .sort(function (a, b) { return a.ts - b.ts; });
+
+    // 失败记录只有 N 条；若最终被救活，链条末尾要补一个成功节点，
+    // 否则"共 N 次尝试 + 客户端收到"会和上面"成功"的结论自相矛盾。
+    var chainHtml = siblings.map(function (s, i) {
+      var clientSaw = (i === siblings.length - 1) && !e.rescued;
+      return '<div class="step fail">' +
+        '<div class="r1">' +
+        '<span class="mono" style="color:#79747E">#' + (i + 1) + '</span>' +
+        '<span class="pill ' + LAYERS[s.layer].tone + '">' + esc(s.code) + '</span>' +
+        '<span class="mono">' + esc(s.channelName) + '</span>' +
+        '<span class="mono" style="color:#79747E">' + fmtDur(s.ms) + '</span>' +
+        (clientSaw ? '<span class="pill accent" style="font-size:10px">客户端收到</span>' : '<span class="pill mute" style="font-size:10px">已重试</span>') +
+        '</div>' +
+        '<div class="r2">' + esc(s.msg) + '</div>' +
+        '</div>';
+    }).join('');
+
+    if (e.rescued) {
+      chainHtml += '<div class="step ok">' +
+        '<div class="r1">' +
+        '<span class="mono" style="color:#79747E">#' + (siblings.length + 1) + '</span>' +
+        '<span class="pill ok">成功</span>' +
+        '<span class="mono">status_code=200</span>' +
+        '<span class="pill ok" style="font-size:10px">客户端收到</span>' +
+        '</div>' +
+        '<div class="r2">换到可用渠道后上游正常返回，本次请求最终成功</div>' +
+        '</div>';
+    }
+
+    var winFrom = windowFrom();
+    var sameFingerprint = events.filter(function (x) {
+      return x.code === e.code && x.channelId === e.channelId && x.ts >= winFrom;
+    }).length;
+
+    var body = '' +
+      '<div class="sec">' +
+      '<h4>错误原文</h4>' +
+      '<div class="msgbox">' + esc(e.msg) + '</div>' +
+      '<div class="note" style="margin-top:9px"><b>已脱敏：</b>写入日志前经过 <span class="mono">MaskSensitiveError</span> 处理，上游域名与路径已替换为占位符。要看真实上游地址需从渠道配置取，日志里没有。</div>' +
+      '</div>' +
+
+      '<div class="sec">' +
+      '<h4>归因</h4>' +
+      '<dl class="kv">' +
+      '<dt>层级</dt><dd><span class="pill ' + tone + '">' + meta.layer + '</span></dd>' +
+      '<dt>error_type</dt><dd class="mono">' + (LAYER_ERROR_TYPE[e.layer] || 'new_api_error') + '</dd>' +
+      '<dt>error_code</dt><dd class="mono">' + esc(e.code) + '</dd>' +
+      '<dt>status_code</dt><dd class="mono">' + (e.status || '—') + '</dd>' +
+      '<dt>耗时</dt><dd class="mono">' + fmtDur(e.ms) + '</dd>' +
+      '<dt>流式</dt><dd>' + (e.stream ? '是' : '否') + '</dd>' +
+      '<dt>最终结果</dt><dd>' + (e.rescued
+        ? '<span class="pill ok">成功 · 已被重试兜住</span>'
+        : '<span class="pill err">失败 · 重试未救回</span>') + '</dd>' +
+      '</dl>' +
+      '</div>' +
+
+      '<div class="sec">' +
+      '<h4>重试链（同一 request_id，共 ' + (siblings.length + (e.rescued ? 1 : 0)) + ' 次尝试）</h4>' +
+      '<div class="chain">' + chainHtml + '</div>' +
+      (e.rescued
+        ? '<div class="note info" style="margin-top:10px"><b>这是关键判据：</b>该请求共 ' +
+          (siblings.length + 1) + ' 次尝试才成功，前 ' + siblings.length +
+          ' 次都失败。日志里只看到失败、看不到后续那次成功的人，会误判成"全站都挂了"。</div>'
+        : (siblings.length > 1
+          ? '<div class="note" style="margin-top:10px"><b>重试未救回：</b>该请求的 ' + siblings.length +
+            ' 次尝试全部失败，客户端最终拿到错误。这类请求应当计入「重试耗尽」，是真正需要处理的失败。</div>'
+          : '<div class="note" style="margin-top:10px"><b>没有进入重试：</b>只有一个失败节点，说明 ' +
+            '<code>DecideRelayRetry</code> 判定该错误码不可重试，直接返回。参数错误、额度不足、权限拒绝都属于这一类——' +
+            '它不计入重试成功率，但同样计入最终失败。</div>')) +
+      '</div>' +
+
+      '<div class="sec">' +
+      '<h4>上下文</h4>' +
+      '<dl class="kv">' +
+      '<dt>用户</dt><dd class="mono">' + esc(e.user) + '</dd>' +
+      '<dt>模型</dt><dd class="mono">' + esc(e.model) + '</dd>' +
+      '<dt>渠道</dt><dd class="mono">#' + e.channelId + ' ' + esc(e.channelName) + '</dd>' +
+      '<dt>request_id</dt><dd class="mono">' + esc(e.requestId) + '</dd>' +
+      '<dt>upstream_rid</dt><dd class="mono">' + (e.status ? 'req_' + esc(e.requestId.slice(4, 12)) + 'up' : '—') + '</dd>' +
+      '<dt>trace</dt><dd><span class="linkish" id="traceLink">在 Langfuse 中打开 span</span></dd>' +
+      '</dl>' +
+      '</div>' +
+
+      '<div class="sec">' +
+      '<h4>同类历史</h4>' +
+      '<div style="font-size:12px;color:#49454F;line-height:1.7">' +
+      '相同 <span class="mono">error_code</span> + 相同渠道，在当前区间内共 <b>' + sameFingerprint + '</b> 条。' +
+      '</div>' +
+      '<div style="margin-top:9px"><button class="btn" id="drillCode">在错误流中筛选此错误码</button></div>' +
+      '</div>' +
+
+      '<div class="sec">' +
+      '<h4>处置</h4>' +
+      '<div class="note"><b>当前版本为只读原型。</b>处置动作（禁用渠道 / 标记已处理 / 忽略同类）需要新增状态表与权限模型，不在 MVP 范围内。本看板只回答「哪里坏了、坏多少」，不替人做决定。</div>' +
+      '</div>';
+
+    document.getElementById('dBody').innerHTML = body;
+
+    var tl = document.getElementById('traceLink');
+    if (tl) {
+      tl.addEventListener('click', function () {
+        toast('原型演示：将跳转到 Langfuse trace ' + e.requestId.slice(0, 8));
+      });
+    }
+    var dc = document.getElementById('drillCode');
+    if (dc) {
+      dc.addEventListener('click', function () {
+        closeDrawer();
+        switchView('stream');
+        document.getElementById('fCode').value = e.code;
+        applyFilters();
+      });
+    }
+
+    document.getElementById('drawer').classList.add('on');
+    document.getElementById('scrim').classList.add('on');
+    document.getElementById('drawer').setAttribute('aria-hidden', 'false');
+  }
+
+  function closeDrawer() {
+    document.getElementById('drawer').classList.remove('on');
+    document.getElementById('scrim').classList.remove('on');
+    document.getElementById('drawer').setAttribute('aria-hidden', 'true');
+  }
+
+  /* ============================================================
+   * 10. 渲染：渠道健康
+   * ============================================================ */
+  function renderChannels() {
+    var agg = aggregate(currentRange);
+
+    // 渠道 → 错误码的交叉统计走聚合明细，不能走 events 抽样：
+    // 抽样没命中时这里会显示"无 Top 错误码"，而维度表里同一个渠道明明有几十次失败，
+    // 两个视图自相矛盾比数字不准更容易被质疑。
+    var chCross = {};
+    agg.total.rows.forEach(function (r) {
+      if (!r.ch) return;
+      if (!chCross[r.ch]) chCross[r.ch] = {};
+      chCross[r.ch][r.code] = (chCross[r.ch][r.code] || 0) + r.n;
+    });
+
+    // 最后一次失败：直接扫桶，不依赖抽样是否覆盖到那一刻
+    function lastFailOf(chId) {
+      var win = rangeWindow(currentRange);
+      for (var i = BUCKETS - 1; i >= 0; i--) {
+        var b = buckets[i];
+        if (b.ts >= win.to) continue;
+        if (b.ts + BUCKET <= win.from) break;
+        for (var j = 0; j < b.rows.length; j++) {
+          if (b.rows[j].ch === chId && b.rows[j].n > 0) return b.ts;
+        }
+      }
+      return null;
+    }
+
+    var rows = CHANNELS.map(function (c) {
+      var fail = agg.total.byChannel[c.id] || 0;
+      // 尝试总数：按渠道流量份额推算（真实实现应查同源分母）
+      var totalAttempt = 0;
+      agg.points.forEach(function (p) { totalAttempt += p.req; });
+      var share = c.id === 12 ? (inWindowFault() ? 0.10 : 0.09) : c.baseShare * 0.9;
+      var attempts = Math.max(1, Math.round(totalAttempt * share));
+      var rate = div(fail, attempts);
+
+      var cm = chCross[c.id] || {};
+      var top = Object.keys(cm).sort(function (a, b) { return cm[b] - cm[a]; })[0];
+
+      // p95 假数据
+      var p95 = c.id === 12 ? 8200 : (c.id === 21 ? 6100 : 2000 + c.id * 120);
+
+      return { c: c, fail: fail, attempts: attempts, rate: rate, top: top || '—', p95: p95, lastFail: lastFailOf(c.id) };
+    }).sort(function (a, b) { return b.rate - a.rate; });
+
+    document.getElementById('channelRows').innerHTML = rows.map(function (r) {
+      var st = r.c.status === 'auto_disabled'
+        ? '<span class="pill err">自动禁用</span>'
+        : '<span class="pill ok">启用</span>';
+      var rateTone = r.rate > 0.05 ? 'err' : (r.rate > 0.01 ? 'warn' : 'mute');
+      return '<tr>' +
+        '<td style="padding-left:14px"><div style="display:flex;align-items:center;gap:7px">' +
+        '<span class="mono" style="color:#79747E">#' + r.c.id + '</span>' +
+        '<b style="font-weight:600">' + esc(r.c.name) + '</b>' +
+        '<span class="pill mute" style="font-size:10px">' + esc(r.c.type) + '</span></div>' +
+        (r.c.status === 'auto_disabled' ? '<div style="font-size:10.5px;color:#B3261E;margin-top:3px;max-width:420px">' + esc(r.c.reason) + '</div>' : '') +
+        '</td>' +
+        '<td>' + st + '</td>' +
+        '<td class="num">' + fmtNum(r.attempts) +
+        (r.c.status === 'auto_disabled' ? '<div style="font-size:10px;color:#79747E">含禁用前</div>' : '') + '</td>' +
+        '<td class="num">' + fmtNum(r.fail) + '</td>' +
+        '<td class="num"><span class="pill ' + rateTone + '">' + fmtPct(r.rate, 2) + '</span></td>' +
+        '<td class="num mono">' + (r.p95 / 1000).toFixed(1) + 's</td>' +
+        '<td>' + (r.top !== '—'
+          ? '<span class="pill ' + (LAYERS[(CODE_MAP[r.top] || { layer: '系统' }).layer].tone) + '">' + esc(r.top) + '</span>'
+          : '<span class="sub">—</span>') + '</td>' +
+        '<td class="num mono" style="color:#79747E">' + (r.lastFail ? fmtClock(r.lastFail) : '—') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    // 渠道状态事件（部分为占位，明确标注）
+    var evts = [
+      { ts: FAULT_START + 2 * MIN, ok: false, t: '渠道 #12 首次出现 channel:invalid_key', d: '401 · 上游拒绝凭证。单次失败被重试兜住，用户无感' },
+      { ts: FAULT_START + 6 * MIN, ok: true, t: '重试分流生效：azure-gpt4o-hk → openrouter-fallback', d: '失败尝试继续增长，但请求失败率回落。两个口径在此处分叉' },
+      { ts: FAULT_END - 6 * MIN, ok: false, t: '渠道 #12 最后一次失败尝试', d: '故障已持续约 2 小时，期间靠重试硬扛' },
+      { ts: FAULT_END + 12 * MIN, ok: false, t: '渠道 #12 被系统自动禁用', d: '连续失败触及阈值 → status=auto_disabled，reason 写入 channels.status_reason。当前无自动恢复策略' }
+    ];
+
+    document.getElementById('channelEvents').innerHTML = evts.map(function (e) {
+      return '<div class="step ' + (e.ok ? 'ok' : 'fail') + '">' +
+        '<div class="r1"><span class="mono" style="color:#79747E">' + fmtFull(e.ts) + '</span>' +
+        '<b style="font-weight:600">' + esc(e.t) + '</b></div>' +
+        '<div class="r2">' + esc(e.d) + '</div></div>';
+    }).join('');
+  }
+
+  function inWindowFault() {
+    return windowFrom() < FAULT_END;
+  }
+
+  /* ============================================================
+   * 11. 渲染：口径页
+   * ============================================================ */
+  var TRAPS = [
+    {
+      t: '重试会放大错误计数',
+      d: '错误日志是<b>尝试级</b>的：<code>controller/relay.go</code> 的重试循环里，每次 attempt 失败都会调 <code>processChannelError</code> → 写一条 <code>type=5</code>。一个请求重试 3 次全失败就是 3 条日志。把 <code>COUNT(*)</code> 当作"失败请求数"会虚高 1.8–2.7 倍（本原型内置了这个倍率）。必须先 <code>COUNT(DISTINCT request_id)</code>。'
+    },
+    {
+      t: '阶梯第 0 层不是"重试 0 次就成功"',
+      d: '<code>DecideRelayRetry</code> 对不可重试错误码直接 stop——参数非法、额度不足、权限拒绝都属于这一类，它们<b>从未进入重试流程</b>，只有 1 次失败尝试。把它们算进"重试成功率"的分母，会把这个指标系统性压低。另外 <code>common.RetryTimes</code> 默认是 <b>0</b>（完全不重试），线上通常配 3，阶梯的层数必须跟着配置走，不能写死。'
+    },
+    {
+      t: '错误率的分母可能不存在',
+      d: '关闭 <code>LogConsumeEnabled</code> 时不写消费日志，<code>quota_data</code> 也不更新，于是<b>没有成功请求数可做分母</b>。此时必须显式降级为"只显示次数"，绝不能渲染 0% 或拿错误数除以错误数。原型里 KPI 卡片带 <code>?</code> 悬浮说明就是为了强制标注口径。'
+    },
+    {
+      t: 'perf_metrics 没有渠道维度',
+      d: '它的唯一键是 <code>(model_name, group, bucket_ts)</code>，<code>success_count</code> 只按模型+分组聚合。所以<b>渠道级请求失败率算不出来</b>，只能给尝试口径。若强行把渠道错误数除以全局请求数，会得到一个既不是渠道口径也不是全局口径的数字。'
+    },
+    {
+      t: '禁用历史读不出来',
+      d: '<code>DisableChannel</code> 只 <code>SysLog</code> + 发通知 + 更新 <code>channels.status</code>，没有事件表。所以"这个渠道本周被禁用了 4 次"这类问题<b>当前无法回答</b>，只能看到最后一次的 <code>status_reason</code>。'
+    },
+    {
+      t: '错误文本已被脱敏',
+      d: '写入前经过 <code>MaskSensitiveError</code>，上游域名/路径变成占位符。客服拿着日志去对上游工单时，拿不到真实 endpoint。要定位必须靠 <code>channel_id</code> + <code>upstream_request_id</code>。'
+    },
+    {
+      t: '多维度求和必须同源',
+      d: '分别发五条 <code>GROUP BY</code> 查用户、模型、分组、渠道、错误码，在 ClickHouse 上会各自扫描不同分区、落到不同的查询时刻，得到的五个总数<b>互相对不上</b>。要么用一次 <code>GROUP BY GROUPING SETS</code> 出全部切片，要么把查询快照时间固定成同一个边界。原型里所有维度都从同一份明细行求和，就是为了强制这个约束。'
+    },
+    {
+      t: '客户端取消不是错误',
+      d: '<code>ClassifyRelayOutcome</code> 已把客户端断连、业务拒绝归为 <code>OutcomeIgnored</code>，不计入 perf_metrics。但错误日志里<b>仍可能有</b>对应的记录。两条链路口径不同，看板上必须分开呈现，否则会得出"错误率上升但用户没感觉"的矛盾结论。'
+    }
+  ];
+
+  function renderTraps() {
+    document.getElementById('traps').innerHTML = TRAPS.map(function (t, i) {
+      return '<div class="trap"><div class="no">H' + (i + 1) + '</div>' +
+        '<div><div class="tt">' + t.t + '</div><div class="td">' + t.d + '</div></div></div>';
+    }).join('');
+  }
+
+  /* ============================================================
+   * 11.5 自定义时间区间
+   * ============================================================ */
+  function toLocalInput(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function openCustomRange() {
+    document.getElementById('customRange').classList.add('on');
+    var from = customWindow ? customWindow.from : NOW - 2 * HOUR;
+    var to = customWindow ? customWindow.to : NOW;
+    document.getElementById('crFrom').value = toLocalInput(from);
+    document.getElementById('crTo').value = toLocalInput(to);
+    Array.prototype.forEach.call(document.querySelectorAll('#rangeSeg button'), function (x) {
+      x.classList.toggle('on', x.getAttribute('data-range') === 'custom');
+    });
+  }
+
+  function applyCustomRange() {
+    var f = new Date(document.getElementById('crFrom').value).getTime();
+    var t = new Date(document.getElementById('crTo').value).getTime();
+    if (!isFinite(f) || !isFinite(t)) { toast('请填写完整的起止时间'); return; }
+    if (t <= f) { toast('结束时间必须晚于开始时间'); return; }
+    if (t <= T0) { toast('该区间没有数据，日志仅覆盖最近 7 天'); return; }
+    // 数据边界：起点不早于保留窗口，终点不晚于当前时刻
+    if (f < T0) { f = T0; document.getElementById('crFrom').value = toLocalInput(f); }
+    if (t > NOW) { t = NOW; document.getElementById('crTo').value = toLocalInput(t); }
+
+    customWindow = { from: f, to: t };
+    currentRange = 'custom';
+    clearAggCache();
+    document.getElementById('customRange').classList.remove('on');
+    renderOverview();
+    if (currentView === 'stream') { page = 0; renderStream(); }
+    if (currentView === 'channel') renderChannels();
+    toast('已切换到自定义区间');
+  }
+
+  /* ============================================================
+   * 12. 交互装配
+   * ============================================================ */
+  function switchView(name) {
+    currentView = name;
+    document.querySelectorAll('#tabs button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-view') === name);
+    });
+    document.querySelectorAll('.view').forEach(function (v) {
+      v.classList.toggle('on', v.id === 'view-' + name);
+    });
+    if (name === 'overview') renderOverview();
+    if (name === 'stream') renderStream();
+    if (name === 'channel') renderChannels();
+    if (name === 'meta') renderTraps();
+  }
+
+  function initSelects() {
+    function fill(id, values) {
+      var sel = document.getElementById(id);
+      values.forEach(function (v) {
+        var o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
+      });
+    }
+    fill('fCode', CODES.map(function (c) { return c.code; }));
+    fill('fChannel', CHANNELS.map(function (c) { return c.name; }));
+    fill('fModel', MODELS);
+    fill('fUser', USERS.slice().sort());
+    fill('fGroup', GROUPS);
+  }
+
+  function bind() {
+    document.getElementById('tabs').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-view]');
+      if (!b) return;
+      switchView(b.getAttribute('data-view'));
+    });
+
+    document.getElementById('rangeSeg').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-range]');
+      if (!b) return;
+      var r = b.getAttribute('data-range');
+      if (r === 'custom') {
+        openCustomRange();
+        return;
+      }
+      customWindow = null;
+      document.getElementById('customRange').classList.remove('on');
+      currentRange = r;
+      Array.prototype.forEach.call(document.querySelectorAll('#rangeSeg button'), function (x) {
+        x.classList.toggle('on', x === b);
+      });
+      renderOverview();
+      if (currentView === 'stream') { page = 0; renderStream(); }
+      if (currentView === 'channel') renderChannels();
+    });
+
+    ['q', 'fCode', 'fLayer', 'fChannel', 'fModel', 'fUser', 'fGroup', 'fStatus'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', applyFilters);
+      el.addEventListener('change', applyFilters);
+    });
+
+    document.getElementById('btnReset').addEventListener('click', function () {
+      document.getElementById('q').value = '';
+      ['fCode', 'fLayer', 'fChannel', 'fModel', 'fUser', 'fGroup', 'fStatus'].forEach(function (id) {
+        document.getElementById(id).value = '';
+      });
+      applyFilters();
+    });
+
+    // 维度切换：只重画维度表，不重算其他区块
+    document.getElementById('dimSeg').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-dim]');
+      if (!b) return;
+      var dim = b.getAttribute('data-dim');
+      Array.prototype.forEach.call(document.querySelectorAll('#dimSeg button'), function (x) {
+        x.classList.toggle('on', x === b);
+      });
+      renderDimTable(dim);
+    });
+
+    document.getElementById('crApply').addEventListener('click', applyCustomRange);
+    document.getElementById('crCancel').addEventListener('click', function () {
+      document.getElementById('customRange').classList.remove('on');
+      Array.prototype.forEach.call(document.querySelectorAll('#rangeSeg button'), function (x) {
+        x.classList.toggle('on', x.getAttribute('data-range') === currentRange);
+      });
+    });
+
+    document.getElementById('prevPage').addEventListener('click', function () {
+      if (page > 0) { page--; renderStream(); }
+    });
+    document.getElementById('nextPage').addEventListener('click', function () {
+      var pages = Math.max(1, Math.ceil(filteredEvents().length / PAGE_SIZE));
+      if (page < pages - 1) { page++; renderStream(); }
+    });
+
+    document.getElementById('dClose').addEventListener('click', closeDrawer);
+    document.getElementById('scrim').addEventListener('click', closeDrawer);
+
+    document.getElementById('btnExport').addEventListener('click', function () {
+      toast('原型演示：将导出当前筛选条件下的 ' + filteredEvents().length + ' 条记录');
+    });
+
+    // 沉浸式全屏：预览面板常以 iframe 打开，可能被 allowfullscreen 拦住，
+    // 所以失败必须给出可执行的替代路径，而不是静默什么都不发生。
+    var btnFull = document.getElementById('btnFull');
+    btnFull.addEventListener('click', function () {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+        return;
+      }
+      if (!document.documentElement.requestFullscreen) {
+        toast('当前环境不支持全屏，请在新标签页打开原型');
+        return;
+      }
+      var p = document.documentElement.requestFullscreen();
+      if (p && p.catch) {
+        p.catch(function () {
+          toast('预览环境不允许全屏，请在新标签页打开原型再按 F11');
+        });
+      }
+    });
+    document.addEventListener('fullscreenchange', function () {
+      var on = !!document.fullscreenElement;
+      btnFull.setAttribute('aria-label', on ? '退出全屏' : '全屏');
+      btnFull.setAttribute('title', on ? '退出全屏（Esc）' : '进入沉浸式全屏');
+    });
+
+    // FAB：M3 里主操作放在右下角。原型只有"重新取数"这一个动作。
+    document.getElementById('fabRefresh').addEventListener('click', function () {
+      clearAggCache();
+      renderOverview();
+      if (currentView === 'stream') { page = 0; renderStream(); }
+      if (currentView === 'channel') renderChannels();
+      if (currentView === 'meta') renderTraps();
+      toast('已重新聚合，当前区间 ' + rangeLabel(currentRange));
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeDrawer();
+      var map = { '1': 'overview', '2': 'stream', '3': 'channel', '4': 'meta' };
+      if (!e.metaKey && !e.ctrlKey && map[e.key]) {
+        if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+        switchView(map[e.key]);
+      }
+    });
+  }
+
+  /* ============================================================
+   * 13. 启动
+   * ============================================================ */
+  initSelects();
+  bind();
+  renderTraps();
+  renderOverview();
+
+  // 首次进入给个提示，说明这是原型
+  setTimeout(function () {
+    toast('原型演示数据 · 点任意错误行查看重试链');
+  }, 600);
+
+})();
+</script>
+</body>
+</html>

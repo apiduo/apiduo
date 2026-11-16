@@ -1,0 +1,136 @@
+# ==========================================================================
+# jieapi.com 主站 —— apiduo 双节点（core-1）
+#
+# 2026-11-15 全面转正：rc.40 下线，master + standby 都是 apiduo。
+# 数据复用既有 MySQL（jieapi-master 库）与 ClickHouse（new_api_logs 库），
+# 本地 /data 无持久化数据（已核实为空），所以换目录不需要迁移。
+#
+# ⚠️ 上线前必读 README.md。参数取值的依据写在每段注释里，改之前先看依据。
+#
+# 日常操作：
+#   cd /www/docker/apiduo && docker-compose up -d
+#   docker-compose ps
+#   docker-compose logs -f --tail=100 apiduo
+# ==========================================================================
+
+name: jieapi
+
+# 两个节点 90% 的配置相同，用 anchor 保证不会漂移；
+# 差异项（ports / volumes / environment / 资源限额）在各服务里显式覆盖。
+x-apiduo-common: &apiduo-common
+  image: ghcr.io/apiduo/apiduo:0.0.121
+  restart: unless-stopped
+  command: ["--log-dir", "/app/logs"]
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  env_file:
+    - /www/docker/apiduo/app.env             # 业务配置（连接串/密钥/限流），两节点共用
+    - /www/docker/apiduo-langfuse-b.env      # Langfuse B：https://langfuse.apiduo.cn
+  networks:
+    - new-api-network
+    - shared-net
+  logging:
+    driver: json-file
+    options:
+      max-size: "100m"
+      max-file: "3"
+  ulimits:
+    # 实测容器内已是 1048576 / 当前共用 147。显式声明是为了避免
+    # dockerd 重启后继承值变化。流式长连接多时 fd 是硬门槛。
+    nofile:
+      soft: 1048576
+      hard: 1048576
+  healthcheck:
+    # core-1 上的 autoheal 配的是 AUTOHEAL_CONTAINER_LABEL=all（每 5 秒扫一次），
+    # 所以这个健康检查**会**触发自动重启：连续 3 次失败（约 90 秒）后容器被判
+    # unhealthy，autoheal 会 restart 它。90 秒持续失败才动手，正常抖动不会误杀，
+    # 这是想要的兜底。要临时停用，`docker stop autoheal` 比改这里快。
+    test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/status | grep -o '\"success\":[[:space:]]*true' || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s
+
+services:
+  # ------------------------------------------------------------------------
+  # 主节点：跑任务轮询、渠道定时检测、订阅重置等后台任务
+  # ------------------------------------------------------------------------
+  apiduo:
+    <<: *apiduo-common
+    container_name: jieapi-apiduo
+    ports:
+      - "127.0.0.1:3002:3000"
+    volumes:
+      - /www/docker/apiduo/data:/data
+      - /www/docker/apiduo/logs:/app/logs
+    environment:
+      NODE_NAME: jieapi-apiduo
+      NODE_TYPE: master
+      # --- Go 运行时，必须与下面的 mem_limit / cpus 同步改 ---
+      GOMAXPROCS: "12"
+      GOMEMLIMIT: "10GiB"
+      # --- MySQL 连接池 ---
+      # 2026-11-15 01:46 把 MySQL max_connections 从 500 提到 2000（/etc/my.cnf 已改，
+      # 运行时 SET GLOBAL 立即生效）。两节点 256+128=384，加其他应用约 50，余量 ~1560。
+      SQL_MAX_OPEN_CONNS: "256"
+      SQL_MAX_IDLE_CONNS: "64"
+      SQL_MAX_LIFETIME: "300"
+      REDIS_POOL_SIZE: "128"
+    # 2026-11-15 01:46 为「未来高并发」上调：8C/8G → 12C/12G。
+    # 依据：7 req/s 实测 0.5%（≈0.04 核），线性外推到 ~200 req/s 约 1.2 核；
+    # 12 核覆盖的是 Langfuse 全量采样带来的序列化开销，而非转发本身。
+    # 真正的天花板是 MySQL 连接与日志 flush，不是 CPU——见 README 的容量模型。
+    cpus: 12
+    cpu_shares: 2048
+    mem_limit: 12g
+    memswap_limit: 12g
+
+  # ------------------------------------------------------------------------
+  # 备用节点：2026-11-15 01:56 已迁到 core-3（见 docker-compose.standby-core3.yml）
+  #
+  # 这里保留定义是为了随时一键回滚到「同机备节点」：
+  #   docker-compose up -d apiduo-standby
+  # 再把 nginx upstream 的 backup 从 61.111.253.243:3003 改回 127.0.0.1:3003。
+  #
+  # 同机 vs 异机的取舍：
+  #   同机（本定义）    0.1ms，容器故障时最快接管，但防不了整机/Docker 故障
+  #   异机（core-3）   137ms，能扛 core-1 的 Docker 故障，但防不了数据库故障
+  #                     （core-3 本地无 MySQL/Redis/CH，全指向 core-1）
+  # 两者覆盖的场景不同，若资源允许建议同时保留——限额是上限不是预留，
+  # 停着的容器只占磁盘，不占 CPU/内存。
+  # ------------------------------------------------------------------------
+  apiduo-standby:
+    <<: *apiduo-common
+    container_name: jieapi-apiduo-standby
+    profiles: ["local-standby"]     # 默认不启动，需要时 --profile local-standby
+    ports:
+      - "127.0.0.1:3003:3000"
+    volumes:
+      - /www/docker/apiduo-standby/data:/data
+      - /www/docker/apiduo-standby/logs:/app/logs
+    environment:
+      NODE_NAME: jieapi-apiduo-standby
+      # 必须是 slave。IsMasterNode 只看这个值，没有选举没有锁，
+      # 两个 master 会重复跑任务轮询 / 渠道检测 / 订阅重置。
+      NODE_TYPE: slave
+      # 2026-11-15 01:46 与 master 同步上调，故障接管时能独扛全站
+      GOMAXPROCS: "8"
+      GOMEMLIMIT: "6GiB"
+      SQL_MAX_OPEN_CONNS: "128"
+      SQL_MAX_IDLE_CONNS: "32"
+      SQL_MAX_LIFETIME: "300"
+      REDIS_POOL_SIZE: "64"
+    cpus: 8
+    cpu_shares: 1024
+    mem_limit: 8g
+    memswap_limit: 8g
+
+networks:
+  # 复用既有网络，不新建：clickhouse 在这个网络里，
+  # LOG_SQL_DSN 用容器名 clickhouse 解析，换网络会直接连不上日志库。
+  new-api-network:
+    external: true
+    name: jieapi-master_new-api-network
+  # Langfuse / minio / image-adapter 等共用
+  shared-net:
+    external: true

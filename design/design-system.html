@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fcfcfa">
+<title>设计规范 · apiduo 错误看板</title>
+<meta name="description" content="apiduo 错误看板的设计规范：颜色、字号、间距、动效、状态与禁止清单，值直接读自 CSS 变量。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* 角色: display 24 / section 18 / body 14 / label 12 · 相邻 ≥1.17 */
+:root {
+  --paper: #fcfcfa;
+  --paper-2: #f4f4f1;
+  --rule: #e4e4de;
+  --rule-2: #cfcfc7;
+  --ink: #1a1c1e;
+  --ink-2: #45484b;
+  --muted: #6b7076;
+  --accent: #9a3412;
+  --accent-soft: #fdf0ea;
+  --ok: #3f6f4a;
+  --err: #a4161a;
+
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px;
+
+  --f-label: 12px;
+  --f-body: 14px;
+  --f-section: 18px;
+  --f-display: 24px;
+
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-press: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 160ms;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scrollbar-color: var(--rule-2) var(--paper); scrollbar-width: thin; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--f-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (pointer: fine) { html { overscroll-behavior: none; } }
+button, a, input, select { touch-action: manipulation; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; text-wrap: balance; }
+p { margin: 0; text-wrap: pretty; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.skip {
+  position: absolute; left: var(--s-4); top: -100px; z-index: 60;
+  background: var(--ink); color: var(--paper); padding: var(--s-2) var(--s-4);
+  font-size: var(--f-label); text-decoration: none;
+  transition: top var(--dur-fast) var(--ease-out);
+}
+.skip:focus-visible { top: var(--s-2); outline-offset: -3px; outline-color: var(--paper); }
+
+/* ── 报头 ── */
+.bar {
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  position: sticky; top: 0; z-index: 30;
+}
+.mark {
+  font-family: var(--mono); font-size: var(--f-label); letter-spacing: 0.04em;
+  text-transform: lowercase; color: var(--muted); text-decoration: none;
+  padding-right: var(--s-3); border-right: 1px solid var(--rule);
+}
+.mark:hover { color: var(--accent); }
+.bar h1 { font-size: var(--f-body); font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.verdict {
+  flex: 1; min-width: 0; color: var(--ink-2); font-size: var(--f-body);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.verdict b { color: var(--ink); font-weight: 500; }
+.jump { display: flex; gap: var(--s-3); flex: 0 0 auto; }
+.jump a {
+  font-size: var(--f-label); color: var(--muted); text-decoration: none;
+  padding-bottom: 2px; border-bottom: 1px solid transparent;
+}
+.jump a:hover { color: var(--ink); border-bottom-color: var(--rule-2); }
+
+main { max-width: 1080px; margin-inline: auto; padding: var(--s-7) var(--s-5) var(--s-8); }
+
+/* ── 章节 ── */
+.sec { margin-top: var(--s-8); scroll-margin-top: 72px; }
+.sec:first-of-type { margin-top: 0; }
+.sec > h2 {
+  font-size: var(--f-section); font-weight: 600;
+  padding-bottom: var(--s-2); border-bottom: 1px solid var(--rule);
+}
+.sec > .lead { margin-top: var(--s-2); color: var(--ink-2); max-width: 68ch; }
+.no {
+  font-family: var(--mono); font-size: var(--f-label); color: var(--muted);
+  margin-right: var(--s-2); letter-spacing: 0.04em;
+}
+
+/* ── 色彩 ── */
+.swatches { margin-top: var(--s-4); border-top: 1px solid var(--rule); }
+.sw {
+  display: grid; grid-template-columns: 44px 132px 88px 96px minmax(0, 1fr);
+  gap: var(--s-4); align-items: center;
+  padding: var(--s-3) 0; border-bottom: 1px solid var(--rule);
+}
+.chip {
+  width: 44px; height: 32px; border: 1px solid var(--rule-2); display: block;
+}
+.sw .name { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+.sw .hex { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.sw .ratio { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-2); }
+.sw .ratio b { font-weight: 500; color: var(--ink); }
+.sw .use { font-size: 13px; color: var(--ink-2); }
+.sw .ratio .na { color: var(--muted); }
+.sw-head {
+  display: grid; grid-template-columns: 44px 132px 88px 96px minmax(0, 1fr);
+  gap: var(--s-4); padding: var(--s-2) 0;
+  font-size: var(--f-label); color: var(--muted);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* ── 字号 ── */
+.scale { margin-top: var(--s-4); border-top: 1px solid var(--rule); }
+.scale-row {
+  display: grid; grid-template-columns: 64px 96px minmax(0, 1fr);
+  gap: var(--s-4); align-items: baseline;
+  padding: var(--s-3) 0; border-bottom: 1px solid var(--rule);
+}
+.scale-row .px { font-family: var(--mono); font-size: var(--f-label); color: var(--muted); }
+.scale-row .role { font-size: 13px; color: var(--ink-2); }
+.scale-row .sample { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── 间距 ── */
+.spaces { margin-top: var(--s-4); border-top: 1px solid var(--rule); }
+.space-row {
+  display: grid; grid-template-columns: 56px 96px 72px minmax(0, 1fr);
+  gap: var(--s-4); align-items: center;
+  padding: var(--s-2) 0; border-bottom: 1px solid var(--rule);
+}
+.space-row .tok { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+/* 固定轨道：值本身只有 4–64px，放进 1fr 的列里会缩成一个小点，读不出比例 */
+.space-row .track2 { height: 10px; background: var(--paper-2); position: relative; }
+.space-row .track2 i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ink-2); }
+.space-row .px2 { font-family: var(--mono); font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.space-row .use { font-size: 12px; color: var(--muted); }
+
+/* ── 动效 ── */
+.motion { margin-top: var(--s-4); border-top: 1px solid var(--rule); }
+.m-row {
+  display: grid; grid-template-columns: 248px minmax(0, 1fr) 84px;
+  gap: var(--s-4); align-items: center;
+  padding: var(--s-3) 0; border-bottom: 1px solid var(--rule);
+}
+.m-row .meta { font-size: 13px; color: var(--ink-2); }
+.m-row .meta b { color: var(--ink); font-weight: 500; }
+.m-row .meta span {
+  display: block; font-family: var(--mono); font-size: 12px; color: var(--muted);
+  margin-top: 2px; white-space: nowrap;
+}
+.track { position: relative; height: 22px; border-bottom: 1px solid var(--rule-2); }
+.dot { position: absolute; left: 0; bottom: 0; width: 16px; height: 16px; background: var(--ink); }
+.m-row .replay {
+  appearance: none; border: 1px solid var(--rule-2); background: var(--paper);
+  height: 28px; font-size: 12px; color: var(--ink-2); cursor: pointer;
+}
+.m-row .replay:hover { background: var(--paper-2); border-color: var(--ink-2); }
+
+/* ── 标本框（这一处用边框是必要的：它标出「这一段是可运行的样品」） ── */
+.specimens { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); margin-top: var(--s-4); }
+.spec { border: 1px solid var(--rule-2); padding: var(--s-3); min-height: 132px; display: flex; flex-direction: column; }
+.spec .cap {
+  font-size: var(--f-label); color: var(--muted); margin-bottom: var(--s-3);
+  display: flex; justify-content: space-between; gap: var(--s-2);
+}
+.spec .cap em { font-style: normal; font-family: var(--mono); }
+.spec .body { flex: 1; }
+.skel { display: block; height: 9px; background: var(--rule); margin-bottom: var(--s-3); animation: pulse 1.4s ease-in-out infinite; }
+.skel.w40 { width: 40%; } .skel.w62 { width: 62%; } .skel.w88 { width: 88%; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.spec-error { border: 1px solid var(--err); background: #fdf3f3; padding: var(--s-2) var(--s-3); }
+.spec-error .t { font-size: 13px; font-weight: 500; }
+.spec-error .d { font-size: var(--f-label); color: var(--ink-2); margin-top: 2px; }
+.spec-nil { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: var(--f-label); border-bottom: 1px solid var(--rule); }
+.btn-sm {
+  appearance: none; border: 1px solid var(--rule-2); background: var(--paper);
+  height: 26px; padding: 0 var(--s-2); font-size: 12px; color: var(--ink-2); cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-press);
+}
+.btn-sm:active { transform: scale(0.972); }
+
+/* ── 表格（禁止清单 / 版本） ── */
+table { width: 100%; border-collapse: collapse; margin-top: var(--s-4); }
+th, td { text-align: left; padding: var(--s-2) var(--s-3); vertical-align: top; }
+th {
+  font-size: var(--f-label); color: var(--muted); font-weight: 500;
+  border-bottom: 1px solid var(--rule-2); white-space: nowrap;
+}
+td { border-bottom: 1px solid var(--rule); font-size: 13px; }
+td:first-child, th:first-child { padding-left: 0; }
+#no table th:first-child, #no table td:first-child { width: 168px; padding-right: var(--s-5); }
+#versions table th:first-child, #versions table td:first-child { width: 132px; }
+#versions table th:nth-child(3), #versions table td:nth-child(3) { width: 72px; }
+td:last-child, th:last-child { padding-right: 0; }
+.no-cell { color: var(--err); font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.yes-cell { color: var(--ok); font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+td .why { color: var(--ink-2); }
+.mono { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+
+code {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--paper-2); padding: 1px 4px;
+}
+
+/* ── 验收命令 ── */
+.cmds { margin-top: var(--s-4); background: var(--paper-2); padding: var(--s-3) var(--s-4); }
+.cmds pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.9; color: var(--ink-2); overflow-x: auto; }
+.cmds pre b { color: var(--ink); font-weight: 500; }
+.cmds pre i { color: var(--muted); font-style: normal; }
+
+.note { margin-top: var(--s-4); padding: var(--s-3) var(--s-4); background: var(--paper-2); font-size: 13px; color: var(--ink-2); }
+.note b { color: var(--ink); font-weight: 500; }
+
+.foot { margin-top: var(--s-7); padding-top: var(--s-3); border-top: 1px solid var(--rule); font-size: var(--f-label); color: var(--muted); line-height: 1.7; }
+
+@media (max-width: 860px) {
+  .sw-head { display: none; }
+  .sw { grid-template-columns: 44px 1fr 96px; row-gap: var(--s-2); }
+  .sw .hex { grid-column: 2; }
+  .sw .ratio { grid-column: 3; grid-row: 1; text-align: right; }
+  .sw .use { grid-column: 2 / -1; }
+  .specimens { grid-template-columns: 1fr; }
+  .m-row { grid-template-columns: 168px 1fr; }
+  .m-row .replay { grid-column: 1 / -1; justify-self: start; padding: 0 var(--s-3); }
+}
+@media (max-width: 560px) {
+  .bar { flex-wrap: wrap; gap: var(--s-2); padding: var(--s-3) var(--s-4); }
+  .verdict { order: 3; width: 100%; white-space: normal; font-size: 13px; }
+  .jump { display: none; }
+  main { padding: var(--s-5) var(--s-4) var(--s-8); }
+  .scale-row { grid-template-columns: 48px 1fr; }
+  .scale-row .role { display: none; }
+  .space-row { grid-template-columns: 28px 72px 52px; }
+  .space-row .use { display: none; }
+  table { font-size: 13px; }
+  th, td { padding: var(--s-2) var(--s-2) var(--s-2) 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+  .dot { transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="bar">
+  <a class="mark" href="#">apiduo</a>
+  <h1>设计规范</h1>
+  <p class="verdict">值直接读自 CSS 变量，不复制第二份 —— 改了 <b>:root</b>，这一页跟着变。</p>
+  <nav class="jump" aria-label="章节">
+    <a href="#color">色彩</a>
+    <a href="#type">字体</a>
+    <a href="#space">间距</a>
+    <a href="#motion">动效</a>
+    <a href="#states">状态</a>
+    <a href="#no">禁止</a>
+    <a href="#versions">版本</a>
+  </nav>
+</header>
+
+<main id="main" tabindex="-1">
+
+  <section class="sec" id="color">
+    <h2><span class="no">01</span>色彩</h2>
+    <p class="lead">11 个值，只有 1 个强调色。对比度按 WCAG 2.1 相对亮度实算，底色取 <code>--paper</code>。低于 4.5:1 的值只允许出现在非文字元素上。</p>
+    <div class="sw-head" aria-hidden="true">
+      <span></span><span>令牌</span><span>值</span><span>对比度</span><span>用在哪</span>
+    </div>
+    <div class="swatches" id="swatches"></div>
+  </section>
+
+  <section class="sec" id="type">
+    <h2><span class="no">02</span>字体</h2>
+    <p class="lead">四档，相邻比 1.17 / 1.29 / 1.33。12px 是可读下限，不得再小；数字一律等宽对齐。</p>
+    <div class="scale" id="scale"></div>
+  </section>
+
+  <section class="sec" id="space">
+    <h2><span class="no">03</span>间距</h2>
+    <p class="lead">4 基数。同组元素 4–8，不同组 16 以上；标题上方空间必须大于下方。</p>
+    <div class="spaces" id="spaces"></div>
+  </section>
+
+  <section class="sec" id="motion">
+    <h2><span class="no">04</span>动效</h2>
+    <p class="lead">只动 <code>transform</code> 与 <code>opacity</code>。退场快于进场；按压要有位移，只有变色等于没反馈。点右侧重放。</p>
+    <div class="motion" id="motion"></div>
+    <div class="note">
+      <b>不该动的四件事</b>：数字滚动计数、表格逐行入场、图表线条绘制、任何循环动画。
+      它们都在「每次刷新都动」，对读数只有干扰。
+    </div>
+  </section>
+
+  <section class="sec" id="states">
+    <h2><span class="no">05</span>四种状态</h2>
+    <p class="lead">看板最容易漏的不是好看的常态，是接口挂了显示什么。下面四块是可运行的样品，不是截图。</p>
+    <div class="specimens">
+      <div class="spec">
+        <div class="cap"><span>加载中</span><em>延迟 180ms · 最短 320ms</em></div>
+        <div class="body" aria-busy="true">
+          <span class="skel w40"></span>
+          <span class="skel w88"></span>
+          <span class="skel w62"></span>
+          <span class="skel w88"></span>
+          <span class="skel w40"></span>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="cap"><span>取数失败</span><em>保留上次结果</em></div>
+        <div class="body">
+          <div class="spec-error" role="alert">
+            <p class="t">读取日志失败</p>
+            <p class="d">上游 504，下面保留的是 04:22 的结果，可能已经过期。</p>
+          </div>
+          <div style="margin-top:12px"><button class="btn-sm" type="button">重试</button></div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="cap"><span>区间无数据</span><em>说「全部成功」</em></div>
+        <div class="body" style="display:flex;flex-direction:column">
+          <div class="spec-nil" style="flex:1">这个窗口内没有失败尝试</div>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="cap"><span>筛选无结果</span><em>给出下一步</em></div>
+        <div class="body" style="display:flex;flex-direction:column;justify-content:center;gap:12px">
+          <p style="font-size:13px;color:var(--ink-2)">没有匹配的记录。</p>
+          <div><button class="btn-sm" type="button">清除筛选</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="note">
+      <b>最容易写坏的两处：</b>空窗口套同一个模板，会得出「0 次失败，没有单一来源占主导」；
+      骨架的行高与真实行不一致，数据到了整页会跳一下。
+    </div>
+  </section>
+
+  <section class="sec" id="no">
+    <h2><span class="no">06</span>禁止清单</h2>
+    <p class="lead">三套规范的交集。这些不是审美偏好，改动前需要理由。</p>
+    <table>
+      <thead>
+        <tr><th>禁止</th><th>为什么</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="no-cell">hero-metric 模板</td><td class="why">大数字 + 小标签 + 三四个支撑统计 + 强调色，是模型做看板的默认解。它让页面看起来有重点，却没回答「谁在坏」。</td></tr>
+        <tr><td class="no-cell">eyebrow / kicker</td><td class="why">标题上方那行小字加圆点，除了显得「设计过」不承载信息。</td></tr>
+        <tr><td class="no-cell">左侧 3px 竖条</td><td class="why">强调条是最典型的模板痕迹；用背景色或边框整体表达。</td></tr>
+        <tr><td class="no-cell">卡片与投影</td><td class="why">卡片意味着「可以拿走的一块内容」。这里是连续的时间序列与长表，容器化会切断阅读流。</td></tr>
+        <tr><td class="no-cell">颜色单独表意</td><td class="why">色盲用户读不到。错误码必须带层级文字，渠道状态必须写「自动禁用」。</td></tr>
+        <tr><td class="no-cell">未主题化的浏览器表面</td><td class="why">选区、光标、滚动条、焦点环带着浏览器默认值，是「没做完」最明显的信号。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sec" id="versions">
+    <h2><span class="no">07</span>五个版本</h2>
+    <p class="lead">同一份数据与交互，五种设计语言。违规数是 <code>impeccable detect</code> 的实测结果，不是估计。</p>
+    <table>
+      <thead>
+        <tr><th>版本</th><th>主张</th><th>违规</th><th>代价</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="error-dashboard-v2.html">v2 判断版</a></td>
+          <td class="why">基线带 + 错误聚类 + 变更标记 + 四态外的新状态</td>
+          <td class="yes-cell">0</td>
+          <td class="why">同一条数据链路上补判断能力，未接入真实接口</td>
+        </tr>
+        <tr>
+          <td><a href="error-dashboard-impeccable.html">v1 克制版</a></td>
+          <td class="why">状态句 + 刻度尺，零卡片</td>
+          <td class="yes-cell">0</td>
+          <td class="why">信息密度最低的那一档里最克制</td>
+        </tr>
+        <tr>
+          <td><a href="error-dashboard-hallmark.html">Hallmark</a></td>
+          <td class="why">ASCII 字符场 + 钴蓝，单一强信号</td>
+          <td class="yes-cell">0</td>
+          <td class="why">首屏用了 hero 数字，与当前版的主张相反</td>
+        </tr>
+        <tr>
+          <td><a href="error-dashboard-md.html">Material 3</a></td>
+          <td class="why">完整 M3 组件规范</td>
+          <td class="no-cell">2</td>
+          <td class="why">密度比控制台版低约 25%</td>
+        </tr>
+        <tr>
+          <td><a href="error-dashboard.html">控制台版</a></td>
+          <td class="why">信息密度最高，适合长时间扫读</td>
+          <td class="no-cell">31</td>
+          <td class="why">11px 正文在高分屏上不可读</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sec" id="verify">
+    <h2><span class="no">08</span>验收</h2>
+    <p class="lead">四条命令，缺一条都不算通过。</p>
+    <div class="cmds">
+      <pre><b>npx impeccable detect</b> design/error-dashboard-impeccable.html   <i># 期望 EXIT=0</i>
+<b>node --check</b> /tmp/imp.js                                      <i># 内联脚本语法</i>
+<b>npx dembrandt</b> http://127.0.0.1:8791/... --json-only           <i># 反抽令牌比对</i>
+<i># 1440 / 1024 / 390 三档 + 键盘：行可聚焦、Enter 下钻、Esc 关面板、焦点归还</i></pre>
+    </div>
+    <div class="note">
+      <b>抽取器的两个坑：</b>它只读 <b>当前已渲染</b> 的 DOM，隐藏 tab 里的控件看不见；
+      未设 transition 的元素，缓动计算值就是初始的 <code>ease</code>，会被误报成「用了默认曲线」。
+    </div>
+  </section>
+
+  <p class="foot">
+    这一页自己遵守它描述的规则：方角、hairline、零卡片、12/14/18/24 四档字号、4 基数间距。
+    所有色值与间距在运行时从 <code>:root</code> 读取，改样式表即改本页，不存在第二份真相。
+  </p>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var css = getComputedStyle(document.documentElement);
+  function tok(name) { return css.getPropertyValue(name).trim(); }
+
+  /* ── 对比度：按 WCAG 2.1 相对亮度实算，不手写数字 ── */
+  function rgb(hex) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function lum(hex) {
+    return rgb(hex).map(function (v) {
+      var c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }).reduce(function (a, c, i) { return a + c * [0.2126, 0.7152, 0.0722][i]; }, 0);
+  }
+  function ratio(a, b) {
+    var l1 = lum(a), l2 = lum(b);
+    var hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  var COLORS = [
+    ['--paper', '底 · 全站', 'text'],
+    ['--paper-2', '次级表面 · 行 hover、代码底', 'bg'],
+    ['--rule', '分隔线 · 区块之间', 'bg'],
+    ['--rule-2', '强分隔 · 表格底、控件描边', 'bg'],
+    ['--ink', '正文 · 数字、错误码', 'text'],
+    ['--ink-2', '次级正文 · 状态句、表格', 'text'],
+    ['--muted', '标签 · 图注、表头', 'text'],
+    ['--accent', '异常 · 峰值、故障时段', 'text'],
+    ['--accent-soft', '选区 · 文本选中背景', 'bg'],
+    ['--ok', '成功 · 重试救回、链路成功', 'text'],
+    ['--err', '故障 · 取数失败、脚本异常', 'text']
+  ];
+
+  var paper = tok('--paper');
+  document.getElementById('swatches').innerHTML = COLORS.map(function (c) {
+    var v = tok(c[0]);
+    var self = c[0] === '--paper';
+    var r = ratio(v, paper);
+    var label = self ? '底色本身'
+      : (c[2] === 'text'
+        ? (r >= 7 ? 'AAA' : (r >= 4.5 ? 'AA' : (r >= 3 ? 'AA 大字' : '仅装饰')))
+        : '非文字');
+    return '<div class="sw">' +
+      '<span class="chip" style="background:' + v + '"></span>' +
+      '<span class="name">' + c[0] + '</span>' +
+      '<span class="hex">' + v + '</span>' +
+      '<span class="ratio">' + (self
+        ? '<span class="na">' + label + '</span>'
+        : '<b>' + (c[2] === 'text' ? r.toFixed(1) : '·') + '</b>' +
+          (c[2] === 'text' ? ':1 <span class="na">' + label + '</span>' : '<span class="na">' + label + '</span>')
+      ) + '</span>' +
+      '<span class="use">' + c[1] + '</span>' +
+      '</div>';
+  }).join('');
+
+  var TYPE = [
+    ['--f-display', 'display', '保留档位，当前页面未使用', '0.50%'],
+    ['--f-section', 'section', '区块标题、首屏主句', '158 次失败'],
+    ['--f-body', 'body', '正文、表格、状态句', 'channel:invalid_key'],
+    ['--f-label', 'label', '标签、图注、表头', '失败尝试']
+  ];
+  document.getElementById('scale').innerHTML = TYPE.map(function (t) {
+    return '<div class="scale-row">' +
+      '<span class="px">' + tok(t[0]) + '</span>' +
+      '<span class="role">' + t[1] + '</span>' +
+      '<span class="sample" style="font-size:' + tok(t[0]) + '">' + t[3] + '</span>' +
+      '</div>';
+  }).join('');
+
+  var SPACE = [
+    ['--s-1', '最小间隔：图标与文字'], ['--s-2', '同组元素之间'],
+    ['--s-3', '表格单元格内边距'], ['--s-4', '控件间距、面板内边距'],
+    ['--s-5', '页面左右留白'], ['--s-6', '区块内部上下'],
+    ['--s-7', '区块之间'], ['--s-8', '页面底部留白']
+  ];
+  document.getElementById('spaces').innerHTML = SPACE.map(function (sp) {
+    var v = tok(sp[0]);
+    return '<div class="space-row">' +
+      '<span class="tok">' + sp[0].replace('--s-', '') + '</span>' +
+      '<span class="track2"><i style="width:' + v + '"></i></span>' +
+      '<span class="px2">' + v + '</span>' +
+      '<span class="use">' + sp[1] + '</span>' +
+      '</div>';
+  }).join('');
+
+  var MOTION = [
+    ['行 hover', '90ms · linear', 90, 'linear'],
+    ['按压', '160ms · cubic-bezier(.4,0,.2,1)', 160, tok('--ease-press')],
+    ['面板退场', '180ms · 同上', 180, tok('--ease-press')],
+    ['面板进场', '260ms · cubic-bezier(.22,1,.36,1)', 260, tok('--ease-out')]
+  ];
+  document.getElementById('motion').innerHTML = MOTION.map(function (m, i) {
+    return '<div class="m-row" data-dur="' + m[2] + '" data-ease="' + m[3] + '">' +
+      '<div class="meta"><b>' + m[0] + '</b><span>' + m[1] + '</span></div>' +
+      '<div class="track"><span class="dot"></span></div>' +
+      '<button class="replay" type="button">重放</button>' +
+      '</div>';
+  }).join('');
+
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  Array.prototype.forEach.call(document.querySelectorAll('.m-row'), function (row) {
+    var dot = row.querySelector('.dot');
+    var track = row.querySelector('.track');
+    row.querySelector('.replay').addEventListener('click', function () {
+      var dist = track.clientWidth - 16;
+      if (reduced) { dot.style.transform = 'translateX(' + dist + 'px)'; return; }
+      dot.style.transition = 'none';
+      dot.style.transform = 'translateX(0)';
+      void dot.offsetWidth;
+      dot.style.transition = 'transform ' + row.getAttribute('data-dur') + 'ms ' + row.getAttribute('data-ease');
+      dot.style.transform = 'translateX(' + dist + 'px)';
+    });
+  });
+
+  window.addEventListener('resize', function () {
+    Array.prototype.forEach.call(document.querySelectorAll('.m-row .dot'), function (d) {
+      d.style.transition = 'none';
+      d.style.transform = 'translateX(0)';
+    });
+  });
+})();
+</script>
+</body>
+</html>

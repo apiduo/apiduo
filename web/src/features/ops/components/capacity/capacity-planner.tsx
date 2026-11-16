@@ -26,6 +26,8 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getUsageSeries } from '@/features/dashboard/api'
+import { getOpsBreakdown } from '../../api'
+import type { OpsBreakdownRow } from '../../types'
 import { ApiduoGlow } from '@/features/apiduo-appearance'
 import {
   buildDailySeries,
@@ -43,6 +45,9 @@ const DEFAULT_HORIZON = 7
 const MAX_ROWS = 12
 
 interface ForecastRow {
+  // key 与运营台的下钻表同源，用来把「容量趋势」和「当前质量」对齐。
+  // 用 label 匹配不可靠：label 是显示名，可能重命名或本地化。
+  key: string
   label: string
   series: DailyPoint[]
   forecast: ForecastResult
@@ -128,6 +133,26 @@ export function CapacityPlanner() {
     staleTime: 5 * 60_000,
   })
 
+  // 当前质量只看最近 24 小时：容量讲的是「两周后的量」，
+  // 质量讲的是「现在有没有在坏」，两个时间尺度不能混。
+  const nowSec = () => Math.floor(Date.now() / 1000)
+  const quality = useQuery({
+    queryKey: ['ops-capacity-quality', dimension],
+    queryFn: () =>
+      getOpsBreakdown({
+        from: nowSec() - 86400,
+        to: nowSec(),
+        dim: dimension,
+      }),
+    refetchInterval: 60_000,
+  })
+
+  const qualityByKey = useMemo(() => {
+    const map: Record<string, OpsBreakdownRow> = {}
+    for (const r of quality.data?.rows ?? []) map[r.key] = r
+    return map
+  }, [quality.data])
+
   const rows = useMemo<ForecastRow[]>(() => {
     const groups = query.data ?? []
     return groups
@@ -136,6 +161,7 @@ export function CapacityPlanner() {
         const forecast = forecastUsage(series, { horizonDays: horizon })
         const values = series.map((point) => point.quota)
         return {
+          key: String(group.key ?? group.label ?? ''),
           label: group.label || group.key || t('Unknown model'),
           series,
           forecast,
@@ -351,6 +377,12 @@ export function CapacityPlanner() {
                     <th className='text-muted-foreground px-3 py-2 text-right text-[11px] font-medium'>
                       {t('95% range')}
                     </th>
+                    <th className='text-muted-foreground px-3 py-2 text-right text-[11px] font-medium'>
+                      {t('Failure rate')}
+                    </th>
+                    <th className='text-muted-foreground px-3 py-2 text-right text-[11px] font-medium'>
+                      P95
+                    </th>
                     <th className='text-muted-foreground px-3 py-2 text-left text-[11px] font-medium'>
                       {t('Recommendation')}
                     </th>
@@ -389,6 +421,36 @@ export function CapacityPlanner() {
                         <td className='text-muted-foreground px-3 py-2 text-right font-mono text-xs tabular-nums'>
                           {formatQuota(row.forecast.lowerTotal)} ~{' '}
                           {formatQuota(row.forecast.upperTotal)}
+                        </td>
+                        <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
+                          {(() => {
+                            const q = qualityByKey[row.key]
+                            if (!q) return <span className='text-muted-foreground/50'>—</span>
+                            return q.fail_rate >= 0.2 ? (
+                              <span className='text-destructive font-semibold'>
+                                {(q.fail_rate * 100).toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className='text-muted-foreground'>
+                                {(q.fail_rate * 100).toFixed(1)}%
+                              </span>
+                            )
+                          })()}
+                        </td>
+                        <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
+                          {(() => {
+                            const q = qualityByKey[row.key]
+                            if (!q) return <span className='text-muted-foreground/50'>—</span>
+                            return q.p95_ms >= 10000 ? (
+                              <span className='text-destructive font-semibold'>
+                                {(q.p95_ms / 1000).toFixed(1)}s
+                              </span>
+                            ) : (
+                              <span className='text-muted-foreground'>
+                                {(q.p95_ms / 1000).toFixed(1)}s
+                              </span>
+                            )
+                          })()}
                         </td>
                         <td className='px-3 py-2'>
                           <span

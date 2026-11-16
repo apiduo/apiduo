@@ -289,6 +289,52 @@ export function useUsersColumns(): ColumnDef<User>[] {
         minSize: 240,
         meta: { mobileHidden: true },
       },
+      /* APIDUO:growth:BEGIN */
+      {
+        accessorKey: 'growth_quota_30d',
+        header: t('30-day usage'),
+        cell: ({ row }) => (
+          <span className='text-sm tabular-nums'>
+            {formatQuota(row.original.growth_quota_30d ?? 0)}
+          </span>
+        ),
+        size: 130,
+        meta: { mobileHidden: true },
+      },
+      {
+        accessorKey: 'growth_trend',
+        header: t('Trend'),
+        cell: ({ row }) => {
+          const trend = row.original.growth_trend
+          if (!trend) return <span className='text-muted-foreground'>-</span>
+          const label = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'
+          const className =
+            trend === 'up'
+              ? 'text-emerald-600'
+              : trend === 'down'
+                ? 'text-destructive'
+                : 'text-muted-foreground'
+          return <span className={className}>{label}</span>
+        },
+        size: 80,
+        meta: { mobileHidden: true },
+      },
+      {
+        accessorKey: 'growth_tier',
+        header: t('Tier'),
+        cell: ({ row }) => {
+          const tier = row.original.growth_tier
+          if (!tier) return <span className='text-muted-foreground'>-</span>
+          return (
+            <span className='inline-flex h-5 items-center rounded-full border px-2 text-xs font-medium'>
+              {tier}
+            </span>
+          )
+        },
+        size: 80,
+        meta: { mobileHidden: true },
+      },
+      /* APIDUO:growth:END */
       {
         id: 'actions',
         header: () => t('Actions'),

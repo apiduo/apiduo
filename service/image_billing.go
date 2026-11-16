@@ -83,7 +83,7 @@ func PrepareImageBillingForRequest(c *gin.Context, info *relaycommon.RelayInfo, 
 		if errors.As(err, &apiErr) {
 			return apiErr
 		}
-		return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), quotaTopUp(0))
 	}
 	info.FinalPreConsumedQuota = info.Billing.GetPreConsumedQuota()
 	return nil

@@ -22,13 +22,14 @@ import type { DashboardSectionId } from './section-registry'
 // section tab list both filter through this list, so adding an admin-only
 // section here is enough to keep them in sync.
 export const ADMIN_ONLY_DASHBOARD_SECTIONS: readonly DashboardSectionId[] = [
-  // These read the global aggregates (/api/data, /api/data/flow, /api/data/sk).
+  // These read the global aggregates (/api/data, /api/data/flow).
   // Regular users only have the /self variants, so showing the tabs would just
-  // render a 403. Their own view lives in "My keys".
+  // render a 403.
+  //
+  // 'sk' 不在这个列表里：它的组件按 isAdmin 自动在 /api/data/sk 与
+  // /api/data/sk/self 之间切换，普通用户看到的是自己 key 的用量。
+  // 下放它是有意的——「我的 key 用得怎么样」本来就该让用户自己看。
   'models',
   'flow',
   'users',
-  'sk',
-  'capacity',
-  'retention',
 ]

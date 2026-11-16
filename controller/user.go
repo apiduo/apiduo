@@ -345,7 +345,9 @@ func GetAllUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	/* APIDUO:growth-users:BEGIN */
+	pageInfo.SetItems(AttachGrowthStats(users))
+	/* APIDUO:growth-users:END */
 
 	common.ApiSuccess(c, pageInfo)
 	return

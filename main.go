@@ -85,6 +85,19 @@ func main() {
 		// for compatibility with old versions
 		common.MemoryCacheEnabled = true
 	}
+	// APIDUO:endpoint-registry:BEGIN Runs before the channel cache is built so
+	// the ability rows of the migrated file purposes are in place on the first
+	// request. Rebuilding is skipped when nothing changed, because FixAbility
+	// truncates and rewrites the whole table.
+	if migrated, err := model.MigrateFileUploadPurposes(); err != nil {
+		common.SysError(common.LogText("file relay purpose migration failed: %s", err.Error()))
+	} else if migrated > 0 {
+		common.SysLog(common.LogText("file relay purposes migrated to model names: %d channels", migrated))
+		if _, _, fixErr := model.FixAbility(); fixErr != nil {
+			common.SysError(common.LogText("file relay purpose migration: ability rebuild failed: %s", fixErr.Error()))
+		}
+	}
+	// APIDUO:endpoint-registry:END
 	if common.MemoryCacheEnabled {
 		common.SysLog(common.LogText("memory cache enabled"))
 		common.SysLog(common.LogText("sync frequency: %d seconds", common.SyncFrequency))
@@ -166,6 +179,12 @@ func main() {
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
+
+	/* APIDUO:growth:BEGIN */
+	// 增长运营的离线聚合。只读 quota_data 与 logs，写自己的派生表，
+	// 不参与转发路径，失败也只是数据不新鲜。
+	service.StartGrowthTaskLoop()
+	/* APIDUO:growth:END */
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.

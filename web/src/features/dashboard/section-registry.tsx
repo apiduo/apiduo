@@ -60,18 +60,6 @@ const DASHBOARD_SECTIONS = [
     adminOnly: true,
     build: () => null,
   },
-  {
-    id: 'capacity',
-    titleKey: 'Capacity Planning',
-    adminOnly: true,
-    build: () => null,
-  },
-  {
-    id: 'retention',
-    titleKey: 'Customer Health',
-    adminOnly: true,
-    build: () => null,
-  },
 ] as const
 
 export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']

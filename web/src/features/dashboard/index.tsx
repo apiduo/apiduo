@@ -130,17 +130,7 @@ const LazySkAnalytics = lazy(() =>
   }))
 )
 
-const LazyCapacityPlanner = lazy(() =>
-  import('./components/capacity/capacity-planner').then((m) => ({
-    default: m.CapacityPlanner,
-  }))
-)
 
-const LazyRetentionBoard = lazy(() =>
-  import('./components/retention/retention-board').then((m) => ({
-    default: m.RetentionBoard,
-  }))
-)
 
 function LogStatCardsFallback() {
   return (
@@ -226,12 +216,6 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   },
   sk: {
     titleKey: 'SK Analytics',
-  },
-  capacity: {
-    titleKey: 'Capacity Planning',
-  },
-  retention: {
-    titleKey: 'Customer Health',
   },
 }
 
@@ -501,20 +485,6 @@ export function Dashboard() {
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
                 <LazySkAnalytics />
-              </Suspense>
-            </FadeIn>
-          )}
-          {activeSection === 'capacity' && (
-            <FadeIn>
-              <Suspense fallback={<ModelChartsFallback />}>
-                <LazyCapacityPlanner />
-              </Suspense>
-            </FadeIn>
-          )}
-          {activeSection === 'retention' && (
-            <FadeIn>
-              <Suspense fallback={<ModelChartsFallback />}>
-                <LazyRetentionBoard />
               </Suspense>
             </FadeIn>
           )}

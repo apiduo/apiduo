@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 /**
  * Channel types with a known /v1/files protocol. Mirrors BackendForChannel in
  * service/filerelay: a type listed here can carry an upload, but the channel
- * still has to opt in to each purpose before it receives traffic.
+ * still has to declare each purpose before it receives traffic.
  */
 const FILE_RELAY_CHANNEL_TYPES: ReadonlySet<number> = new Set([
   1, // OpenAI
@@ -50,20 +50,70 @@ export const FILE_RELAY_PURPOSES = [
 
 export type FileRelayPurpose = (typeof FILE_RELAY_PURPOSES)[number]
 
+/**
+ * Routing-name prefix of one file purpose, mirroring endpoint.FileUploadPrefix
+ * in pkg/endpoint.
+ *
+ * The purpose lives in the model list rather than in the settings blob because
+ * the model list is what the gateway routes on: a channel serves
+ * "@files/upload/batch" exactly the way it serves a model name. A field in the
+ * settings blob would be a second capability list that routing never reads, and
+ * a stale one is invisible.
+ */
+export const FILE_UPLOAD_MODEL_PREFIX = '@files/upload/'
+
+export function fileUploadModel(purpose: string): string {
+  return `${FILE_UPLOAD_MODEL_PREFIX}${purpose}`
+}
+
+/**
+ * Recovers the purposes a channel declares from its comma-separated model list.
+ * Unknown and empty entries are dropped so a hand-edited list cannot render an
+ * empty checkbox.
+ */
+export function readFileUploadPurposes(models: string): string[] {
+  return models
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > FILE_UPLOAD_MODEL_PREFIX.length)
+    .filter((name) => name.startsWith(FILE_UPLOAD_MODEL_PREFIX))
+    .map((name) => name.slice(FILE_UPLOAD_MODEL_PREFIX.length))
+}
+
+/**
+ * Returns the model list with one purpose added or removed. Order is preserved
+ * and duplicates are dropped: the backend compares the list as a set, so a
+ * repeated name would only make the console disagree with the form.
+ */
+export function withFileUploadPurpose(
+  models: string,
+  purpose: string,
+  enabled: boolean
+): string {
+  const name = fileUploadModel(purpose)
+  const names = models
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0 && entry !== name)
+  if (enabled) {
+    names.push(name)
+  }
+  return names.join(',')
+}
+
 export interface FileRelayConfig {
-  purposes: string[]
   max_upload_bytes: number
 }
 
-const EMPTY_FILE_RELAY: FileRelayConfig = { purposes: [], max_upload_bytes: 0 }
+const EMPTY_FILE_RELAY: FileRelayConfig = { max_upload_bytes: 0 }
 
 /**
  * Reads the file relay block out of the channel's settings JSON.
  *
- * The value stays a plain JSON field rather than a form column: the channel
- * settings blob is already the place for per-channel extensions, and
- * buildSettingsJSON preserves keys it does not know, so nothing has to be
- * migrated or cascaded when a channel is deleted.
+ * Only the per-file ceiling stays here. The value rides along with the normal
+ * channel save instead of needing its own endpoint, and buildSettingsJSON
+ * preserves keys it does not know, so nothing has to be migrated or cascaded
+ * when a channel is deleted.
  */
 export function readFileRelayConfig(
   settings: Record<string, unknown>
@@ -73,17 +123,15 @@ export function readFileRelayConfig(
     return EMPTY_FILE_RELAY
   }
   const record = raw as Record<string, unknown>
-  const purposes = Array.isArray(record.purposes)
-    ? record.purposes.filter((item): item is string => typeof item === 'string')
-    : []
   const maxBytes =
     typeof record.max_upload_bytes === 'number' ? record.max_upload_bytes : 0
-  return { purposes, max_upload_bytes: maxBytes }
+  return { max_upload_bytes: maxBytes }
 }
 
 /**
  * Suggested purposes per channel type. Purely advisory: a channel still has to
- * opt in, and the backend validates whatever it is given.
+ * declare them, and the backend routes on whatever the model list ends up
+ * containing.
  */
 export function defaultFileRelayPurposes(channelType: number): string[] {
   switch (channelType) {

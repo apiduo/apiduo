@@ -1,0 +1,1879 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fcfcfa">
+<title>错误看板 v2 · 判断版</title>
+<meta name="description" content="apiduo 错误看板 v2：基线带、错误聚类、变更标记、维度切片、渠道时间线与数据新鲜度。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* 角色: display 24 / section 18 / body 14 / label 12 · 相邻 ≥1.17 */
+:root {
+  --paper: #fcfcfa;
+  --paper-2: #f4f4f1;
+  --rule: #e4e4de;
+  --rule-2: #cfcfc7;
+  --ink: #1a1c1e;
+  --ink-2: #45484b;
+  --muted: #6b7076;
+  --accent: #9a3412;
+  --accent-soft: #fdf0ea;
+  --ok: #3f6f4a;
+  --err: #a4161a;
+  --raw-bg: #1a1c1e;
+  --raw-ink: #ececea;
+
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px;
+
+  --f-label: 12px;
+  --f-body: 14px;
+  --f-section: 18px;
+  --f-display: 24px;
+
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-press: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 160ms;
+  --dur: 200ms;
+  color-scheme: light;
+}
+
+/* 暗色：同一组令牌换值，页面结构不变。夜班盯屏是真实场景。 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16181c;
+    --paper-2: #1e2127;
+    --rule: #2a2e36;
+    --rule-2: #3c414b;
+    --ink: #e7e9ec;
+    --ink-2: #b6bac1;
+    --muted: #8b9097;
+    --accent: #e07a52;
+    --accent-soft: #2b1c15;
+    --ok: #74b98a;
+    --err: #e07377;
+    --raw-bg: #0e1013;
+    --raw-ink: #dfe1e5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #16181c; --paper-2: #1e2127; --rule: #2a2e36; --rule-2: #3c414b;
+  --ink: #e7e9ec; --ink-2: #b6bac1; --muted: #8b9097;
+  --accent: #e07a52; --accent-soft: #2b1c15; --ok: #74b98a; --err: #e07377;
+  --raw-bg: #0e1013; --raw-ink: #dfe1e5; color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scrollbar-color: var(--rule-2) var(--paper); scrollbar-width: thin; }
+@media (pointer: fine) { html { overscroll-behavior: none; } }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--f-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+button, a, input, select { touch-action: manipulation; }
+button { transition: transform var(--dur-fast) var(--ease-press); }
+button:active:not(:disabled) { transform: scale(0.972); }
+@media (prefers-reduced-motion: reduce) { button:active { transform: none; } }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; text-wrap: balance; }
+p { margin: 0; text-wrap: pretty; }
+a { color: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); font-size: 12px; }
+
+.skip {
+  position: absolute; left: var(--s-4); top: -100px; z-index: 60;
+  background: var(--ink); color: var(--paper); padding: var(--s-2) var(--s-4);
+  font-size: var(--f-label); text-decoration: none;
+  transition: top var(--dur-fast) var(--ease-out);
+}
+.skip:focus-visible { top: var(--s-2); outline-offset: -3px; outline-color: var(--paper); }
+
+/* ── 报头 ── */
+.bar {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  position: sticky; top: 0; z-index: 30;
+}
+.mark {
+  font-family: var(--mono); font-size: var(--f-label); letter-spacing: 0.04em;
+  text-transform: lowercase; color: var(--muted); text-decoration: none;
+  padding-right: var(--s-3); border-right: 1px solid var(--rule);
+}
+.mark:hover { color: var(--accent); }
+.bar h1 { font-size: var(--f-body); font-weight: 500; color: var(--ink-2); white-space: nowrap; }
+.verdict {
+  flex: 1; min-width: 0; color: var(--ink-2); font-size: var(--f-body);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.verdict b { color: var(--ink); font-weight: 500; }
+.verdict em { font-style: normal; color: var(--accent); font-weight: 500; }
+.act { display: flex; gap: var(--s-2); flex: 0 0 auto; }
+.act button, .act a {
+  appearance: none; border: 1px solid var(--rule-2); background: var(--paper);
+  height: 30px; padding: 0 var(--s-3); font-family: inherit; font-size: var(--f-label);
+  color: var(--ink-2); cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center;
+  transition: background-color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+@media (hover: hover) and (pointer: fine) {
+  .act button:hover, .act a:hover { background: var(--paper-2); border-color: var(--ink-2); }
+}
+.range { display: flex; gap: var(--s-3); flex: 0 0 auto; }
+.range button {
+  appearance: none; border: 0; background: none; padding: 2px 0;
+  font-family: inherit; font-size: var(--f-label); color: var(--muted); cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.range button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.range button:hover { color: var(--ink-2); }
+
+.tabs {
+  display: flex; gap: var(--s-5); padding: 0 var(--s-5);
+  border-bottom: 1px solid var(--rule); background: var(--paper);
+  position: sticky; top: 47px; z-index: 29; overflow-x: auto;
+}
+.tabs button {
+  appearance: none; border: 0; background: none; height: 40px; padding: 0;
+  font-family: inherit; font-size: var(--f-body); color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+  transition: color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.tabs button:hover { color: var(--ink-2); }
+
+main { max-width: 1220px; margin-inline: auto; padding: var(--s-7) var(--s-5) var(--s-8); }
+
+/* ── 首屏 ── */
+.brief { padding-bottom: var(--s-6); border-bottom: 1px solid var(--rule); }
+.brief-top { display: block; }
+.brief-line { font-size: var(--f-section); line-height: 1.45; color: var(--ink); max-width: 36em; }
+.brief-line b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.brief-line em { font-style: normal; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.brief-sub { margin-top: var(--s-3); font-size: var(--f-body); color: var(--ink-2); max-width: 46ch; }
+.brief-sub b { color: var(--ink); font-weight: 500; }
+
+/* 三个判断横排：上有 hairline，列间一条竖线，不加容器 */
+.judge {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 860px; margin-top: var(--s-5); border-top: 1px solid var(--rule);
+}
+.judge > div { padding: var(--s-3) var(--s-4) 0 0; }
+.judge > div + div { padding-left: var(--s-4); border-left: 1px solid var(--rule); }
+.judge .k { font-size: var(--f-label); color: var(--muted); }
+.judge .v { margin-top: 2px; font-size: var(--f-body); color: var(--ink); }
+.judge .v span { color: var(--muted); }
+
+/* ── 刻度 ── */
+.chart { position: relative; margin-top: var(--s-6); }
+.plot { position: relative; height: 104px; border-bottom: 1px solid var(--rule-2); }
+.plot .band-seg {
+  position: absolute; bottom: 0; background: var(--rule-2); opacity: 0.55;
+  border-bottom: 1px solid var(--ink-2);
+}
+.plot .vbar {
+  position: absolute; bottom: 0; background: var(--ink-2);
+  transform-origin: 50% 100%; animation: grow var(--dur) var(--ease) both;
+}
+.plot .vbar.hot { background: var(--accent); }
+.plot .p50 {
+  position: absolute; height: 0; border-top: 1px dashed var(--ink-2);
+  opacity: 0.7; z-index: 2;
+}
+.plot .chg {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: var(--ink); opacity: 0.55;
+}
+.plot .chg::before {
+  content: ""; position: absolute; top: 0; left: -2px;
+  width: 5px; height: 5px; background: var(--ink);
+}
+@keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .plot .vbar { animation: none; }
+}
+.chart-axis { display: flex; justify-content: space-between; margin-top: var(--s-1); }
+.chart-axis span { font-family: var(--mono); font-size: var(--f-label); color: var(--muted); }
+.chart-key {
+  display: flex; gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-2);
+  font-size: var(--f-label); color: var(--muted);
+}
+.chart-key i { display: inline-block; width: 12px; height: 8px; margin-right: var(--s-1); vertical-align: 0; }
+.chart-key .k-band { background: var(--rule-2); opacity: 0.55; }
+.chart-key .k-line { height: 0 !important; border-top: 2px dashed var(--ink-2); background: none; opacity: 0.7; }
+.chart-key .k-bar { background: var(--ink-2); }
+.chart-key .k-hot { background: var(--accent); }
+.chart-note { margin-top: var(--s-2); font-size: var(--f-label); color: var(--muted); line-height: 1.6; }
+
+/* ── 变更标记列表 ── */
+.changes {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-4); margin-top: var(--s-4); padding-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+}
+.change-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 var(--s-2); font-size: 13px; align-items: baseline;
+}
+.change-row .lab { grid-column: 1 / -1; margin-top: 2px; }
+.change-row .t { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.change-row .kind { font-size: 12px; color: var(--ink-2); }
+.change-row .lab { color: var(--ink-2); }
+.change-row.near .lab { color: var(--ink); }
+.change-row .lab b { font-weight: 500; }
+
+/* ── 章节 ── */
+.section { margin-top: var(--s-7); }
+.section > h2 {
+  display: flex; align-items: baseline; gap: var(--s-3);
+  font-size: var(--f-section);
+  padding-bottom: var(--s-2); border-bottom: 1px solid var(--rule);
+}
+.section > h2 .def { margin-left: auto; font-size: var(--f-label); font-weight: 400; color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--rule-2); }
+.section > h2 .def:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.section > .sub { margin-top: var(--s-2); font-size: 13px; color: var(--ink-2); max-width: 76ch; }
+
+.dims { display: flex; gap: var(--s-4); margin: var(--s-4) 0 var(--s-2); flex-wrap: wrap; }
+.dims button {
+  appearance: none; border: 0; background: none; padding: 2px 0;
+  font-family: inherit; font-size: 13px; color: var(--muted); cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.dims button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.dims button:hover { color: var(--ink-2); }
+
+/* ── 表 ── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: var(--s-2) var(--s-3); vertical-align: middle; }
+th {
+  font-size: var(--f-label); color: var(--muted); font-weight: 500;
+  border-bottom: 1px solid var(--rule-2); white-space: nowrap;
+}
+td { border-bottom: 1px solid var(--rule); font-size: 13px; }
+th.r, td.r { text-align: right; }
+th:first-child, td:first-child { padding-left: 0; }
+th:last-child, td:last-child { padding-right: 0; }
+tbody tr.click { cursor: pointer; }
+tbody tr.click td { transition: background-color 90ms linear; }
+@media (hover: hover) and (pointer: fine) {
+  tbody tr.click:hover td { background: var(--paper-2); }
+}
+tr.click:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+td.code { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+td.dim { color: var(--ink); }
+td.dim b { font-weight: 500; }
+td.sec { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+.tag {
+  display: inline-block; font-size: 11px; line-height: 18px; padding: 0 6px;
+  border: 1px solid var(--rule-2); color: var(--ink-2); white-space: nowrap;
+}
+.tag.new { border-color: var(--accent); color: var(--accent); }
+.tag.fixed { border-color: var(--ok); color: var(--ok); }
+.tag.mute { color: var(--muted); }
+
+.share { display: flex; align-items: center; gap: var(--s-2); }
+.share-bar { flex: 1 1 auto; height: 6px; background: var(--paper-2); position: relative; min-width: 44px; }
+.share-bar i { position: absolute; inset: 0 auto 0 0; background: var(--rule-2); }
+.share-bar i.hot { background: var(--accent); }
+.share-num { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+
+.empty { padding: var(--s-6) 0; color: var(--muted); font-size: 13px; }
+
+/* ── 筛选 ── */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin: var(--s-4) 0 var(--s-2); }
+.field { display: inline-flex; align-items: center; gap: var(--s-2); }
+.field > span { font-size: var(--f-label); color: var(--muted); white-space: nowrap; }
+.filters input[type="search"], .filters select, .filters input[type="datetime-local"] {
+  height: 32px; padding: 0 var(--s-2);
+  border: 1px solid var(--rule-2); border-radius: 0;
+  background-color: var(--paper); color: var(--ink);
+  font-size: 13px; font-family: inherit; outline: none;
+}
+.filters input[type="search"] { width: 240px; }
+.filters input[type="search"]::placeholder { color: var(--muted); }
+.filters select { min-width: 108px; cursor: pointer; }
+.filters input[type="search"]:hover, .filters select:hover { border-color: var(--ink-2); }
+.filters input[type="search"]:focus-visible, .filters select:focus-visible,
+.filters input[type="datetime-local"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.filters input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; }
+.btn-clear {
+  appearance: none; border: 1px solid var(--rule-2); background: var(--paper);
+  height: 32px; padding: 0 var(--s-3); font-size: 13px; color: var(--ink-2); cursor: pointer;
+  transition: background-color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.btn-clear:hover { background: var(--paper-2); border-color: var(--ink-2); }
+.filters-count { margin-left: auto; font-size: var(--f-label); color: var(--muted); }
+.filters-count b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ── 渠道时间线 ── */
+.timeline { margin-top: var(--s-5); border-top: 1px solid var(--rule); }
+.timeline h3 { margin-top: var(--s-4); font-size: var(--f-body); font-weight: 500; }
+.tl { list-style: none; margin: var(--s-3) 0 0; padding: 0; }
+.tl li {
+  display: grid; grid-template-columns: 64px 68px minmax(0, 1fr);
+  gap: var(--s-3); padding: var(--s-2) 0; border-bottom: 1px solid var(--rule);
+  font-size: 13px; align-items: baseline;
+}
+.tl .t { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.tl .d { color: var(--ink-2); }
+.tl .d b { color: var(--ink); font-weight: 500; }
+
+/* ── 抽屉 ── */
+.scrim {
+  position: fixed; inset: 0; background: rgba(20, 20, 26, 0.42);
+  opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) linear; z-index: 40;
+}
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: fixed; top: 0; right: 0; height: 100%; width: min(520px, 94vw);
+  background: var(--paper); border-left: 1px solid var(--rule-2);
+  transform: translateX(100%);
+  transition: transform 180ms var(--ease-press);
+  z-index: 41; display: flex; flex-direction: column;
+}
+.sheet.on { transform: none; transition-duration: 260ms; transition-timing-function: var(--ease-out); }
+.sheet-h {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--rule);
+}
+.sheet-h h3 { font-size: var(--f-body); font-weight: 500; }
+.sheet-h .meta { margin-top: var(--s-1); font-size: var(--f-label); color: var(--muted); }
+.sheet-x {
+  margin-left: auto; appearance: none; border: 1px solid var(--rule-2);
+  background: var(--paper); width: 28px; height: 28px; cursor: pointer;
+  color: var(--ink-2); font-size: 15px; line-height: 1; padding: 0; flex: 0 0 28px;
+}
+.sheet-b { overflow: auto; overscroll-behavior: contain; padding: var(--s-5); }
+.sheet-b h4 { margin: var(--s-5) 0 var(--s-2); font-size: var(--f-label); font-weight: 500; color: var(--muted); }
+.sheet-b h4:first-child { margin-top: 0; }
+.raw {
+  background: var(--raw-bg); color: var(--raw-ink); padding: var(--s-3);
+  font-family: var(--mono); font-size: 12px; line-height: 1.7;
+  white-space: pre-wrap; word-break: break-word;
+}
+dl.kv { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--s-1) var(--s-3); margin: 0; font-size: 13px; }
+dl.kv dt { color: var(--muted); font-size: 12px; }
+dl.kv dd { margin: 0; word-break: break-all; }
+ol.chain { list-style: none; margin: 0; padding: 0 0 0 var(--s-4); border-left: 1px solid var(--rule-2); }
+ol.chain li { position: relative; padding: var(--s-2) 0; }
+ol.chain li::before {
+  content: ""; position: absolute; left: calc(-1 * var(--s-4) - 2.5px); top: 13px;
+  width: 4px; height: 4px; background: var(--rule-2);
+}
+ol.chain li.f::before { background: var(--err); }
+ol.chain li.o::before { background: var(--ok); }
+ol.chain .r1 { display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: baseline; font-size: 13px; }
+ol.chain .r2 { color: var(--muted); font-size: 12px; margin-top: 2px; }
+ol.chain code { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+
+/* ── 口径页 ── */
+.prose { max-width: 68ch; }
+.prose h2 { font-size: var(--f-section); padding-bottom: var(--s-2); border-bottom: 1px solid var(--rule); }
+.prose h3 { margin-top: var(--s-6); margin-bottom: var(--s-2); font-size: var(--f-body); font-weight: 500; }
+.prose p { margin-top: var(--s-2); color: var(--ink-2); line-height: 1.65; }
+.prose ul { margin: var(--s-2) 0 0; padding-left: var(--s-5); color: var(--ink-2); }
+.prose li { margin-block: var(--s-1); line-height: 1.6; }
+.prose code { font-family: var(--mono); font-size: 12px; background: var(--paper-2); padding: 1px 4px; }
+.foot { margin-top: var(--s-6); padding-top: var(--s-3); border-top: 1px solid var(--rule); font-size: var(--f-label); color: var(--muted); line-height: 1.7; }
+.foot a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule-2); }
+
+/* ── 提示条 ── */
+.toast {
+  position: fixed; left: 50%; bottom: var(--s-5); transform: translate(-50%, 12px);
+  background: var(--ink); color: var(--paper); padding: var(--s-2) var(--s-4);
+  font-size: 13px; opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-fast) linear, transform var(--dur-fast) var(--ease-out);
+  z-index: 60; max-width: min(560px, 90vw);
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 900px) {
+  .brief { grid-template-columns: 1fr; gap: var(--s-5); }
+  .brief-line { font-size: 16px; max-width: none; }
+  .judge { gap: var(--s-3); }
+}
+@media (max-width: 720px) {
+  .bar { flex-wrap: wrap; gap: var(--s-2); padding: var(--s-3) var(--s-4); }
+  .verdict { order: 3; flex: 1 0 100%; width: 100%; white-space: normal; font-size: 13px; }
+  .act { order: 4; }
+  .range { order: 5; flex-wrap: wrap; }
+  .act { order: 4; }
+  .range { order: 5; }
+  .tabs { top: 0; position: static; padding: 0 var(--s-4); gap: var(--s-4); }
+  main { padding: var(--s-5) var(--s-4) var(--s-8); }
+  .judge { grid-template-columns: 1fr; }
+  .judge > div { padding: 0 0 var(--s-2); }
+  .judge > div + div { padding-left: 0; padding-top: var(--s-2); border-left: 0; border-top: 1px solid var(--rule); }
+}
+@media (max-width: 560px) {
+  .filters input[type="search"], .filters select { font-size: 16px; height: 38px; }
+  .filters input[type="search"] { width: 100%; }
+  .field { width: 100%; }
+  .field > span:not(.sr-only) { flex: 0 0 52px; }
+  .filters select { flex: 1; }
+  .filters-count { margin-left: 0; }
+  .table-wrap { overflow: visible; }
+  #view-stream table, #view-cluster table { min-width: 0; }
+  table, thead, tbody, tr, td, th { display: block; }
+  thead { display: none; }
+  tbody tr { padding: var(--s-3) 0; border-bottom: 1px solid var(--rule); }
+  td {
+    border: 0; padding: 3px 0; font-size: 13px; min-width: 0;
+    display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4);
+  }
+  td::before { content: attr(data-l); color: var(--muted); font-size: 12px; flex: 0 0 auto; white-space: nowrap; }
+  td:not([data-l])::before { content: none; }
+  td.code, td.sec { white-space: normal; overflow-wrap: anywhere; text-align: right; }
+  .share { justify-content: flex-end; }
+  .share-bar { display: none; }
+  .sheet { width: 100%; border-left: 0; }
+  .sheet-b { padding: var(--s-4); }
+  .tl li { grid-template-columns: 52px 56px 1fr; }
+  .changes { grid-template-columns: 1fr; gap: 0; }
+  .change-row { grid-template-columns: 52px minmax(0, 1fr); padding: var(--s-2) 0; border-bottom: 1px solid var(--rule); }
+  .change-row .lab { grid-column: 2; margin-top: 0; }
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="bar">
+  <a class="mark" href="#">apiduo</a>
+  <h1>错误看板</h1>
+  <p class="verdict" id="verdict" role="status" aria-live="polite">正在读取日志…</p>
+  <div class="act">
+    <button type="button" id="btnShare">复制链接</button>
+    <button type="button" id="btnCsv">导出 CSV</button>
+  </div>
+  <div class="range" id="range" role="group" aria-label="时间范围">
+    <button data-range="1h" aria-pressed="false">1 小时</button>
+    <button data-range="6h" aria-pressed="false">6 小时</button>
+    <button data-range="24h" aria-pressed="true">24 小时</button>
+    <button data-range="7d" aria-pressed="false">7 天</button>
+    <button data-range="custom" aria-pressed="false">自定义</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist">
+  <button role="tab" data-view="overview" aria-selected="true" aria-controls="view-overview">总览</button>
+  <button role="tab" data-view="stream" aria-selected="false" aria-controls="view-stream">错误清单</button>
+  <button role="tab" data-view="channel" aria-selected="false" aria-controls="view-channel">渠道</button>
+  <button role="tab" data-view="notes" aria-selected="false" aria-controls="view-notes">口径</button>
+</nav>
+
+<main id="main" tabindex="-1">
+
+  <section class="view" id="view-overview" role="tabpanel">
+    <div class="brief">
+      <div class="brief-top">
+        <div>
+          <p class="brief-line" id="briefLine">&nbsp;</p>
+          <p class="brief-sub" id="briefSub">&nbsp;</p>
+        </div>
+        <div class="judge" id="judge"></div>
+      </div>
+
+      <div class="chart">
+        <div class="plot" id="plot"></div>
+        <div class="chart-axis" id="chartAxis"></div>
+        <div class="chart-key">
+          <span><i class="k-line"></i>常态中位数（P50）</span>
+          <span><i class="k-band"></i>常态区间（P50–P95）</span>
+          <span><i class="k-bar"></i>本次失败尝试</span>
+          <span><i class="k-hot"></i>异常时段</span>
+        </div>
+        <p class="chart-note" id="chartNote">&nbsp;</p>
+        <div class="changes" id="changes"></div>
+      </div>
+    </div>
+
+    <section class="section" id="view-cluster">
+      <h2>错误聚类
+        <a class="def" href="#notes">口径</a>
+      </h2>
+      <p class="sub">一类错误一行。新增的排最前，其余按失败尝试降序。<b>首现</b>决定它是不是新问题，<b>影响</b>决定要不要现在动手，<b>状态</b>决定它在变好还是变坏。</p>
+      <div class="dims" id="dims" role="group" aria-label="聚类维度">
+        <button data-dim="code" aria-pressed="true">错误码</button>
+        <button data-dim="model" aria-pressed="false">模型</button>
+        <button data-dim="channel" aria-pressed="false">渠道</button>
+        <button data-dim="user" aria-pressed="false">用户</button>
+        <button data-dim="group" aria-pressed="false">分组</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th id="thDim">错误</th>
+              <th>首现</th>
+              <th>影响用户</th>
+              <th class="r">尝试</th>
+              <th>占比</th>
+              <th>状态</th>
+              <th>主要来源</th>
+            </tr>
+          </thead>
+          <tbody id="clusterRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>重试
+        <a class="def" href="#notes">口径</a>
+      </h2>
+      <p class="sub">同一请求的多次尝试。未重试指 DecideRelayRetry 判定不可重试、直接返回。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>尝试次数</th>
+              <th class="r">请求</th>
+              <th>成功 / 失败</th>
+              <th class="r">成功率</th>
+              <th class="r">最终失败</th>
+            </tr>
+          </thead>
+          <tbody id="retryRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <section class="view" id="view-stream" role="tabpanel" hidden>
+    <h2 style="font-size:var(--f-section);padding-bottom:var(--s-2);border-bottom:1px solid var(--rule)">错误清单</h2>
+    <p class="sub" style="margin-top:var(--s-2);font-size:13px;color:var(--ink-2)">一条错误一行。同一 request_id 可能有多行，那是一个请求打了多个渠道。</p>
+
+    <div class="filters">
+      <label class="field">
+        <span class="sr-only">搜索错误</span>
+        <input type="search" id="q" placeholder="错误码、消息、request_id、用户…"
+               autocomplete="off" spellcheck="false" enterkeyhint="search">
+      </label>
+      <label class="field">
+        <span>错误码</span>
+        <select id="fCode"><option value="">全部</option></select>
+      </label>
+      <label class="field">
+        <span>渠道</span>
+        <select id="fChannel"><option value="">全部</option></select>
+      </label>
+      <button class="btn-clear" id="clearFilters" type="button" hidden>清除筛选</button>
+      <span class="filters-count" id="filterCount"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>错误码</th>
+            <th>消息</th>
+            <th>模型</th>
+            <th>渠道</th>
+            <th class="r">状态</th>
+            <th class="r">耗时</th>
+          </tr>
+        </thead>
+        <tbody id="eventRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view" id="view-channel" role="tabpanel" hidden>
+    <h2 style="font-size:var(--f-section);padding-bottom:var(--s-2);border-bottom:1px solid var(--rule)">渠道</h2>
+    <p class="sub" style="margin-top:var(--s-2);font-size:13px;color:var(--ink-2)">失败率是尝试口径：失败尝试除该渠道总尝试，不是用户感知的失败率。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>渠道</th>
+            <th>状态</th>
+            <th class="r">尝试</th>
+            <th class="r">失败</th>
+            <th class="r">失败率</th>
+            <th>主要错误码</th>
+            <th class="r">最近失败</th>
+          </tr>
+        </thead>
+        <tbody id="channelRows"></tbody>
+      </table>
+    </div>
+
+    <div class="timeline">
+      <h3>渠道 #12 发生了什么</h3>
+      <p class="sub" style="margin-top:var(--s-1);font-size:13px;color:var(--ink-2)">这张时间线把「错误开始」「重试兜住」「被禁用」「是否恢复」串成一条因果链。当前能力下，只有禁用与恢复可查，前两段来自错误日志。</p>
+      <ol class="tl" id="timeline"></ol>
+    </div>
+  </section>
+
+  <section class="view" id="view-notes" role="tabpanel" hidden>
+    <div class="prose">
+      <h2>口径</h2>
+      <p>每个数字都要能追到一张表和一种算法。以下六件事决定了这一版的结构。</p>
+
+      <h3>失败尝试不是失败请求</h3>
+      <p><code>logs</code> 里 type=5 是尝试级的：重试循环里每次 attempt 失败都写一条，同一 <code>request_id</code> 可能有三条。把行数当失败请求数会虚高 1.8 到 2.7 倍。</p>
+
+      <h3>基线取同时段中位数，并剔除故障时段</h3>
+      <p>灰带是过去 7 天同一小时的中位数（P50）到 P95。计算时排除了故障窗口与次级抖动窗口——否则基线会把自己的异常吸收进去，看起来「一切正常」。<b>生产环境应该用滚动稳健基线，而不是先知道哪里坏了再排除</b>；这里是为了让示例自洽。</p>
+
+      <h3>「首现」是 7 天内的第一次，不是本窗口</h3>
+      <p>判断一个新错误，必须看比当前窗口更长的历史。只看 24 小时的话，昨天出现的错误今天仍会被标成「新增」。标签「新增」的含义是：7 天内第一次出现，且出现在本窗口之后。</p>
+
+      <h3>「影响用户」是下限</h3>
+      <p>来自 <code>logs.username</code> 去重。没有失败的用户不会出现，所以这是受影响用户数的下界；同一用户多 key 也只算一个。真正的影响面要结合 <code>perf_metrics</code> 的请求量估算。</p>
+
+      <h3>变更标记是相关性，不是因果</h3>
+      <p>刻度上的竖线来自发布与配置变更记录（当前原型为静态示例）。它的作用是<b>把「错误从几点开始」和「那之前动过什么」放在同一根轴上</b>，不能据此断定是变更导致的。</p>
+
+      <h3>数据新鲜度必须显式写出</h3>
+      <p>日志入库有延迟（flush 周期加查询耗时）。图注里的「数据截至」是聚合完成时刻，不是最后一笔日志的时刻。看板最危险的状态是看起来实时，实际晚了十分钟。</p>
+
+      <p class="foot">
+        示例数据由前端确定性生成，结构与字段对齐 logs、perf_metrics、channels 实际表设计。
+        设计规则见 <a href="design-system.html">设计规范</a>，上一版见 <a href="error-dashboard-impeccable.html">v1</a>。
+      </p>
+    </div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sheet" id="sheet" aria-hidden="true" aria-labelledby="sheetTitle">
+  <div class="sheet-h">
+    <div>
+      <h3 id="sheetTitle">错误详情</h3>
+      <p class="meta" id="sheetMeta"></p>
+    </div>
+    <button class="sheet-x" id="sheetClose" aria-label="关闭详情">×</button>
+  </div>
+  <div class="sheet-b" id="sheetBody"></div>
+</aside>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<noscript>
+  <p style="margin:24px">这个页面靠脚本读取并聚合日志。请启用 JavaScript。</p>
+</noscript>
+
+<script>
+(function () {
+  'use strict';
+
+  var MIN = 60e3, HOUR = 3600e3, BUCKET = 10 * MIN;
+  var BUCKETS = 7 * 24 * 6;
+  var T0 = Math.floor(Date.now() / BUCKET) * BUCKET - BUCKETS * BUCKET;
+  var NOW = T0 + BUCKETS * BUCKET;
+  var MAX_RETRY = 3;
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtNum(n) { return Math.round(n).toLocaleString('zh-CN'); }
+  function fmtPct(v, d) { return (v * 100).toFixed(d == null ? 2 : d) + '%'; }
+  function fmtClock(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function fmtMD(ts) { var d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function fmtFull(ts) { var d = new Date(ts); return fmtMD(ts) + ' ' + fmtClock(ts); }
+  function div(a, b) { return b > 0 ? a / b : 0; }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function fmtDur(ms) {
+    if (ms >= MIN) {
+      var m = Math.floor(ms / MIN), sec = Math.round((ms % MIN) / 1000);
+      return m + 'm' + (sec ? pad(sec) + 's' : '');
+    }
+    return (ms / 1000).toFixed(1) + 's';
+  }
+  function ago(ms) {
+    var m = Math.round(ms / MIN);
+    if (m < 60) return m + ' 分钟';
+    var h = Math.floor(m / 60), r = m % 60;
+    return h + ' 小时' + (r ? ' ' + r + ' 分' : '');
+  }
+
+  var _seed = 20261115;
+  function rnd() { _seed = (_seed * 1103515245 + 12345) & 0x7fffffff; return _seed / 0x7fffffff; }
+  function pick(a) { return a[Math.floor(rnd() * a.length)]; }
+  function jitter(base, spread) { return base * (1 - spread + rnd() * spread * 2); }
+
+  var CODES = [
+    { code: 'bad_response_status_code', layer: '上游', weight: 30, faultWeight: 9, ch: 7, md: 'deepseek-v4.1', ms: 1800, status: 503, msg: 'status_code=503, upstream service temporarily unavailable' },
+    { code: 'channel:response_time_exceeded', layer: '渠道', weight: 11, faultWeight: 5, ch: 21, md: 'gpt-4o', ms: 180000, status: 0, msg: 'status_code=0, upstream response time exceeded 300s' },
+    { code: 'empty_response', layer: '上游', weight: 9, faultWeight: 4, ch: 15, md: 'claude-sonnet-4.5', ms: 2400, status: 200, msg: 'status_code=200, upstream returned empty response body' },
+    { code: 'invalid_request', layer: '请求', weight: 10, faultWeight: 3, ch: 7, md: 'deepseek-v4.1', ms: 300, status: 400, msg: 'status_code=400, invalid value for parameter messages[0].role' },
+    { code: 'insufficient_user_quota', layer: '额度', weight: 8, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', ms: 120, status: 403, msg: 'user quota is not enough, current: 312, required: 1840' },
+    { code: 'bad_request_body', layer: '请求', weight: 6, faultWeight: 2, ch: 7, md: 'deepseek-v4.1', ms: 250, status: 400, msg: 'status_code=400, request body is not valid JSON' },
+    { code: 'channel:invalid_key', layer: '渠道', weight: 4, faultWeight: 46, ch: 12, md: 'gpt-4o', ms: 450, status: 401, msg: 'status_code=401, upstream rejected credentials: invalid api key' },
+    { code: 'prompt_blocked', layer: '请求', weight: 5, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', ms: 800, status: 400, msg: 'status_code=400, prompt blocked by upstream safety policy' },
+    { code: 'channel:no_available_key', layer: '渠道', weight: 3, faultWeight: 8, ch: 21, md: 'gpt-4o', ms: 90, status: 0, msg: 'no available key for channel, all keys exhausted' },
+    { code: 'model_not_found', layer: '请求', weight: 4, faultWeight: 1, ch: 21, md: 'claude-sonnet-4.5', ms: 400, status: 404, msg: 'status_code=404, model not found on upstream' },
+    { code: 'do_request_failed', layer: '上游', weight: 3, faultWeight: 2, ch: 18, md: 'qwen-max', ms: 5000, status: 0, msg: 'status_code=0, dial tcp: connection refused' },
+    { code: 'bad_response_body', layer: '上游', weight: 3, faultWeight: 1, ch: 3, md: 'gemini-2.5-pro', ms: 1600, status: 200, msg: 'status_code=200, unable to parse upstream response payload' },
+    { code: 'access_denied', layer: '额度', weight: 2, faultWeight: 1, ch: 15, md: 'claude-sonnet-4.5', ms: 150, status: 403, msg: 'status_code=403, this token has no permission for model claude-sonnet-4.5' },
+    { code: 'get_channel_failed', layer: '本地', weight: 1, faultWeight: 1, ch: 0, md: '无', ms: 60, status: 500, msg: 'no channel satisfied the request constraints' },
+    { code: 'query_data_error', layer: '本地', weight: 1, faultWeight: 0, ch: 0, md: '无', ms: 300, status: 500, msg: 'status_code=500, failed to query log database' },
+    // 这一类在下面被限定为「3.5 小时前才开始出现」，用来演示首现与新增判断
+    { code: 'upstream_tls_handshake_failed', layer: '上游', weight: 12, faultWeight: 2, ch: 18, md: 'qwen-max', ms: 4200, status: 0,
+      msg: 'status_code=0, tls: failed to verify certificate: x509: certificate has expired', from: null }
+  ];
+  var CODE_MAP = {};
+  CODES.forEach(function (c) { CODE_MAP[c.code] = c; });
+
+  var CHANNELS = [
+    { id: 12, name: 'azure-gpt4o-hk', status: 'disabled', share: 0.10 },
+    { id: 7, name: 'deepseek-official', status: 'enabled', share: 0.28 },
+    { id: 15, name: 'claude-main', status: 'enabled', share: 0.17 },
+    { id: 3, name: 'gemini-pro-pool', status: 'enabled', share: 0.14 },
+    { id: 21, name: 'openrouter-fallback', status: 'enabled', share: 0.11 },
+    { id: 18, name: 'bailian-cn', status: 'enabled', share: 0.07 }
+  ];
+  var CH_MAP = {};
+  CHANNELS.forEach(function (c) { CH_MAP[c.id] = c; });
+  var CH_MODELS = { 12: ['gpt-4o', 'gpt-4o-mini'], 7: ['deepseek-v4.1'], 15: ['claude-sonnet-4.5'], 3: ['gemini-2.5-pro'], 21: ['gpt-4o', 'claude-sonnet-4.5'], 18: ['qwen-max'] };
+
+  var USERS = ['chen.wei', 'li.na', 'wang.lei', 'zhao.min', 'sun.yu', 'zhou.jie', 'wu.hao', 'xu.ting', 'ma.lin', 'huang.qing',
+    'lin.xin', 'he.yi', 'guo.fan', 'luo.qi', 'deng.bo', 'song.yao', 'ye.ning', 'cai.wen', 'pan.yu', 'tang.hao'];
+  var USER_PROFILE = {}, USER_GROUP = {};
+  USERS.forEach(function (u, i) {
+    USER_PROFILE[u] = i < 5 ? 'heavy' : (i < 14 ? 'normal' : 'light');
+    USER_GROUP[u] = USER_PROFILE[u] === 'heavy' ? ((i % 3 === 0) ? 'vip' : 'svip')
+      : (USER_PROFILE[u] === 'normal' ? 'default' : 'trial');
+  });
+  var HEAVY_POOL = USERS.filter(function (u) { return USER_PROFILE[u] !== 'light'; });
+  var LIGHT_POOL = USERS.filter(function (u) { return USER_PROFILE[u] === 'light'; });
+  var TOP_POOL = HEAVY_POOL.slice(0, 5);
+
+  function pickUser(layer, fault) {
+    var r = rnd();
+    if (layer === '额度') return LIGHT_POOL[Math.min(LIGHT_POOL.length - 1, Math.floor(Math.pow(r, 0.75) * LIGHT_POOL.length))];
+    if (layer === '渠道' || layer === '上游') {
+      var pool = fault ? TOP_POOL : HEAVY_POOL;
+      var p = fault ? 1.6 : 1.35;
+      return pool[Math.min(pool.length - 1, Math.floor(Math.pow(r, p) * pool.length))];
+    }
+    return USERS[Math.floor(r * USERS.length)];
+  }
+
+  var FAULT_START = Math.floor((NOW - 8 * HOUR) / BUCKET) * BUCKET;
+  var NEW_CODE_START = Math.floor((NOW - 3.5 * HOUR) / BUCKET) * BUCKET;
+  CODES.forEach(function (c) { if (c.code === 'upstream_tls_handshake_failed') c.from = NEW_CODE_START; });
+  var FAULT_END = FAULT_START + 2 * HOUR;
+  var MINOR_START = Math.floor((NOW - 3 * HOUR) / BUCKET) * BUCKET;
+
+  function inFault(ts) { return ts >= FAULT_START && ts < FAULT_END; }
+  function inMinor(ts) { return ts >= MINOR_START && ts < MINOR_START + 40 * MIN; }
+  function shape(ts) {
+    var d = new Date(ts), h = d.getHours() + d.getMinutes() / 60;
+    return Math.max(0.28, Math.min(1.25, 0.46 + 0.54 * Math.sin(Math.PI * (h - 3) / 18)));
+  }
+
+  function splitInt(total, weights) {
+    total = Math.max(0, Math.round(total));
+    var sum = weights.reduce(function (a, b) { return a + b; }, 0) || 1;
+    var raw = weights.map(function (w) { return total * w / sum; });
+    var base = raw.map(Math.floor);
+    var rest = total - base.reduce(function (a, b) { return a + b; }, 0);
+    var order = raw.map(function (v, i) { return { i: i, frac: v - Math.floor(v) }; })
+      .sort(function (a, b) { return b.frac - a.frac; });
+    for (var i = 0; i < rest; i++) base[order[i % order.length].i] += 1;
+    return base;
+  }
+
+  var buckets = [];
+  (function build() {
+    for (var i = 0; i < BUCKETS; i++) {
+      var ts = T0 + i * BUCKET;
+      var req = Math.round(jitter(1600 * shape(ts), 0.06));
+      var fr = inFault(ts) ? jitter(0.031, 0.18) : (inMinor(ts) ? jitter(0.0092, 0.15) : jitter(0.0034, 0.30));
+      var failReq = Math.max(0, Math.round(req * fr));
+      var amp = inFault(ts) ? jitter(2.65, 0.10) : (inMinor(ts) ? jitter(2.1, 0.1) : jitter(1.85, 0.12));
+      var failAttempt = Math.max(failReq, Math.round(failReq * amp));
+
+      var w = CODES.map(function (c) {
+        if (c.from && ts < c.from) return 0;
+        return inFault(ts) ? c.faultWeight : c.weight;
+      });
+      var s = w.reduce(function (a, b) { return a + b; }, 0);
+      var raw = w.map(function (x) { return failAttempt * x / s * jitter(1, 0.10); });
+      var rs = raw.reduce(function (a, b) { return a + b; }, 0) || 1;
+      raw = raw.map(function (v) { return v / rs * failAttempt; });
+      // 按期望值独立抽样，而不是把总数按权重硬拆成整数。
+      // 硬拆的问题是：一桶只有 9 次失败、16 个错误码，绝大多数码必然落在 0，
+      // 低频码连续几百个桶都抽不到，于是「7 天从未出现」成了取整造成的假象。
+      var counts = [];
+      var expect = w.map(function (x) { return failAttempt * x / s; });
+      expect.forEach(function (e) {
+        var n = Math.floor(e);
+        if (rnd() < e - n) n += 1;
+        counts.push(n);
+      });
+      var sum2 = counts.reduce(function (a, b) { return a + b; }, 0);
+      var guard2 = 0;
+      while (sum2 !== failAttempt && guard2++ < 2000) {
+        var big = 0;
+        for (var bj = 1; bj < counts.length; bj++) if (counts[bj] > counts[big]) big = bj;
+        if (sum2 < failAttempt) { counts[big] += 1; sum2 += 1; }
+        else if (counts[big] > 0) { counts[big] -= 1; sum2 -= 1; }
+        else break;
+      }
+
+      var rows = [];
+      CODES.forEach(function (c, ci) {
+        var n = counts[ci];
+        if (!n) return;
+        var parts = n <= 2 ? 1 : (n <= 8 ? 2 : 3), left = n;
+        for (var pi = 0; pi < parts && left > 0; pi++) {
+          var take = pi === parts - 1 ? left : Math.max(1, Math.round(n / parts * jitter(1, 0.3)));
+          take = Math.min(take, left);
+          if (take <= 0) continue;
+          left -= take;
+          var ch = c.ch || 0;
+          if (ch) {
+            if (ch === 12 && ts >= FAULT_END) ch = 21;
+            if (c.layer === '渠道') ch = (inFault(ts) && ch === 12) ? (rnd() < 0.88 ? 12 : 21) : (rnd() < 0.72 ? ch : 21);
+            else ch = rnd() < 0.86 ? ch : 7;
+          }
+          var u = pickUser(c.layer, inFault(ts));
+          rows.push({
+            code: c.code, ch: ch,
+            md: ch && CH_MODELS[ch] ? pick(CH_MODELS[ch]) : c.md,
+            user: u, grp: USER_GROUP[u] || 'default', n: take
+          });
+        }
+      });
+
+      buckets.push({ ts: ts, req: req, failReq: Math.min(failReq, req), failAttempt: failAttempt, rows: rows });
+    }
+  })();
+
+  var events = [];
+  (function buildEvents() {
+    var uid = 1;
+    for (var i = 0; i < BUCKETS; i++) {
+      var b = buckets[i];
+      var take = Math.min(3, Math.round(b.failAttempt / 9));
+      if (take <= 0 || !b.rows.length) continue;
+      for (var k = 0; k < take; k++) {
+        var tot = 0, q;
+        for (q = 0; q < b.rows.length; q++) tot += b.rows[q].n;
+        var pn = rnd() * tot, row = b.rows[b.rows.length - 1];
+        for (q = 0; q < b.rows.length; q++) { pn -= b.rows[q].n; if (pn <= 0) { row = b.rows[q]; break; } }
+        var meta = CODE_MAP[row.code] || CODES[0];
+        var ts = b.ts + Math.floor(rnd() * BUCKET);
+        var rescueProb = b.failAttempt > 0 ? Math.max(0, (b.failAttempt - b.failReq) / b.failAttempt) : 0;
+        var retryable = meta.layer === '渠道' || meta.layer === '上游';
+        events.push({
+          id: uid++,
+          ts: ts,
+          code: meta.code,
+          layer: meta.layer,
+          msg: meta.msg,
+          status: meta.code === 'bad_response_status_code' ? pick([500, 502, 503, 429]) : meta.status,
+          model: row.md,
+          channelId: row.ch,
+          channelName: row.ch ? (CH_MAP[row.ch] || CHANNELS[0]).name : '无',
+          user: row.user,
+          grp: row.grp,
+          ms: Math.round(jitter(meta.ms || 1800, 0.45)),
+          requestId: 'rq_' + Math.floor(ts / 1000).toString(36) + '_' + (uid).toString(36) + Math.floor(rnd() * 1e4).toString(36),
+          rescued: retryable && rnd() < rescueProb
+        });
+      }
+    }
+    events.sort(function (a, b) { return b.ts - a.ts; });
+  })();
+
+  /* ── 首现：7 天内第一次出现，用于判断「新增」 ── */
+  var CODE_FIRST = {}, CODE_LAST = {};
+  buckets.forEach(function (b) {
+    b.rows.forEach(function (r) {
+      if (!CODE_FIRST[r.code] || b.ts < CODE_FIRST[r.code]) CODE_FIRST[r.code] = b.ts;
+      if (!CODE_LAST[r.code] || b.ts > CODE_LAST[r.code]) CODE_LAST[r.code] = b.ts;
+    });
+  });
+
+  /* ── 基线：按小时取过去 7 天的 P50/P95，剔除故障与次级抖动 ── */
+  var BASE = (function () {
+    // 必须先把 6 个 10 分钟桶合成「每小时」，再取分位数。
+    // 直接对 10 分钟桶取分位数会让基线小 6 倍，算出来的「是常态的 N 倍」就虚高 6 倍。
+    var byHour = {};
+    buckets.forEach(function (b) {
+      var d = new Date(b.ts);
+      var day = Math.floor(b.ts / (24 * HOUR));
+      var key = day + '-' + d.getHours();
+      var o = byHour[key] || (byHour[key] = { h: d.getHours(), v: 0, n: 0, bad: false });
+      o.v += b.failAttempt;
+      o.n += 1;
+      if (inFault(b.ts) || inMinor(b.ts)) o.bad = true;
+    });
+    var map = {};
+    Object.keys(byHour).forEach(function (k) {
+      var o = byHour[k];
+      // 只收完整小时（6 个桶），且整点小时里不含故障——否则基线会吸收自己要去发现的异常
+      if (o.bad || o.n !== 6) return;
+      (map[o.h] || (map[o.h] = [])).push(o.v);
+    });
+    var out = {};
+    for (var h = 0; h < 24; h++) {
+      var arr = (map[h] || []).slice().sort(function (a, b) { return a - b; });
+      out[h] = {
+        p50: arr.length ? arr[Math.round(0.5 * (arr.length - 1))] : 0,
+        p95: arr.length ? arr[Math.round(0.95 * (arr.length - 1))] : 0,
+        n: arr.length
+      };
+    }
+    return out;
+  })();
+
+  /* ── 变更记录：相关性，不是因果 ── */
+  var CHANGES = [
+    { ts: FAULT_START - 26 * MIN, kind: '发布', label: '网关 v1.8.2 滚动重启', near: false },
+    { ts: FAULT_START - 6 * MIN, kind: '配置', label: 'azure-gpt4o-hk 密钥轮换', near: true },
+    { ts: FAULT_END + 12 * MIN, kind: '系统', label: '渠道 #12 自动禁用', near: true }
+  ];
+
+  var RANGES = { '1h': 60, '6h': 360, '24h': 1440, '7d': 10080 };
+  var range = '24h', view = 'overview', dim = 'code';
+  var custom = null;
+  var _cache = {};
+
+  function win(key) {
+    if (key === 'custom' && custom) return { from: custom.from, to: custom.to };
+    var m = RANGES[key] || 1440;
+    return { from: NOW - m * MIN, to: NOW };
+  }
+  function spanMs() { var w = win(range); return Math.max(BUCKET, w.to - w.from); }
+
+  function groupMs(span) {
+    var m = span / MIN, unit;
+    if (m <= 90) unit = 10; else if (m <= 480) unit = 30;
+    else if (m <= 2880) unit = 60; else unit = 1440;
+    while (span / (unit * MIN) > 48) unit *= 2;
+    return unit * MIN;
+  }
+
+  function acc() {
+    return { req: 0, failReq: 0, failAttempt: 0, retry: [], byCode: {}, byChannel: {}, byModel: {}, byUser: {}, byGroup: {}, rows: [] };
+  }
+  function fold(a, b) {
+    a.req += b.req; a.failReq += b.failReq; a.failAttempt += b.failAttempt;
+    for (var i = 0; i < b.rows.length; i++) {
+      var r = b.rows[i];
+      a.byCode[r.code] = (a.byCode[r.code] || 0) + r.n;
+      if (r.ch) a.byChannel[r.ch] = (a.byChannel[r.ch] || 0) + r.n;
+      a.byModel[r.md] = (a.byModel[r.md] || 0) + r.n;
+      a.byUser[r.user] = (a.byUser[r.user] || 0) + r.n;
+      a.byGroup[r.grp] = (a.byGroup[r.grp] || 0) + r.n;
+      a.rows.push(r);
+    }
+  }
+
+  function ladder(A, F, faultShare) {
+    function mix(a, b) { return a.map(function (w, i) { return w * (1 - faultShare) + b[i] * faultShare; }); }
+    var fw = mix([0.34, 0.26, 0.22, 0.18], [0.26, 0.25, 0.24, 0.25]);
+    var fn = splitInt(F, fw);
+    var fc = fn[0] + fn[1] + fn[2] * 2 + fn[3] * 3;
+    var ow = mix([0.66, 0.28, 0.06], [0.50, 0.36, 0.14]);
+    var oavg = ow[0] + ow[1] * 2 + ow[2] * 3;
+    var budget = Math.max(0, A - fc);
+    var on = oavg > 0 ? splitInt(budget / oavg, ow) : [0, 0, 0];
+    var diff = A - (fc + on[0] + on[1] * 2 + on[2] * 3), guard = 0;
+    while (diff !== 0 && guard++ < 400) {
+      if (diff > 0) { on[0] += 1; diff -= 1; }
+      else if (on[0] > 0) { on[0] -= 1; diff += 1; }
+      else if (on[1] > 0) { on[1] -= 1; diff += 2; }
+      else if (on[2] > 0) { on[2] -= 1; diff += 3; }
+      else break;
+    }
+    return [
+      { retries: 0, ok: 0, fail: fn[0] },
+      { retries: 1, ok: on[0], fail: fn[1] },
+      { retries: 2, ok: on[1], fail: fn[2] },
+      { retries: 3, ok: on[2], fail: fn[3] }
+    ];
+  }
+
+  function aggregate(key) {
+    var ck = key === 'custom' && custom ? 'c:' + custom.from + ':' + custom.to : key;
+    if (_cache[ck]) return _cache[ck];
+    var w = win(key), span = Math.max(BUCKET, w.to - w.from);
+    var g = groupMs(span), n = Math.max(1, Math.ceil(span / g));
+    var points = [], total = acc();
+    for (var i = 0; i < n; i++) { var p = acc(); p.ts = w.from + i * g; points.push(p); }
+    for (var bi = 0; bi < BUCKETS; bi++) {
+      var b = buckets[bi];
+      if (b.ts + BUCKET <= w.from || b.ts >= w.to) continue;
+      var idx = Math.min(n - 1, Math.max(0, Math.floor((b.ts - w.from) / g)));
+      fold(points[idx], b);
+      fold(total, b);
+    }
+    points.forEach(function (p) {
+      p.failRate = div(p.failReq, p.req);
+      p.attemptRate = div(p.failAttempt, p.req);
+      delete p.rows;
+    });
+    total.failRate = div(total.failReq, total.req);
+    var overlap = Math.max(0, Math.min(w.to, FAULT_END) - Math.max(w.from, FAULT_START));
+    total.retry = ladder(total.failAttempt, total.failReq, div(overlap, span));
+    var out = { points: points, total: total, groupMs: g, from: w.from, to: w.to };
+    _cache[ck] = out;
+    return out;
+  }
+
+  /* 期望失败量：把窗口按小时切段，累加基线的 P50 */
+  /* 「新增」不能只看首现时间：低频错误码本来就会隔几天出现一次，
+     偶尔落在窗口里就被标成新问题。真正的判据是「最近才开始出现」——
+     首现在窗口内，且窗口前 30% 的占比极低。 */
+  var _wcsCache = {};
+  function windowCodeStats(w) {
+    var key = w.from + ':' + w.to;
+    if (_wcsCache[key]) return _wcsCache[key];
+    var span = w.to - w.from, out = {};
+    for (var i = 0; i < BUCKETS; i++) {
+      var b = buckets[i];
+      if (b.ts + BUCKET <= w.from || b.ts >= w.to) continue;
+      for (var j = 0; j < b.rows.length; j++) {
+        var r = b.rows[j];
+        var o = out[r.code] || (out[r.code] = { first: b.ts, total: 0, early: 0 });
+        if (b.ts < o.first) o.first = b.ts;
+        o.total += r.n;
+        if (b.ts < w.from + span * 0.3) o.early += r.n;
+      }
+    }
+    _wcsCache[key] = out;
+    return out;
+  }
+  function isNewCode(st) {
+    // 只要「窗口内首现」且不少于 10 次。不能用「前 30% 占比」来加强判断：
+    // 窗口从深夜开始，夜间流量天然低，那会把大半个错误码表都标成新增。
+    return !!st && st.total >= 10;
+  }
+
+  /* 峰值小时相对同时段常态的倍数。「是否异常」问的是有没有出事，
+     用峰值更敏感；窗口合计倍数会被大量正常时段稀释。 */
+  function peakMult(agg) {
+    var best = 0, at = null;
+    agg.points.forEach(function (p) {
+      var base = BASE[new Date(p.ts).getHours()].p50;
+      if (base <= 0) return;
+      var m = p.failAttempt / base;
+      if (m > best) { best = m; at = p.ts; }
+    });
+    return { mult: best, at: at };
+  }
+
+  function expectedOf(w) {
+    var sum = 0, t = w.from;
+    var guard = 0;
+    while (t < w.to && guard++ < 4000) {
+      var stepEnd = Math.min(w.to, (Math.floor(t / HOUR) + 1) * HOUR);
+      var h = new Date(t).getHours();
+      sum += BASE[h].p50 * ((stepEnd - t) / HOUR);
+      t = stepEnd;
+    }
+    return sum;
+  }
+
+  /* ── 渲染 ── */
+
+  function renderVerdict(agg) {
+    var t = agg.total, w = win(range);
+    var exp = expectedOf(w);
+    var mult = exp > 0 ? t.failAttempt / exp : 0;
+    var wcs = windowCodeStats(w);
+    var known = Object.keys(wcs).filter(function (c) {
+      return CODE_FIRST[c] >= w.from && isNewCode(wcs[c]);
+    });
+    var txt;
+    if (t.failAttempt === 0) {
+      txt = '这个窗口内 <b>' + fmtNum(t.req) + '</b> 次请求全部成功，没有失败记录。';
+    } else {
+      txt = '失败尝试合计是常态的 <em>' + mult.toFixed(1) + ' 倍</em>，' +
+        (known.length ? '<b>' + known.length + '</b> 类错误是窗口内新出现的。' :
+          '没有新出现的错误。');
+    }
+    document.getElementById('verdict').innerHTML = txt;
+  }
+
+  function renderBrief(agg) {
+    var t = agg.total, w = win(range);
+    var rescued = 0;
+    (t.retry || []).forEach(function (x) { rescued += x.ok; });
+
+    document.getElementById('briefLine').innerHTML = t.failAttempt === 0
+      ? '<b>' + fmtNum(t.req) + '</b> 次请求全部成功。'
+      : '<b>' + fmtNum(t.req) + '</b> 次请求里 <b>' + fmtNum(t.failReq) + '</b> 次以错误告终，' +
+        '另有 <b>' + fmtNum(t.failAttempt - t.failReq) + '</b> 次失败被重试吞掉。';
+
+    document.getElementById('briefSub').textContent = t.failAttempt === 0
+      ? '这个窗口内没有失败尝试，也没有触发重试。'
+      : '看得见的是 ' + fmtNum(t.failReq) + ' 次；日志里写下的是 ' + fmtNum(t.failAttempt) +
+        ' 条。两个数字的差就是重试的作用。';
+
+    /* 三个判断，不是三张卡片 */
+    var exp = expectedOf(w);
+    var mult = exp > 0 ? t.failAttempt / exp : 0;
+    var peak = peakMult(agg);
+    var users = {};
+    t.rows.forEach(function (r) { users[r.user] = 1; });
+    var chSet = {};
+    t.rows.forEach(function (r) { if (r.ch) chSet[r.ch] = 1; });
+    var wcs = windowCodeStats(w);
+    var newCodes = Object.keys(wcs).filter(function (c) {
+      return CODE_FIRST[c] >= w.from && isNewCode(wcs[c]);
+    });
+
+    var J = [
+      {
+        k: '是否异常',
+        v: t.failAttempt === 0 ? '没有失败 <span>· 无需动作</span>'
+          : (peak.mult >= 3 ? '明显异常 <span>· 峰值 ' + peak.mult.toFixed(1) + ' 倍，' +
+              (peak.at ? fmtClock(peak.at) : '') + '</span>'
+            : (peak.mult >= 1.5 ? '偏高 <span>· 峰值 ' + peak.mult.toFixed(1) + ' 倍</span>'
+              : '与常态持平 <span>· 峰值 ' + peak.mult.toFixed(1) + ' 倍</span>'))
+      },
+      {
+        k: '是否新问题',
+        v: newCodes.length ? newCodes.length + ' 类新错误 <span>· ' + esc(newCodes[0]) + '</span>'
+          : '都是已知错误 <span>· 最早 ' + (Object.keys(CODE_FIRST).length
+            ? fmtMD(Math.min.apply(null, Object.keys(CODE_FIRST).map(function (c) { return CODE_FIRST[c]; })))
+            : '无') + '</span>'
+      },
+      {
+        k: '影响谁',
+        v: Object.keys(users).length + ' 个用户 <span>· ' + Object.keys(chSet).length + ' 个渠道</span>'
+      }
+    ];
+    document.getElementById('judge').innerHTML = J.map(function (j) {
+      return '<div><div class="k">' + j.k + '</div><div class="v">' + j.v + '</div></div>';
+    }).join('');
+  }
+
+  function renderChart(agg) {
+    var w = win(range);
+    var pts = agg.points;
+    var bandOK = spanMs() <= 48 * HOUR;
+    var maxV = 1, minP50 = 0;
+    pts.forEach(function (p) {
+      maxV = Math.max(maxV, p.failAttempt);
+      if (bandOK) {
+        var h = new Date(p.ts).getHours();
+        maxV = Math.max(maxV, BASE[h].p95);
+      }
+    });
+    maxV = maxV * 1.08;
+
+    var n = pts.length, wPct = 100 / n;
+    var bandHtml = '', barHtml = '';
+    pts.forEach(function (p, i) {
+      var left = (i * wPct).toFixed(3) + '%';
+      var width = 'calc(' + wPct.toFixed(3) + '% - 1px)';
+      if (bandOK) {
+        var hb = BASE[new Date(p.ts).getHours()];
+        var lo = (hb.p50 / maxV) * 100, hi = (hb.p95 / maxV) * 100;
+        if (hi > 0.5) {
+          bandHtml += '<span class="band-seg" style="left:' + left + ';width:' + width +
+            ';height:' + Math.max((3 / 104) * 100, hi - lo).toFixed(2) + '%;bottom:' + lo.toFixed(2) + '%"' +
+            ' title="同时段 P50 ' + hb.p50 + ' · P95 ' + hb.p95 + ' 次/小时"></span>';
+        }
+      }
+      var h = (p.failAttempt / maxV) * 100;
+      if (p.failAttempt > 0) {
+        barHtml += '<span class="vbar' + (inFault(p.ts) ? ' hot' : '') + '" style="left:' + left +
+          ';width:' + width + ';height:' + Math.max(1.2, h).toFixed(2) + '%;animation-delay:' +
+          Math.min(180, i * 8) + 'ms" title="' + fmtFull(p.ts) + ' · ' + fmtNum(p.failAttempt) + ' 次失败尝试"></span>';
+      }
+    });
+
+    var markHtml = '';
+    CHANGES.forEach(function (c) {
+      if (c.ts < w.from || c.ts > w.to) return;
+      var x = ((c.ts - w.from) / (w.to - w.from)) * 100;
+      markHtml += '<span class="chg" style="left:' + x.toFixed(3) + '%" title="' +
+        esc(c.kind + ' · ' + c.label + ' · ' + fmtClock(c.ts)) + '"></span>';
+    });
+
+    // P50 参考线画在柱子上层：常态带只有几个像素高，不给一条明确的线读者看不见
+    var p50Html = '';
+    if (bandOK) {
+      pts.forEach(function (p, i) {
+        var hb = BASE[new Date(p.ts).getHours()];
+        if (hb.p50 <= 0) return;
+        var y = (hb.p50 / maxV) * 100;
+        p50Html += '<span class="p50" style="left:' + (i * wPct).toFixed(3) + '%;width:' +
+          'calc(' + wPct.toFixed(3) + '% + 1px);bottom:' + y.toFixed(2) + '%"></span>';
+      });
+    }
+
+    document.getElementById('plot').innerHTML = bandHtml + barHtml + p50Html + markHtml;
+
+    var ax = [0, Math.floor(n / 4), Math.floor(n / 2), Math.floor(n * 3 / 4), n - 1];
+    document.getElementById('chartAxis').innerHTML = ax.map(function (i) {
+      var ts = pts[i].ts;
+      return '<span>' + (spanMs() > 36 * HOUR ? fmtMD(ts) : fmtClock(ts)) + '</span>';
+    }).join('');
+
+    var fresh = '数据截至 ' + fmtClock(NOW) + ' · 入库延迟约 2 分 40 秒';
+    if (bandOK) {
+      // 线性坐标下常态带只有几个像素高，必须把量级写成数字，
+      // 否则「灰带」只是一条看不见的线，读者无法判断峰值有多高
+      var p50s = [], p95s = [], peakV = 0, peakTs = null;
+      pts.forEach(function (p) {
+        var hb = BASE[new Date(p.ts).getHours()];
+        p50s.push(hb.p50); p95s.push(hb.p95);
+        if (p.failAttempt > peakV) { peakV = p.failAttempt; peakTs = p.ts; }
+      });
+      var lo = Math.min.apply(null, p50s), hi = Math.max.apply(null, p95s);
+      document.getElementById('chartNote').textContent =
+        '常态每小时 ' + lo + '–' + hi + ' 次（P50–P95，过去 7 天同时段，已剔除故障窗口）；' +
+        '峰值 ' + fmtNum(peakV) + ' 次，出现在 ' + (peakTs ? fmtClock(peakTs) : '—') + '。' + fresh + '。';
+    } else {
+      document.getElementById('chartNote').textContent =
+        '跨度超过 48 小时，同时段基线样本不足，不画灰带。' + fresh + '。';
+    }
+
+    document.getElementById('changes').innerHTML = CHANGES.filter(function (c) {
+      return c.ts >= w.from && c.ts <= w.to;
+    }).map(function (c) {
+      return '<div class="change-row' + (c.near ? ' near' : '') + '">' +
+        '<span class="t">' + fmtClock(c.ts) + '</span>' +
+        '<span class="kind">' + esc(c.kind) + '</span>' +
+        '<span class="lab">' + (c.near ? '<b>' + esc(c.label) + '</b>' : esc(c.label)) + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  var DIMS = {
+    code: { head: '错误', col: 'code' },
+    model: { head: '模型', col: 'dim' },
+    channel: { head: '渠道', col: 'dim' },
+    user: { head: '用户', col: 'dim' },
+    group: { head: '分组', col: 'dim' }
+  };
+  function dimVal(d, r) {
+    if (d === 'code') return r.code;
+    if (d === 'model') return r.md;
+    if (d === 'channel') return r.ch ? String(r.ch) : '';
+    if (d === 'user') return r.user;
+    return r.grp;
+  }
+  function dimLabel(d, k) {
+    if (d === 'channel') {
+      var c = CH_MAP[parseInt(k, 10)];
+      return c ? c.name : ('#' + k);
+    }
+    return k;
+  }
+
+  function renderCluster(agg) {
+    var w = win(range);
+    var wcs = windowCodeStats(w);
+    var mid = w.from + (w.to - w.from) / 2;
+    var map = {};
+    for (var i = 0; i < BUCKETS; i++) {
+      var b = buckets[i];
+      if (b.ts + BUCKET <= w.from || b.ts >= w.to) continue;
+      for (var j = 0; j < b.rows.length; j++) {
+        var r = b.rows[j];
+        var k = dimVal(dim, r);
+        if (!k) continue;
+        var o = map[k] || (map[k] = { key: k, n: 0, codes: {}, users: {}, first: b.ts, half: [0, 0] });
+        o.n += r.n;
+        o.codes[r.code] = (o.codes[r.code] || 0) + r.n;
+        o.users[r.user] = 1;
+        if (b.ts < o.first) o.first = b.ts;
+        o.half[b.ts < mid ? 0 : 1] += r.n;
+      }
+    }
+
+    var list = Object.keys(map).map(function (k) { return map[k]; })
+      .sort(function (a, b) { return b.n - a.n; });
+    var totalN = list.reduce(function (a, b) { return a + b.n; }, 0) || 1;
+    // 比例条的基准取全表最大值，必须在重排前算，否则新增行排到最前后基准会被它拉低
+    var max = list.reduce(function (a, b) { return Math.max(a, b.n); }, 1);
+
+    // 先算状态，再把「新增」的行强制塞进表里。
+    // 只取 top 10 的话，量小的新错误永远被截在表外——这个功能就等于不存在。
+    list.forEach(function (o) {
+      var codes = Object.keys(o.codes).sort(function (a, b) { return o.codes[b] - o.codes[a]; });
+      o.mainCode = codes[0] || '无';
+      o.first = CODE_FIRST[o.mainCode] || o.first;
+      o.isNew = o.first >= w.from && isNewCode(wcs[o.mainCode]);
+      o.cooling = !o.isNew && o.half[0] > 0 && o.half[1] < o.half[0] * 0.35;
+    });
+    // 新增的排最前，其余仍按量降序。按量排序会把唯一需要立刻处理的一行压到表尾。
+    list.sort(function (a, b) {
+      if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
+      return b.n - a.n;
+    });
+    var top = list.slice(0, 10);
+    list.forEach(function (o) {
+      if (o.isNew && top.indexOf(o) < 0) top.push(o);
+    });
+
+    document.getElementById('thDim').textContent = DIMS[dim].head;
+
+    document.getElementById('clusterRows').innerHTML = top.map(function (o, i) {
+      var mainCode = o.mainCode;
+      var meta = CODE_MAP[mainCode] || {};
+      var firstTs = o.first;
+      var isNew = o.isNew;
+      var status = isNew ? '新增' : (o.cooling ? '已收敛' : '持续');
+      var tagCls = isNew ? 'tag new' : (o.cooling ? 'tag fixed' : 'tag mute');
+      var firstTxt;
+      if (firstTs >= w.from) firstTxt = '窗口内 ' + fmtClock(firstTs);
+      else if (firstTs <= T0 + 6 * HOUR) firstTxt = '≥7 天';
+      else firstTxt = Math.round((w.from - firstTs) / (24 * HOUR)) + ' 天前';
+      var sec = dim === 'code'
+        ? (meta.ch ? (CH_MAP[meta.ch] || {}).name : '本地')
+        : mainCode;
+
+      return '<tr class="click" data-key="' + esc(o.key) + '" tabindex="0" role="button" ' +
+        'aria-label="按 ' + esc(dimLabel(dim, o.key)) + ' 筛选">' +
+        '<td class="' + DIMS[dim].col + '" data-l="' + DIMS[dim].head + '">' +
+          (dim === 'code' ? esc(o.key) : '<b>' + esc(dimLabel(dim, o.key)) + '</b>') + '</td>' +
+        '<td data-l="首现"><span class="mono">' + firstTxt + '</span></td>' +
+        '<td class="r" data-l="影响用户">' + Object.keys(o.users).length + '</td>' +
+        '<td class="r" data-l="尝试">' + fmtNum(o.n) + '</td>' +
+        '<td data-l="占比"><span class="share"><span class="share-bar"><i class="' + (i === 0 ? 'hot' : '') +
+          '" style="width:' + ((o.n / max) * 100).toFixed(1) + '%"></i></span>' +
+          '<span class="share-num">' + fmtPct(div(o.n, totalN), 1) + '</span></span></td>' +
+        '<td data-l="状态"><span class="' + tagCls + '">' + status + '</span></td>' +
+        '<td class="sec" data-l="主要来源">' + esc(sec) + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="7" class="empty">这个窗口内没有失败记录。</td></tr>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('#clusterRows tr.click'), function (tr) {
+      tr.addEventListener('click', function () {
+        var k = tr.getAttribute('data-key');
+        switchView('stream');
+        if (dim === 'code') {
+          fq.code = k;
+          document.getElementById('fCode').value = k;
+        } else if (dim === 'channel') {
+          var c = CH_MAP[parseInt(k, 10)];
+          fq.channel = c ? c.name : '';
+          document.getElementById('fChannel').value = fq.channel;
+        } else if (dim === 'model') {
+          fq.text = k;
+          document.getElementById('q').value = k;
+        } else {
+          fq.text = k;
+          document.getElementById('q').value = k;
+        }
+        renderStream();
+        syncURL();
+      });
+      tr.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tr.click(); }
+      });
+    });
+  }
+
+  function renderRetry(agg) {
+    var L = agg.total.retry || [];
+    var maxN = 1;
+    L.forEach(function (x) { maxN = Math.max(maxN, x.ok + x.fail); });
+    document.getElementById('retryRows').innerHTML = L.map(function (x) {
+      var n = x.ok + x.fail;
+      var wOk = n > 0 ? (x.ok / n) * 100 : 0;
+      return '<tr>' +
+        '<td data-l="尝试次数">' + (x.retries === 0 ? '未重试' : '重试 ' + x.retries + ' 次') + '</td>' +
+        '<td class="r" data-l="请求">' + fmtNum(n) + '</td>' +
+        '<td data-l="成功与失败"><span class="share" style="max-width:200px"><span class="share-bar">' +
+          '<i style="width:' + wOk.toFixed(1) + '%;background:var(--ok)"></i></span>' +
+          '<span class="share-num">' + fmtNum(x.ok) + ' / ' + fmtNum(x.fail) + '</span></span></td>' +
+        '<td class="r" data-l="成功率">' + (x.retries === 0 ? '不可重试' : fmtPct(div(x.ok, n), 0)) + '</td>' +
+        '<td class="r" data-l="最终失败">' + fmtNum(x.fail) + '</td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="5" class="empty">没有重试发生。</td></tr>';
+  }
+
+  /* ── 错误清单 ── */
+  var fq = { text: '', code: '', channel: '' };
+  function matchEvent(e, q) {
+    if (q.code && e.code !== q.code) return false;
+    if (q.channel && e.channelName !== q.channel) return false;
+    if (!q.text) return true;
+    var hay = (e.code + ' ' + e.msg + ' ' + e.model + ' ' + e.channelName + ' ' +
+      e.user + ' ' + e.requestId + ' ' + e.status).toLowerCase();
+    return hay.indexOf(q.text.toLowerCase()) >= 0;
+  }
+
+  function renderStream() {
+    var w = win(range);
+    var inWindow = events.filter(function (e) { return e.ts >= w.from && e.ts <= w.to; });
+    var list = inWindow.filter(function (e) { return matchEvent(e, fq); });
+    var total = list.length;
+    list = list.slice(0, 80);
+
+    var dirty = !!(fq.text || fq.code || fq.channel);
+    document.getElementById('filterCount').innerHTML = dirty
+      ? '筛出 <b>' + fmtNum(total) + '</b> / ' + fmtNum(inWindow.length) + ' 条'
+      : '共 <b>' + fmtNum(inWindow.length) + '</b> 条';
+    document.getElementById('clearFilters').hidden = !dirty;
+
+    document.getElementById('eventRows').innerHTML = list.map(function (e) {
+      return '<tr class="click" data-id="' + e.id + '" tabindex="0" role="button" ' +
+        'aria-label="查看 ' + esc(e.code) + ' 详情">' +
+        '<td class="code" data-l="时间">' + fmtFull(e.ts) + '</td>' +
+        '<td class="code" data-l="错误码">' + esc(e.code) + '</td>' +
+        '<td class="msg" data-l="消息" title="' + esc(e.msg) + '">' + esc(e.msg) + '</td>' +
+        '<td class="code" data-l="模型">' + esc(e.model) + '</td>' +
+        '<td class="code" data-l="渠道">' + esc(e.channelName) + '</td>' +
+        '<td class="r" data-l="状态">' + (e.status === 0 || e.status ? e.status : '无') + '</td>' +
+        '<td class="r" data-l="耗时">' + fmtDur(e.ms) + '</td>' +
+        '</tr>';
+    }).join('') || ('<tr><td colspan="7" class="empty">' +
+      (dirty ? '没有匹配的记录。点「清除筛选」回到全部。'
+        : '这个区间没有失败记录，属于正常状态。把时间范围放到 24 小时可对照常态。') + '</td></tr>');
+
+    Array.prototype.forEach.call(document.querySelectorAll('#eventRows tr.click'), function (tr) {
+      tr.addEventListener('click', function () { openSheet(parseInt(tr.getAttribute('data-id'), 10)); });
+      tr.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tr.click(); }
+      });
+    });
+  }
+
+  /* ── 渠道 ── */
+  function renderChannel() {
+    var agg = aggregate(range), w = win(range);
+    var chCross = {};
+    agg.total.rows.forEach(function (r) {
+      if (!r.ch) return;
+      if (!chCross[r.ch]) chCross[r.ch] = {};
+      chCross[r.ch][r.code] = (chCross[r.ch][r.code] || 0) + r.n;
+    });
+    function lastFailOf(id) {
+      for (var i = BUCKETS - 1; i >= 0; i--) {
+        var b = buckets[i];
+        if (b.ts >= w.to) continue;
+        if (b.ts + BUCKET <= w.from) break;
+        for (var j = 0; j < b.rows.length; j++) {
+          if (b.rows[j].ch === id && b.rows[j].n > 0) return b.ts;
+        }
+      }
+      return null;
+    }
+    var totalAttempt = 0;
+    agg.points.forEach(function (p) { totalAttempt += p.req; });
+
+    var rows = CHANNELS.map(function (c) {
+      var fail = agg.total.byChannel[c.id] || 0;
+      var attempts = Math.max(1, Math.round(totalAttempt * c.share * 0.92));
+      var cm = chCross[c.id] || {};
+      var top = Object.keys(cm).sort(function (a, b) { return cm[b] - cm[a]; })[0];
+      return { c: c, fail: fail, attempts: attempts, rate: div(fail, attempts), top: top || '无', last: lastFailOf(c.id) };
+    }).sort(function (a, b) { return b.rate - a.rate; });
+
+    document.getElementById('channelRows').innerHTML = rows.map(function (r) {
+      var st = r.c.status === 'disabled'
+        ? '<span class="tag new">已自动禁用</span>'
+        : '<span class="tag mute">启用</span>';
+      return '<tr>' +
+        '<td class="dim" data-l="渠道"><b>' + esc(r.c.name) + '</b></td>' +
+        '<td data-l="状态">' + st + '</td>' +
+        '<td class="r" data-l="尝试">' + fmtNum(r.attempts) + '</td>' +
+        '<td class="r" data-l="失败">' + fmtNum(r.fail) + '</td>' +
+        '<td class="r" data-l="失败率">' + fmtPct(r.rate, 2) + '</td>' +
+        '<td class="sec" data-l="主要错误码">' + esc(r.top) + '</td>' +
+        '<td class="r sec" data-l="最近失败">' + (r.last ? fmtClock(r.last) : '无') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    document.getElementById('timeline').innerHTML = [
+      { t: fmtClock(FAULT_START), tag: '失败', cls: 'f', d: '<b>首次出现 channel:invalid_key</b> · 401，上游拒绝凭证' },
+      { t: fmtClock(FAULT_START + 6 * MIN), tag: '兜住', cls: 'o', d: '<b>重试分流到 openrouter-fallback</b> · 用户侧失败率回落，错误日志继续增长' },
+      { t: fmtClock(FAULT_END + 12 * MIN), tag: '禁用', cls: 'f', d: '<b>连续失败触及阈值，渠道自动禁用</b> · 距首次失败 ' + ago(FAULT_END + 12 * MIN - FAULT_START) },
+      { t: '待处理', tag: '未恢复', cls: '', d: '无自动恢复策略。密钥轮换后需人工确认并启用' }
+    ].map(function (e) {
+      return '<li><span class="t">' + e.t + '</span>' +
+        '<span><span class="tag ' + (e.cls === 'o' ? 'fixed' : (e.cls === 'f' ? 'new' : 'mute')) + '">' + e.tag + '</span></span>' +
+        '<span class="d">' + e.d + '</span></li>';
+    }).join('');
+  }
+
+  /* ── 抽屉 ── */
+  var lastFocus = null;
+  function openSheet(id) {
+    lastFocus = document.activeElement;
+    var e = null;
+    for (var i = 0; i < events.length; i++) if (events[i].id === id) { e = events[i]; break; }
+    if (!e) return;
+
+    var sibs = events.filter(function (x) { return x.requestId === e.requestId; })
+      .sort(function (a, b) { return a.ts - b.ts; });
+
+    document.getElementById('sheetTitle').innerHTML =
+      '错误详情 <span class="tag" style="margin-left:8px;vertical-align:2px">' + esc(e.code) + '</span>';
+    document.getElementById('sheetMeta').textContent =
+      fmtFull(e.ts) + ' · ' + e.channelName + ' · ' + e.model;
+
+    var chain = sibs.map(function (s, i) {
+      var clientSaw = (i === sibs.length - 1) && !e.rescued;
+      return '<li class="f">' +
+        '<div class="r1"><span class="mono">#' + (i + 1) + '</span>' +
+        '<code>' + esc(s.code) + '</code>' +
+        '<span class="mono">' + esc(s.channelName) + '</span>' +
+        '<span class="mono">' + fmtDur(s.ms) + '</span>' +
+        (clientSaw ? '<span class="tag new">客户端收到</span>' : '<span class="tag mute">已重试</span>') +
+        '</div><div class="r2">' + esc(s.msg) + '</div></li>';
+    }).join('');
+
+    if (e.rescued) {
+      chain += '<li class="o"><div class="r1"><span class="mono">#' + (sibs.length + 1) + '</span>' +
+        '<span class="tag fixed">成功</span><span class="mono">status_code=200</span>' +
+        '<span class="tag fixed">客户端收到</span></div>' +
+        '<div class="r2">换到可用渠道后上游正常返回</div></li>';
+    }
+
+    document.getElementById('sheetBody').innerHTML =
+      '<h4>原始错误</h4><div class="raw">' + esc(e.msg) + '\nrequest_id=' + esc(e.requestId) + '</div>' +
+      '<h4>归因</h4><dl class="kv">' +
+      '<dt>error_code</dt><dd class="mono">' + esc(e.code) + '</dd>' +
+      '<dt>来源层</dt><dd>' + esc(e.layer) + '</dd>' +
+      '<dt>status_code</dt><dd class="mono">' + (e.status === 0 ? '0（无 HTTP 响应）' : (e.status || '无')) + '</dd>' +
+      '<dt>渠道</dt><dd>' + esc(e.channelName) + '</dd>' +
+      '<dt>模型</dt><dd class="mono">' + esc(e.model) + '</dd>' +
+      '<dt>用户</dt><dd class="mono">' + esc(e.user) + '</dd>' +
+      '<dt>分组</dt><dd>' + esc(e.grp) + '</dd>' +
+      '<dt>耗时</dt><dd class="mono">' + fmtDur(e.ms) + '</dd>' +
+      '<dt>最终结果</dt><dd>' + (e.rescued ? '<span class="tag fixed">成功 · 被重试兜住</span>'
+        : '<span class="tag new">失败 · 重试未救回</span>') + '</dd>' +
+      '</dl>' +
+      '<h4>重试链（同一 request_id，共 ' + (sibs.length + (e.rescued ? 1 : 0)) + ' 次尝试）</h4>' +
+      '<ol class="chain">' + chain + '</ol>' +
+      (e.rescued
+        ? '<p class="chart-note">日志里只看到失败、看不到后续那次成功的人，会误判成「全站都挂了」。</p>'
+        : '<p class="chart-note">' + (sibs.length > 1
+          ? '多次尝试全部失败，客户端最终拿到错误，计入「重试耗尽」。'
+          : '只有一个失败节点：DecideRelayRetry 判定该错误码不可重试，直接返回。') + '</p>');
+
+    document.getElementById('sheet').classList.add('on');
+    document.getElementById('scrim').classList.add('on');
+    document.getElementById('sheet').setAttribute('aria-hidden', 'false');
+    document.getElementById('sheetClose').focus();
+  }
+
+  function closeSheet() {
+    var sheet = document.getElementById('sheet');
+    if (!sheet.classList.contains('on')) return;
+    sheet.classList.remove('on');
+    document.getElementById('scrim').classList.remove('on');
+    sheet.setAttribute('aria-hidden', 'true');
+    if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+    lastFocus = null;
+  }
+
+  function renderAll() {
+    var agg = aggregate(range);
+    renderVerdict(agg);
+    if (view === 'overview') {
+      renderBrief(agg);
+      renderChart(agg);
+      renderCluster(agg);
+      renderRetry(agg);
+    }
+    if (view === 'stream') renderStream();
+    if (view === 'channel') renderChannel();
+  }
+
+  function switchView(name) {
+    view = name;
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+      b.setAttribute('aria-selected', b.getAttribute('data-view') === name ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) {
+      v.hidden = v.id !== 'view-' + name;
+    });
+    renderAll();
+    syncURL();
+  }
+
+  /* ── URL 即状态 ── */
+  var _urlOK = true;
+  function syncURL() {
+    if (!_urlOK) return;
+    var parts = ['view=' + view, 'range=' + range, 'dim=' + dim];
+    if (range === 'custom' && custom) {
+      parts.push('from=' + Math.floor(custom.from / MIN), 'to=' + Math.floor(custom.to / MIN));
+    }
+    if (fq.code) parts.push('code=' + encodeURIComponent(fq.code));
+    if (fq.channel) parts.push('channel=' + encodeURIComponent(fq.channel));
+    if (fq.text) parts.push('q=' + encodeURIComponent(fq.text));
+    var hash = '#' + parts.join('&');
+    if (location.hash === hash) return;
+    try {
+      history.replaceState(null, '', hash);
+    } catch (err) {
+      _urlOK = false;   // file:// 下 origin 为 null，静默降级
+    }
+  }
+
+  function readURL() {
+    var h = (location.hash || '').replace(/^#/, '');
+    if (!h) return;
+    var f = null, t = null;
+    h.split('&').forEach(function (kv) {
+      var i = kv.indexOf('=');
+      if (i < 0) return;
+      var k = kv.slice(0, i), v;
+      try { v = decodeURIComponent(kv.slice(i + 1)); } catch (e) { return; }
+      if (k === 'range') {
+        if (v === 'custom') range = 'custom';
+        else if (RANGES[v]) range = v;
+      }
+      if (k === 'view' && ['overview', 'stream', 'channel', 'notes'].indexOf(v) >= 0) view = v;
+      if (k === 'dim' && DIMS[v]) dim = v;
+      if (k === 'code') fq.code = v;
+      if (k === 'channel') fq.channel = v;
+      if (k === 'q') fq.text = v;
+      if (k === 'from') f = parseInt(v, 10) * MIN;
+      if (k === 'to') t = parseInt(v, 10) * MIN;
+    });
+    if (range === 'custom' && f && t && t > f) custom = { from: Math.max(T0, f), to: Math.min(NOW, t) };
+  }
+
+  function fillSelects() {
+    var sCode = document.getElementById('fCode');
+    Object.keys(CODE_MAP).sort().forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sCode.appendChild(o);
+    });
+    var sCh = document.getElementById('fChannel');
+    CHANNELS.forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c.name; o.textContent = c.name;
+      sCh.appendChild(o);
+    });
+    sCode.value = fq.code || '';
+    sCh.value = fq.channel || '';
+    document.getElementById('q').value = fq.text || '';
+  }
+
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove('on'); }, 2200);
+  }
+
+  /* ── 交互 ── */
+  document.getElementById('tabs').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-view]');
+    if (b) switchView(b.getAttribute('data-view'));
+  });
+
+  var crPanel = document.createElement('div');
+  crPanel.className = 'filters';
+  crPanel.id = 'crPanel';
+  crPanel.hidden = true;
+  crPanel.style.margin = '0';
+  crPanel.style.padding = '0 var(--s-5) var(--s-3)';
+  crPanel.innerHTML =
+    '<label class="field"><span>从</span><input type="datetime-local" id="crFrom"></label>' +
+    '<label class="field"><span>到</span><input type="datetime-local" id="crTo"></label>' +
+    '<button class="btn-clear" type="button" id="crApply">应用</button>' +
+    '<button class="btn-clear" type="button" id="crCancel">取消</button>' +
+    '<span class="filters-count">数据只覆盖最近 7 天</span>';
+  document.querySelector('.bar').after(crPanel);
+
+  function toLocalInput(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  document.getElementById('range').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-range]');
+    if (!b) return;
+    var r = b.getAttribute('data-range');
+    if (r === 'custom') {
+      crPanel.hidden = false;
+      document.getElementById('crFrom').value = toLocalInput(custom ? custom.from : NOW - 3 * HOUR);
+      document.getElementById('crTo').value = toLocalInput(custom ? custom.to : NOW);
+      document.getElementById('crFrom').focus();
+      return;
+    }
+    custom = null;
+    crPanel.hidden = true;
+    range = r;
+    _cache = {};
+    Array.prototype.forEach.call(document.querySelectorAll('#range button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+    renderAll();
+    syncURL();
+  });
+
+  document.getElementById('crApply').addEventListener('click', function () {
+    var f = new Date(document.getElementById('crFrom').value).getTime();
+    var t = new Date(document.getElementById('crTo').value).getTime();
+    if (!isFinite(f) || !isFinite(t)) { toast('请填写完整的起止时间'); return; }
+    if (t <= f) { toast('结束时间必须晚于开始时间'); return; }
+    custom = { from: Math.max(T0, f), to: Math.min(NOW, t) };
+    if (custom.to - custom.from < BUCKET) { toast('区间太短，至少 10 分钟'); return; }
+    range = 'custom';
+    _cache = {};
+    crPanel.hidden = true;
+    Array.prototype.forEach.call(document.querySelectorAll('#range button'), function (x) {
+      x.setAttribute('aria-pressed', x.getAttribute('data-range') === 'custom' ? 'true' : 'false');
+    });
+    renderAll();
+    syncURL();
+    toast('已切到自定义区间：' + fmtFull(custom.from) + ' → ' + fmtClock(custom.to));
+  });
+
+  document.getElementById('crCancel').addEventListener('click', function () {
+    crPanel.hidden = true;
+    Array.prototype.forEach.call(document.querySelectorAll('#range button'), function (x) {
+      x.setAttribute('aria-pressed', x.getAttribute('data-range') === range ? 'true' : 'false');
+    });
+  });
+
+  document.getElementById('dims').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-dim]');
+    if (!b) return;
+    dim = b.getAttribute('data-dim');
+    Array.prototype.forEach.call(document.querySelectorAll('#dims button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+    });
+    renderCluster(aggregate(range));
+    syncURL();
+  });
+
+  var _qt = null;
+  document.getElementById('q').addEventListener('input', function (ev) {
+    var v = ev.target.value;
+    clearTimeout(_qt);
+    _qt = setTimeout(function () {
+      fq.text = v.trim();
+      if (view !== 'stream') switchView('stream'); else renderStream();
+      syncURL();
+    }, 120);
+  });
+  document.getElementById('fCode').addEventListener('change', function (ev) {
+    fq.code = ev.target.value;
+    if (view !== 'stream') switchView('stream'); else renderStream();
+    syncURL();
+  });
+  document.getElementById('fChannel').addEventListener('change', function (ev) {
+    fq.channel = ev.target.value;
+    if (view !== 'stream') switchView('stream'); else renderStream();
+    syncURL();
+  });
+  document.getElementById('clearFilters').addEventListener('click', function () {
+    clearTimeout(_qt);
+    fq = { text: '', code: '', channel: '' };
+    document.getElementById('q').value = '';
+    document.getElementById('fCode').value = '';
+    document.getElementById('fChannel').value = '';
+    renderStream();
+    syncURL();
+  });
+
+  document.getElementById('btnShare').addEventListener('click', function () {
+    var url = location.href;
+    function done() { toast('链接已复制，包含当前筛选与时间范围'); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function () { toast('当前环境不允许写剪贴板，请手动复制地址栏'); });
+    } else {
+      toast('当前环境不支持剪贴板，请手动复制地址栏');
+    }
+  });
+
+  document.getElementById('btnCsv').addEventListener('click', function () {
+    var w = win(range);
+    var rows = events.filter(function (e) { return e.ts >= w.from && e.ts <= w.to && matchEvent(e, fq); });
+    var head = ['ts', 'error_code', 'layer', 'status_code', 'channel', 'model', 'user', 'group', 'duration_ms', 'request_id'];
+    var body = rows.map(function (e) {
+      return [fmtFull(e.ts), e.code, e.layer, e.status, e.channelName, e.model, e.user, e.grp, e.ms, e.requestId]
+        .map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+    });
+    var csv = '\ufeff' + head.join(',') + '\n' + body.join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'errors-' + range + '-' + rows.length + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    toast('已导出 ' + rows.length + ' 条（当前筛选条件）');
+  });
+
+  document.getElementById('sheetClose').addEventListener('click', closeSheet);
+  document.getElementById('scrim').addEventListener('click', closeSheet);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeSheet();
+    if (e.key === 'Tab' && document.getElementById('sheet').classList.contains('on')) {
+      var box = document.getElementById('sheet');
+      var f = box.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  window.addEventListener('error', function (ev) {
+    var bar = document.getElementById('verdict');
+    if (bar) bar.innerHTML = '<span style="color:var(--err)">看板脚本出错：' + esc(ev.message) + '</span>';
+  });
+
+  try {
+    readURL();
+    fillSelects();
+    Array.prototype.forEach.call(document.querySelectorAll('#range button'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-range') === range ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#dims button'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-dim') === dim ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+      b.setAttribute('aria-selected', b.getAttribute('data-view') === view ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) {
+      v.hidden = v.id !== 'view-' + view;
+    });
+    if (range === 'custom') crPanel.hidden = false;
+    renderAll();
+    syncURL();
+  } catch (err) {
+    document.getElementById('verdict').innerHTML =
+      '<span style="color:var(--err)">读取日志失败：' + esc(err.message) + '</span>';
+  }
+})();
+</script>
+</body>
+</html>

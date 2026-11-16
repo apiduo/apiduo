@@ -557,9 +557,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Content:          extraContent,
 		TokenId:          relayInfo.TokenId,
 		UseTimeSeconds:   int(summary.UseTimeSeconds),
-		IsStream:         relayInfo.IsStream,
-		Group:            relayInfo.UsingGroup,
-		Other:            other,
+		// 摘要里只有秒，毫秒在这里现场取：这条是文本请求的主路径，
+		// 漏了它等于整个台子的延迟分析还是秒精度。
+		UseTimeMs: int(time.Since(relayInfo.StartTime).Milliseconds()),
+		IsStream:  relayInfo.IsStream,
+		Group:     relayInfo.UsingGroup,
+		Other:     other,
 	})
 	relayInfo.PerformanceOutputTokens = int64(summary.CompletionTokens)
 }

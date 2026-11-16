@@ -9,6 +9,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	// APIDUO:endpoint-registry:BEGIN
+	"github.com/QuantumNous/new-api/pkg/endpoint"
+	// APIDUO:endpoint-registry:END
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
@@ -249,6 +252,20 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 	}
 	models := service.GetGroupsEnabledModels(ownerGroups)
+	// APIDUO:endpoint-registry:BEGIN A routing name is not a model. No caller
+	// can send "@files/upload/batch" to /v1/chat/completions, so listing it here
+	// would put a name every SDK displays and none can use in front of the
+	// caller. The console still sees them, because that is where an operator
+	// declares them.
+	publicModels := make([]string, 0, len(models))
+	for _, modelName := range models {
+		if endpoint.IsSynthetic(modelName) {
+			continue
+		}
+		publicModels = append(publicModels, modelName)
+	}
+	models = publicModels
+	// APIDUO:endpoint-registry:END
 	for _, modelName := range models {
 		if modelLimitEnable {
 			matchingName := ratio_setting.RoutingMatchModelName(modelName)

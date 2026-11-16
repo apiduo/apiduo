@@ -73,16 +73,16 @@ func TestFileRelayEndToEnd(t *testing.T) {
 		Key:    "sk-upstream",
 		Status: common.ChannelStatusEnabled,
 		Group:  "default",
-		Models: "gpt-4o",
+		Models: "gpt-4o,@files/upload/file-extract",
 		BaseURL: func() *string {
 			value := upstream.URL
 			return &value
 		}(),
 	}
 	channel.SetOtherSettings(relaykitdto.ChannelOtherSettings{
-		FileRelay: &relaykitdto.ChannelFileRelayConfig{Purposes: []string{"file-extract"}},
+		FileRelay: &relaykitdto.ChannelFileRelayConfig{},
 	})
-	require.NoError(t, model.DB.Create(channel).Error)
+	require.NoError(t, channel.Insert())
 
 	engine := gin.New()
 	SetRelayRouter(engine)

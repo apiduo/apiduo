@@ -1,6 +1,6 @@
 package billing_setting
 
-import "github.com/QuantumNous/new-api/constant"
+import "github.com/QuantumNous/new-api/pkg/endpoint"
 
 // deepSeekPeak is DeepSeek's peak window: Monday to Friday, 09:00-12:00 and
 // 14:00-18:00 Beijing time. The Chinese public holidays DeepSeek bills
@@ -32,8 +32,18 @@ var builtinBillingExpr = map[string]string{
 	"deepseek-v4-flash":            deepSeekFlashExpr,
 	"deepseek-v4-flash-vision-exp": deepSeekFlashExpr,
 	"deepseek-v4-pro":              deepSeekPeak + ` ? tier("peak", p * 1.32 + cr * 0.044 + c * 3.96) : tier("off_peak", p * 0.66 + cr * 0.022 + c * 1.98)`,
-	// The Search and Fetch API routing names: $0.75 per 1,000 successful
-	// requests each, the same pricing page. The calls carry no tokens.
-	constant.DeepSeekSearchModel: `tier("request", fixed(0.00075))`,
-	constant.DeepSeekFetchModel:  `tier("request", fixed(0.00075))`,
 }
+
+// APIDUO:endpoint-registry:BEGIN Model-less endpoints price themselves in
+// pkg/endpoint, next to the routing name and the capability they declare. A
+// map literal cannot hold a loop, so the table is merged once at package init.
+func init() {
+	for _, spec := range endpoint.All() {
+		if spec.Price == "" {
+			continue
+		}
+		builtinBillingExpr[spec.Model] = spec.Price
+	}
+}
+
+// APIDUO:endpoint-registry:END

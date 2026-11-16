@@ -1,0 +1,74 @@
+# ==========================================================================
+# jieapi.com —— apiduo 异地备节点（core-3）
+#
+# 定位：**只做灾难接管，不分担日常流量**。
+#
+# 为什么不分担：
+#   core-3 到 core-1 的实测 RTT 是 137 ms（跨地域，不是同机房）。
+#   apiduo 每个请求要过 Redis（token 校验）+ MySQL（额度），一次请求额外 300 ms 起步；
+#   按 Redis 池 64 / 150 ms 估算，吞吐上限约 210 req/s，比 core-1 低一个数量级。
+#   所以它在 nginx 里只能挂 `backup`，正常零流量。
+#
+# 为什么它防不了整机故障：
+#   core-3 本地没有任何数据服务（MySQL/Redis/CH 全指向 core-1）。
+#   core-1 整机宕机时，这个节点也起不来。它真正覆盖的场景是
+#   「core-1 的 Docker 或容器全挂，但宿主机 MySQL/Redis 还活着」。
+#   此时 ClickHouse 也挂了，但 apiduo 的异步日志 writer 会把日志落到本地 spool，
+#   不阻塞请求——这是它能撑住的关键。
+#
+# 与 core-1 那份 compose 的差异：
+#   1. 无 external network：所有依赖走 104.238.221.50 的公网 IP
+#   2. 端口绑 0.0.0.0:3003（core-1 要能访问），靠 iptables 限制来源
+#   3. 连接池更小、SQL_MAX_LIFETIME 更短：跨机连接易受网络抖动影响
+# ==========================================================================
+
+name: jieapi-core3
+
+services:
+  apiduo-standby:
+    image: ghcr.io/apiduo/apiduo:0.0.121
+    container_name: jieapi-apiduo-standby
+    restart: unless-stopped
+    command: ["--log-dir", "/app/logs"]
+
+    ports:
+      # 必须绑定到全网卡，core-1 才能访问；来源限制由 iptables 做
+      - "3003:3000"
+
+    env_file:
+      - /www/docker/apiduo/app.env            # 跨机版：DSN 里是 104.238.221.50
+      - /www/docker/apiduo-langfuse-b.env     # Langfuse B
+    environment:
+      NODE_NAME: jieapi-apiduo-core3
+      # 必须是 slave。两个 master 会重复跑任务轮询 / 渠道检测 / 订阅重置。
+      NODE_TYPE: slave
+      GOMAXPROCS: "8"
+      GOMEMLIMIT: "6GiB"
+      # 跨机连接占用 core-1 的 MySQL 池（2000），这里给 64 足够故障期使用
+      SQL_MAX_OPEN_CONNS: "64"
+      SQL_MAX_IDLE_CONNS: "16"
+      # 137ms 往返 + 网络抖动，连接不宜长寿，让它在失效前主动重建
+      SQL_MAX_LIFETIME: "120"
+      REDIS_POOL_SIZE: "32"
+
+    volumes:
+      - /www/docker/apiduo/data:/data
+      - /www/docker/apiduo/logs:/app/logs
+
+    mem_limit: 8g
+    memswap_limit: 8g
+    cpus: 8
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/status | grep -o '\"success\":[[:space:]]*true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # 跨机首次启动要跨 137ms 加载 options 表，给足冷启动时间
+      start_period: 90s

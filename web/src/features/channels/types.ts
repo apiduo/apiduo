@@ -166,7 +166,6 @@ export interface ChannelOtherSettings {
 
 /* APIDUO:file-relay:BEGIN */
 export interface FileRelayConfig {
-  purposes?: string[]
   max_upload_bytes?: number
 }
 /* APIDUO:file-relay:END */

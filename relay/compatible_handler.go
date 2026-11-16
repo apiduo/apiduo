@@ -169,6 +169,10 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 
 	if resp != nil {
 		httpResp = resp.(*http.Response)
+		// 观测上游额度水位。纯内存操作（几次 map 查找），
+		// 没有相关响应头时立刻返回——绝大多数请求走的就是这条路径。
+		// 放在状态码判断之前：429 恰恰是最需要看水位的时候。
+		service.ObserveRateLimit(info.ChannelId, httpResp.Header)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 		if httpResp.StatusCode != http.StatusOK {
 			newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)

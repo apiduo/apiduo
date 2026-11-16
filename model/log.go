@@ -68,6 +68,7 @@ type Log struct {
 	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
 	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
 	UseTime           int    `json:"use_time" gorm:"default:0"`
+	UseTimeMs         int    `json:"use_time_ms" gorm:"default:0"`
 	IsStream          bool   `json:"is_stream"`
 	ChannelId         int    `json:"channel" gorm:"index"`
 	ChannelName       string `json:"channel_name" gorm:"->"`
@@ -354,6 +355,7 @@ type RecordConsumeLogParams struct {
 	Content          []*common.Message `json:"content"`
 	TokenId          int               `json:"token_id"`
 	UseTimeSeconds   int               `json:"use_time_seconds"`
+	UseTimeMs        int               `json:"use_time_ms"`
 	IsStream         bool              `json:"is_stream"`
 	Group            string            `json:"group"`
 	Other            *LogOther         `json:"other"`
@@ -400,6 +402,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		ChannelId:        params.ChannelId,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
+		UseTimeMs:        params.UseTimeMs,
 		IsStream:         params.IsStream,
 		Group:            params.Group,
 		Ip: func() string {

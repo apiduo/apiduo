@@ -1,0 +1,14 @@
+<clickhouse>
+  <!-- Langfuse 专用调优（2026-11-14）
+       写入批次压小、排序/聚合溢写磁盘，避免大批次把 8GB 容器打满。 -->
+  <profiles>
+    <default>
+      <async_insert_max_data_size>2097152</async_insert_max_data_size>
+      <max_insert_block_size>65536</max_insert_block_size>
+      <max_bytes_before_external_sort>268435456</max_bytes_before_external_sort>
+      <max_bytes_before_external_group_by>268435456</max_bytes_before_external_group_by>
+      <max_threads>4</max_threads>
+      <max_memory_usage>5368709120</max_memory_usage>
+    </default>
+  </profiles>
+</clickhouse>
