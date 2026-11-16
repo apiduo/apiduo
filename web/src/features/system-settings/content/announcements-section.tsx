@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2, Save } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useFieldArray, useForm, useFormContext, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -69,18 +69,37 @@ import { SettingsSwitchField } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 
+type AnnouncementPhase = {
+  at: string
+  title: string
+  desc?: string
+}
+
 type Announcement = {
   id: number
   content: string
   publishDate: string
   type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
+  phases?: AnnouncementPhase[]
 }
 
 type AnnouncementsSectionProps = {
   enabled: boolean
   data: string
 }
+
+const phaseSchema = z.object({
+  at: z.string().min(1, 'Phase time is required'),
+  title: z
+    .string()
+    .min(1, 'Phase title is required')
+    .max(60, 'Phase title must be less than 60 characters'),
+  desc: z
+    .string()
+    .max(200, 'Phase description must be less than 200 characters')
+    .optional(),
+})
 
 const announcementSchema = z.object({
   content: z
@@ -92,6 +111,11 @@ const announcementSchema = z.object({
   extra: z
     .string()
     .max(100, 'Extra must be less than 100 characters')
+    .optional(),
+  // 后端同样限制 8 个：288px 面板里再多就看不清顺序了
+  phases: z
+    .array(phaseSchema)
+    .max(8, 'An announcement cannot have more than 8 phases')
     .optional(),
 })
 
@@ -156,8 +180,15 @@ export function AnnouncementsSection({
       publishDate: new Date().toISOString(),
       type: 'default',
       extra: '',
+      phases: [],
     },
   })
+
+  const {
+    fields: phaseFields,
+    append: appendPhase,
+    remove: removePhase,
+  } = useFieldArray({ control: form.control, name: 'phases' })
 
   useEffect(() => {
     try {
@@ -199,6 +230,7 @@ export function AnnouncementsSection({
       publishDate: new Date().toISOString(),
       type: 'default',
       extra: '',
+      phases: [],
     })
     setShowDialog(true)
   }
@@ -210,6 +242,7 @@ export function AnnouncementsSection({
       publishDate: announcement.publishDate,
       type: announcement.type,
       extra: announcement.extra || '',
+      phases: announcement.phases ?? [],
     })
     setShowDialog(true)
   }
@@ -253,16 +286,32 @@ export function AnnouncementsSection({
   }
 
   const handleSubmitForm = (values: AnnouncementFormValues) => {
+    // 阶段按时间排序后存，用户不用关心输入顺序；
+    // 全空的 desc 不落库，避免渲染时出现一个空的描述行
+    const phases = (values.phases ?? [])
+      .filter((phase) => phase.at && phase.title.trim())
+      .map((phase) => ({
+        at: phase.at,
+        title: phase.title.trim(),
+        ...(phase.desc?.trim() ? { desc: phase.desc.trim() } : {}),
+      }))
+      .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+
+    const payload = {
+      ...values,
+      phases: phases.length > 0 ? phases : undefined,
+    }
+
     if (editingAnnouncement) {
       setAnnouncements((prev) =>
         prev.map((item) =>
-          item.id === editingAnnouncement.id ? { ...item, ...values } : item
+          item.id === editingAnnouncement.id ? { ...item, ...payload } : item
         )
       )
       toast.success(t('Announcement updated. Click "Save Settings" to apply.'))
     } else {
       const newId = Math.max(...announcements.map((item) => item.id), 0) + 1
-      setAnnouncements((prev) => [...prev, { id: newId, ...values }])
+      setAnnouncements((prev) => [...prev, { id: newId, ...payload }])
       toast.success(t('Announcement added. Click "Save Settings" to apply.'))
     }
     setHasChanges(true)
@@ -578,6 +627,52 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+
+            <div className='space-y-2'>
+              <div className='flex items-center justify-between gap-2'>
+                <FormLabel>
+                  {t('Timeline')}
+                  {phaseFields.length > 0 && (
+                    <span className='text-muted-foreground ml-1.5 text-xs font-normal'>
+                      {phaseFields.length}/8
+                    </span>
+                  )}
+                </FormLabel>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={phaseFields.length >= 8}
+                  onClick={() =>
+                    appendPhase({ at: new Date().toISOString(), title: '', desc: '' })
+                  }
+                >
+                  <Plus className='mr-1 h-3.5 w-3.5' />
+                  {t('Add phase')}
+                </Button>
+              </div>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Optional. Shown as a vertical timeline on the dashboard, saved in time order.'
+                )}
+              </p>
+              {phaseFields.length > 0 && (
+                <div className='max-h-72 space-y-2 overflow-y-auto pr-1'>
+                  {phaseFields.map((field, index) => (
+                    <PhaseRow
+                      key={field.id}
+                      index={index}
+                      onRemove={() => removePhase(index)}
+                    />
+                  ))}
+                </div>
+              )}
+              {form.formState.errors.phases?.message && (
+                <p className='text-destructive text-xs'>
+                  {form.formState.errors.phases.message}
+                </p>
+              )}
+            </div>
           </form>
         </Form>
       </Dialog>
@@ -603,5 +698,61 @@ export function AnnouncementsSection({
         </AlertDialogContent>
       </AlertDialog>
     </SettingsSection>
+  )
+}
+
+/**
+ * 一行阶段。单独抽出来是因为日期要用 useWatch 取值 ——
+ * 在 map 回调里调 form.watch 既会拿到 undefined 类型，也会重复订阅。
+ */
+function PhaseRow({
+  index,
+  onRemove,
+}: {
+  index: number
+  onRemove: () => void
+}) {
+  const { t } = useTranslation()
+  const { control, register, setValue, formState } =
+    useFormContext<AnnouncementFormValues>()
+  const at = useWatch({ control, name: `phases.${index}.at` })
+  const error =
+    formState.errors.phases?.[index]?.title?.message ??
+    formState.errors.phases?.[index]?.at?.message
+
+  return (
+    <div className='bg-muted/30 space-y-2 rounded-lg border p-2.5'>
+      <div className='flex items-center gap-2'>
+        <DateTimePicker
+          className='w-72 shrink-0'
+          value={at ? new Date(at) : undefined}
+          onChange={(date) =>
+            setValue(`phases.${index}.at`, date ? date.toISOString() : '', {
+              shouldValidate: true,
+            })
+          }
+          placeholder={t('Phase time')}
+        />
+        <Input
+          placeholder={t('Phase title')}
+          {...register(`phases.${index}.title`)}
+        />
+        <Button
+          type='button'
+          size='icon'
+          variant='ghost'
+          className='shrink-0'
+          aria-label={t('Remove phase')}
+          onClick={onRemove}
+        >
+          <Trash2 className='h-4 w-4' />
+        </Button>
+      </div>
+      <Input
+        placeholder={t('Phase description (optional)')}
+        {...register(`phases.${index}.desc`)}
+      />
+      {error && <p className='text-destructive text-xs'>{error}</p>}
+    </div>
   )
 }

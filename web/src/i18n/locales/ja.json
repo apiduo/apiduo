@@ -8532,6 +8532,12 @@
     "By group": "グループ別",
     "Filter this column": "この列を絞り込む",
     "Try the last 24 hours": "直近24時間を表示",
-    "Filter by model": "モデルで絞り込む"
+    "Filter by model": "モデルで絞り込む",
+    "Add phase": "フェーズを追加",
+    "Phase time": "フェーズの時刻",
+    "Phase title": "フェーズのタイトル",
+    "Phase description (optional)": "フェーズの説明（任意）",
+    "Remove phase": "フェーズを削除",
+    "Optional. Shown as a vertical timeline on the dashboard, saved in time order.": "任意。ダッシュボードに縦型タイムラインとして表示され、時刻順に保存されます。"
   }
 }
