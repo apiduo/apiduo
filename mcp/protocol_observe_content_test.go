@@ -44,16 +44,19 @@ func TestWriteObservationPutsErrorInContent(t *testing.T) {
 	require.Contains(t, row.Content, "image.generate", "工具名要保留")
 	require.Contains(t, row.Content, "upstream 502", "错误原因必须在 content 里")
 
-	// 成功时仍然只写工具名（避免把正常调用刷成噪声）
+	// 成功：只写工具名，且用独立类型 8 —— 不能混进 type=2，
+	// 否则日志页会把一次 MCP 调用显示成两行（另一行是 relay 的计费记录）。
 	writeObservation(callObservation{Tool: "image.generate", ModelID: "qwen-image-3.0", OK: true})
 	var ok model.Log
 	for range 200 {
-		if err := db.Where("type = ?", 2).First(&ok).Error; err == nil {
+		if err := db.Where("type = ?", logTypeMCPObservation).First(&ok).Error; err == nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	require.Equal(t, "mcp image.generate", ok.Content)
+	require.Equal(t, -1, ok.ChannelId, "观察日志没有渠道，用 -1 与真实请求区分")
+	require.Zero(t, ok.Quota, "MCP 层不计费")
 
 	// other 里的结构化字段不能丢
 	var other map[string]map[string]any

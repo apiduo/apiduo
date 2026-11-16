@@ -121,6 +121,12 @@ func startObserver() {
 //
 // 归属从 ctx 补，而不是让每个调用点自己填：调用点只关心「哪个模型、什么参数、
 // 成没成」，把身份复制三遍迟早漏一处。
+// logTypeMCPObservation 是 MCP 观察日志的类型。
+//
+// 取值 8：model/log.go 里 0-7 已被占用（消费/管理/系统/错误/退款/登录…），
+// 8 空闲。定义在包内而不是往上游 model 包加常量，是为了少一处 marker。
+const logTypeMCPObservation = 8
+
 func observeCall(ctx context.Context, o callObservation) {
 	caller := callerFrom(ctx)
 	o.UserId, o.Username, o.TokenId = caller.UserId, caller.Username, caller.TokenId
@@ -161,7 +167,14 @@ func writeObservation(o callObservation) {
 	if err != nil {
 		return
 	}
-	logType := logTypeConsume
+	// 成功的 MCP 观察记成独立类型 8，不混进「消费」里。
+	//
+	// 一次成功的 MCP 调用在库里本来就有两行：MCP 层这行（channel_id=-1、
+	// quota=0、详情是工具名）和 relay 那行（真实渠道与计费）。都记成
+	// type=2 的话，日志页会把同一笔请求显示两遍，而且第一行的渠道是 #-1，
+	// 看起来像脏数据。
+	// 失败仍然记 type=5 —— 那确实该出现在错误聚类里。
+	logType := logTypeMCPObservation
 	if !o.OK {
 		logType = logTypeError
 	}
