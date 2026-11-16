@@ -8529,6 +8529,7 @@
     "Failed to open incident": "Не удалось открыть инцидент",
     "{{count}} occurrences in this cluster": "{{count}} вхождений в этом кластере",
     "By group": "По группе",
-    "Filter this column": "Фильтр по столбцу"
+    "Filter this column": "Фильтр по столбцу",
+    "Try the last 24 hours": "Попробовать последние 24 часа"
   }
 }

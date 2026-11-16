@@ -212,9 +212,21 @@ export function ServiceHealth() {
               {series.isLoading ? (
                 <Skeleton className='h-72 w-full' />
               ) : points.length === 0 ? (
-                <p className='text-muted-foreground py-16 text-center text-sm'>
-                  {t('No data in this window')}
-                </p>
+                <div className='py-16 text-center'>
+                  <p className='text-muted-foreground text-sm'>
+                    {t('No data in this window')}
+                  </p>
+                  {/* 只说「没有数据」分不清是没流量还是坏了。
+                      低流量站点切到 1h 后必然遇到这个，给条出路。 */}
+                  {rangeKey !== '24h' && (
+                    <button
+                      className='text-muted-foreground hover:text-foreground mt-2 text-xs underline underline-offset-2'
+                      onClick={() => setRangeKey('24h')}
+                    >
+                      {t('Try the last 24 hours')}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <ResponsiveContainer width='100%' height={300}>
                   <ComposedChart data={points}>

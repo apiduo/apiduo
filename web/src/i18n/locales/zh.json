@@ -8529,6 +8529,7 @@
     "Failed to open incident": "开单失败",
     "{{count}} occurrences in this cluster": "本簇内出现 {{count}} 次",
     "By group": "按分组",
-    "Filter this column": "筛选这一列"
+    "Filter this column": "筛选这一列",
+    "Try the last 24 hours": "试试最近 24 小时"
   }
 }

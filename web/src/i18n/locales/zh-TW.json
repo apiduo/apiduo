@@ -8529,6 +8529,7 @@
     "Failed to open incident": "開單失敗",
     "{{count}} occurrences in this cluster": "本叢集內出現 {{count}} 次",
     "By group": "按分組",
-    "Filter this column": "篩選這一欄"
+    "Filter this column": "篩選這一欄",
+    "Try the last 24 hours": "試試最近 24 小時"
   }
 }

@@ -8529,6 +8529,7 @@
     "Failed to open incident": "Mở sự cố thất bại",
     "{{count}} occurrences in this cluster": "{{count}} lần trong cụm này",
     "By group": "Theo nhóm",
-    "Filter this column": "Lọc cột này"
+    "Filter this column": "Lọc cột này",
+    "Try the last 24 hours": "Thử 24 giờ qua"
   }
 }
