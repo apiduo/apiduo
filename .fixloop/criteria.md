@@ -417,3 +417,70 @@ P2 的阈值依据：P95 翻倍已经是很严重的劣化，正常情况干扰�
 
 ### 清理
 `ops_incidents=0 / ops_shifts=0 / channel_costs=0`，与测试前基线完全一致。
+
+---
+
+# T2 判据：公告详情弹窗的标题（2026-11-17）
+
+## 需求原文
+
+> 修（语境：我上一条指出的「详情弹窗不显示公告标题」）
+
+## 映射
+
+| 需求 | 判据 | 状态 |
+|---|---|---|
+| 详情弹窗显示公告标题 | `.fixloop/gate-dialog-title.sh` | covered |
+| 「公告窗口大小合适吗」 | — | **uncovered**（评估性提问，无客观判据） |
+| 「Bsk 端到端测试」 | 同上，断言用 bsk 的 VOM | covered |
+
+## 判据说明
+
+断言 bsk 的 VOM 快照里 `dialog` 块内包含该公告的标题。
+
+**准备步骤**（环境前提，不属于判据）：
+
+```bash
+bsk open http://localhost:3000/dashboard/overview --wait-for 公告
+# 点第一条公告；bsk 动作带 intent-WAL，被拒时先 bsk sync 对账
+bsk sync
+```
+
+**为什么判据只做断言、不做交互**：bsk 的 click 会因 `uncertain_prior_effect` 被拒，
+每步都要 sync。把准备与断mix在一起，失败时分不清「没打开弹窗」和「弹窗里没标题」，
+违反规则 3（一轮一个根因）。
+
+**红/绿证据**：
+
+| 轮 | exit | 输出 |
+|---|---|---|
+| R1 | 1 | `FAIL[impl]: dialog 内没有公告标题（快照 48 行，仅 dialog）` |
+| R2 | 0 | `PASS: dialog 内显示了公告标题` |
+
+模态打开时 VOM 只返回 dialog，列表不在快照里 —— 不能用「列表里有没有」区分失败原因，
+诊断分支据此改写过一次（R1 首版误报「页面上找不到该公告」）。
+
+## 根因
+
+`Dialog` 的 title 写死 `t('Announcement Details')`，公告自身的 `title` 从未传给弹窗。
+列表有 `item.title?.trim() || getPreviewText(content)` 的回落，详情侧没有对应逻辑。
+
+## 修法
+
+`title={announcement?.title?.trim() || t('Announcement Details')}` + `titleClassName='line-clamp-2'`。
+
+用 title 而非在 body 加 `<h3>`：弹窗的可访问名随之变成公告标题，
+屏幕阅读器播报的是「哪一条公告」。
+
+## 尺寸结论（uncovered 那条）
+
+实测视口 1200×741：
+
+| 项 | 值 | 判断 |
+|---|---|---|
+| 弹窗宽 | 512px（`max-w-lg`），占视口 42% | 合适，中文每行约 30 字 |
+| 弹窗高 | 内容区 `min(58vh,520px)`，实测 430px | 合适，内容 + 4 阶段时间线**一屏放下，无滚动** |
+| 列表面板 | 固定 `h-72`（288px），每条约 65px | **唯一瑕疵**：5 条时第 5 条被切掉约 0.6 条 |
+
+列表那条不是「px 调错」，是「固定高度 × 动态条数」的固有矛盾：
+调到刚好 5 条，6 条时照样切半条。解法是让裁切可感知（底部渐隐 / 「共 N 条」），不是继续调 px。

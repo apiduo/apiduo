@@ -60,7 +60,10 @@ export function AnnouncementDetailModal({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t('Announcement Details')}
+      // 有标题就用它：列表点进来时标题还在视野里，但正文往往很长，
+      // 弹窗里没有标题就只能靠"已发布"那行来确认读的是哪一条。
+      title={announcement?.title?.trim() || t('Announcement Details')}
+      titleClassName='line-clamp-2'
       description={
         announcement?.publishDate
           ? `${t('Published:')} ${formatDateTimeObject(new Date(announcement.publishDate))}`
