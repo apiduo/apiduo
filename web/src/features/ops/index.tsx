@@ -64,13 +64,15 @@ function clock(ts: number) {
 export function ServiceHealth() {
   const { t } = useTranslation()
   const qc = useQueryClient()
-  const [rangeKey, setRangeKey] = useState<string>('24h')
+  // 默认最近一小时：这个页面是「现在出什么事了」，不是「这个月怎么样」。
+  // 24 小时窗口会把刚发生的变化稀释成一条几乎水平的线。
+  const [rangeKey, setRangeKey] = useState<string>('1h')
   const [dim, setDim] = useState<'model' | 'channel' | 'group'>('model')
   // 维度选定后还要能筛具体值：一个分组下有几十个模型时，
   // 逐个 눈找太慢，直接按关键字过滤这一列。
   const [dimFilter, setDimFilter] = useState('')
 
-  const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[2]
+  const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[0]
   const to = Math.floor(Date.now() / 1000)
   const from = to - range.span
 
