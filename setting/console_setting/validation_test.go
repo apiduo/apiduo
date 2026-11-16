@@ -236,3 +236,59 @@ func TestGetAnnouncementsKeepsBrokenExpiry(t *testing.T) {
 		t.Fatalf("a broken expiry must not hide the notice, got %d items", len(got))
 	}
 }
+
+// announcementsWithCategory 与 announcementsWithTitle 同构：
+// category 决定这条消息出现在公告面板还是功能更新横幅，写错就会串台。
+func announcementsWithCategory(member string) string {
+	const head = `[{"content":"测试公告","publishDate":"2026-11-16T10:00:00+08:00"`
+	if member == "" {
+		return head + `}]`
+	}
+	return head + `,` + member + `}]`
+}
+
+func TestValidateAnnouncementsCategory(t *testing.T) {
+	cases := []struct {
+		name    string
+		member  string
+		wantErr string
+	}{
+		{name: "字段不存在（存量数据）", member: ""},
+		{name: "空字符串视为公告", member: `"category":""`},
+		{name: "announcement", member: `"category":"announcement"`},
+		{name: "changelog", member: `"category":"changelog"`},
+		{
+			name:    "未知取值",
+			member:  `"category":"news"`,
+			wantErr: "invalid category",
+		},
+		{
+			name:    "大小写不匹配",
+			member:  `"category":"Changelog"`,
+			wantErr: "invalid category",
+		},
+		{
+			name:    "不是字符串",
+			member:  `"category":1`,
+			wantErr: "invalid category",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateConsoleSettings(announcementsWithCategory(tc.member), "Announcements")
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}

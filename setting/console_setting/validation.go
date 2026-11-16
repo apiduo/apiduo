@@ -206,6 +206,14 @@ func validateAnnouncements(announcementsStr string) error {
 				return common.NewMessage("Announcement #{{index}} title cannot exceed 60 characters", map[string]any{"index": i + 1})
 			}
 		}
+		// category 决定这条消息进公告面板还是功能更新横幅。写错就是串台，
+		// 所以这里比 title 严格：非字符串也拒绝，不当成「未提供」。
+		if category, exists := ann["category"]; exists {
+			categoryStr, ok := category.(string)
+			if !ok || (categoryStr != "" && categoryStr != "announcement" && categoryStr != "changelog") {
+				return common.NewMessage("Announcement #{{index}} has an invalid category", map[string]any{"index": i + 1})
+			}
+		}
 		if extra, exists := ann["extra"]; exists {
 			if extraStr, ok := extra.(string); ok && exceedsMaxCharacters(extraStr, 100) {
 				return common.NewMessage("Announcement #{{index}} note cannot exceed 100 characters", map[string]any{"index": i + 1})

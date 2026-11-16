@@ -32,6 +32,7 @@ import { ApiduoMarkDefs } from '@/features/apiduo-marks/mark-defs'
 import { ApiduoAppearanceProvider } from '@/features/apiduo-appearance'
 /* APIDUO:appearance:END */
 
+import { AnnouncementBanner } from '@/components/announcement-banner'
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
 
@@ -70,7 +71,14 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               {/* Publishes the effect as :root variables, so a console edit
                   retunes every mounted apiduo surface without a re-render. */}
               <ApiduoAppearanceProvider>
-                {props.children ?? <AnimatedOutlet />}
+                <div className='flex h-full min-h-0 flex-col'>
+                  {/* 功能更新横幅：内容区顶部，不带 sticky —— 推内容而不是盖内容。
+                      没有未读更新时组件返回 null，不占高度。 */}
+                  <AnnouncementBanner />
+                  <div className='min-h-0 flex-1'>
+                    {props.children ?? <AnimatedOutlet />}
+                  </div>
+                </div>
               </ApiduoAppearanceProvider>
               {/* APIDUO:appearance:END */}
             </SidebarInset>

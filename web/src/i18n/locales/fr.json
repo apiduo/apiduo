@@ -8545,6 +8545,10 @@
     "End time (Optional)": "Heure de fin (facultatif)",
     "Keep showing until cleared": "Continuer d'afficher jusqu'à effacement",
     "Announcement stops appearing after this time. Leave empty to keep it visible.": "L'annonce cesse d'apparaître après cette date. Laissez vide pour la garder visible.",
-    "{{count}} more": "{{count}} de plus"
+    "{{count}} more": "{{count}} de plus",
+    "Announcement": "Annonce",
+    "Feature update": "Nouveauté",
+    "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "Les annonces restent sur le tableau de bord. Les nouveautés n'apparaissent qu'une fois, dans un bandeau en haut.",
+    "{{count}} new feature updates": "{{count}} nouveautés"
   }
 }

@@ -8545,6 +8545,10 @@
     "End time (Optional)": "Время окончания (необязательно)",
     "Keep showing until cleared": "Показывать до очистки поля",
     "Announcement stops appearing after this time. Leave empty to keep it visible.": "После этого времени объявление перестанет отображаться. Оставьте пустым, чтобы показывать постоянно.",
-    "{{count}} more": "ещё {{count}}"
+    "{{count}} more": "ещё {{count}}",
+    "Announcement": "Объявление",
+    "Feature update": "Обновление",
+    "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "Объявления остаются на панели. Обновления показываются один раз в верхней полосе.",
+    "{{count}} new feature updates": "{{count}} обновлений"
   }
 }

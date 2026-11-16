@@ -8545,6 +8545,10 @@
     "End time (Optional)": "終了時刻（任意）",
     "Keep showing until cleared": "クリアするまで表示",
     "Announcement stops appearing after this time. Leave empty to keep it visible.": "この時刻を過ぎると表示されなくなります。空欄のままにすると表示され続けます。",
-    "{{count}} more": "他 {{count}} 件"
+    "{{count}} more": "他 {{count}} 件",
+    "Announcement": "お知らせ",
+    "Feature update": "機能アップデート",
+    "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "お知らせはダッシュボードに常駐します。機能アップデートは上部バナーに一度だけ表示されます。",
+    "{{count}} new feature updates": "機能アップデート {{count}} 件"
   }
 }

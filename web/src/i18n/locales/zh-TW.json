@@ -8545,6 +8545,10 @@
     "End time (Optional)": "結束時間（選填）",
     "Keep showing until cleared": "留空則一直顯示",
     "Announcement stops appearing after this time. Leave empty to keep it visible.": "到達此時間後不再顯示。留空則一直顯示。",
-    "{{count}} more": "還有 {{count}} 條"
+    "{{count}} more": "還有 {{count}} 條",
+    "Announcement": "公告",
+    "Feature update": "功能更新",
+    "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "公告常駐儀表板。功能更新只在頂部橫幅提示一次。",
+    "{{count}} new feature updates": "有 {{count}} 項功能更新"
   }
 }

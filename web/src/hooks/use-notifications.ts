@@ -22,6 +22,7 @@ import { useState, useMemo } from 'react'
 import { useStatus } from '@/hooks/use-status'
 import { getNotice } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
+import { isChangelog } from '@/features/dashboard/lib/announcement-category'
 import { useNotificationStore } from '@/stores/notification-store'
 
 function hashString(input: string): string {
@@ -83,20 +84,28 @@ export function useNotifications() {
   // Fetch Announcements from status
   const { status, loading: statusLoading } = useStatus()
   const announcementsEnabled = status?.announcements_enabled ?? false
+  // 两者共用同一个数组，按 category 分流：
+  // 公告进面板与铃铛，功能更新进顶部的横幅。
   const announcements = useMemo<Record<string, unknown>[]>(() => {
     if (!announcementsEnabled) return []
-    return ((status?.announcements || []) as Record<string, unknown>[]).slice(
-      0,
-      20
-    )
+    return ((status?.announcements || []) as Record<string, unknown>[])
+      .filter((item) => !isChangelog(item))
+      .slice(0, 20)
+  }, [announcementsEnabled, status?.announcements])
+
+  const changelogs = useMemo<Record<string, unknown>[]>(() => {
+    if (!announcementsEnabled) return []
+    return ((status?.announcements || []) as Record<string, unknown>[])
+      .filter((item) => isChangelog(item))
+      .slice(0, 20)
   }, [announcementsEnabled, status?.announcements])
 
   // Notification store
   const {
     lastReadNotice,
+    readAnnouncementKeys,
     markNoticeRead,
     markAnnouncementsRead,
-    isAnnouncementRead,
   } = useNotificationStore()
 
   // Extract notice content
@@ -104,24 +113,43 @@ export function useNotifications() {
     ? (noticeResponse.data || '').trim()
     : ''
 
+  // 未读的功能更新条目本身也要给横幅用，不只是数量
+  // 依赖 readAnnouncementKeys 而不是 isAnnouncementRead：后者的函数引用在
+  // store 里是稳定的，用它做依赖会让这个 memo 永远不重算 ——
+  // 点「关闭」标记已读后横幅不消失，就是这个原因。
+  const unreadChangelogs = useMemo(
+    () =>
+      changelogs.filter(
+        (item) => !readAnnouncementKeys.includes(getAnnouncementKey(item))
+      ),
+    [changelogs, readAnnouncementKeys]
+  )
+
   // Calculate unread counts
   const unreadCounts = useMemo(() => {
     const noticeUnread =
       noticeContent && noticeContent !== lastReadNotice ? 1 : 0
 
     const announcementsUnread = announcements.filter(
-      (item: Record<string, unknown>) => {
-        const key = getAnnouncementKey(item)
-        return !isAnnouncementRead(key)
-      }
+      (item: Record<string, unknown>) =>
+        !readAnnouncementKeys.includes(getAnnouncementKey(item))
     ).length
 
+    // 功能更新不进 total：铃铛每次发版都变红，两周后用户就无视它了。
+    // 它的提示位是顶部横幅，只报数量。
     return {
       notice: noticeUnread,
       announcements: announcementsUnread,
+      changelog: unreadChangelogs.length,
       total: noticeUnread + announcementsUnread,
     }
-  }, [noticeContent, lastReadNotice, announcements, isAnnouncementRead])
+  }, [
+    noticeContent,
+    lastReadNotice,
+    announcements,
+    unreadChangelogs,
+    readAnnouncementKeys,
+  ])
 
   const markAnnouncementsAsRead = () => {
     if (announcements.length > 0) {
@@ -176,6 +204,14 @@ export function useNotifications() {
     unreadCount: unreadCounts.total,
     unreadNoticeCount: unreadCounts.notice,
     unreadAnnouncementsCount: unreadCounts.announcements,
+
+    // 功能更新：只服务顶部横幅，与铃铛分开计数
+    unreadChangelogs,
+    unreadChangelogCount: unreadCounts.changelog,
+    markChangelogsAsRead: () => {
+      const keys = unreadChangelogs.map((item) => getAnnouncementKey(item))
+      if (keys.length > 0) markAnnouncementsRead(keys)
+    },
 
     // Popover state
     popoverOpen,

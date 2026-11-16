@@ -8545,6 +8545,10 @@
     "End time (Optional)": "Thời gian kết thúc (không bắt buộc)",
     "Keep showing until cleared": "Tiếp tục hiển thị cho đến khi xóa",
     "Announcement stops appearing after this time. Leave empty to keep it visible.": "Thông báo sẽ ngừng hiển thị sau thời điểm này. Để trống để luôn hiển thị.",
-    "{{count}} more": "{{count}} mục nữa"
+    "{{count}} more": "{{count}} mục nữa",
+    "Announcement": "Thông báo",
+    "Feature update": "Cập nhật tính năng",
+    "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "Thông báo hiển thị thường trực trên bảng điều khiển. Cập nhật tính năng chỉ hiện một lần ở băng rôn trên cùng.",
+    "{{count}} new feature updates": "{{count}} cập nhật tính năng"
   }
 }

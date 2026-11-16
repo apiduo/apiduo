@@ -8545,6 +8545,10 @@
     "End time (Optional)": "End time (Optional)",
     "Keep showing until cleared": "Keep showing until cleared",
     "Announcement stops appearing after this time. Leave empty to keep it visible.": "Announcement stops appearing after this time. Leave empty to keep it visible.",
-    "{{count}} more": "{{count}} more"
+    "{{count}} more": "{{count}} more",
+    "Announcement": "Announcement",
+    "Feature update": "Feature update",
+    "Announcements stay on the dashboard. Feature updates appear once in a top banner.": "Announcements stay on the dashboard. Feature updates appear once in a top banner.",
+    "{{count}} new feature updates": "{{count}} new feature updates"
   }
 }

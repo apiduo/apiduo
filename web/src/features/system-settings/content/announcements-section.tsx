@@ -60,9 +60,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
 import { toLocalRFC3339 } from '@/lib/time'
+import { cn } from '@/lib/utils'
 import { formatTimestampRelative } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
@@ -79,6 +81,8 @@ type AnnouncementPhase = {
 type Announcement = {
   id: number
   title?: string
+  // 缺省视为公告；changelog 只出现在顶部的功能更新横幅里
+  category?: 'announcement' | 'changelog'
   content: string
   publishDate: string
   expiresAt?: string
@@ -105,6 +109,7 @@ const phaseSchema = z.object({
 })
 
 const announcementSchema = z.object({
+  category: z.enum(['announcement', 'changelog']).optional(),
   // 标题可选：留空时列表回落为正文摘要
   title: z
     .string()
@@ -196,6 +201,7 @@ export function AnnouncementsSection({
   const form = useForm<AnnouncementFormValues>({
     resolver: zodResolver(announcementSchema),
     defaultValues: {
+      category: 'announcement',
       title: '',
       content: '',
       publishDate: toLocalRFC3339(new Date()),
@@ -211,6 +217,11 @@ export function AnnouncementsSection({
     append: appendPhase,
     remove: removePhase,
   } = useFieldArray({ control: form.control, name: 'phases' })
+
+  // 功能更新只保留标题、正文、发布日期、附加信息四块。
+  // 用 useWatch 而不是 form.watch：后者在渲染期订阅，每次输入都重复注册。
+  const category = useWatch({ control: form.control, name: 'category' })
+  const isChangelog = category === 'changelog'
 
   useEffect(() => {
     try {
@@ -248,6 +259,7 @@ export function AnnouncementsSection({
   const handleAdd = () => {
     setEditingAnnouncement(null)
     form.reset({
+      category: 'announcement',
       title: '',
       content: '',
       publishDate: toLocalRFC3339(new Date()),
@@ -262,6 +274,7 @@ export function AnnouncementsSection({
   const handleEdit = (announcement: Announcement) => {
     setEditingAnnouncement(announcement)
     form.reset({
+      category: announcement.category || 'announcement',
       title: announcement.title || '',
       content: announcement.content,
       publishDate: announcement.publishDate,
@@ -323,8 +336,15 @@ export function AnnouncementsSection({
       }))
       .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
 
+    // 功能更新没有级别、没有时效窗口、没有阶段 —— 这几个字段对它是噪音，
+    // 留着只会让人填出「带警告级别的 changelog」这种语义错乱
+    const changelog = values.category === 'changelog'
+
     const payload = {
       ...values,
+      ...(changelog
+        ? { type: undefined, expiresAt: undefined, phases: undefined }
+        : {}),
       // 空标题不落库：存空串会让列表拿空标题渲染，回落逻辑也就失效了
       title: values.title?.trim() || undefined,
       // 空失效时间同理：留空就是「不过期」，不需要存一个空串
@@ -545,6 +565,42 @@ export function AnnouncementsSection({
           >
             <FormField
               control={form.control}
+              name='category'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Category')}</FormLabel>
+                  <FormControl>
+                    <ToggleGroup
+                      value={[field.value ?? 'announcement']}
+                      onValueChange={(values) => {
+                        const next = values.find(
+                          (value) => value !== (field.value ?? 'announcement')
+                        )
+                        if (next) field.onChange(next)
+                      }}
+                      variant='outline'
+                      spacing={2}
+                      className='grid w-full grid-cols-2 gap-2'
+                    >
+                      <ToggleGroupItem value='announcement' className='w-full'>
+                        {t('Announcement')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value='changelog' className='w-full'>
+                        {t('Feature update')}
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Announcements stay on the dashboard. Feature updates appear once in a top banner.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
               name='title'
               render={({ field }) => (
                 <FormItem>
@@ -611,6 +667,8 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+            {!isChangelog && (
+              <>
             <FormField
               control={form.control}
               name='expiresAt'
@@ -682,6 +740,8 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+              </>
+            )}
             <FormField
               control={form.control}
               name='extra'
@@ -704,7 +764,7 @@ export function AnnouncementsSection({
               )}
             />
 
-            <div className='space-y-2'>
+            <div className={cn('space-y-2', isChangelog && 'hidden')}>
               <div className='flex items-center justify-between gap-2'>
                 <FormLabel>
                   {t('Timeline')}
