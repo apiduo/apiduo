@@ -509,6 +509,52 @@ func TestAdvancedAsyncActionClassifiesContent(t *testing.T) {
 // images 协议没有这层号映射，不能跟着一起拒。
 // 渠道配了模型重定向时，上游 body 里的 model 必须换成映射后的名字：
 // 只改路由与计价、body 原样透传的话，上游会拿一个它不认识的模型名拒掉。
+func TestValidateRequestSetsImageActionForImagesProtocol(t *testing.T) {
+	config := testConfig()
+	config.Protocol = kitdto.AdvancedAsyncProtocolImages
+	adaptor := testAdaptor(t, config)
+	adaptor.info.Action = ""
+	body := `{"model":"nano-banana-2","prompt":"an apple","size":"1024x1024"}`
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(body))
+
+	if taskErr := adaptor.ValidateRequestAndSetAction(c, adaptor.info); taskErr != nil {
+		t.Fatalf("unexpected error: %v", taskErr)
+	}
+	if adaptor.info.Action != constant.TaskActionImageGeneration {
+		t.Fatalf("action = %q, want %q: the protocol decides, the body shape must not",
+			adaptor.info.Action, constant.TaskActionImageGeneration)
+	}
+	// 提交给上游的字节不能被这条判断改动。
+	if string(adaptor.submitBody) != body {
+		t.Fatalf("body must stay byte-identical, got %s", adaptor.submitBody)
+	}
+}
+
+func TestValidateRequestKeepsContentInferenceForArkProtocol(t *testing.T) {
+	cases := map[string]string{
+		`{"model":"doubao-seedance-1-0-pro","content":[{"type":"text","text":"a cat"}]}`: constant.TaskActionTextToVideo,
+		`{"model":"doubao-seedance-1-0-pro","content":[{"type":"image_url","image_url":{"url":"x"}}]}`: constant.TaskActionImageToVideo,
+	}
+	for body, want := range cases {
+		config := testConfig()
+		config.Protocol = kitdto.AdvancedAsyncProtocolArk
+		adaptor := testAdaptor(t, config)
+		adaptor.info.Action = ""
+
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(body))
+
+		if taskErr := adaptor.ValidateRequestAndSetAction(c, adaptor.info); taskErr != nil {
+			t.Fatalf("unexpected error: %v", taskErr)
+		}
+		if adaptor.info.Action != want {
+			t.Fatalf("action for %s = %q, want %q", body, adaptor.info.Action, want)
+		}
+	}
+}
+
 func TestValidateRequestRewritesMappedModel(t *testing.T) {
 	adaptor := testAdaptor(t, testConfig())
 	adaptor.info.OriginModelName = "hailuo-video-sec"

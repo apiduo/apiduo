@@ -121,7 +121,15 @@ func (a *Adaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.
 	}
 	a.submitBody = body
 	if info != nil && info.Action == "" {
-		info.Action = advancedAsyncAction(body)
+		// 协议决定动作，body 形状不能：images 的请求体是 {model,prompt,size}，
+		// 没有 content 数组，落进下面的视频推断器必然得到 text_to_video ——
+		// 客户端拿到的响应是对的，任务行、按动作的统计和图片制品却全错。
+		// 这条分支覆盖入口不写动作头的路径（静态路由就是如此）。
+		if a.config != nil && a.config.NormalizedProtocol() == kitdto.AdvancedAsyncProtocolImages {
+			info.Action = constant.TaskActionImageGeneration
+		} else {
+			info.Action = advancedAsyncAction(body)
+		}
 	}
 	return nil
 }
