@@ -269,12 +269,15 @@ jobs:
         run: |
           set -euo pipefail
           TAG='${{ steps.ver.outputs.tag }}'
+          # 显式指定仓库：上面为了 markercheck 加了 upstream remote（指向 QuantumNous/new-api），
+          # gh 的默认仓库推断会被它干扰，报「tag 未推送到 QuantumNous/new-api」。
+          REPO='${{ github.repository }}'
           # 幂等：补发或重跑时同 tag 已存在，直接跳过而不是红。
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
             echo "release $TAG already exists -- skipping creation"
             exit 0
           fi
-          gh release create "$TAG" \
+          gh release create "$TAG" -R "$REPO" \
             --title "$TAG" \
             --notes-file RELEASE_NOTES.md
 
