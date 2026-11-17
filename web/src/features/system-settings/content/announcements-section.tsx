@@ -585,7 +585,7 @@ export function AnnouncementsSection({
             onSubmit={form.handleSubmit(handleSubmitForm)}
             className='space-y-4'
           >
-/* APIDUO:announcement:BEGIN */
+{/* APIDUO:announcement:BEGIN */}
             <FormField
               control={form.control}
               name='category'
@@ -696,7 +696,7 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
-/* APIDUO:announcement:END */
+{/* APIDUO:announcement:END */}
             <FormField
               control={form.control}
               name='content'
@@ -745,7 +745,7 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
-/* APIDUO:announcement:BEGIN */
+{/* APIDUO:announcement:BEGIN */}
             {!isChangelog && (
               <>
             <FormField
@@ -772,7 +772,7 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
-/* APIDUO:announcement:END */
+{/* APIDUO:announcement:END */}
             <FormField
               control={form.control}
               name='type'
@@ -820,10 +820,10 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
-/* APIDUO:announcement:BEGIN */
+{/* APIDUO:announcement:BEGIN */}
               </>
             )}
-/* APIDUO:announcement:END */
+{/* APIDUO:announcement:END */}
             <FormField
               control={form.control}
               name='extra'
@@ -845,7 +845,7 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
-/* APIDUO:announcement:BEGIN */
+{/* APIDUO:announcement:BEGIN */}
 
             <div className={cn('space-y-2', isChangelog && 'hidden')}>
               <div className='flex items-center justify-between gap-2'>
@@ -892,7 +892,7 @@ export function AnnouncementsSection({
                 </p>
               )}
             </div>
-/* APIDUO:announcement:END */
+{/* APIDUO:announcement:END */}
           </form>
         </Form>
       </Dialog>

@@ -110,7 +110,7 @@ export function AnnouncementsPanel() {
       height='h-72'
       contentClassName='p-0'
     >
-/* APIDUO:announcement:BEGIN */
+{/* APIDUO:announcement:BEGIN */}
       <div ref={scrollHostRef} className='relative'>
         <ScrollArea className='h-72'>
         <div>
@@ -167,7 +167,7 @@ export function AnnouncementsPanel() {
           </div>
         )}
       </div>
-/* APIDUO:announcement:END */
+{/* APIDUO:announcement:END */}
 
       <AnnouncementDetailModal
         open={isDialogOpen}

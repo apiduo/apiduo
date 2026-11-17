@@ -97,7 +97,7 @@ export function AnnouncementDetailModal({
               <AnnouncementTimeline phases={announcement.phases} />
             </div>
           )}
-/* APIDUO:announcement:END */
+{/* APIDUO:announcement:END */}
           {announcement?.extra && (
             <div>
               <h4 className='mb-2 font-medium'>
