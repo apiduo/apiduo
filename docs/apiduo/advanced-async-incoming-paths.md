@@ -182,6 +182,12 @@ GET  <incoming>/{task_id}    → 轮询
 ```
 
 Images 协议的轮询回标准 Images 响应（任务成功时），Ark 协议回任务对象。
+
+**每一跳都带 `status`**：`queued` / `in_progress` / `succeeded` / `failure`。
+上游有自己的状态词就映射到这一套（`running`→`in_progress`，`succeeded`→`succeeded`…），
+上游成功时不带状态（实测 hailuo 只回 `{data:[{url}],usage,created}`）则由「有没有结果
+地址」判定为 `succeeded`。客户端应以 `status` 判断终态，不要靠 `data` 是否存在 —— 后者
+只是兼容旧客户端的冗余信号。
 内部落地点是 `/v1/images/generations/{task_id}`，只注册了 GET，同名路径上的同步 POST 不动。
 
 **提交与轮询必须用同一条 base。** 两者是各自独立的入站：网关别名

@@ -73,6 +73,7 @@ func TestApiduoImageAsyncViewMatchesUpstreamVocabulary(t *testing.T) {
 	code, view = apiduoImageAsyncView(done)
 	assert.Equal(t, 200, code)
 	assert.Equal(t, "task_abc", view["task_id"])
+	assert.Equal(t, "succeeded", view["status"], "终态必须给 status，客户端才不用靠 data 判断")
 	data, ok := view["data"].([]gin.H)
 	require.True(t, ok, "成功必须回 data 数组")
 	require.Len(t, data, 1)

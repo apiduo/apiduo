@@ -76,10 +76,14 @@ func apiduoImageAsyncView(task *model.Task) (int, gin.H) {
 				},
 			}
 		}
+		// 终态必须带 status：客户端按 status 判定结束比「有没有 data」稳，
+		// 否则永远到不了"完成"这一跳。词表与进行中/失败同一套（succeeded）。
 		return http.StatusOK, gin.H{
 			"task_id": task.TaskID,
 			"id":      task.TaskID,
+			"object":  "image.generation",
 			"created": created,
+			"status":  apiduoImageAsyncStatus(task.Status),
 			"data":    []gin.H{{"url": url}},
 		}
 	case model.TaskStatusFailure:
