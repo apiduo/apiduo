@@ -210,7 +210,9 @@ func TaskErrorWrapper(err error, code string, statusCode int, upstreamURLs ...st
 	//避免暴露内部错误
 	taskError := &taskdto.TaskError{
 		Code:       code,
+/* APIDUO:upstream-reason:BEGIN */
 		Message:    SanitizeUpstreamReason(text, statusCode),
+/* APIDUO:upstream-reason:END */
 		StatusCode: statusCode,
 		Error:      err,
 	}

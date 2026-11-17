@@ -17,7 +17,9 @@
 # 2) 轮询报 failure 需要二次确认：状态机在 service/task_polling.go，
 #    PendingFailure 字段在 model/task.go 的 TaskPrivateData 上；
 # 3) 测试单独放新文件，未计入。
+# 4) 三个调用点/分支必须就地加标记块（error.go 的 Message、task_polling 的
+#    失败原因与二次确认、测试里的两次轮询），标记块 527->530、added +6。
 files	172
-blocks	527
-added	5627
+blocks	530
+added	5633
 deleted	415

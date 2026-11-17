@@ -743,6 +743,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		if task.FinishTime == 0 {
 			task.FinishTime = now
 		}
+/* APIDUO:poll-failure-confirm:BEGIN */
 		task.FailReason = SanitizeUpstreamReason(taskResult.Reason, resp.StatusCode)
 		if task.FailReason == "" {
 			task.FailReason = task.PrivateData.PendingFailure
@@ -750,6 +751,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		if task.FailReason == "" {
 			task.FailReason = "upstream reported failure"
 		}
+/* APIDUO:poll-failure-confirm:END */
 		logger.LogInfo(ctx, common.LogText("Task %s failed: %s", task.TaskID, task.FailReason))
 		taskResult.Progress = taskcommon.ProgressComplete
 		shouldFinalizeBilling = true
