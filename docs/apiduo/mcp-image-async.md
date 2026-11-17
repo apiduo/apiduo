@@ -1,7 +1,8 @@
 # MCP 图片异步：把 `/async/v1/images/generations` 接进 `image.generate`
 
-> 2026-11-17 **v3**。P0 已实施（`mcp/`，`go test ./mcp/` 全绿，合并面零增量）；
-> 线上 `nano-banana-2` 声明已预置为 `enabled=0`，等发版后开启。
+> 2026-11-17 **v4**。已上线并端到端验证（0.0.183）：`nano-banana-2` 异步生图
+> 提交 → working，7 次轮询（约 70 秒）→ completed，产物 URL 正常；$0.01 一次，
+> 任务表 1 条记录（`platform=8001`、`quota=5000`）。
 > v2 的前提变更：网关已给成功终态补上 `status`（`be0c1cfc0`），v1 的核心机制
 > `TerminalOnData` 因此作废，理由见 §1.4。
 > 配套原型：`design/mcp-image-async.html`。
@@ -343,7 +344,7 @@ if m.Async { path = t.AsyncGenerate }
 **合并面**：P0 全部落在 `mcp/`。实测 `go run ./tools/markercheck -cost` 为
 172 / 530 / 5633 / 415，与 `.apiduo/merge-budget.txt` **逐项一致**。
 
-### 已落地（2026-11-17）
+### 已落地（2026-11-17，0.0.183）
 
 | 文件 | 改动 |
 |---|---|
@@ -352,6 +353,9 @@ if m.Async { path = t.AsyncGenerate }
 | `mcp/protocol_tools.go` | `generate` 选路、`fanoutCount`、清单「异步」标签、异步提交的默认模型说明、三处文案 |
 | `mcp/protocol_server.go` | instructions 第 3 条改为「部分模型异步」（图片也算） |
 | `mcp/README.md` | 「一个请求形状、两种响应形状」 |
+
+线上声明 `nano-banana-2`：`kind=image`、`async=1`、`enabled=1`、`priority=50`、
+`cost=$0.01/次`（`mcp_model_profiles.id=31`）。
 
 新增 `mcp/image_async_test.go`，五个用例：形态表、异步端点、同步不被带偏、
 异步不拆单、清单标记。`go test ./mcp/` 全绿，`gofmt` / `go vet` / `go build ./...` 无输出。
