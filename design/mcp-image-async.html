@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fcfcfa">
+<title>MCP 图片异步 · 方案原型</title>
+<meta name="description" content="把 /async/v1/images/generations 接进 image.generate：工具面不变，只补 transport 的异步半边与终态证据。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #fcfcfa;
+  --paper-2: #f4f4f1;
+  --rule: #e4e4de;
+  --rule-2: #cfcfc7;
+  --ink: #1a1c1e;
+  --ink-2: #45484b;
+  --muted: #6b7076;
+  --accent: #9a3412;
+  --accent-soft: #fdf0ea;
+  --ok: #3f6f4a;
+  --ok-soft: #eef4ef;
+  --err: #a4161a;
+
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+  --f-label: 12px;
+  --f-body: 14px;
+  --f-section: 18px;
+  --f-display: 24px;
+
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--f-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--s8) var(--s6) var(--s8);
+}
+
+/* ── 页头 ─────────────────────────────────────────── */
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: var(--f-label);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.eyebrow .sep { width: 1px; height: 10px; background: var(--rule-2); }
+
+h1 {
+  font-size: 32px;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  font-weight: 600;
+  margin: var(--s4) 0 var(--s4);
+  max-width: 21em;
+}
+
+.lead {
+  font-size: 15px;
+  color: var(--ink-2);
+  max-width: 46em;
+  margin: 0 0 var(--s6);
+}
+
+.lead strong { color: var(--ink); font-weight: 500; }
+
+.figures {
+  display: flex;
+  gap: var(--s7);
+  padding: var(--s4) 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+
+.fig { min-width: 96px; }
+
+.fig .n {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 500;
+  display: block;
+  line-height: 1.2;
+}
+
+.fig .k {
+  font-size: var(--f-label);
+  color: var(--muted);
+}
+
+.fig .n.chg { color: var(--accent); }
+.fig .n.ok { color: var(--ok); }
+
+/* ── 区块 ─────────────────────────────────────────── */
+
+section { padding-top: var(--s8); }
+
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s4);
+  border-bottom: 1px solid var(--rule-2);
+  padding-bottom: var(--s2);
+  margin-bottom: var(--s5);
+}
+
+.sec-head .num {
+  font-family: var(--mono);
+  font-size: var(--f-label);
+  color: var(--muted);
+  padding-top: 2px;
+}
+
+h2 {
+  font-size: var(--f-section);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -.005em;
+}
+
+.sec-head .aside {
+  margin-left: auto;
+  font-size: var(--f-label);
+  color: var(--muted);
+}
+
+p { margin: 0 0 var(--s3); }
+p:last-child { margin-bottom: 0; }
+
+.note {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 62em;
+}
+
+/* ── 时间轴对比 ───────────────────────────────────── */
+
+.timeline {
+  display: grid;
+  grid-template-columns: 92px 1fr 152px;
+  gap: var(--s2) var(--s4);
+  align-items: center;
+  margin-bottom: var(--s5);
+}
+
+.timeline .row-label {
+  font-family: var(--mono);
+  font-size: var(--f-label);
+  color: var(--muted);
+  text-align: right;
+}
+
+.track {
+  position: relative;
+  height: 26px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+}
+
+.track .span {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: -1px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--s2);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.span.sync { width: calc(100% + 2px); background: var(--err); }
+.span.async { width: 44px; background: var(--ok); }
+.span.poll {
+  left: 52px;
+  width: calc(100% - 52px);
+  background: repeating-linear-gradient(135deg, var(--ok-soft) 0 6px, #e6efe8 6px 12px);
+  color: var(--ok);
+  border-left: 1px solid var(--ok);
+  justify-content: flex-start;
+  padding-left: var(--s2);
+}
+
+.timeline .dur {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.timeline .dur b { color: var(--err); font-weight: 500; }
+.timeline .dur i { color: var(--ok); font-style: normal; font-weight: 500; }
+
+.axis {
+  grid-column: 2 / 4;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--rule-2);
+  border-top: 1px solid var(--rule);
+  padding-top: 2px;
+}
+
+/* ── 双泳道 ───────────────────────────────────────── */
+
+.lanes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--rule-2);
+}
+
+.lane { padding: var(--s5); }
+.lane + .lane { border-left: 1px solid var(--rule-2); }
+
+.lane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.lane-head h3 {
+  font-size: var(--f-body);
+  font-weight: 600;
+  margin: 0;
+}
+
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+}
+
+.tag.sync { color: var(--muted); }
+.tag.async { color: var(--ok); }
+
+.steps { list-style: none; margin: 0; padding: 0; }
+
+.steps li {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-bottom: 1px dashed var(--rule);
+  cursor: pointer;
+  transition: background .16s var(--ease);
+}
+
+.steps li:last-child { border-bottom: 0; }
+.steps li:hover { background: var(--paper-2); }
+.steps li.on { background: var(--accent-soft); }
+
+.steps .t {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  padding-top: 1px;
+  white-space: nowrap;
+}
+
+.steps .d { font-size: 13px; overflow-wrap: anywhere; }
+.steps .d code { font-family: var(--mono); font-size: 12px; }
+
+.status {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 0 4px;
+  border: 1px solid var(--rule-2);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.status.s202 { color: var(--accent); border-color: var(--accent); }
+.status.s200 { color: var(--ok); border-color: var(--ok); }
+
+/* ── JSON 面板 ────────────────────────────────────── */
+
+.same-body {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--ok);
+  background: var(--ok-soft);
+  font-size: 12.5px;
+  flex-wrap: wrap;
+}
+
+.same-body .lab {
+  font-size: var(--f-label);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.same-body code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.same-body .verdict {
+  margin-left: auto;
+  color: var(--ok);
+  font-size: 12px;
+}
+
+.payload {
+  margin-top: var(--s5);
+  border: 1px solid var(--rule-2);
+  background: var(--paper-2);
+}
+
+.payload-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.payload-bar .dot { width: 6px; height: 6px; background: var(--accent); }
+
+.payload pre {
+  margin: 0;
+  padding: var(--s4);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--ink-2);
+  overflow-x: auto;
+}
+
+.payload pre .k { color: var(--ink); font-weight: 500; }
+.payload pre .s { color: var(--ok); }
+.payload pre .n { color: var(--accent); }
+.payload pre .c { color: var(--muted); }
+
+/* ── 缺口表 ───────────────────────────────────────── */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th {
+  text-align: left;
+  font-weight: 500;
+  font-size: var(--f-label);
+  color: var(--muted);
+  padding: var(--s2) var(--s3) var(--s2) 0;
+  border-bottom: 1px solid var(--rule-2);
+  white-space: nowrap;
+}
+
+td {
+  padding: var(--s3) var(--s3) var(--s3) 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+  color: var(--ink-2);
+}
+
+td:last-child, th:last-child { padding-right: 0; }
+
+td .code { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+td .why { color: var(--muted); font-size: 12px; display: block; margin-top: 2px; }
+
+.sev {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid var(--rule-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.sev.p0 { color: var(--err); border-color: var(--err); }
+.sev.p1 { color: var(--accent); border-color: var(--accent); }
+
+/* ── 表单 mock ────────────────────────────────────── */
+
+.mock {
+  border: 1px solid var(--rule-2);
+  padding: var(--s5);
+  max-width: 640px;
+  background: var(--paper);
+}
+
+.mock-row {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: var(--s4);
+  align-items: center;
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mock-row:last-of-type { border-bottom: 0; }
+
+.mock-row .lab { font-size: 13px; color: var(--ink-2); }
+
+.field {
+  border: 1px solid var(--rule-2);
+  background: var(--paper);
+  padding: 6px var(--s3);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.field .caret { color: var(--muted); font-size: 10px; }
+
+.field.plain { font-family: var(--sans); font-size: 13px; }
+
+.warn {
+  margin-top: var(--s4);
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  padding: var(--s3) var(--s4);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.warn b { color: var(--accent); font-weight: 500; }
+
+/* ── 不做清单 ─────────────────────────────────────── */
+
+.donts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 var(--s7);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.donts li {
+  padding: var(--s2) 0 var(--s2) var(--s5);
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+  color: var(--ink-2);
+  position: relative;
+}
+
+.donts li::before {
+  content: "—";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-family: var(--mono);
+}
+
+footer {
+  margin-top: var(--s8);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--rule);
+  display: flex;
+  gap: var(--s5);
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+@media (max-width: 860px) {
+  .wrap { padding: var(--s6) var(--s4); }
+  .lanes { grid-template-columns: 1fr; }
+  .lane + .lane { border-left: 0; border-top: 1px solid var(--rule-2); }
+  .donts { grid-template-columns: 1fr; }
+  .timeline { grid-template-columns: 76px 1fr; }
+  .timeline .dur { display: none; }
+  .axis { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">
+      <span>MCP</span><span class="sep"></span>
+      <span>图片异步</span><span class="sep"></span>
+      <span>方案原型</span><span class="sep"></span>
+      <span>2026-11-17</span>
+    </div>
+
+    <h1>一张图，两种交付：把异步端点接进同一个 <code style="font-family:var(--mono);font-size:.84em">image.generate</code></h1>
+
+    <p class="lead">
+      <code style="font-family:var(--mono);font-size:.92em">POST /async/v1/images/generations</code> 返回 202 和
+      task_id，轮询到 200 才拿到 URL。接入 MCP 的方式不是加一个工具，而是让
+      <strong>transport 补上异步半边</strong>，并回答一个更要紧的问题：
+      <strong>完成态没有 status 字段时，怎么判断任务结束了</strong>。
+    </p>
+
+    <div class="figures">
+      <div class="fig"><span class="n">4</span><span class="k">工具数，不变</span></div>
+      <div class="fig"><span class="n ok">0</span><span class="k">新增工具</span></div>
+      <div class="fig"><span class="n">~26</span><span class="k">改动行数</span></div>
+      <div class="fig"><span class="n">0</span><span class="k">合并面增量</span></div>
+    </div>
+  </header>
+
+  <!-- 1 -->
+  <section>
+    <div class="sec-head">
+      <span class="num">01</span>
+      <h2>为什么要动它：同步路径正在丢产物</h2>
+      <span class="aside">时间尺度对比</span>
+    </div>
+
+    <p class="note" style="margin-bottom:var(--s5)">
+      现有 MCP 的图片调用把上游生成的时长绑在一条 MCP 请求上，客户端超时上限 8 分钟。
+      代码注释记录了一次真实事故：qwen n=4 用 5 分钟以上，300s 超时触发，<b>计费 20000、产物 URL 全丢</b>。
+      异步入口是这件事的结构性解法，不是可选优化。
+    </p>
+
+    <div class="timeline">
+      <div class="row-label">sync</div>
+      <div class="track"><div class="span sync">一次请求等完上游</div></div>
+      <div class="dur">p95 <b>85s</b> · n=4 <b>349s</b></div>
+
+      <div class="row-label">async</div>
+      <div class="track">
+        <div class="span async">202</div>
+        <div class="span poll">轮询 · 10 s 一次 · 不占 MCP 连接</div>
+      </div>
+      <div class="dur">受理 <i>&lt; 200 ms</i></div>
+
+      <div class="axis"><span>0</span><span>2 min</span><span>4 min</span><span>6 min</span><span>8 min</span></div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <div class="sec-head">
+      <span class="num">02</span>
+      <h2>两条链路，同一套工具</h2>
+      <span class="aside">点击任一步看该步的返回</span>
+    </div>
+
+    <div class="lanes">
+      <div class="lane">
+        <div class="lane-head">
+          <h3>同步</h3>
+          <span class="tag sync">execution.task = sync</span>
+        </div>
+        <ol class="steps" id="lane-sync">
+          <li data-p="sync-call" class="on">
+            <span class="t">0.0 s</span>
+            <span class="d">agent 调 <code>image.generate</code>（prompt + size）</span>
+          </li>
+          <li data-p="sync-post">
+            <span class="t">0.1 s</span>
+            <span class="d">MCP 自调 <code>POST /v1/images/generations</code></span>
+          </li>
+          <li data-p="sync-wait">
+            <span class="t">0.1–349 s</span>
+            <span class="d">连接挂着等上游出图</span>
+          </li>
+          <li data-p="sync-done">
+            <span class="t">结束</span>
+            <span class="d"><code>200 data[url]</code> <span class="status s200">completed</span></span>
+          </li>
+        </ol>
+      </div>
+
+      <div class="lane">
+        <div class="lane-head">
+          <h3>异步</h3>
+          <span class="tag async">execution.task = async</span>
+        </div>
+        <ol class="steps" id="lane-async">
+          <li data-p="async-call">
+            <span class="t">0.0 s</span>
+            <span class="d">agent 调同一个 <code>image.generate</code>，参数不变</span>
+          </li>
+          <li data-p="async-post">
+            <span class="t">0.05 s</span>
+            <span class="d">MCP 自调 <code>POST /v1/images/generations/async</code></span>
+          </li>
+          <li data-p="async-202">
+            <span class="t">0.2 s</span>
+            <span class="d"><code>202 {task_id}</code> <span class="status s202">working</span></span>
+          </li>
+          <li data-p="async-poll">
+            <span class="t">+10 s</span>
+            <span class="d"><code>202 status:"in_progress"</code><span class="why" style="display:inline;margin-left:6px">progress:"30%" 可有可无</span></span>
+          </li>
+          <li data-p="async-done">
+            <span class="t">+30 s</span>
+            <span class="d"><code>200 data[url]</code> <span class="status s200">completed</span></span>
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="same-body">
+      <span class="lab">请求体</span>
+      <code>{ model, prompt, image?, n, size, quality }</code>
+      <span class="verdict">两边逐字段一致 · buildPayload 与参数校验零分支</span>
+    </div>
+
+    <div class="payload">
+      <div class="payload-bar"><span class="dot"></span><span id="payload-title">image.generate → 同步返回</span></div>
+      <pre id="payload-body"></pre>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <div class="sec-head">
+      <span class="num">03</span>
+      <h2>终态已经补上，判定零改动</h2>
+      <span class="aside">同一个任务，四种查询返回</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:88px">HTTP</th>
+          <th>响应体</th>
+          <th style="width:190px">MCP 判成</th>
+          <th style="width:150px">现状</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="status s202">202</span></td>
+          <td><span class="code">{status:"in_progress", progress:"30%"}</span><span class="why">progress 可缺，缺了就不报百分比</span></td>
+          <td>working + 进度 30</td>
+          <td>working <span class="why">能跑，只是没有进度</span></td>
+        </tr>
+        <tr>
+          <td><span class="status s200">200</span></td>
+          <td><span class="code">{status:"succeeded", data:[{url}]}</span><span class="why">be0c1cfc0 起补上 status，object 也补齐</span></td>
+          <td>completed + outputs</td>
+          <td style="color:var(--ok)">completed<span class="why">normalizeStatus 早已认 succeeded</span></td>
+        </tr>
+        <tr>
+          <td><span class="status s200">200</span></td>
+          <td><span class="code">{status:"failure", error:{message, code}}</span></td>
+          <td>failed + code / retryable</td>
+          <td>failed <span class="why">已有分类逻辑，可直接复用</span></td>
+        </tr>
+        <tr>
+          <td><span class="status s200">200</span></td>
+          <td><span class="code">{status:"failure", error:{code:"empty_result"}}</span><span class="why">上游判定成功，但网关没取到地址</span></td>
+          <td>failed，<b style="color:var(--err)">必须不可重试</b></td>
+          <td>计费已发生<span class="why">兜底 hint 却建议「换模型」，会二次扣费</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="note" style="margin-top:var(--s4)">
+      第二行曾经是 v1 方案的第一优先级：成功视图只回 <code style="font-family:var(--mono)">data</code>，
+      没有 <code style="font-family:var(--mono)">status</code>，MCP 会永远判 working。
+      正确的修法是让生产端补齐 —— 网关改了 4 行（<code style="font-family:var(--mono)">be0c1cfc0</code>），
+      MCP 侧一行都不用写。消费端加兜底（<code style="font-family:var(--mono)">TerminalOnData</code>）
+      要 15 行、一个测试，还要长期解释「为什么只有图片特殊」，<b>修生产方永远更便宜</b>。
+    </p>
+  </section>
+
+  <!-- 4 -->
+  <section>
+    <div class="sec-head">
+      <span class="num">04</span>
+      <h2>三处接线，两处文案</h2>
+      <span class="aside">P0 已落地 · 等发版</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:52px">级别</th>
+          <th style="width:210px">缺口</th>
+          <th>症状</th>
+          <th style="width:230px">修法</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="sev p0">P0</span></td>
+          <td><span class="code">n&gt;1 在异步下拆单</span></td>
+          <td>产出 N 个 task_id，只返回 1 个 —— 另外 N−1 个<b style="color:var(--err)">已计费且无人认领</b></td>
+          <td><code style="font-family:var(--mono)">fanoutCount</code> 增加 <code style="font-family:var(--mono)">!m.Async</code></td>
+        </tr>
+        <tr>
+          <td><span class="sev p0">P0</span></td>
+          <td><span class="code">清单里看不出谁要轮询</span></td>
+          <td>只读 text 的客户端看到两个 <code style="font-family:var(--mono)">image</code> 模型，无法区分哪个要 task.get</td>
+          <td>tag 补「异步」；异步 text 补默认模型说明</td>
+        </tr>
+        <tr>
+          <td><span class="sev p0">P0</span></td>
+          <td><span class="code">image 没有 Query</span></td>
+          <td><code style="font-family:var(--mono)">task.get</code> 直接报「协议 image 不支持任务查询」</td>
+          <td>补 <code style="font-family:var(--mono)">/images/generations/async/{id}</code></td>
+        </tr>
+        <tr>
+          <td><span class="sev p0">P0</span></td>
+          <td><span class="code">提交端点写死同步</span></td>
+          <td>异步模型打到同步路径：4xx，或同步等 8 分钟</td>
+          <td>加 <code style="font-family:var(--mono)">AsyncGenerate</code>，由 <code style="font-family:var(--mono)">m.Async</code> 选路</td>
+        </tr>
+        <tr>
+          <td><span class="sev">P2</span></td>
+          <td><span class="code">只有 m.Async 才签句柄</span></td>
+          <td>声明 sync、上游却回 task_id：钱花了，用户看到「上游未返回图片数据」。<span class="why">需与句柄 Mode 同一提交</span></td>
+          <td>拿到 task_id 就签，形态写进句柄</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 5 -->
+  <section>
+    <div class="sec-head">
+      <span class="num">05</span>
+      <h2>运维只看到这一个开关</h2>
+      <span class="aside">能力注册 · Execution</span>
+    </div>
+
+    <p class="note" style="margin-bottom:var(--s4)">
+      端点由声明推导，运维不需要填 URL —— 填 URL 就等于把上游方言暴露给客户端，
+      而这正是「图片有两种协议」这个误会来源。新增的只有保存时的可用性提示。
+    </p>
+
+    <div class="mock">
+      <div class="mock-row">
+        <span class="lab">模型</span>
+        <div class="field plain">hailuo-image-01 <span class="caret">·</span></div>
+      </div>
+      <div class="mock-row">
+        <span class="lab">产物类型</span>
+        <div class="field plain">image <span class="caret">▾</span></div>
+      </div>
+      <div class="mock-row">
+        <span class="lab">Execution</span>
+        <div class="field">Async task · task.get <span class="caret">▾</span></div>
+      </div>
+      <div class="mock-row">
+        <span class="lab">实际请求</span>
+        <div class="field">POST /v1/images/generations/async <span class="caret">只读</span></div>
+      </div>
+      <div class="mock-row">
+        <span class="lab">查询</span>
+        <div class="field">GET /v1/images/generations/async/{id} <span class="caret">只读</span></div>
+      </div>
+
+      <div class="warn">
+        <b>软校验</b> · 当前没有 8001 渠道覆盖该模型，且 <code style="font-family:var(--mono)">LOCAL_IMAGE_ASYNC_ENABLED</code> 为 false。
+        勾选后调用会返回 503。先配置异步渠道，或打开本地异步执行。<br>
+        不阻断保存 —— 允许「先声明、后接线」，与能力目录允许提前挂模型是同一条规则。
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section>
+    <div class="sec-head">
+      <span class="num">06</span>
+      <h2>不做什么</h2>
+      <span class="aside">每一条都是有人会提的方案</span>
+    </div>
+
+    <ul class="donts">
+      <li>不加 <code style="font-family:var(--mono)">image.generate_async</code> 工具</li>
+      <li>不加 <code style="font-family:var(--mono)">async: true</code> 入参</li>
+      <li>不做 <code style="font-family:var(--mono)">/v1/images/edits</code> 第二入口</li>
+      <li>不做 <code style="font-family:var(--mono)">task.cancel</code></li>
+      <li>不把 <code style="font-family:var(--mono)">progress</code> 当重试触发条件</li>
+      <li>不在 MCP 复制渠道类型 / 环境开关的判定</li>
+      <li>不动 <code style="font-family:var(--mono)">abilities</code> 表与端点注册表</li>
+    </ul>
+
+    <p class="note" style="margin-top:var(--s5)">
+      前两条是同一个错误：把「协议选择」交给调用方。一旦允许，图片就真的有两种协议了 ——
+      而这正是过去一个月花力气消除的误会。
+    </p>
+  </section>
+
+  <footer>
+    <span>docs/apiduo/mcp-image-async.md</span>
+    <span>事实来源：pkg/endpoint/async.go · controller/apiduo_image_async.go · mcp/protocol*.go</span>
+    <span>只出方案，未改代码</span>
+  </footer>
+</div>
+
+<script>
+const payloads = {
+  "sync-call": ["image.generate · 请求（agent → MCP）", `{
+  "model": "flux-dev",
+  "prompt": "雨后的城市霓虹，长焦",
+  "size": "1024x1024",
+  "n": 1,
+  "client_request_id": "req-8f21"
+}`],
+  "sync-post": ["MCP 自调上游（同步）", `POST /v1/images/generations
+Authorization: Bearer sk-***
+Content-Type: application/json
+
+{ "model": "flux-dev", "prompt": "…", "size": "1024x1024", "n": 1 }`],
+  "sync-wait": ["等待中", `// 连接保持，无数据
+// 上游 qwen n=4 实测 349 s
+// MCP 客户端上限 480 s`],
+  "sync-done": ["image.generate → 同步返回", `{
+  "status": "completed",
+  "model": "flux-dev",
+  "outputs": [
+    { "url": "https://cdn.example/…png", "mime_type": "image/png" }
+  ],
+  "usage": { "generated_images": 1 }
+}`],
+  "async-call": ["image.generate · 请求（与同步完全一致）", `{
+  "model": "hailuo-image-01",
+  "prompt": "雨后的城市霓虹，长焦",
+  "size": "1024x1024",
+  "client_request_id": "req-8f22"
+}`],
+  "async-post": ["MCP 自调上游（异步）", `POST /v1/images/generations/async
+Authorization: Bearer sk-***
+Content-Type: application/json
+
+{ "model": "hailuo-image-01", "prompt": "…", "size": "1024x1024" }`],
+  "async-202": ["提交被受理 · 202", `{
+  "task_id": "task_mpsjHM0izZ4SeI8Aq2roSvjhuCNEW2mV"
+}
+
+// MCP 出口
+{
+  "status": "working",
+  "model": "hailuo-image-01",
+  "task_id": "eyJtIjoiaGFpbHVv…",   // 自包含签名，任何副本可查
+  "poll_after_ms": 10000
+}`],
+  "async-poll": ["轮询 · 202 进行中", `{
+  "task_id": "task_mpsjHM0izZ4SeI8Aq2roSvjhuCNEW2mV",
+  "object": "image.generation",
+  "created": 1763381362,
+  "status": "in_progress",
+  "progress": "30%"
+}
+
+// MCP 出口
+{ "status": "working", "progress_percent": 30, "poll_after_ms": 10000 }`],
+  "async-done": ["轮询 · 200 终态", `{
+  "task_id": "task_mpsjHM0izZ4SeI8Aq2roSvjhuCNEW2mV",
+  "object": "image.generation",
+  "status": "succeeded",
+  "created": 1763381362,
+  "data": [ { "url": "https://cdn.hailuoai.video/…png" } ]
+}
+
+// MCP 出口：normalizeStatus 认 succeeded
+{
+  "status": "completed",
+  "model": "hailuo-image-01",
+  "outputs": [ { "url": "https://cdn.hailuoai.video/…png" } ]
+}`]
+};
+
+const body = document.getElementById("payload-body");
+const title = document.getElementById("payload-title");
+
+function paint(key) {
+  const item = payloads[key];
+  if (!item) return;
+  title.textContent = item[0];
+
+  // 极简高亮：键、字符串、数字、注释
+  let html = item[1]
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    // 注释先标出来，但跳过 https:// 里的 //
+    .replace(/([^:])\/\/([^\n]*)/g, '$1<span class="c">//$2</span>')
+    .replace(/"([^"\n]+)"(\s*:)/g, '<span class="k">"$1"</span>$2')
+    .replace(/:\s*"([^"\n]*)"/g, ': <span class="s">"$1"</span>')
+    .replace(/:\s*(-?\d+(?:\.\d+)?)/g, ': <span class="n">$1</span>');
+  body.innerHTML = html;
+}
+
+document.querySelectorAll(".steps li").forEach((li) => {
+  li.addEventListener("click", () => {
+    const lane = li.closest(".steps");
+    lane.querySelectorAll("li").forEach((x) => x.classList.remove("on"));
+    li.classList.add("on");
+    paint(li.dataset.p);
+  });
+});
+
+paint("sync-call");
+</script>
+</body>
+</html>

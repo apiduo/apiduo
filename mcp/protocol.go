@@ -11,28 +11,43 @@ package mcp
 // 同一套插件链路，但响应会把任务对象包进 {code,data}。协议既然对外叫 ark，
 // 就用 ark 的形状 —— 少一层解包，任务号与状态直接可读。
 type transport struct {
-	Name     string
-	Generate string // 相对 base_url
-	Query    string // {id} 为占位；空表示该协议没有任务查询
+	Name string
+	// Generate 是同步提交端点（相对 base_url）。
+	Generate string
+	// AsyncGenerate 是异步提交端点；空表示该协议没有异步形态。
+	//
+	// 图片的两半收同一个 body，只有提交路径与响应形状不同；视频两者同值，
+	// 因为视频本来就是异步提交。这样选路只有「按形态换 Generate」一条分支，
+	// 不必给视频加例外。
+	AsyncGenerate string
+	Query         string // {id} 为占位；空表示该协议没有任务查询
 }
 
 // transports 按产物类型索引：端点由 kind 决定，与上游厂商无关 —— 图片和视频
 // 都走方舟，只是方舟自己给这两种产物开了两套接口。
 //
-// 🔴 图片只有这一个入口：`/v1/images/generations`，文生图与图生图共用
-// （图生图多一个 `image` 字段）。不要为图生图加 edits 分支，也不要因为上游
-// 是 gpt-image 就在协议层另开一条路 —— gpt-image 已适配主端点，渠道内部
-// 是否转成 edits 是渠道的事，客户端看到的永远只有这一个端点。
+// 🔴 图片只有一个**请求**形状：`/v1/images/generations`，文生图与图生图共用
+// （图生图多一个 `image` 字段）。响应有两种，由能力声明的 execution 决定：
+// sync 直接回 data，async 回 task_id 并用同一个 kind 的 Query 轮询。
+//
+// 不要为图生图加 edits 分支，也不要因为上游是 gpt-image 就在协议层另开一条路
+// —— gpt-image 已适配主端点，渠道内部是否转成 edits 是渠道的事。
+// 也不要让客户端用参数在 sync / async 之间切换：那等于把协议选择交给调用方。
 var transports = map[string]transport{
 	"image": {
 		Name:     "image",
 		Generate: "/images/generations",
-		// 图片接口在 apiduo 上同步返回完整结果，没有任务可查。
+		// 异步半边。与同步半边收同一个 body，只是先回 202 任务号；
+		// 查询端点也只属于异步形态 —— 同步请求从来不会有任务可查。
+		AsyncGenerate: "/images/generations/async",
+		Query:         "/images/generations/async/{id}",
 	},
 	"video": {
 		Name:     "video",
 		Generate: "/contents/generations/tasks",
-		Query:    "/contents/generations/tasks/{id}",
+		// 视频本来就是异步提交，两半同值只为让选路不出现第二个分支。
+		AsyncGenerate: "/contents/generations/tasks",
+		Query:         "/contents/generations/tasks/{id}",
 	},
 }
 
@@ -46,6 +61,18 @@ func (e *ErrUnknownTransport) Error() string {
 		return e.Name + " 的生成端点尚未接入（当前可用: image, video）"
 	}
 	return "未知产物类型: " + e.Name + "（可用: " + kindList() + "）"
+}
+
+// withExecution 返回按执行形态解析后的端点。
+//
+// 同步与异步收同一个 body，差异只有提交路径与响应形状 —— 所以只换 Generate，
+// Query 与 Name 都不动。async 为真但该协议没有异步半边时保持原样：那是声明
+// 写错了，让上游按原路径回错误，比在这里静默改路更容易排查。
+func (t transport) withExecution(async bool) transport {
+	if async && t.AsyncGenerate != "" {
+		t.Generate = t.AsyncGenerate
+	}
+	return t
 }
 
 func getTransport(name string) (transport, error) {

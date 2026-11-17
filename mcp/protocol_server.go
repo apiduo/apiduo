@@ -41,8 +41,9 @@ Workflow
 2. Call image.generate or video.generate. Pass the model's declared parameters at
    the top level, not inside extra. reference_images turns the call into
    image-to-image or image-to-video; omit it for text-to-image.
-3. Video is usually asynchronous: the call returns task_id, then poll task.get
-   using poll_after_ms.
+3. Some models are asynchronous — usually video, but some image models too. The
+   call returns task_id with status=working; poll task.get using poll_after_ms.
+   Such a response carries no output url; never regenerate to "get" the image.
 
 Rules
 - model may be omitted; the default is used and named in the response.

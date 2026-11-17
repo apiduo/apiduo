@@ -147,9 +147,13 @@ curl -sS --noproxy '*' -X PUT \
 5. **端点表只描述「入口形状」**：图片打 `/v1/images/generations`（方舟的图片接口本身
    就兼容这个形状），视频打 `/v1/contents/generations/tasks`（方舟任务形状）。两者上游
    都是方舟，厂商差异由渠道与 JS 插件吸收 —— **不要往端点表里加第三套**。
-   图片只有一个入口：`/v1/images/generations`，**文生图与图生图共用**（图生图靠 `image`
-   字段），不存在第二套图片协议。上游方言（方舟档位 / OpenAI edits）是**渠道**的属性，
-   由 `image_protocol` 在内部改写，对客户端不可见。
+   图片只有一个**请求**形状：`/v1/images/generations`，**文生图与图生图共用**（图生图靠
+   `image` 字段）。响应有两种，由能力声明的 execution 决定：`sync` 直接回 `data`，
+   `async` 回 `task_id` 并用同一个 kind 的查询端点轮询（`/v1/images/generations/async/{id}`）。
+   两者收同一个 body，客户端**不得用参数在两者之间切换** —— 加 `async` 入参或
+   `image.generate_async` 工具都等于把协议选择交给调用方。
+   上游方言（方舟档位 / OpenAI edits）是**渠道**的属性，由 `image_protocol` 在内部改写，
+   对客户端不可见。
    因此能力声明里**没有 protocol 字段**：可选的只有产物类型，端点由它决定。曾经有过
    一个只能填 `ark` 的字段，它不参与路由，只让看面板的人误以为「图片有两种协议」。
    `summary` 与 `tags` 同样不得出现上游端点名（如 `/v1/images/edits`）：那是渠道内部

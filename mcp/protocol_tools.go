@@ -39,7 +39,9 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 		Name:        "image.generate",
 		Title:       "生成图片",
 		InputSchema: generateInputSchema(),
-		Description: "生成图片。不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
+		Description: "生成图片。声明为异步的模型会立刻返回 task_id 与 status=working，之后用 task.get 查询——" +
+			"此时响应里没有产物地址，不要重新生成。models.list 里标「异步」的就是这一类。" +
+			"不传 reference_images 即文生图，传了即图生图——模式由垫图推导，无需单独声明。" +
 			"参考图用 http(s) URL 或 base64：本地文件读成 base64 直接传即可，带不带 data:image/<mime>;base64, 前缀都行（发送前会剥掉前缀，上游只认裸 base64）。" +
 			"model 可以不传，会用默认模型并在返回里说明是哪个；要指定就先调 models.list 看可选值，" +
 			"按 summary 里的场景/成本挑，不要凭模型名猜。" +
@@ -66,7 +68,7 @@ func registerTools(s *mcpsdk.Server, d *toolDeps) {
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
 		Name:  "task.get",
 		Title: "查询任务状态",
-		Description: "查询异步任务状态。task_id 由 video.generate 返回，自包含签名，任何副本都能处理。" +
+		Description: "查询异步任务状态。task_id 由 image.generate 或 video.generate 返回，自包含签名，任何副本都能处理。" +
 			"status=working 时按 poll_after_ms 再查；status=failed 时不要用同样参数重试。",
 	}, d.getTask)
 }
@@ -182,6 +184,11 @@ func modelsSummary(models []map[string]any) string {
 			summary = "无简介"
 		}
 		tag := kind
+		// 只读 text 的客户端看不到 structuredContent 里的 execution，
+		// 这个标签是它区分「要不要轮询」的唯一线索。
+		if exec, _ := m["execution"].(map[string]any); exec != nil && exec["task"] == "async" {
+			tag += "，异步"
+		}
 		if !defaulted[kind] {
 			tag += "，默认"
 			defaulted[kind] = true
@@ -485,6 +492,8 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 	if err != nil {
 		return d.fail(m.ID, err)
 	}
+	// 全流程唯一的形态分支：同步与异步收同一个 body，只换提交路径。
+	t = t.withExecution(m.Async)
 
 	// 生成本身的硬超时也来自设置：上游变慢时先放宽，别等发版。
 	ctx, cancel := context.WithTimeout(ctx, secondsToDuration(LoadSettings().UpstreamTimeoutS))
@@ -558,6 +567,9 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 			return d.fail(m.ID, fmt.Errorf("任务已提交但签发 task_id 失败: %w", signErr))
 		}
 		text := "已提交（模型 " + m.ID + "），任务 " + signed + " 进行中"
+		if strings.TrimSpace(in.Model) == "" {
+			text += "；未指定 model，本次用了默认模型"
+		}
 		out := generateOutput{
 			Status: "working", Model: m.ID, TaskID: signed, PollMS: pollAfter(),
 			ModelDefaulted: strings.TrimSpace(in.Model) == "",
@@ -637,7 +649,10 @@ func (d *toolDeps) generate(ctx context.Context, kind string, in generateInput, 
 //
 // 只对图片生效：视频一次一任务，n 没有意义。
 func fanoutCount(m modelView, kind string, payload map[string]any) int {
-	if kind != "image" {
+	// 异步不拆单：拆开就是 N 个 task_id，而 generateOutput 只能装一个 ——
+	// 剩下 N-1 个已计费的任务没人认领。拆单原本是为了绕开同步超时，
+	// 异步任务不占连接，不存在这个问题。
+	if kind != "image" || m.Async {
 		return 1
 	}
 	n, ok := toFloat(payload["n"])
@@ -992,7 +1007,7 @@ func checkExtra(m modelView, name string, val any) error {
 // ── task.get ────────────────────────────────────────────────────────────
 
 type taskInput struct {
-	TaskID string `json:"task_id" jsonschema:"video.generate 返回的 task_id"`
+	TaskID string `json:"task_id" jsonschema:"image.generate 或 video.generate 返回的 task_id"`
 }
 
 type taskOutput struct {
