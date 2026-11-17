@@ -6,7 +6,11 @@
 # 2026-11-17 added 5568 -> 5570：高级异步的字段类型在
 # web/src/features/channels/types.ts 里，task_id_paths 只能加在那个接口上，
 # 多出两行（字段 + 注释）。其余文件都是我方自有文件，不计入。
+#
+# 2026-11-17 added 5570 -> 5575：authenticated-layout.tsx 的内容区需要自己
+# 成为 flex 容器（+flex +flex-col），否则页面不滚动。改动落在既有
+# APIDUO:appearance 标记块内，只是行数增加。
 files	171
 blocks	524
-added	5570
+added	5575
 deleted	412

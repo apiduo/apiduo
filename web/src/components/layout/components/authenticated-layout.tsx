@@ -77,7 +77,12 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                   {/* 功能更新横幅：内容区顶部，不带 sticky —— 推内容而不是盖内容。
                       没有未读更新时组件返回 null，不占高度。 */}
                   <AnnouncementBanner />
-                  <div className='min-h-0 flex-1'>
+                  {/* `flex` 不是装饰：这一层是 flex 子项（高度已定），但它自己
+                      必须是 flex 容器，页面的 `flex-1` 才能继续分配剩余高度。
+                      少了它，页面 main 按内容高度撑开，内层 `overflow-auto`
+                      永远不溢出，超出部分直接被侧栏容器的 `overflow-hidden` 裁掉
+                      —— 表现为整页不能滚动（/security 这类长页面最明显）。 */}
+                  <div className='flex min-h-0 flex-1 flex-col'>
                     {props.children ?? <AnimatedOutlet />}
                   </div>
                 </div>
