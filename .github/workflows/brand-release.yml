@@ -45,16 +45,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # markercheck 要拿 .apiduo/sync-base 这个上游提交做 diff。
-          # 默认 fetch-depth: 1 只有最近一次提交，拿不到那个对象，
-          # diff 会把上游行算成删除（实测 deleted 从 38 变成 412）。
-          fetch-depth: 0
           # 三种入口取不同 ref：
           #   补发 → inputs.tag（默认分支是错的，会拿主干代码构建旧版本）
           #   tag  → github.ref（就是那个 tag）
           #   main → github.sha（github.ref 是移动指针，构建期间再有人 push 就会打错提交）
           ref: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref || github.sha) }}
           fetch-depth: 0
+
+      # markercheck 判断「被删的行是不是上游的」时要 git rev-list upstream/main。
+      # actions/checkout 只带 origin，缺这个 ref 时它会降级成「全部算上游」，
+      # deleted 从 38 变成 412 —— 同一个提交在本地过、在 CI 挂，就是这么来的。
+      - name: Fetch upstream ref for markercheck
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/QuantumNous/new-api.git
+          # 不能 --depth=1：upstreamDeletions 要拿「上游全部提交」的集合去比对 blame 结果，
+          # 只拿到一个提交会让所有删除行都被判成「非上游」。
+          git fetch --no-tags upstream \
+            "+refs/heads/main:refs/remotes/upstream/main"
 
       - name: Resolve version
         id: ver
