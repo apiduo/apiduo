@@ -67,6 +67,20 @@ type Task struct {
 	Progress   string                `json:"progress" gorm:"type:varchar(20);index"`
 	Properties Properties            `json:"properties" gorm:"type:json"`
 	Username   string                `json:"username,omitempty" gorm:"-"`
+	// APIDUO:local-image-async:BEGIN
+	// ExecutionMode separates the two ways a task reaches a terminal state:
+	//
+	//	"" / "upstream"  an advanced-async channel returned a task id; the
+	//	                 poller asks the upstream for the state.
+	//	"local"          the gateway itself replays the client request against a
+	//	                 synchronous channel. The poller must never touch it:
+	//	                 there is no upstream task, and GetUpstreamTaskID would
+	//	                 fall back to the gateway's own id and query a stranger.
+	//
+	// Empty is the zero value so rows written before this column existed keep
+	// their upstream meaning without a backfill.
+	ExecutionMode string `json:"execution_mode,omitempty" gorm:"type:varchar(16);index;default:''"`
+	// APIDUO:local-image-async:END
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
@@ -191,6 +205,28 @@ type TaskExecutionSnapshot struct {
 	RequestID   string              `json:"request_id,omitempty"`
 	RequestPath string              `json:"request_path,omitempty"`
 	TaskPlugin  *TaskPluginSnapshot `json:"task_plugin,omitempty"`
+	// APIDUO:local-image-async:BEGIN
+	// Request is the client body a locally executed task replays. It exists
+	// only for those tasks: a relayed submission's body left with the request,
+	// and the upstream never needs it again. It is kept inside PrivateData so
+	// no public task DTO can expose it.
+	Request json.RawMessage `json:"request,omitempty"`
+	// OriginRequest is the client's body as it arrived, before any channel's
+	// model mapping. The worker prepares the body per channel from this, because
+	// a task that moves to another channel must be re-mapped for it — a frozen
+	// vendor name would make every mapping channel unusable as a fallback.
+	OriginRequest json.RawMessage `json:"origin_request,omitempty"`
+	// TriedChannels records the channels that already failed this task. A
+	// rate-limited attempt is worth retrying somewhere else; retrying the same
+	// channel is not, and selection needs the list to say "not that one".
+	TriedChannels []int `json:"tried_channels,omitempty"`
+	// UpstreamURL is where that body must be posted. It is resolved at submit
+	// from the channel that accepted the task — the channel's primary endpoint
+	// or the URL its adaptor builds — because only the channel knows where its
+	// own images live. A worker that instead assumed /v1/images/generations
+	// would be right for OpenAI-shaped channels and wrong for every other.
+	UpstreamURL string `json:"upstream_url,omitempty"`
+	// APIDUO:local-image-async:END
 }
 
 // TaskPluginSnapshot contains credential-free identity only. Plugin source,
@@ -438,12 +474,16 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
+	// APIDUO:local-image-async:BEGIN A local task has no upstream id to poll,
+	// and the timeout sweep must not kill it on the upstream deadline.
 	err := DB.Where("progress != ?", "100%").
 		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
+		Where("execution_mode <> ?", TaskExecutionModeLocal).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
 		Limit(limit).
 		Find(&tasks).Error
+	// APIDUO:local-image-async:END
 	if err != nil {
 		return nil
 	}
@@ -454,7 +494,15 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+	// APIDUO:local-image-async:BEGIN A local task has no upstream id; the
+	// poller would query the vendor with the gateway's own task id every tick
+	// and give up after TaskPollMaxFailures.
+	err = DB.Where("progress != ?", "100%").
+		Where("status != ?", TaskStatusFailure).
+		Where("status != ?", TaskStatusSuccess).
+		Where("execution_mode <> ?", TaskExecutionModeLocal).
+		Limit(limit).Order("id").Find(&tasks).Error
+	// APIDUO:local-image-async:END
 	if err != nil {
 		return nil
 	}
@@ -467,12 +515,19 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 // the scheduler skips creating a row entirely.
 func HasUnfinishedSyncTasks() bool {
 	var id int64
+	// APIDUO:local-image-async:BEGIN
+	// Local tasks are deliberately *included* here even though the upstream
+	// poller skips them: this check decides whether the scheduler runs at all,
+	// and the same pass is what executes local tasks. Excluding them would
+	// leave every local task with no scheduler to pick it up — the worker would
+	// only run while some unrelated upstream task happened to be pending.
 	err := DB.Model(&Task{}).
 		Where("progress != ?", "100%").
 		Where("status != ?", TaskStatusFailure).
 		Where("status != ?", TaskStatusSuccess).
 		Limit(1).
 		Pluck("id", &id).Error
+	// APIDUO:local-image-async:END
 	return err == nil && id != 0
 }
 
@@ -736,3 +791,105 @@ func (t *Task) ToOpenAIVideo() *dto.OpenAIVideo {
 	}
 	return openAIVideo
 }
+
+// APIDUO:local-image-async:BEGIN
+
+// Task execution modes. See Task.ExecutionMode.
+const (
+	TaskExecutionModeUpstream = "upstream"
+	TaskExecutionModeLocal    = "local"
+)
+
+// ClaimLocalImageAsyncTasks returns local tasks that no worker has started yet.
+//
+// The caller must still claim each row with UpdateWithStatus before executing
+// it: this query only narrows the candidate set, it does not reserve anything.
+func ClaimLocalImageAsyncTasks(limit int) []*Task {
+	if limit <= 0 {
+		return nil
+	}
+	var tasks []*Task
+	err := DB.Where("execution_mode = ?", TaskExecutionModeLocal).
+		Where("status IN ?", []TaskStatus{TaskStatusNotStart, TaskStatusQueued}).
+		Order("id").
+		Limit(limit).
+		Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	return tasks
+}
+
+// ClaimStaleLocalImageAsyncTasks returns local tasks a dead worker left running.
+//
+// It is a claim, not a write: the caller still fails each row through the same
+// compare-and-swap the worker uses, so a task that finished in the meantime is
+// left alone.
+func ClaimStaleLocalImageAsyncTasks(cutoffUnix int64, limit int) []*Task {
+	if limit <= 0 {
+		return nil
+	}
+	var tasks []*Task
+	err := DB.Where("execution_mode = ?", TaskExecutionModeLocal).
+		Where("status = ?", TaskStatusInProgress).
+		Where("start_time > 0 AND start_time < ?", cutoffUnix).
+		Order("id").
+		Limit(limit).
+		Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	return tasks
+}
+
+// CountLocalImageAsyncQueue reports pending local tasks, in total and for one
+// user.
+//
+// One query for both numbers: admission is on the submission path, and two
+// round trips per image request is a cost paid on every healthy request to
+// answer a question that only matters when the queue is long.
+//
+// COALESCE because SUM over no rows is NULL, and a NULL into an int64 fails the
+// scan — an empty queue would read as an error.
+func CountLocalImageAsyncQueue(userID int) (total int64, mine int64, err error) {
+	var row struct {
+		Total int64
+		Mine  int64
+	}
+	err = DB.Model(&Task{}).
+		Select("COUNT(*) AS total, COALESCE(SUM(CASE WHEN user_id = ? THEN 1 ELSE 0 END), 0) AS mine", userID).
+		Where("execution_mode = ?", TaskExecutionModeLocal).
+		Where("status IN ?", []TaskStatus{TaskStatusNotStart, TaskStatusQueued}).
+		Scan(&row).Error
+	return row.Total, row.Mine, err
+}
+
+// DatabaseNow returns the current time from the database's own clock.
+//
+// Claiming a task records when its worker started; the reaper decides a worker
+// is gone by comparing that record with "now". If the two sides read different
+// clocks — an application clock on one node, the database on another — a few
+// seconds of skew become a false verdict: a live task reaped mid-flight, or a
+// dead one that never gets reaped. Reading both from the same source removes
+// the comparison entirely.
+//
+// The fallback keeps a broken clock readable: an error here would make the
+// caller treat a live task as ancient.
+func DatabaseNow() int64 {
+	var now int64
+	var err error
+	switch DB.Dialector.Name() {
+	case "sqlite":
+		err = DB.Raw("SELECT CAST(strftime('%s','now') AS INTEGER)").Scan(&now).Error
+	case "postgres":
+		err = DB.Raw("SELECT EXTRACT(EPOCH FROM now())::bigint").Scan(&now).Error
+	default:
+		err = DB.Raw("SELECT UNIX_TIMESTAMP()").Scan(&now).Error
+	}
+	if err != nil || now <= 0 {
+		return time.Now().Unix()
+	}
+	return now
+}
+
+// APIDUO:local-image-async:END

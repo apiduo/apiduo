@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/urlguard"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
@@ -407,6 +408,26 @@ func (a *Adaptor) ParseTaskResult(task *model.Task, resp *http.Response, respBod
 	if strings.TrimSpace(rawStatus) == "" && result.Url != "" {
 		result.Status = "SUCCESS"
 	}
+	// APIDUO:result-url:BEGIN
+	// The address is handed to the client, which may render it as a link. An
+	// address whose scheme the client would execute is not a result, and one
+	// with no host is not an address.
+	//
+	// A terminal-but-unusable address is a terminal failure, not a transient
+	// poll error: retrying asks a vendor that already answered. It fails here,
+	// so the client learns the outcome on this poll instead of after the
+	// poll-failure budget runs out.
+	if result.Url != "" {
+		validated, err := urlguard.ValidateTaskResultURL(result.Url)
+		if err != nil {
+			return &relaycommon.TaskInfo{
+				Status: "FAILURE",
+				Reason: "upstream returned an unusable result url",
+			}, nil
+		}
+		result.Url = validated
+	}
+	// APIDUO:result-url:END
 	if len(config.Fields.ProgressPath) > 0 {
 		if progress, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.ProgressPath); ok {
 			result.Progress = progress

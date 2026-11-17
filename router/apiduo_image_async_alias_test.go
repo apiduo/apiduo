@@ -7,10 +7,58 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
+
+// 内置异步端点由网关拥有：即使没有任何渠道在 incoming_paths 里声明它，
+// 也必须被接管。这是 /async 前缀的意义 —— 形状由路径决定，不由渠道配置决定。
+//
+// dispatcher 挂在 NoRoute 上，测试也必须这样挂：用 engine.Use 会在重入后
+// 再进一次 dispatcher，而 HandleContext 的 reset() 已经清掉了重入标记。
+func TestApiduoAsyncIncomingDispatcherOwnsBuiltInEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+
+	var landed string
+	// 图像异步的提交落地点。视频中继路径另注册一个，用来证明图像流量不会
+	// 被借用过去：那会让日志、响应形状和按动作的统计都记成视频任务。
+	engine.POST(endpoint.AsyncImageSubmitPath, ApiduoTaskActionHeaderBridge(), func(c *gin.Context) {
+		landed = "submit:" + c.GetString("task_action")
+		c.Status(http.StatusOK)
+	})
+	engine.POST(constant.ApiduoTaskRelayPath, func(c *gin.Context) {
+		landed = "video:" + c.Request.URL.Path
+		c.Status(http.StatusOK)
+	})
+	engine.GET(constant.ApiduoImageAsyncFetchPath+"/:task_id", func(c *gin.Context) {
+		landed = "fetch:" + c.Param("task_id")
+		c.Status(http.StatusOK)
+	})
+	engine.NoRoute(ApiduoAsyncIncomingDispatcher(engine, func(c *gin.Context) {
+		landed = "next:" + c.Request.URL.Path
+		c.Status(http.StatusNotFound)
+	}))
+
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, endpoint.AsyncImagePath,
+		strings.NewReader(`{"model":"nobody-declares-this","prompt":"x"}`)))
+	assert.Equal(t, "submit:"+constant.TaskActionImageGeneration, landed,
+		"提交应落到图像路径并带上图像动作，不能借用视频中继")
+
+	landed = ""
+	rec = httptest.NewRecorder()
+	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, endpoint.AsyncImagePath+"/task_1", nil))
+	assert.Equal(t, "fetch:task_1", landed, "轮询应重入图像异步查询")
+
+	// 没有任务号的 GET 不是轮询，必须原样放行，否则客户端拿到一个解析不了的错误。
+	landed = ""
+	rec = httptest.NewRecorder()
+	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, endpoint.AsyncImagePath, nil))
+	assert.Equal(t, "next:"+endpoint.AsyncImagePath, landed)
+}
 
 // 入站端点由渠道自己声明，所以最容易出的事故是「抢错流量」：把本该走同步
 // 图像中继、插件分发或干脆 404 的请求接走，客户端拿到一个任务号而不是图片。
@@ -136,4 +184,42 @@ func TestApiduoTaskActionHeaderBridge(t *testing.T) {
 
 	assert.Equal(t, constant.TaskActionImageGeneration+"|", rec.Body.String(),
 		"动作要进 context，头要从请求上摘掉")
+}
+
+// 提交落地点本身是静态路由，dispatcher 不得再改道它，否则会重入到自己。
+func TestApiduoAsyncIncomingDispatcherLeavesSubmitLandingRouteAlone(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	var seen string
+	engine.NoRoute(ApiduoAsyncIncomingDispatcher(engine, func(c *gin.Context) {
+		seen = c.Request.URL.Path
+		c.Status(http.StatusNotFound)
+	}))
+
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, endpoint.AsyncImageSubmitPath,
+		strings.NewReader(`{"model":"m","prompt":"x"}`)))
+	assert.Equal(t, endpoint.AsyncImageSubmitPath, seen, "落地点不能被 dispatcher 再改一次")
+}
+
+// 提交落地点是 /v1/images/generations 的子路径。gin 在注册时就会因为同一
+// 前缀树上的冲突 panic，所以这条必须以「注册不崩」的形式覆盖，而不是等到
+// 进程启动才发现。
+func TestSetApiduoImageAsyncRoutesRegistersWithoutConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.POST("/v1/images/generations", func(c *gin.Context) {})
+	engine.POST("/v1/images/edits", func(c *gin.Context) {})
+
+	assert.NotPanics(t, func() {
+		SetApiduoImageAsyncRoutes(engine, func(c *gin.Context) {})
+	})
+
+	var methods []string
+	for _, route := range engine.Routes() {
+		if route.Path == endpoint.AsyncImageSubmitPath {
+			methods = append(methods, route.Method)
+		}
+	}
+	assert.Contains(t, methods, http.MethodPost, "提交落地点必须真的注册上")
 }

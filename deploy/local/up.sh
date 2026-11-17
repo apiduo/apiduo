@@ -37,6 +37,9 @@ SQL_DSN=root:${MYSQL_PW}@tcp(mysql:3306)/apiduo_local?charset=utf8mb4&parseTime=
 LOG_SQL_DSN=clickhouse://default:${CH_PW}@clickhouse:9000/apiduo_local_logs?database=apiduo_local_logs&dial_timeout=10s
 SESSION_SECRET=$(openssl rand -hex 32)
 DEBUG=false
+# 生产形态就是开着的（仓库根 compose 与线上 apiduo-cn 都显式写 true）。本地没有
+# Redis 可以兜底强制打开，漏了这一行就落到「直查库」的选路代码，测了等于没测。
+MEMORY_CACHE_ENABLED=true
 EOF
   chmod 600 .env.app
   echo "已生成 .env.app（应用配置）"

@@ -113,6 +113,13 @@ const (
 	AwsApiTypeMantle      AwsApiType = "mantle"
 )
 
+// LocalWorkerConfig is the channel's own share of the local image worker.
+type LocalWorkerConfig struct {
+	// Concurrency is how many of this channel's tasks may run at once. Zero or
+	// negative means "unset", not "none".
+	Concurrency int `json:"concurrency,omitempty"`
+}
+
 type ChannelOtherSettings struct {
 	AzureResponsesVersion                 string                `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType         `json:"vertex_key_type,omitempty"`    // "json" or "api_key"
@@ -136,6 +143,15 @@ type ChannelOtherSettings struct {
 	UpstreamModelUpdateLastRemovedModels  []string              `json:"upstream_model_update_last_removed_models,omitempty"`  // 上次检测到的可删除模型
 	UpstreamModelUpdateIgnoredModels      []string              `json:"upstream_model_update_ignored_models,omitempty"`       // 手动忽略的模型
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
+	// APIDUO:local-worker:BEGIN
+	// LocalWorker bounds how many tasks this channel may run at once.
+	//
+	// The number that matters is the vendor's per-account concurrency, and only
+	// the channel knows it. Absent means "take the process share": the worker
+	// then assumes every channel is interchangeable, which is true only when
+	// they all tolerate the same load.
+	LocalWorker *LocalWorkerConfig `json:"local_worker,omitempty"`
+	// APIDUO:local-worker:END
 	// APIDUO:primary-endpoint:BEGIN
 	// PrimaryEndpoint 是上游母语的端点；路由里留空的 upstream_path 跟随它。
 	PrimaryEndpoint string `json:"primary_endpoint,omitempty"`

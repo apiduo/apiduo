@@ -16,9 +16,9 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
-	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
-	// APIDUO:trace:BEGIN
 	apiduotrace "github.com/QuantumNous/new-api/pkg/apiduo/trace"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
+	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin" // APIDUO:trace:BEGIN
 	// APIDUO:trace:END
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
@@ -603,7 +603,7 @@ func taskReportError(taskErr *taskdto.TaskError) *types.NewAPIError {
 // come from c.Request.Context: native task endpoints use the client context,
 // while the Responses bridge supplies an independently bounded context.
 func executeTaskSubmission(c *gin.Context, relayInfo *relaycommon.RelayInfo) (*taskSubmissionOutcome, *taskdto.TaskError) {
-	return executeTaskSubmissionWith(c, relayInfo, relay.RelayTaskSubmit)
+	return executeTaskSubmissionWith(c, relayInfo, apiduoTaskSubmit)
 }
 
 type taskSubmitAttempt func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *taskdto.TaskError)
@@ -797,6 +797,27 @@ func executeTaskSubmissionWith(
 	stage = "insert"
 	task := model.InitTask(result.Platform, relayInfo)
 	task.PrivateData.Execution = service.TaskExecutionSnapshotFromContext(c)
+	// APIDUO:local-image-async:BEGIN
+	// A task the gateway executes itself is marked here and nowhere else: this
+	// is the only write of a task row, so the poller can trust the column and
+	// skip it instead of asking a vendor about an id the vendor never issued.
+	if result.Platform == apiduoLocalImageAsyncPlatform {
+		task.ExecutionMode = model.TaskExecutionModeLocal
+		if raw, ok := c.Get(apiduoLocalImageAsyncPlanKey); ok {
+			if plan, ok := raw.(*apiduoLocalImageAsyncPlan); ok && plan != nil && len(plan.Origin) > 0 {
+				if task.PrivateData.Execution == nil {
+					task.PrivateData.Execution = &model.TaskExecutionSnapshot{}
+				}
+				// Only the untouched client body is stored. The prepared one is
+				// derivable from it plus the channel's mapping, and keeping both
+				// doubles the row while inviting them to disagree after a
+				// failover.
+				task.PrivateData.Execution.OriginRequest = plan.Origin
+				task.PrivateData.Execution.UpstreamURL = plan.URL
+			}
+		}
+	}
+	// APIDUO:local-image-async:END
 	// APIDUO:multi-key-task-binding:BEGIN
 	// Async upstream APIs scope a task to the credential that created it. Record
 	// which key this submission used; every later status poll or retry reads it
@@ -897,6 +918,15 @@ func executeTaskSubmissionWith(
 		return nil, taskErr
 	}
 	durable = true
+	// APIDUO:local-image-async:BEGIN
+	// A local task exists only on paper until a worker is told about it. The
+	// periodic pass is the safety net for rows a crash left behind; a live
+	// submission says so directly, so the upstream starts now instead of on the
+	// next scheduler tick.
+	if task.ExecutionMode == model.TaskExecutionModeLocal {
+		service.KickLocalImageAsyncWorker()
+	}
+	// APIDUO:local-image-async:END
 	requestplugin.TaskCreated(c)
 	if immediateTerminal {
 		// Reported once settled, whatever the settlement did.
@@ -977,10 +1007,22 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 	// 漏给客户端 —— 那些字段客户端既不用也不该依赖。
 	// ChannelMeta 是嵌入的指针，没走 InitChannelMeta 的调用方（测试、
 	// 或插件直调）在这里是 nil，判空后再读渠道配置。
-	if outcome.RelayInfo.ChannelMeta != nil && outcome.RelayInfo.ChannelOtherSettings.AdvancedAsync.IsImageProtocol() {
-		diagnostics.present(outcome.Task, "image_async_create")
-		c.JSON(http.StatusOK, map[string]any{"task_id": outcome.Task.TaskID})
-		return
+	// The endpoint decides the shape, not the channel: a synchronous channel the
+	// gateway executes itself has no advanced_async block to read a protocol
+	// from, yet it serves the same contract. Every images entry — built-in or
+	// channel-declared — has already been rewritten onto this path by the
+	// dispatcher, so the path is the answer. A caller with no request at all
+	// (a unit test of this function) has no endpoint either.
+	if c.Request != nil && c.Request.URL != nil {
+		if spec, ok := endpoint.LookupAsync(c.Request.URL.Path); ok && spec.Protocol == constant.ApiduoAsyncProtocolImages {
+			diagnostics.present(outcome.Task, "image_async_create")
+			// 202: the vendor accepted the work and the client should poll. The
+			// upstreams that speak this shape answer 202 here, and a client that
+			// treats 200 as "the image is ready" would read an accepted task as an
+			// empty result.
+			c.JSON(http.StatusAccepted, map[string]any{"task_id": outcome.Task.TaskID})
+			return
+		}
 	}
 	// APIDUO:image-async:END
 	createdAt := outcome.Task.CreatedAt
@@ -1013,9 +1055,13 @@ func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
-	if taskErr.StatusCode == http.StatusTooManyRequests {
+	// APIDUO:local-image-async:BEGIN
+	// 改写说的是「上游容量不足」，只对上游的 429 成立。本地拒绝（排队已满、
+	// 参数非法）没有上游，套上这句话会让客户端去查一个不存在的上游问题。
+	if taskErr.StatusCode == http.StatusTooManyRequests && !taskErr.LocalError {
 		taskErr.Message = i18n.T(c, i18n.MsgRelayGroupUpstreamSaturated)
 	}
+	// APIDUO:local-image-async:END
 	c.JSON(taskErr.StatusCode, taskErr)
 }
 

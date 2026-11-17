@@ -3,17 +3,31 @@ package model
 import (
 	"slices"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 )
 
 var filterEvalOrder = []dto.ChannelFilterKind{
+	// APIDUO:exclude-channels:BEGIN
+	// First: it is a membership test, and running it before the expensive
+	// filters keeps a retried task from re-reading a plugin's route table.
+	dto.FilterExcludeChannels,
+	// APIDUO:exclude-channels:END
 	dto.FilterRequestPath,
 	dto.FilterTaskPluginEndpoint,
 	dto.FilterTaskPluginIdentity,
 	dto.FilterResponsesWebSocket,
 }
+
+// apiduoLocalImageAsyncEnabled is the local-execution switch, indirected so a
+// test can exercise both answers. The real value is read once per process from
+// the environment, which makes it untestable in place: the first caller fixes
+// it for the whole run, and whether that caller is a test or the filter depends
+// on test order.
+var apiduoLocalImageAsyncEnabled = common.LocalImageAsyncEnabled
 
 // ChannelSatisfiesFilters reports whether ch passes every filter.
 // On false, it returns the first violated filter in filterEvalOrder for error
@@ -91,10 +105,42 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 
 func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
 	switch filter.Kind {
+	case dto.FilterExcludeChannels:
+		// APIDUO:exclude-channels:BEGIN
+		return !slices.Contains(filter.ExcludeChannelIDs, ch.Id)
+		// APIDUO:exclude-channels:END
 	case dto.FilterRequestPath:
 		if filter.RequestPath == "" {
 			return true
 		}
+		// APIDUO:async-endpoint-filter:BEGIN
+		// A built-in asynchronous endpoint has no synchronous implementation:
+		// only an advanced-async channel speaks its protocol. Any other type
+		// would take the body it received and execute it as a different
+		// request — an image prompt parsed as a video task, for instance.
+		//
+		// The exception is local execution: when the operator allows it, any
+		// channel may take the task, because the gateway does not relay the
+		// request — it stores it and replays it against the address that
+		// channel publishes for its own images. Which channels can do that is
+		// not a question this filter can answer cheaply: it needs the adaptor
+		// and the base URL. Listing types here (only OpenAI, say) is the same
+		// mistake as hardcoding the upstream path — it silently drops the
+		// channels whose images live on a vendor endpoint of their own. The
+		// decisive check happens at submit, where the request is built, and a
+		// channel that cannot build one rejects the attempt instead of
+		// accepting it.
+		if _, ok := endpoint.LookupAsync(filter.RequestPath); ok {
+			if ch.Type == constant.ChannelTypeAdvancedAsync {
+				return true
+			}
+			// A task-plugin channel is excluded even here: its requests are
+			// routed to the plugin before the local executor is reached, so
+			// letting it in would answer the same endpoint with a second
+			// response shape — the one thing this endpoint exists to prevent.
+			return apiduoLocalImageAsyncEnabled() && ch.Type != constant.ChannelTypeTaskPlugin
+		}
+		// APIDUO:async-endpoint-filter:END
 		// APIDUO:advanced-async:BEGIN The task-only type has no sync route table,
 		// so it must not take the "not an advanced custom channel" pass.
 		if !constant.IsAdvancedCustomChannel(ch.Type) && ch.Type != constant.ChannelTypeAdvancedAsync {

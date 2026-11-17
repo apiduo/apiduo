@@ -32,6 +32,27 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+// APIDUO:async-endpoint-filter:BEGIN
+//
+// apiduoFilterRequestPath is the path the request-path filter judges.
+//
+// A built-in asynchronous endpoint owns its path, but the dispatcher rewrites
+// the request onto the internal relay path before distribution runs, so
+// c.Request.URL.Path no longer names what the client called. Judging the relay
+// path would accept any channel that merely lists the model — including a
+// synchronous one, which would execute an image body as a video task. The
+// client path is already carried in the context for exactly this reason.
+func apiduoFilterRequestPath(c *gin.Context) string {
+	if clientPath, _ := c.Request.Context().Value(constant.ApiduoClientPathKey{}).(string); clientPath != "" {
+		if _, ok := endpoint.LookupAsync(clientPath); ok {
+			return clientPath
+		}
+	}
+	return c.Request.URL.Path
+}
+
+// APIDUO:async-endpoint-filter:END
+
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
@@ -43,7 +64,7 @@ func Distribute() func(c *gin.Context) {
 		constraints := service.GetChannelConstraints(c)
 		constraints.AddFilter(taskdto.ChannelFilter{
 			Kind:        taskdto.FilterRequestPath,
-			RequestPath: c.Request.URL.Path,
+			RequestPath: apiduoFilterRequestPath(c),
 		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
@@ -115,7 +136,7 @@ func Distribute() func(c *gin.Context) {
 					Ctx:         c,
 					ModelName:   modelRequest.Model,
 					TokenGroup:  usingGroup,
-					RequestPath: c.Request.URL.Path,
+					RequestPath: apiduoFilterRequestPath(c),
 					Retry:       common.GetPointer(0),
 				})
 			}

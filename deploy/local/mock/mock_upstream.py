@@ -11,6 +11,7 @@ Covers the surfaces the gateway relays in local regression:
   DELETE /v1/files/{id}
 """
 import json
+import threading
 import os
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +20,16 @@ LOG = os.environ.get("MOCK_LOG", "/tmp/mock_upstream.log")
 
 FILES = {}
 FILE_SEQ = [0]
+
+# 异步图像任务：提交回任务号，查询第一次 RUNNING、第二次起 SUCCEEDED。
+# 让轮询至少跑一轮，才验证得到状态流转，而不是「提交即完成」。
+TASK_SEQ = [0]
+FLAKY = [0]
+# 观测 worker 的并发：当前在飞数与本轮峰值。
+SLOW_ACTIVE = [0]
+SLOW_MAX = [0]
+SLOW_LOCK = threading.Lock()
+TASK_POLLS = {}
 
 
 def log(line: str) -> None:
@@ -93,6 +104,33 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         log(f"GET {self.path}")
         path = self.path.split("?")[0]
+        if path.rstrip("/") == "/mock/stats":
+            with SLOW_LOCK:
+                self._json({"active": SLOW_ACTIVE[0], "max_concurrency": SLOW_MAX[0]})
+            return
+        if path.startswith("/mock/images/query/"):
+            task_id = path[len("/mock/images/query/"):]
+            polls = TASK_POLLS.get(task_id, 0) + 1
+            TASK_POLLS[task_id] = polls
+            if polls < 2:
+                self._json({"task_id": task_id, "status": "RUNNING"})
+                return
+            self._json({
+                "task_id": task_id,
+                "status": "SUCCEEDED",
+                "url": f"http://mock-upstream:18080/mock/out/{task_id}.png",
+            })
+            return
+        if path.startswith("/mock/bad-url/query/"):
+            task_id = path[len("/mock/bad-url/query/"):]
+            self._json({
+                "task_id": task_id,
+                "status": "SUCCEEDED",
+                # A hostile result url: a client that renders it as a link turns
+                # the gateway into an XSS delivery channel.
+                "url": "javascript:alert(document.cookie)",
+            })
+            return
         if path.rstrip("/").endswith("/v1/models"):
             self._json({"object": "list", "data": [{"id": "mock-gpt", "object": "model", "created": int(time.time()), "owned_by": "mock"}]})
             return
@@ -152,6 +190,122 @@ class Handler(BaseHTTPRequestHandler):
         raw = self._read_body()
         path = self.path.split("?")[0]
         log(f"POST {path} auth={self.headers.get('Authorization', '')[:14]} bytes={len(raw)}")
+
+        if path.rstrip("/") == "/v1/images/generations":
+            try:
+                request = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                request = {}
+            log(f"sync image generation model={request.get('model')} prompt={request.get('prompt')}")
+            self._json({
+                "created": int(time.time()),
+                "data": [{"url": "http://mock-upstream:18080/mock/out/sync.png"}],
+            })
+            return
+
+        # A vendor endpoint of its own, reachable only through a channel that
+        # declares it as its primary endpoint. The distinct result url is how a
+        # test tells which address the gateway actually used.
+        if path.rstrip("/") == "/api/v3/images/generations":
+            try:
+                request = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                request = {}
+            log(f"vendor image generation model={request.get('model')} prompt={request.get('prompt')}")
+            self._json({
+                "created": int(time.time()),
+                "data": [{"url": "http://mock-upstream:18080/mock/out/vendor.png"}],
+            })
+            return
+
+        if path.rstrip("/") == "/mock/images/slow":
+            # A synchronous image that takes real time. The worker's scheduling
+            # behavior is only observable when a task is not instantaneous.
+            try:
+                request = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                request = {}
+            delay = float(request.get("delay") or os.environ.get("MOCK_SLOW_SECONDS", "20"))
+            with SLOW_LOCK:
+                SLOW_ACTIVE[0] += 1
+                SLOW_MAX[0] = max(SLOW_MAX[0], SLOW_ACTIVE[0])
+            log(f"slow image start model={request.get('model')} delay={delay}")
+            time.sleep(delay)
+            with SLOW_LOCK:
+                SLOW_ACTIVE[0] -= 1
+            log(f"slow image done model={request.get('model')}")
+            self._json({
+                "created": int(time.time()),
+                "data": [{"url": "http://mock-upstream:18080/mock/out/slow.png"}],
+            })
+            return
+
+        if path.rstrip("/") == "/mock/reset":
+            # 计数器是进程全局的；场景之间要能各自从零开始。
+            FLAKY[0] = 0
+            TASK_SEQ[0] = 0
+            with SLOW_LOCK:
+                SLOW_ACTIVE[0] = 0
+                SLOW_MAX[0] = 0
+            TASK_POLLS.clear()
+            self._json({"reset": True})
+            return
+
+        if path.rstrip("/") == "/mock/images/denied":
+            # 永远限流：用来验证「换渠道」而不是「原地重试」。
+            log("denied image rate limited")
+            body = b'{"error":{"message":"rate limited"}}'
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path.rstrip("/") == "/mock/images/flaky":
+            # 前两次限流，第三次放行：验证 worker 对 429 的重试。
+            FLAKY[0] += 1
+            if FLAKY[0] <= 2:
+                log(f"flaky image rate limited (attempt {FLAKY[0]})")
+                body = b'{"error":{"message":"rate limited"}}'
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json")
+                # 不发 Retry-After：这个端点用来验证 worker 自己的指数退避。
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            log(f"flaky image served (attempt {FLAKY[0]})")
+            self._json({
+                "created": int(time.time()),
+                "data": [{"url": "http://mock-upstream:18080/mock/out/flaky.png"}],
+            })
+            return
+
+        if path.rstrip("/") == "/mock/fail-500":
+            log("mock failure endpoint hit")
+            self._json({"error": {"message": "mock upstream failure"}}, 500)
+            return
+
+        if path.rstrip("/") == "/mock/images/submit":
+            try:
+                request = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                request = {}
+            TASK_SEQ[0] += 1
+            task_id = f"mock-image-{TASK_SEQ[0]}"
+            TASK_POLLS[task_id] = 0
+            log(f"submit image task {task_id} model={request.get('model')} prompt={request.get('prompt')}")
+            # 受理即回任务号：与真实异步上游一致，不含任何结果字段。
+            self._json({"task_id": task_id, "status": "QUEUED"})
+            return
+
+        if path.rstrip("/") == "/mock/bad-url/submit":
+            TASK_SEQ[0] += 1
+            task_id = f"bad-url-{TASK_SEQ[0]}"
+            TASK_POLLS[task_id] = 0
+            self._json({"task_id": task_id, "status": "QUEUED"})
+            return
 
         if path.rstrip("/") in ("/v1/tools/search", "/v1/tools/fetch"):
             # The gateway forwards the body verbatim and returns the reply as-is.

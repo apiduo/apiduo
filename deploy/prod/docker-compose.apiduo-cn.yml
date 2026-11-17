@@ -102,6 +102,12 @@ services:
     restart: unless-stopped
     env_file:
       - /www/data/apiduo-cn/.env       # 真实密钥，权限 600，不入库
+    environment:
+      # 这台机器没有 Redis，开关只由环境变量决定，而代码里默认是 false。
+      # 关掉就等于换了一套渠道选路代码（每请求直查库，高级异步渠道的别名
+      # 路由还会恒判 false）。写在这里是为了重建时不会跟着 .env 一起漏。
+      # compose 的 environment 优先级高于 env_file，重复声明无害。
+      MEMORY_CACHE_ENABLED: "true"
     ports:
       - "127.0.0.1:39047:3000"
     volumes:

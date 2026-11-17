@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/pkg/urlguard"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
@@ -163,11 +164,19 @@ type TaskPollSummary struct {
 // adaptor factory has not been wired yet, to avoid a nil call during startup.
 func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) TaskPollSummary {
 	summary := TaskPollSummary{}
-	if GetTaskAdaptorFunc == nil {
-		return summary
-	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	// APIDUO:local-image-async:BEGIN
+	// Local tasks run here but are not gated by GetTaskAdaptorFunc: they have no
+	// adaptor, because there is no upstream task to adapt. Skipping them when
+	// the task-plugin system is off would strand every one of them.
+	if executed := RunLocalImageAsyncPass(ctx, apiduoLocalImageAsyncBatch); executed > 0 {
+		logger.LogInfo(ctx, common.LogText("local image async: executed %d task(s)", executed))
+	}
+	// APIDUO:local-image-async:END
+	if GetTaskAdaptorFunc == nil {
+		return summary
 	}
 
 	common.SysLog(common.LogText("task progress polling started"))
@@ -666,8 +675,21 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		} else if taskResult.Url != "" {
-			// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.)
-			task.PrivateData.ResultURL = taskResult.Url
+			// APIDUO:result-url:BEGIN
+			// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.). The client may
+			// render it as a link, so a scheme it would execute must not be
+			// stored as this task's result. Shape only — the artifact fetcher
+			// applies its own rule before it reaches out.
+			validated, urlErr := urlguard.ValidateTaskResultURL(taskResult.Url)
+			if urlErr != nil {
+				task.Status = model.TaskStatusFailure
+				task.FailReason = "upstream returned an unusable result url"
+				logger.LogWarn(ctx, common.LogText("task %s result url rejected: %v", task.TaskID, urlErr))
+				shouldFinalizeBilling = true
+				break
+			}
+			task.PrivateData.ResultURL = validated
+			// APIDUO:result-url:END
 		} else {
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)

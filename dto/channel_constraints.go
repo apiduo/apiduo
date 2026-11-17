@@ -40,6 +40,12 @@ const (
 	FilterTaskPluginEndpoint ChannelFilterKind = "task_plugin_endpoint"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
 	FilterResponsesWebSocket ChannelFilterKind = "responses_websocket"
+	// APIDUO:exclude-channels:BEGIN
+	// FilterExcludeChannels drops channels already tried. Selection is by
+	// priority and weight and cannot otherwise say "not that one again", which
+	// is what a task needs after a rate-limited attempt.
+	FilterExcludeChannels ChannelFilterKind = "exclude_channels"
+	// APIDUO:exclude-channels:END
 )
 
 type ChannelFilter struct {
@@ -51,6 +57,9 @@ type ChannelFilter struct {
 	// TaskPluginRelayOnly excludes endpoint candidates after an ordinary relay
 	// channel wins selection, so retries keep using the same protocol handler.
 	TaskPluginRelayOnly bool
+	// APIDUO:exclude-channels:BEGIN
+	ExcludeChannelIDs []int
+	// APIDUO:exclude-channels:END
 }
 
 type ChannelConstraints struct {

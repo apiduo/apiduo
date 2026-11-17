@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
 
 	"github.com/gin-gonic/gin"
 )
@@ -35,6 +36,28 @@ func SetApiduoImageAsyncRoutes(router *gin.Engine, pluginDispatcher gin.HandlerF
 		middleware.RouteTag("relay"),
 		middleware.TokenAuth(),
 		controller.ApiduoImageAsyncTaskFetch,
+	)
+	// The submit half lands on an Images path, not on the video relay path.
+	// Re-entering /v1/video/generations would make the task log, the response
+	// present and the per-action statistics call an image job a video one;
+	// only the upstream shape would stay image-specific.
+	//
+	// The chain mirrors the video relay route because the handler is the same
+	// task controller: the action header has to survive the rewrite, and the
+	// task-plugin endpoint pinning has to keep running so a plugin-claimed
+	// model still reaches its own protocol handler.
+	// The chain mirrors the video relay route because the handler is the same
+	// task controller, but it deliberately omits the task-plugin pinning: this
+	// endpoint has only two producers — an advanced-async channel and a
+	// synchronous image channel the gateway executes itself. Pinning would map
+	// the latter to whatever plugin owns that channel type and hand it the
+	// request, so the submission would never reach the task controller.
+	router.POST(endpoint.AsyncImageSubmitPath,
+		middleware.RouteTag("relay"),
+		middleware.TokenAuth(),
+		ApiduoTaskActionHeaderBridge(),
+		middleware.Distribute(),
+		controller.RelayTask,
 	)
 	return ApiduoAsyncIncomingDispatcher(router, pluginDispatcher)
 }
@@ -75,7 +98,33 @@ func ApiduoAsyncIncomingDispatcher(engine *gin.Engine, next gin.HandlerFunc) gin
 				next(c)
 				return
 			}
-			protocol, claimed := model.ApiduoAsyncIncomingServes(c.Request.URL.Path, modelName)
+			protocol, claimed := "", false
+			submitPath := constant.ApiduoTaskRelayPath
+			// A built-in endpoint answers first: its path is the shape
+			// contract, so no channel has to declare it. The channel-declared
+			// lookup stays as the fallback, which keeps every already
+			// configured incoming_paths entry working.
+			if spec, ok := endpoint.LookupAsync(c.Request.URL.Path); ok {
+				// A path that is already its own landing route is served by a
+				// static handler; rewriting it again would loop.
+				if spec.Submit == spec.Path {
+					next(c)
+					return
+				}
+				protocol, claimed = spec.Protocol, true
+				submitPath = spec.Submit
+			} else {
+				protocol, claimed = model.ApiduoAsyncIncomingServes(c.Request.URL.Path, modelName)
+				// A channel may serve the Images protocol on a path of its own
+				// (/jimeng/v1/images/generations). It still lands on the Images
+				// route: sending it to the video relay would log and present an
+				// image job as video work, and the endpoint filter would stop
+				// recognising the request as asynchronous — which is what keeps
+				// a synchronous channel out of the candidate set.
+				if claimed && protocol == constant.ApiduoAsyncProtocolImages {
+					submitPath = endpoint.AsyncImageSubmitPath
+				}
+			}
 			if !claimed {
 				next(c)
 				return
@@ -94,14 +143,22 @@ func ApiduoAsyncIncomingDispatcher(engine *gin.Engine, next gin.HandlerFunc) gin
 				// 清空 c.Keys，重入前塞进 context 的值活不过那次重置。
 				c.Request.Header.Set(apiduoTaskActionHeader, constant.TaskActionImageGeneration)
 			}
-			apiduoArkReenter(engine, c, constant.ApiduoTaskRelayPath)
+			apiduoArkReenter(engine, c, submitPath)
 		case http.MethodGet:
 			basePath, taskID, ok := apiduoAsyncPollPath(c.Request.URL.Path)
 			if !ok {
 				next(c)
 				return
 			}
-			protocol, claimed := model.ApiduoAsyncIncomingProtocol(basePath)
+			protocol, claimed := "", false
+			// Same precedence as the submit half: a built-in endpoint owns its
+			// path, and a channel-declared one still answers for paths the
+			// gateway does not own.
+			if spec, ok := endpoint.LookupAsync(basePath); ok {
+				protocol, claimed = spec.Protocol, true
+			} else {
+				protocol, claimed = model.ApiduoAsyncIncomingProtocol(basePath)
+			}
 			if !claimed {
 				next(c)
 				return

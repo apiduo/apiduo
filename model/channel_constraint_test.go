@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
@@ -221,6 +222,50 @@ func TestChannelSatisfiesFilters(t *testing.T) {
 // A task plugin channel takes a Responses WebSocket session when the switch
 // is on and its plugin's /v1/responses route for the model has no converter,
 // the rule an Advanced Custom channel follows.
+// A built-in asynchronous endpoint has no synchronous implementation. Letting
+// a synchronous channel win would execute the image body as whatever that
+// channel's task plugin expects — a video job, in the sora mapping's case.
+func TestChannelSatisfiesFiltersBuiltInAsyncEndpoint(t *testing.T) {
+	async := &Channel{Id: 900101, Type: constant.ChannelTypeAdvancedAsync}
+	syncImage := &Channel{Id: 900102, Type: constant.ChannelTypeOpenAI}
+	// A vendor channel whose images live on its own endpoint. It is the reason
+	// this filter cannot be a list of channel types: type 54 serves images, but
+	// nothing about the type says so.
+	doubao := &Channel{Id: 900103, Type: constant.ChannelTypeDoubaoVideo}
+
+	asyncFilters := []dto.ChannelFilter{{
+		Kind:        dto.FilterRequestPath,
+		RequestPath: endpoint.AsyncImagePath,
+	}}
+
+	ok, kind := ChannelSatisfiesFilters(async, "flux-3", asyncFilters)
+	require.True(t, ok, "异步渠道才能服务内置异步端点")
+	assert.Equal(t, dto.ChannelFilterKind(""), kind)
+
+	ok, kind = ChannelSatisfiesFilters(syncImage, "flux-3", asyncFilters)
+	assert.False(t, ok, "本地执行没开时，同步渠道不能服务异步端点")
+	assert.Equal(t, dto.FilterRequestPath, kind)
+
+	// 本地执行打开后，任何渠道都可以接：能不能真的发出一次图像请求，由提交时
+	// 构造 URL 判定，不在这里按类型猜。
+	previous := apiduoLocalImageAsyncEnabled
+	apiduoLocalImageAsyncEnabled = func() bool { return true }
+	t.Cleanup(func() { apiduoLocalImageAsyncEnabled = previous })
+
+	for _, ch := range []*Channel{syncImage, doubao} {
+		ok, kind = ChannelSatisfiesFilters(ch, "flux-3", asyncFilters)
+		assert.True(t, ok, "本地执行开启时渠道 %d 应可接异步端点", ch.Type)
+		assert.Equal(t, dto.ChannelFilterKind(""), kind)
+	}
+
+	// 同步入口保持原样：同步渠道照常通过。
+	ok, _ = ChannelSatisfiesFilters(syncImage, "flux-3", []dto.ChannelFilter{{
+		Kind:        dto.FilterRequestPath,
+		RequestPath: "/v1/images/generations",
+	}})
+	require.True(t, ok)
+}
+
 func TestTaskPluginChannelResponsesWebSocket(t *testing.T) {
 	for key, relay := range map[string]string{
 		"ws-native":    `[{incoming_path: "/v1/responses", upstream_path: "/responses", models: ["m1"]}]`,
@@ -252,4 +297,22 @@ func TestTaskPluginChannelResponsesWebSocket(t *testing.T) {
 	assert.False(t, ok, "a converted route cannot forward native events")
 	ok, _ = ChannelSatisfiesFilters(channel("ws-missing", true), "m1", filters)
 	assert.False(t, ok)
+}
+
+// 排除过滤器：任务重试时要能说「不要再是这一条」。
+func TestChannelSatisfiesFiltersExcludeChannels(t *testing.T) {
+	first := &Channel{Id: 501}
+	second := &Channel{Id: 502}
+	filters := []dto.ChannelFilter{{Kind: dto.FilterExcludeChannels, ExcludeChannelIDs: []int{501}}}
+
+	ok, kind := ChannelSatisfiesFilters(first, "m", filters)
+	assert.False(t, ok, "已试过的渠道必须被排除")
+	assert.Equal(t, dto.FilterExcludeChannels, kind)
+
+	ok, _ = ChannelSatisfiesFilters(second, "m", filters)
+	assert.True(t, ok, "没试过的渠道不受影响")
+
+	// 空排除列表等于没配，不能把所有渠道都挡掉。
+	ok, _ = ChannelSatisfiesFilters(first, "m", []dto.ChannelFilter{{Kind: dto.FilterExcludeChannels}})
+	assert.True(t, ok)
 }

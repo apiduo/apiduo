@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"bytes"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/endpoint"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -475,4 +477,31 @@ func TestSharedEndpointRebindsToBoundNewAPIExtension(t *testing.T) {
 	require.Nil(t, SetupContextForSelectedChannel(c, channel, "task-model"))
 	assert.Equal(t, "alpha", c.GetString("task_plugin_key"), "the first bound candidate executes regardless of the earlier pin")
 	assert.Equal(t, "alpha", c.MustGet(jsplugin.ContextKeyPinnedEndpoint).(jsplugin.PinnedEndpoint).Plugin.Meta.Key)
+}
+
+// A built-in asynchronous endpoint is rewritten onto the internal relay path
+// before distribution, so the filter must judge the path the client called.
+// Judging the relay path would accept any channel listing the model.
+func TestApiduoFilterRequestPathPrefersClientPathForBuiltInEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newContext := func(clientPath string) *gin.Context {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", nil)
+		if clientPath != "" {
+			ctx := context.WithValue(c.Request.Context(), constant.ApiduoClientPathKey{}, clientPath)
+			c.Request = c.Request.WithContext(ctx)
+		}
+		return c
+	}
+
+	assert.Equal(t, "/v1/video/generations", apiduoFilterRequestPath(newContext("")),
+		"没有客户端路径时行为不变")
+
+	assert.Equal(t, endpoint.AsyncImagePath, apiduoFilterRequestPath(newContext(endpoint.AsyncImagePath)),
+		"内置异步端点要用客户端路径，过滤器才能识别端点身份")
+
+	assert.Equal(t, "/v1/video/generations",
+		apiduoFilterRequestPath(newContext("/api/v3/contents/generations/tasks")),
+		"非内置端点的客户端路径不改变判定")
 }

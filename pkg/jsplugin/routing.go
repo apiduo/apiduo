@@ -487,6 +487,12 @@ var reservedRouteNamespaces = []string{
 	"/chat",
 	"/dashboard",
 	"/errors",
+	// APIDUO:console-pages-growth-health:BEGIN
+	// 前端新增的两个控制台页面。缺了这两条，插件路由就能占住 /growth 或
+	// /service-health，把刷新页面接走。
+	"/growth",
+	"/service-health",
+	// APIDUO:console-pages-growth-health:END
 	"/keys",
 	"/models",
 	"/playground",

@@ -3,6 +3,10 @@ package model
 import (
 	"testing"
 
+	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 )
@@ -201,5 +205,63 @@ func TestApiduoAsyncModelProtocolPrefersArk(t *testing.T) {
 	}
 	if _, claimed := ApiduoAsyncModelProtocol("unclaimed-model"); claimed {
 		t.Fatal("an unclaimed model must not report a protocol")
+	}
+}
+
+// 运营可以给 Images 协议写自己的业务分段（/jimeng/v1/images/generations）。
+// dispatcher 必须认领它，否则请求落到前端静态页，客户端拿到 HTML。
+func TestApiduoAsyncIncomingServesCustomBusinessPath(t *testing.T) {
+	previous := channelsIDM
+	t.Cleanup(func() { channelsIDM = previous })
+
+	settings := `{"advanced_async":{"protocol":"images",` +
+		`"incoming_paths":["/async/v1/images/generations","/jimeng/v1/images/generations"],` +
+		`"submit":{"upstream_path":"/submit"},"query":{"upstream_path":"/query/{task_id}"}}}`
+	channelsIDM = map[int]*Channel{
+		7: {Id: 7, Type: constant.ChannelTypeAdvancedAsync, Status: common.ChannelStatusEnabled,
+			Models: "flux-mock", OtherSettings: settings},
+	}
+
+	protocol, ok := ApiduoAsyncIncomingServes("/jimeng/v1/images/generations", "flux-mock")
+	if !ok || protocol != constant.ApiduoAsyncProtocolImages {
+		t.Fatalf("自定义业务分段必须被认领: protocol=%q ok=%v", protocol, ok)
+	}
+}
+
+// 缓存关掉的部署（MEMORY_CACHE_ENABLED 默认就是 false）里内存索引恒为 nil，
+// 这两条判定以前直接判「没有渠道认领」：方舟形状的提交被插件抢走、渠道不可达，
+// callback_url 拒绝守卫也静默 fail-open。它们必须和别的查询一样回落到数据库。
+func TestApiduoAsyncModelLookupsFallBackToDatabase(t *testing.T) {
+	previousDB, previousChannels, previousCache := DB, channelsIDM, common.MemoryCacheEnabled
+	t.Cleanup(func() {
+		DB, channelsIDM, common.MemoryCacheEnabled = previousDB, previousChannels, previousCache
+	})
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Channel{}))
+	DB = db
+	// 缓存关闭时的真实状态：没有内存索引。
+	channelsIDM = nil
+	common.MemoryCacheEnabled = false
+
+	settings := `{"advanced_async":{"protocol":"ark",` +
+		`"incoming_paths":["/v1/video/generations"],` +
+		`"submit":{"upstream_path":"/v1/tasks"},"query":{"upstream_path":"/v1/tasks/{task_id}"}}}`
+	require.NoError(t, db.Create(&Channel{Id: 960001, Type: constant.ChannelTypeAdvancedAsync,
+		Status: common.ChannelStatusEnabled, Models: "db-only-model", OtherSettings: settings}).Error)
+
+	if !ApiduoAdvancedAsyncServes("db-only-model") {
+		t.Fatal("缓存关闭时必须从数据库认出声明过该模型的渠道，否则同名模型会被插件抢走")
+	}
+	protocol, claimed := ApiduoAsyncModelProtocol("db-only-model")
+	if !claimed || protocol != constant.ApiduoAsyncProtocolArk {
+		t.Fatalf("缓存关闭时协议判定 = (%q, %v)，期望 (ark, true)", protocol, claimed)
+	}
+	if ApiduoAdvancedAsyncServes("not-listed-model") {
+		t.Fatal("没有渠道声明的模型不能被认领")
+	}
+	if _, claimed := ApiduoAsyncModelProtocol("not-listed-model"); claimed {
+		t.Fatal("没有渠道声明的模型不该有协议")
 	}
 }

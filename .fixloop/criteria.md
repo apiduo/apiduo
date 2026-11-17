@@ -484,3 +484,289 @@ bsk sync
 
 列表那条不是「px 调错」，是「固定高度 × 动态条数」的固有矛盾：
 调到刚好 5 条，6 条时照样切半条。解法是让裁切可感知（底部渐隐 / 「共 N 条」），不是继续调 px。
+
+---
+
+# 异步图像端点矩阵（2026-11-17 04:20）
+
+## 需求原文
+
+> 疯狂的测试 fix-loop
+> 1. 异步透传
+> 2. 网关侧同步转异步
+> 3. 1失败回落到2
+> 4. Worker性能如何
+> 5. 积分管够随便测
+> 6. 异步任务结果url这个怎么约束
+
+## 映射表
+
+| # | 需求原文 | 判据（命令） | 覆盖 |
+|---|---|---|---|
+| 1 | 异步透传 | `python3 deploy/local/e2e/async_matrix.py s1`：8001 渠道 → 202 受理 → 轮询到 200 + `data[0].url`；任务行 `execution_mode != local` | 是 |
+| 2 | 网关侧同步转异步 | `async_matrix.py s2`：同步渠道 → 202 → 轮询到 200 + `data[0].url`；任务行 `execution_mode=local`、`upstream_url` 为渠道地址、落库模型是映射后的值 | 是 |
+| 3 | 1 失败回落到 2 | `async_matrix.py s3`：8001 先被选中且返回 500 → 重试落到同步渠道 → 仍返回 202 与结果；mock 侧确实收到失败端点的请求 | 是 |
+| 4 | Worker 性能如何 | `async_matrix.py s4`：8 个 20 秒任务全部完成 ≤ 60 秒；期间 `async_task_poll` 至少 3 条（调度器未被占住） | 是 |
+| 5 | 积分管够随便测 | — | 否（是许可，不是判据） |
+| 6 | 异步任务结果 url 怎么约束 | `async_matrix.py s5`：上游返回 `javascript:` 地址时客户端拿不到它 | 是 |
+
+## 判据命令
+
+```bash
+python3 deploy/local/e2e/async_matrix.py s1
+python3 deploy/local/e2e/async_matrix.py s2
+python3 deploy/local/e2e/async_matrix.py s3
+python3 deploy/local/e2e/async_matrix.py s4
+python3 deploy/local/e2e/async_matrix.py s5
+```
+
+退出码 0 = 通过。s1/s2/s3 各用 1 张真实图（hailuo，4 积分/张），s4/s5 全 mock。
+
+## 追加：Worker 会不会死 / 能否自愈（2026-11-17 05:05）
+
+| # | 需求原文 | 判据 | 覆盖 |
+|---|---|---|---|
+| 7 | Worker 性能足够吗 | `async_matrix.py s6`：24 个 20 秒任务（3 倍槽位）≤110 秒全部成功，无丢失无重复 | 是 |
+| 8 | 会不会死掉 | `service` 单测 `TestApiduoRunLocalTaskGuardedContainsPanic`：worker 内 panic 被捕获 | 是 |
+| 9 | 能自动修复 | `async_crash_recovery.py`：SIGKILL → 重启 → 6 分钟内判失败且额度回到提交前 | 是 |
+
+实测（05:02）：24 任务 62 秒完成；SIGKILL 后 6 分 21 秒判 `FAILURE`，额度 96834618 → 96834618。
+
+## 追加：三个已知缺口（2026-11-17 05:40）
+
+| # | 需求 | 判据 | 覆盖 |
+|---|---|---|---|
+| 10 | 按渠道隔离 | `async_matrix.py s7`：A 渠道占满时，B 的首个任务 ≤30 秒完成 | 是 |
+| 11 | 准入控制 | `async_matrix.py s8`：超出队列额度时回 429 且 code=`queue_full` | 是 |
+| 12 | 时钟偏移 | `async_matrix.py s9` + `TestApiduoClaimLocalTaskUsesTheSharedClock` | 是 |
+| 附 | 隔离不能牺牲吞吐 | `async_matrix.py s6`：24 个 20 秒任务 ≤110 秒 | 是 |
+
+过程里的两次回归（都是判据抓到的）：
+
+- R1 第一版用「每渠道一半」：s7 通过，s6 由 62 秒退化到 122 秒 → 改回。
+- R1 第二版用「轮转排序」：s6 恢复 62 秒，s7 仍饿死 39 秒（派发早于第二个渠道出现）→ 改成「每渠道留一个空位」。
+- 终态：s6 82 秒、s7 20 秒，两者同时成立。
+
+## 追加：429 不重试（2026-11-17 06:30，第二轮结论）
+
+第一轮按「429 零计费风险」加了重试，用户否决「同步侧不要开重试」，已撤销。
+第二轮用户再问「建议加不」——结论仍是**不加**，但理由换成：重试解决不了 429 的成因。
+
+| # | 判据 | 覆盖 |
+|---|---|---|
+| 13 | `async_matrix.py s10`：上游前两次 429、第三次放行 → 任务**失败**且 mock 只收到 **1** 次请求 | 是 |
+| 14 | ~~`TestApiduoLocalImageAsyncRetryDelay`~~ 已随重试一并删除 | — |
+
+边界：`apiduoReplayLocalTask` 单次调用，语义上不再有「尝试次数」这个概念。
+
+## 追加：同步入口不得变成异步（2026-11-17 06:30）
+
+用户原话：「同步侧不要开异步 对的」。
+
+| # | 判据 | 覆盖 |
+|---|---|---|
+| 15 | `async_matrix.py s11`：`POST /v1/images/generations` 回 200 + 图片、耗时 <5 秒、不建任务行、上游命中 images 路径且 worker 未参与 | 是 |
+
+实测：200 / 0.0 秒 / 任务表 674→674 / 上游收到 `POST /v1/images/generations`。
+
+### 顺带发现的不对称（未修，待决策）
+
+同一条渠道（`primary_endpoint=/mock/images/slow`）：
+
+- 同步入口 → 上游 `/v1/images/generations`（**忽略** primary_endpoint）
+- 异步入口 → 本地执行 → 上游 `/mock/images/slow`（**遵循** primary_endpoint）
+
+即「type 54 + 主端点」的渠道，同步图片会打到旧地址、异步反而正确。
+修它要动同步中继的 URL 解析，影响所有图像请求，需独立判据。
+
+## 追加：弹性（渠道并发 + 429 换渠道）（2026-11-17 06:50）
+
+用户原话：「好多个上游同步渠道 如何轮换」「做1与2增加弹性」。
+
+| # | 判据 | 覆盖 |
+|---|---|---|
+| 16 | `async_matrix.py s13`：渠道声明 `local_worker.concurrency=2`，上游观测峰值并发 == 2 | 是 |
+| 17 | `async_matrix.py s12`：高优先级渠道 429 → 任务换到低优先级渠道完成，task_id 不变，`tried_channels` 记录被弃渠道 | 是 |
+| 18 | `TestChannelSatisfiesFiltersExcludeChannels`：排除过滤器只挡指定渠道，空列表不挡任何渠道 | 是 |
+| 19 | `TestApiduoLocalImageMapsModel`：带模型映射的渠道不参与轮换 | 是 |
+
+### 过程
+
+s12 第一次跑失败：`tried_channels=[133,133]` —— 排除过滤器写进了 switch，但没写进
+`filterEvalOrder`，`ChannelSatisfiesFilters` 按 order 遍历 ⇒ 新过滤器被静默跳过。
+补进 order（放第一位）后通过。这是「加了代码没加注册」的典型，判据抓到了。
+
+## 追加：限流弹性（第三版，2026-11-17 07:00）
+
+用户第三次调整：「由429重试 弹性分配不是也可以吗…或者当前渠道重试」。
+
+**我上一轮的分析错了一半**：我论证的是「几秒的重试没用」，结论推成了「重试没用」。
+正确结论是「**退避必须与任务时长同量级**」——8/16 秒的退避在 20–40 秒的生成面前，
+等价于一个本地队列。
+
+| # | 判据 | 覆盖 |
+|---|---|---|
+| 20 | `async_matrix.py s10`：单渠道模型，上游 429 两次后放行 → 任务成功、3 次请求、**耗时 ≥20 秒** | 是 |
+| 21 | `TestApiduoLocalImageAsyncRateLimitBackoff`：8/16 秒退避、封顶 25 秒、Retry-After 优先 | 是 |
+| 22 | `async_matrix.py s12` 不变：有别的渠道时**先换渠道**（0 等待），不进入退避 | 是 |
+
+恢复顺序固定：换渠道（立即）→ 原地等待（8/16 秒）→ 失败退款。上限 3 次尝试、3 条渠道。
+
+## 追加：映射渠道参与轮换（2026-11-17 07:15）
+
+用户原话：「重定向的不重试，这个规则也不太好吧，很多重定向是运营配的，为的就是参与重试」。
+
+我那条规则是为了绕开实现问题定的（冻结体里是第一条渠道的上游名），站不住脚。
+正确做法是**执行期按渠道重新映射**。
+
+| # | 判据 | 覆盖 |
+|---|---|---|
+| 23 | `async_matrix.py s12`（改）：fallback 渠道带 `model_mapping` → 轮换成功且上游收到 `model=slow-test` | 是 |
+| 24 | `TestApiduoLocalImageBodyPreparesPerChannel`：按目标渠道映射，且大整数不被舍入 | 是 |
+| 25 | `TestApplyModelMapping`：空映射不是错误（这条差点让所有无映射渠道挂掉） | 是 |
+| 26 | `TestApiduoLocalImageBodyFallsBackToStoredRequest`：无 origin 的老行原样发送 | 是 |
+
+过程：第一次跑 s12 全红 —— `ApplyModelMapping("")` 把空字符串当 JSON 解析失败，
+所有无映射渠道直接「无法为这条渠道准备请求」。单测补上空映射分支后通过。
+
+## 追加：重试选路补齐 + 并发槽（2026-11-17 07:40）
+
+用户三条：①重试复用渠道选路，按优先级与权重；②重试支持重定向后的模型；③提高并发槽。
+
+**先纠正我上一轮的错误判断**：我说「回退只从最高优先级档挑一次，比首次提交更窄」——错了。
+`filterCandidateIDs` 在分档**之前**就应用了排除过滤器，所以 `retry=0` 天然是「剩余渠道里的最高档」。
+我加的分层循环是死代码，已删。回退真正窄的地方只有一处：**只按客户端模型名找**。
+
+| # | 判据 | 覆盖 |
+|---|---|---|
+| 27 | `async_matrix.py s15`：三档优先级 20/10/0，前两档限流 → 逐档降到第三档成功，`tried_channels` 记录前两档 | 是 |
+| 28 | `async_matrix.py s14`：客户端名找不到时用上游名再找 → 命中只暴露 `vendor-x` 的渠道，body 带 `model=vendor-x` | 是 |
+| 29 | 默认并发 8 → 16（`LOCAL_IMAGE_ASYNC_CONCURRENCY`，上限 64） | 是 |
+
+## 追加：选渠道只认客户端模型名（2026-11-17 07:58）
+
+用户否决「用上游名兜底找渠道」：「分析错误，就应该按客户端模型名找渠道」。
+
+理由比「方向」严重：渠道模型名单是**契约**。只声明 `vendor-x` 的渠道从未被授权服务
+`public-model`，它的成本基线与分组策略属于另一个名字——用它是花了没人批准的钱。
+
+| # | 判据 | 覆盖 |
+|---|---|---|
+| 28' | `async_matrix.py s14`（改为反向）：客户端名只有一条渠道且它 429 → 任务**失败**，只暴露上游名的那条渠道**一次未被调用** | 是 |
+| 30 | `async_matrix.py s10`：单渠道模型 429 → **原地重试** 3 次（8+16 秒），24.2 秒后成功 | 是 |
+
+`DispatchedModel` 字段随之上游名回退一起删除。
+
+---
+
+# E2E 判据：公告全链路（2026-11-17）
+
+## 需求原文
+
+> 公告 本地端到端测试 fix-loop
+
+## 一条命令
+
+```bash
+./.fixloop/e2e-announcement.sh
+```
+
+内部顺序：API 层 24 项 → 造 UI 数据 → 起 headless chrome → UI 层 14 项 → 自动清理。
+任一层失败立即停，退出码非 0。`trap EXIT` 保证中断也会清数据，可重复执行。
+
+## 映射
+
+| 需求 | 判据 | 状态 |
+|---|---|---|
+| API 的增删改查 | `e2e_announcement_api.py` 前 4 项 | covered |
+| 四类校验（category/kind/title/content/时间窗/阶段） | 同文件 7 项 | covered |
+| 读者侧 `[publishDate, expiresAt)` 过滤 | 同文件 3 项 + 管理侧 2 项 | covered |
+| 功能更新由前端分流 | 同文件 1 项 | covered |
+| PATCH 局部更新 / 404 | 同文件 4 项 | covered |
+| 列表渲染（级别、日期） | `e2e_announcement_ui.mjs` 3 项 | covered |
+| 详情弹窗标题 | 同文件 1 项 | covered |
+| 时间线三态 | 同文件 3 项 | covered |
+| 列表溢出提示 | 同文件 1 项 | covered |
+| 功能更新横幅（数量/标签/NEW/关闭） | 同文件 4 项 | covered |
+| 移动端布局 | — | **uncovered** |
+| 多语言切换后的文案 | — | **uncovered** |
+
+## 轮次记录
+
+| 轮 | 层 | exit | 说明 |
+|---|---|---|---|
+| R1 | API | 1 | **判据自身 bug**：`call("GET", path, session)` 把 session 当 body 传，第 16 项崩溃 |
+| R2 | API | 0 | 24/24 |
+| R3 | UI | 0 | 13/13，但时间线断言过宽（`\|\| length === 3` 让任何三阶段都通过） |
+| R4 | 全部 | 0 | 收紧为「当前必须落在第二个阶段」+「之后不带当前」，14/14 |
+
+## 归因
+
+R1 与 R4 都是 **TEST 层**：判据写错了，不是产品缺陷。
+- R1：GET 调用的参数位传错，属于脚本 bug
+- R4：`A \|\| B` 形式的断言里 B 恒真，等于没测
+
+R4 这条值得记：**`some(...) || 长度相等` 是假断言**。它看起来在检查位置，
+实际只要条数对就通过。收紧后仍然绿，说明产品本来是对的，但原来的判据无法证明这一点。
+
+## 结论
+
+产品侧未发现缺陷。38 项断言全部通过，本地数据已自动清理（读者侧回到 5 条、0 条 E2E）。
+
+---
+
+# bsk 判据：公告分流与可访问性（2026-11-17）
+
+## 为什么还要用 bsk 测一遍
+
+CDP 判据读的是 `innerText` 和 DOM 结构，bsk 读的是**可访问性树**。
+两者的盲区不同 —— 这一轮就抓到了一个 CDP 完全没覆盖的缺陷。
+
+## 判据 1：公告面板不得含 changelog
+
+```bash
+./.fixloop/gate-panel-excludes-changelog.sh
+```
+
+在 VOM 里，公告面板的条目渲染成 `button "标题 日期 级别"`，
+而横幅里的是 `listitem`。所以「snapshot 里存在 button "某 changelog 标题」= 它被当成了公告。
+
+**R1 见红**：`@e48 button "E2E 功能更新 11-17 08:07"` 出现在公告列表区域。
+
+## 判据 2：弹窗的可访问性结构
+
+```bash
+./.fixloop/gate-dialog-a11y.sh
+```
+
+断言四件事：
+
+| 断言 | 为什么 |
+|---|---|
+| `dialog` 的可访问名 = 公告标题 | 读屏播报「公告详情」时，读者不知道是哪一条 |
+| 时间线是 `list` + 3 个 `listitem` | 用 div 堆的时间线在 innerText 上完全一样，但读不出层级 |
+| 「当前」在第二个 `listitem` 上 | 位置错了语义就反了 |
+| 之后的 `listitem` 不带「当前」 | 防止标签泄漏 |
+
+## 根因
+
+`useAnnouncements()` 直接返回 `status.announcements` 全量，没有按 `category` 过滤。
+我在 `use-notifications.ts` 里做了分流，但公告面板用的是**另一个 hook**，两条路径各走各的。
+
+修在 hook 里而不是面板里：这个函数的语义就是「公告列表」，
+将来任何新调用点都不该再自己判断一次 category。
+
+## CDP 为什么没抓到
+
+UI 判据只断言了「列表出现 E2E 界面公告」，没有断言「changelog 不在列表里」。
+**只验证「应该有」，不验证「不应该有」，就会漏掉串台类缺陷。**
+
+已在 `e2e_announcement_ui.mjs` 补上这条，现在 15/15。
+
+## 一个工具经验
+
+bsk 的浏览器在 HMR 之后可能停在 ErrorBoundary（页面显示「糟糕！出错了」），
+但同一 URL 用 CDP 打开完全正常 —— 说明是浏览器侧的旧状态，不是代码问题。
+`bsk close` 后重新 `open` 即恢复。
+
+判断方法：CDP 新开 profile 登录后访问同一页，0 错误 ⇒ 问题在 bsk 的 session，不在代码。
