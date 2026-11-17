@@ -2,7 +2,11 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
+#
+# 2026-11-17 added 5568 -> 5570：高级异步的字段类型在
+# web/src/features/channels/types.ts 里，task_id_paths 只能加在那个接口上，
+# 多出两行（字段 + 注释）。其余文件都是我方自有文件，不计入。
 files	171
 blocks	524
-added	5568
+added	5570
 deleted	412
