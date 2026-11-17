@@ -622,7 +622,7 @@ footer {
           </li>
           <li data-p="async-post">
             <span class="t">0.05 s</span>
-            <span class="d">MCP 自调 <code>POST /v1/images/generations/async</code></span>
+            <span class="d">MCP 自调 <code>POST /async/v1/images/generations</code></span>
           </li>
           <li data-p="async-202">
             <span class="t">0.2 s</span>
@@ -740,7 +740,7 @@ footer {
           <td><span class="sev p0">P0</span></td>
           <td><span class="code">image 没有 Query</span></td>
           <td><code style="font-family:var(--mono)">task.get</code> 直接报「协议 image 不支持任务查询」</td>
-          <td>补 <code style="font-family:var(--mono)">/images/generations/async/{id}</code></td>
+          <td>补 <code style="font-family:var(--mono)">/async/v1/images/generations/{id}</code></td>
         </tr>
         <tr>
           <td><span class="sev p0">P0</span></td>
@@ -786,11 +786,11 @@ footer {
       </div>
       <div class="mock-row">
         <span class="lab">实际请求</span>
-        <div class="field">POST /v1/images/generations/async <span class="caret">只读</span></div>
+        <div class="field">POST /async/v1/images/generations <span class="caret">只读</span></div>
       </div>
       <div class="mock-row">
         <span class="lab">查询</span>
-        <div class="field">GET /v1/images/generations/async/{id} <span class="caret">只读</span></div>
+        <div class="field">GET /async/v1/images/generations/{id} <span class="caret">只读</span></div>
       </div>
 
       <div class="warn">
@@ -863,7 +863,7 @@ Content-Type: application/json
   "size": "1024x1024",
   "client_request_id": "req-8f22"
 }`],
-  "async-post": ["MCP 自调上游（异步）", `POST /v1/images/generations/async
+  "async-post": ["MCP 自调上游（异步）", `POST /async/v1/images/generations
 Authorization: Bearer sk-***
 Content-Type: application/json
 

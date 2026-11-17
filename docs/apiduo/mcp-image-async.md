@@ -20,9 +20,11 @@
 3. **只剩三个接线点加两处文案，约 26 行**，全在 `mcp/` 自有目录：`transport` 加 `AsyncGenerate` +
    `Query`、`generate` 按 `m.Async` 选提交端点、`fanoutCount` 加 `!m.Async`。
    合并面预算（files / blocks / added / deleted）**不变**。
-4. **端点用 `/v1/images/generations/async`，不用 `/async/v1/images/generations`。**
-   两者在网关侧等价（dispatcher 改写，见 `router/apiduo_image_async_alias.go:107`），
-   前者在 `/v1` 下，`upClient.baseURL` 直接可用，不必为本功能引入「站点根 URL」概念。
+4. **端点用对外的客户端入口 `/async/v1/images/generations`**，不是
+   `/v1/images/generations/async`。两者收到的响应一致，但后者在 `pkg/endpoint/async.go`
+   的注释里被称作 older entry —— MCP 没有理由依赖一条准备下架的路由。
+   代价是它落在 `/v1` 之外，`upClient` 需要站点根：路径以 `^` 开头表示相对站点根
+   （§2.2），这是 8 行的事，一次到位。
 5. **`n>1` 在异步下不拆单。** 拆单会产出 N 个 task_id，而 `generateOutput` 只能装一个
    —— 静默丢掉 N−1 个**已计费**任务。fanout 存在的唯一理由是绕开同步超时，异步没有
    这个问题。
@@ -35,8 +37,8 @@
 
 | 半边 | 路径 | 响应 |
 |---|---|---|
-| 提交 | `POST /v1/images/generations/async`（静态路由；`/async/v1/images/generations` 是别名，改道到这条） | `202 {"task_id":"..."}` |
-| 查询 · 进行中 | `GET /v1/images/generations/async/{task_id}` | `202 {task_id, id, object, created, status:"queued"\|"in_progress", progress?}` |
+| 提交 | `POST /async/v1/images/generations`（客户端入口，dispatcher 改道到静态路由 `/v1/images/generations/async`；**MCP 用前者**） | `202 {"task_id":"..."}` |
+| 查询 · 进行中 | `GET /async/v1/images/generations/{task_id}`（同上，改道到 `/v1/images/generations/{task_id}`） | `202 {task_id, id, object, created, status:"queued"\|"in_progress", progress?}` |
 | 查询 · 成功 | 同上 | `200 {task_id, id, object, created, status:"succeeded", data:[{url}]}` |
 | 查询 · 失败 | 同上 | `200 {..., status:"failure", error:{message, code}}` |
 | 查询 · 成功但无地址 | 同上 | `200 {..., status:"failure", error:{code:"empty_result"}}` |
@@ -177,13 +179,14 @@ type transport struct {
 
 | kind | Generate | AsyncGenerate | Query |
 |---|---|---|---|
-| image | `/images/generations` | `/images/generations/async` | `/images/generations/async/{id}` |
+| image | `/images/generations` | `^/async/v1/images/generations` | `^/async/v1/images/generations/{id}` |
 | video | `/contents/generations/tasks` | 同 `Generate` | `/contents/generations/tasks/{id}` |
 
 `video.AsyncGenerate` 与 `Generate` 同值，是为了让「按 `m.Async` 选端点」成为唯一一条
 分支，而不是给 video 加例外。video 的表行为与今天完全一致。
 
-`upClient` 一行不改：三个路径都相对已有的 `/v1` base（默认 `http://127.0.0.1:3000/v1`）。
+`upClient` 加一个 `rootURL`（去掉 base 末尾的 `/v1`）与 `url(path)`：以 `^` 开头的路径走
+站点根，其余仍相对 `/v1`。这是「异步入口在 `/v1` 之外」这一件事的全部代价。
 
 #### 请求体同构，所以这条分支只影响两件事
 
@@ -345,6 +348,7 @@ if m.Async { path = t.AsyncGenerate }
 | 文件 | 改动 |
 |---|---|
 | `mcp/protocol.go` | `transport.AsyncGenerate`、image/video 表项、`withExecution` |
+| `mcp/protocol_upstream.go` | `rootURL` + `url(path)`，让 `^` 前缀能表达站点根路径 |
 | `mcp/protocol_tools.go` | `generate` 选路、`fanoutCount`、清单「异步」标签、异步提交的默认模型说明、三处文案 |
 | `mcp/protocol_server.go` | instructions 第 3 条改为「部分模型异步」（图片也算） |
 | `mcp/README.md` | 「一个请求形状、两种响应形状」 |
@@ -359,7 +363,7 @@ if m.Async { path = t.AsyncGenerate }
 
 | 用例 | 锁的是 |
 |---|---|
-| async 模型提交打 `/images/generations/async`；sync 模型打 `/images/generations` | 缺口 2 |
+| async 模型提交打 `/async/v1/images/generations`；sync 模型打 `/images/generations` | 缺口 2 |
 | `202 {task_id}` → `working` + 句柄可查 | 主链路 |
 | `200 status:"succeeded" + data` → `completed` + outputs | 新契约（v1 的这条用例要改写） |
 | `200 status:"failure"` → `failed` + code/retryable | 失败路径 |

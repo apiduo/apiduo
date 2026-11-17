@@ -26,7 +26,8 @@ import (
 // 代价是长任务会占两条连接（MCP 一条、自调一条），
 // MaxIdleConnsPerHost 已经按这个场景放大。
 type upClient struct {
-	baseURL string
+	baseURL string // 以 /v1 结尾；绝大多数端点是它的相对路径
+	rootURL string // 去掉末尾 /v1，只给 /async/v1/... 这类站点根路径用
 	hc      *http.Client
 }
 
@@ -68,8 +69,13 @@ func newUpClient() *upClient {
 		}
 		base = "http://127.0.0.1:" + port + "/v1"
 	}
+	base = strings.TrimRight(base, "/")
+	// 兼容早期写法：那时 base 就带 /v1，路径表只写 /images/generations。
+	// 现在个别端点（异步图片入口）在 /v1 之外，需要站点根，所以两个都存。
+	root := strings.TrimSuffix(base, "/v1")
 	return &upClient{
-		baseURL: strings.TrimRight(base, "/"),
+		baseURL: base,
+		rootURL: root,
 		hc: &http.Client{
 			// 线上真实数据：qwen n=4 的一次同步生成用了 5 分钟以上，300s 超时
 			// 恰好在响应到达前触发 —— 上游照常完成并计费 20000，产物 URL 全丢。
@@ -82,6 +88,17 @@ func newUpClient() *upClient {
 			},
 		},
 	}
+}
+
+// url 把 transport 里的路径解析成绝对地址。
+//
+// 以 "^" 开头的路径表示相对站点根：异步图片的客户端入口是 /async/v1/images/...，
+// 它在 /v1 之外，用 baseURL 拼不出来。其余路径都相对 /v1。
+func (c *upClient) url(path string) string {
+	if rest, ok := strings.CutPrefix(path, "^"); ok {
+		return c.rootURL + rest
+	}
+	return c.baseURL + path
 }
 
 // do 发起请求。apiKey 为空时拒绝出网 —— 没有凭证就不该发请求。
@@ -105,7 +122,7 @@ func (c *upClient) do(ctx context.Context, apiKey, method, path string, body any
 		contentType = "application/json"
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, c.url(path), rdr)
 	if err != nil {
 		return nil, "", &errNotSent{Err: fmt.Errorf("构造请求失败: %w", err)}
 	}

@@ -19,6 +19,9 @@ type transport struct {
 	// 图片的两半收同一个 body，只有提交路径与响应形状不同；视频两者同值，
 	// 因为视频本来就是异步提交。这样选路只有「按形态换 Generate」一条分支，
 	// 不必给视频加例外。
+	//
+	// 路径以 "^" 开头表示相对站点根（upClient.url 会剥掉它）：异步图片的
+	// 客户端入口是 /async/v1/...，在 /v1 之外，用 baseURL 拼不出来。
 	AsyncGenerate string
 	Query         string // {id} 为占位；空表示该协议没有任务查询
 }
@@ -37,10 +40,15 @@ var transports = map[string]transport{
 	"image": {
 		Name:     "image",
 		Generate: "/images/generations",
-		// 异步半边。与同步半边收同一个 body，只是先回 202 任务号；
-		// 查询端点也只属于异步形态 —— 同步请求从来不会有任务可查。
-		AsyncGenerate: "/images/generations/async",
-		Query:         "/images/generations/async/{id}",
+		// 异步半边用对外的客户端入口 /async/v1/images/generations，而不是
+		// /v1/images/generations/async —— 后者是静态的兼容入口，网关注释里
+		// 已把它称作 older entry。两者收到的响应一致，但 MCP 没有理由依赖
+		// 一条准备下架的路由。
+		//
+		// 与同步半边收同一个 body，只是先回 202 任务号；查询端点也只属于
+		// 异步形态 —— 同步请求从来不会有任务可查。
+		AsyncGenerate: "^/async/v1/images/generations",
+		Query:         "^/async/v1/images/generations/{id}",
 	},
 	"video": {
 		Name:     "video",

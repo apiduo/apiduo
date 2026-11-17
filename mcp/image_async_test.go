@@ -19,7 +19,7 @@ func TestTransportWithExecution(t *testing.T) {
 		want  string
 	}{
 		{"image", false, "/images/generations"},
-		{"image", true, "/images/generations/async"},
+		{"image", true, "^/async/v1/images/generations"},
 		{"video", false, "/contents/generations/tasks"},
 		{"video", true, "/contents/generations/tasks"},
 	}
@@ -44,7 +44,7 @@ func asyncUpstream(t *testing.T, respond string, status int) (*atomic.Int64, *at
 	var asyncCalls atomic.Int64
 	var hitSync atomic.Bool
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/images/generations/async", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/async/v1/images/generations", func(w http.ResponseWriter, r *http.Request) {
 		asyncCalls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
