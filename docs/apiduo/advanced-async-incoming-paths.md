@@ -184,6 +184,15 @@ GET  <incoming>/{task_id}    → 轮询
 Images 协议的轮询回标准 Images 响应（任务成功时），Ark 协议回任务对象。
 内部落地点是 `/v1/images/generations/{task_id}`，只注册了 GET，同名路径上的同步 POST 不动。
 
+**提交与轮询必须用同一条 base。** 两者是各自独立的入站：网关别名
+`/async/v1/images/generations` 与渠道声明的 `/v1/images/generations/async` 都改道到
+同一个查询实现，混着用也能通，但客户端只应公布一条 —— 别名不随渠道配置变化，
+声明路径会。对外文档、示例、SDK 里不要出现两条。
+
+**未认领的路径不报错。** 它落到前端 SPA 兜底，返回 **200 + HTML**：按状态码判断
+成功会静默误判。客户端至少校验 `content-type: application/json`，或响应里有 `task_id`。
+双斜杠同理（`/async/.../generations//{id}`），不是 202。
+
 ## 校验与规范化（保存时）
 
 - 必须以 `/` 开头，不能带 query。
