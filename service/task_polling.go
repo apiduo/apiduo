@@ -616,6 +616,17 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	switch classifyPollHTTP(resp.StatusCode) {
 	case pollClassNotFound:
 		logger.LogWarn(ctx, common.LogText("task %s poll %s (failures=%d, http=%d): %s", task.TaskID, pollClassNotFound, task.PrivateData.PollFailures, resp.StatusCode, unrecognizedPollDetail("", responseBody)))
+		/* APIDUO:poll-failure-confirm:BEGIN */
+		// 已经有一次失败在等确认，而上游现在连任务都查不到了：用那次的理由
+		// 落终态，比给客户端一句「task not found」有用。
+		if task.PrivateData.PendingFailureAt != 0 {
+			reason := task.PrivateData.PendingFailure
+			if reason == "" {
+				reason = "upstream reported failure"
+			}
+			return failTaskFromPoll(ctx, adaptor, task, snap.Status, reason)
+		}
+		/* APIDUO:poll-failure-confirm:END */
 		return failTaskFromPoll(ctx, adaptor, task, snap.Status, "Upstream task not found")
 	case pollClassAuth:
 		logger.LogWarn(ctx, common.LogText("task poll auth failure channel_id=%d task=%s http=%d", ch.Id, task.TaskID, resp.StatusCode))
@@ -660,6 +671,28 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	now := time.Now().Unix()
 	shouldFinalizeBilling := false
+
+	/* APIDUO:poll-failure-confirm:BEGIN */
+	// 上游在查询里说 failure，不等于任务真的结束：包装层自己回源失败时也会
+	// 回 {status:"failure", error:{message:"上游 502：<html>…"}}，而它背后
+	// 的生成往往还在跑。第一次看到失败只记下来、保持原状态，第二次仍报失败
+	// 才落终态 —— 客户端多等一个轮询周期，换掉一次误判退款。
+	if parsedStatus == model.TaskStatusFailure && task.PrivateData.PendingFailureAt == 0 {
+		task.PrivateData.PendingFailure = SanitizeUpstreamReason(taskResult.Reason, resp.StatusCode)
+		task.PrivateData.PendingFailureAt = now
+		task.PrivateData.PollFailures = 0
+		task.Data = redactVideoResponseBody(responseBody)
+		logger.LogWarn(ctx, common.LogText("task %s poll reported failure (%s), waiting for confirmation", task.TaskID, task.PrivateData.PendingFailure))
+		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
+			return err
+		}
+		return nil
+	}
+	if parsedStatus != model.TaskStatusFailure {
+		task.PrivateData.PendingFailure = ""
+		task.PrivateData.PendingFailureAt = 0
+	}
+	/* APIDUO:poll-failure-confirm:END */
 
 	task.Status = parsedStatus
 	switch parsedStatus {
@@ -710,7 +743,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		if task.FinishTime == 0 {
 			task.FinishTime = now
 		}
-		task.FailReason = taskResult.Reason
+		task.FailReason = SanitizeUpstreamReason(taskResult.Reason, resp.StatusCode)
+		if task.FailReason == "" {
+			task.FailReason = task.PrivateData.PendingFailure
+		}
+		if task.FailReason == "" {
+			task.FailReason = "upstream reported failure"
+		}
 		logger.LogInfo(ctx, common.LogText("Task %s failed: %s", task.TaskID, task.FailReason))
 		taskResult.Progress = taskcommon.ProgressComplete
 		shouldFinalizeBilling = true

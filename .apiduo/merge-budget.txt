@@ -10,7 +10,14 @@
 # 2026-11-17 added 5570 -> 5575：authenticated-layout.tsx 的内容区需要自己
 # 成为 flex 容器（+flex +flex-col），否则页面不滚动。改动落在既有
 # APIDUO:appearance 标记块内，只是行数增加。
-files	171
-blocks	524
-added	5575
-deleted	412
+#
+# 2026-11-17 files 171->172 / blocks 524->527 / added 5575->5627 / deleted 412->415：
+# 1) 任务失败原因清洗（SanitizeUpstreamReason）——实现放在新文件
+#    service/apiduo_upstream_reason.go，但调用点必须在 TaskErrorWrapper 里；
+# 2) 轮询报 failure 需要二次确认：状态机在 service/task_polling.go，
+#    PendingFailure 字段在 model/task.go 的 TaskPrivateData 上；
+# 3) 测试单独放新文件，未计入。
+files	172
+blocks	527
+added	5627
+deleted	415

@@ -1246,7 +1246,10 @@ func TestTaskReportsOnceAtTheFinalState(t *testing.T) {
 	assert.Len(t, reported, 1)
 
 	failed := newTask("fails", true)
+	// 上游报失败要两次确认才落终态（见 TestPollReportedFailureNeedsSecondSighting）。
 	poll(failed, model.TaskStatusFailure)
+	assert.Len(t, reported, 1)
+	poll(reload(failed), model.TaskStatusFailure)
 	assert.Equal(t, "fails:FAILURE", reported[1])
 
 	previousTimeout := constant.TaskTimeoutMinutes

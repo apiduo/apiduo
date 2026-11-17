@@ -146,6 +146,14 @@ type TaskPrivateData struct {
 	PluginState json.RawMessage `json:"plugin_state,omitempty"`
 	// PollFailures counts consecutive unrecognized or transient poll outcomes.
 	PollFailures int `json:"poll_failures,omitempty"`
+	// APIDUO:poll-failure-confirm:BEGIN
+	// PendingFailure holds a failure one poll reported, waiting for a second
+	// poll to confirm it. A vendor's wrapper answers status=failure when its own
+	// backend hiccups while the generation is still running, so a single
+	// sighting is not evidence that the task ended.
+	PendingFailure   string `json:"pending_failure,omitempty"`
+	PendingFailureAt int64  `json:"pending_failure_at,omitempty"`
+	// APIDUO:poll-failure-confirm:END
 	// ResultDiscarded marks an immediate terminal result whose submit route
 	// declared retainResult: false. The upstream snapshot was never written
 	// and every retrieval surface treats the task as not found. The zero
