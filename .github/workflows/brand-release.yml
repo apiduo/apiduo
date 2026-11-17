@@ -45,6 +45,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # markercheck 要拿 .apiduo/sync-base 这个上游提交做 diff。
+          # 默认 fetch-depth: 1 只有最近一次提交，拿不到那个对象，
+          # diff 会把上游行算成删除（实测 deleted 从 38 变成 412）。
+          fetch-depth: 0
           # 三种入口取不同 ref：
           #   补发 → inputs.tag（默认分支是错的，会拿主干代码构建旧版本）
           #   tag  → github.ref（就是那个 tag）
