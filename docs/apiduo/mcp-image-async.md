@@ -150,6 +150,34 @@ agent 不指定 model 时拿到 `working` + task_id，很可能以为出错了�
 任何「让同名模型同时支持 sync 和 async」的方案都必须拒绝（见 §8.9）：
 `models.list` 无法表达同名两形态，agent 只能靠猜；`task_id` 归属会变歧义；计费口径分裂。
 
+### 1.6 同一个模型走同步还是异步：三层判定
+
+「同模型怎么判定」的答案不在模型名上，在**路径**上。三层各管一件事：
+
+| 层 | 判定依据 | 作用 |
+|---|---|---|
+| MCP 声明 | `mcp_model_profiles.async` | 决定 `image.generate` 打哪条路径（一个 model_id 只有一条声明） |
+| 网关 | 请求路径 | 路径即形状：`/v1/images/generations` 回 `data`，`/async/v1/images/generations` 回 `task_id` |
+| 渠道 | `channelMatchesFilter` | 决定这个模型名能不能服务这条路径 |
+
+渠道那层是唯一会「拒绝」的一层，规则只有两条：
+
+- **8001 渠道只能服务异步路径**。`endpoint.LookupAsync(path)` 命中才放行
+  （`channel_constraint.go`）。同步路径上它会一路走到 `config.SupportsPathForModel`，
+  而 8001 渠道没有 `advanced_custom` 配置 → `false`。
+- **同步渠道默认只能服务同步路径**。`LOCAL_IMAGE_ASYNC_ENABLED=true` 时才允许它服务
+  异步路径（网关落任务、worker 重放），但它**不会**因此获得同步路径之外的任何能力。
+
+具体到线上 `nano-banana-2`（只有渠道 #29，type 8001）：
+
+| 请求路径 | 候选渠道 | 结果 |
+|---|---|---|
+| `POST /v1/images/generations` | #29 被过滤，无其他渠道 | **503 无可用渠道** |
+| `POST /async/v1/images/generations` | #29 ✓ | `202 {task_id}` |
+
+所以这个模型**没有同步形态**，MCP 声明 `async=0` 只会让它 503。这就是 §1.5 里
+「声明必须与渠道能力一致」的具体含义，也是上线顺序不能反的原因。
+
 ---
 
 ## 2. 方案
