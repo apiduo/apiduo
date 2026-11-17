@@ -498,3 +498,35 @@ hint         = 上游已判定成功但没给地址，产物可能仍在控制�
 9. 不允许同一个 `model_id` 同时声明 sync 与 async（加 `async_variants`、按 group 区分、
    加 `mode` 入参都不行）。`model_id → (kind, execution)` 必须单射，否则 `models.list`
    无法表达、`task_id` 归属歧义、计费口径分裂。
+
+---
+
+## 附：同步模型的渠道配置（线上渠道 33）
+
+异步配好之后补同步，走的是另一条渠道，不是改声明：
+
+| 项 | 值 |
+|---|---|
+| 上游端点 | `POST https://hailuo.1task.cn/v1/images/generations`（OpenAI 形状） |
+| 渠道类型 | **1（OpenAI）**，不是 8001 |
+| models | `gpt-image-2` |
+| group / priority / weight | `default` / 1 / 1（与 #29 一致） |
+| 价格 | `options.ModelPrice` 里 `gpt-image-2: 0.02` —— **不配会走默认倍率，按 token 算图片** |
+| MCP 声明 | `async=0`、`priority=50`、`$0.02/次` |
+
+实测：直调 15.85s、经 MCP 14.8s，均返回 `{data:[{url}]}`，`usage.forecast_credits=2`。
+
+### 两个必须知道的坑
+
+1. **直接 INSERT 渠道要同时写 `channel_info`。** 多 key 渠道（`key` 用换行分隔多个 JWT）如果不写
+   `{"is_multi_key":true,"multi_key_mode":"polling","multi_key_size":N,...}`，整串 key 会带着换行被
+   塞进 Authorization，Go 的 `http.NewRequest` 直接拒绝 → `500 do_request_failed`，0.1 秒返回。
+   面板建渠道不会踩，因为前端会写这个字段。
+2. **读多 key 用 `mysql --raw`。** 不加 `--raw` 时换行被转义成字面 `\n`，524 字节的 key 看起来
+   像「一个含 4 个点的怪 token」，会把排查引向「key 格式不对」而不是「多 key 未标记」。
+
+### 同一个模型名在网关层可以有两条渠道
+
+`nano-banana-2` 只在 8001（异步），`gpt-image-2` 只在 type 1（同步）。如果将来把同一个模型名
+同时挂到两类渠道上，网关会在两条路径上分别返回对应形状 —— 但 **MCP 层仍然只能声明一种**
+（`uk_mcp_profile_model`），这是刻意的：客户端不该根据「这次调用是不是同步」来决定怎么解析。
