@@ -153,7 +153,9 @@ func apiduoClaimLocalTask(task *model.Task) bool {
 	from := task.Status
 	task.Status = model.TaskStatusInProgress
 	task.StartTime = apiduoLocalImageAsyncClock()
-	task.Progress = "30%"
+	// 本地执行没有可上报的进度：网关只知道自己发了一个请求、最后拿到结果，
+	// 中间过程在上游手里。写死一个 "30%" 会让客户端的进度条卡在半途，比不报更糟。
+	task.Progress = ""
 	won, err := task.UpdateWithStatus(from)
 	if err != nil {
 		return false
@@ -676,7 +678,7 @@ func apiduoRotateLocalTask(ctx context.Context, task *model.Task, exhausted *mod
 	snapshot.UpstreamURL = url
 	task.ChannelId = next.Id
 	task.Status = model.TaskStatusNotStart
-	task.Progress = "0%"
+	task.Progress = ""
 	task.StartTime = 0
 	// The credential binding belonged to the channel that just failed.
 	task.PrivateData.UpstreamKey = ""

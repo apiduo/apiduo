@@ -89,6 +89,10 @@ func TestApiduoClaimLocalTaskUsesTheSharedClock(t *testing.T) {
 	if stored.Status != model.TaskStatusInProgress {
 		t.Fatalf("status = %s", stored.Status)
 	}
+	// 本地执行没有真实进度，领取时不该编一个数字出来。
+	if stored.Progress != "" {
+		t.Fatalf("progress = %q, want empty while the gateway cannot measure it", stored.Progress)
+	}
 }
 
 // 回收截止点由同一个时钟推出：超时 5 分钟 + 1 分钟余量。
