@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Default priority": "Default priority",
+    "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.",
+    "Cost note (optional)": "Cost note (optional)",
+    "$0.01/run — shown to agents verbatim": "$0.01/run — shown to agents verbatim",
+    "Free text: fixed price, ratio, or an expression. Never parsed into a number.": "Free text: fixed price, ratio, or an expression. Never parsed into a number.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Default priority": "Priorité par défaut",
+    "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "La priorité la plus élevée l'emporte lorsque l'appelant omet model. La comparaison se fait au sein du même type de sortie ; à égalité, l'id départage.",
+    "Cost note (optional)": "Note de coût (facultatif)",
+    "$0.01/run — shown to agents verbatim": "0,01 $/exécution — affiché tel quel aux agents",
+    "Free text: fixed price, ratio, or an expression. Never parsed into a number.": "Texte libre : prix fixe, ratio ou expression. Jamais converti en nombre.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

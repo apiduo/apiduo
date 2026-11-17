@@ -57,6 +57,17 @@ export type ModelProfile = {
   kind: McpKind;
   async: boolean;
   enabled: boolean;
+  /**
+   * 价格说明。自由文本（固定价 / 倍率 / 计费表达式三种形态），服务端不折算成数字。
+   * 会原样进 models.list 的 text，agent 据此报价。
+   */
+  cost: string;
+  /**
+   * 同一 kind 内的排序权重：越大越靠前，第一条即「调用方不指定 model 时的默认」。
+   * 同值时按 id 升序，所以默认模型是确定的，不会随查询顺序漂移。
+   * 与渠道的 priority 无关 —— 那个决定走哪条渠道，不参与这里。
+   */
+  priority: number;
   // 三态：null = 未声明（不拦截），0 = 明确不支持，n = 上限。
   // 把 null 当成 0 会锁死图生图模型，这是本页最容易犯的错。
   max_ref_images: number | null;
@@ -80,6 +91,8 @@ export type ProfileDraft = {
   kind: McpKind;
   async: boolean;
   enabled: boolean;
+  cost: string;
+  priority: number;
   max_ref_images: number | null;
   max_ref_videos: number | null;
   max_prompt_chars: number | null;
@@ -164,6 +177,8 @@ export const EMPTY_DRAFT: ProfileDraft = {
   kind: "image",
   async: false,
   enabled: true,
+  cost: "",
+  priority: 0,
   max_ref_images: null,
   max_ref_videos: null,
   max_prompt_chars: null,
@@ -188,6 +203,8 @@ export function toDraft(p: ModelProfile): ProfileDraft {
     kind: p.kind,
     async: p.async,
     enabled: p.enabled,
+    cost: p.cost ?? "",
+    priority: p.priority ?? 0,
     max_ref_images: p.max_ref_images,
     max_ref_videos: p.max_ref_videos,
     max_prompt_chars: p.max_prompt_chars,
@@ -205,6 +222,8 @@ export function toPayload(d: ProfileDraft) {
     kind: d.kind,
     async: d.async,
     enabled: d.enabled,
+    cost: d.cost.trim(),
+    priority: d.priority,
     max_ref_images: d.max_ref_images,
     max_ref_videos: d.max_ref_videos,
     max_prompt_chars: d.max_prompt_chars,

@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Default priority": "Приоритет по умолчанию",
+    "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "Приоритет выше выигрывает, когда вызывающая сторона не указала model. Сравнение идёт только внутри одного типа результата; при равенстве — по id.",
+    "Cost note (optional)": "Примечание о стоимости (необязательно)",
+    "$0.01/run — shown to agents verbatim": "0,01 $/запуск — показывается агентам как есть",
+    "Free text: fixed price, ratio, or an expression. Never parsed into a number.": "Свободный текст: фиксированная цена, коэффициент или выражение. Не преобразуется в число.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

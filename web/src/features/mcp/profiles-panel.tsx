@@ -863,6 +863,41 @@ export function ProfilesPanel(props: ProfilesPanelProps) {
                     />
                   </div>
                 </div>
+
+                {/* priority 与 execution 放在同一张卡：两者一起决定「默认调用长什么样」——
+                    走同步还是异步，以及不指定 model 时先轮到谁。 */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("Default priority")}</Label>
+                    <Input
+                      type="number"
+                      step={1}
+                      value={String(draft.priority)}
+                      onChange={(e) => {
+                        const next = Number(e.target.value);
+                        setField("priority", Number.isFinite(next) ? next : 0);
+                      }}
+                    />
+                    <p className="text-muted-foreground text-[11px]">
+                      {t(
+                        "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.",
+                      )}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("Cost note (optional)")}</Label>
+                    <Input
+                      value={draft.cost}
+                      onChange={(e) => setField("cost", e.target.value)}
+                      placeholder={t("$0.01/run — shown to agents verbatim")}
+                    />
+                    <p className="text-muted-foreground text-[11px]">
+                      {t(
+                        "Free text: fixed price, ratio, or an expression. Never parsed into a number.",
+                      )}
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 

@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Default priority": "Độ ưu tiên mặc định",
+    "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "Ưu tiên cao hơn sẽ được chọn khi bên gọi bỏ qua model. Chỉ so sánh trong cùng loại đầu ra; bằng nhau thì theo id.",
+    "Cost note (optional)": "Ghi chú chi phí (tùy chọn)",
+    "$0.01/run — shown to agents verbatim": "0,01 $/lần — hiển thị nguyên văn cho agent",
+    "Free text: fixed price, ratio, or an expression. Never parsed into a number.": "Văn bản tự do: giá cố định, hệ số hoặc biểu thức. Không bao giờ được phân tích thành số.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

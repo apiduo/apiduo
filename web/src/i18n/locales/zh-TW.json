@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Default priority": "預設優先級",
+    "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "呼叫方未指定 model 時，優先級高者先被選中。只在同一產物類型內競爭；同值按 id 排序。",
+    "Cost note (optional)": "價格說明（選填）",
+    "$0.01/run — shown to agents verbatim": "$0.01/次 —— 原樣顯示給 agent",
+    "Free text: fixed price, ratio, or an expression. Never parsed into a number.": "自由文字：固定價、倍率或計費表達式。不會被解析成數字。",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

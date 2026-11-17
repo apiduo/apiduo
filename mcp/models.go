@@ -442,6 +442,10 @@ func applyProfilePatch(base ModelProfile, patch map[string]json.RawMessage) (Mod
 			base.Kind = incoming.Kind
 		case "async":
 			base.Async = incoming.Async
+		case "cost":
+			base.Cost = incoming.Cost
+		case "priority":
+			base.Priority = incoming.Priority
 		case "max_ref_images":
 			base.MaxRefImages = incoming.MaxRefImages
 		case "max_ref_videos":
