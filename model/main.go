@@ -342,11 +342,24 @@ func migrateDB() error {
 	// MCP 的 protocol 从传输形状改成厂商维度：图片和视频都归到 ark。
 	// 旧值 openai_image / openai_video 不兼容，启动时一次性改掉；幂等。
 	if DB.Migrator().HasTable("mcp_model_profiles") {
-		if err := DB.Exec(
-			"UPDATE mcp_model_profiles SET protocol = ? WHERE protocol IN (?, ?)",
-			"ark", "openai_image", "openai_video",
-		).Error; err != nil {
-			common.SysError(common.LogText("failed to migrate mcp protocols: %s", err.Error()))
+		// HasTable 只看表在不在。protocol 列后来被删了，这里还得确认列存在，
+		// 否则每次启动都会报 Unknown column 'protocol' —— 日志噪音，且掩盖真实错误。
+		hasProtocol := false
+		if columns, err := DB.Migrator().ColumnTypes("mcp_model_profiles"); err == nil {
+			for _, column := range columns {
+				if column.Name() == "protocol" {
+					hasProtocol = true
+					break
+				}
+			}
+		}
+		if hasProtocol {
+			if err := DB.Exec(
+				"UPDATE mcp_model_profiles SET protocol = ? WHERE protocol IN (?, ?)",
+				"ark", "openai_image", "openai_video",
+			).Error; err != nil {
+				common.SysError(common.LogText("failed to migrate mcp protocols: %s", err.Error()))
+			}
 		}
 	}
 	/* APIDUO:mcp-protocol:END */
