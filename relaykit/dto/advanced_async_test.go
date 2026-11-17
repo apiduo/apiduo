@@ -1,6 +1,9 @@
 package dto
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func validAdvancedAsyncConfig() *AdvancedAsyncConfig {
 	return &AdvancedAsyncConfig{
@@ -40,6 +43,57 @@ func TestAdvancedAsyncValidateAppliesDefaults(t *testing.T) {
 	}
 	if config.Billing.Mode != AdvancedAsyncBillingPerCall {
 		t.Fatalf("billing mode = %q, want per_call", config.Billing.Mode)
+	}
+}
+
+func TestAdvancedAsyncTaskIDCandidatesHonorPriority(t *testing.T) {
+	cases := []struct {
+		name   string
+		fields AdvancedAsyncFields
+		want   [][]string
+	}{
+		{
+			"the list wins over the single path",
+			AdvancedAsyncFields{TaskIDPath: []string{"legacy"}, TaskIDPaths: [][]string{{"id"}, {"task_id"}}},
+			[][]string{{"id"}, {"task_id"}},
+		},
+		{
+			"the single path fills in when no list is declared",
+			AdvancedAsyncFields{TaskIDPath: []string{"data", "task_id"}},
+			[][]string{{"data", "task_id"}},
+		},
+		{
+			"an empty entry is dropped instead of reading the whole reply",
+			AdvancedAsyncFields{TaskIDPath: []string{"task_id"}, TaskIDPaths: [][]string{{}, {"id"}}},
+			[][]string{{"id"}},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := testCase.fields.TaskIDCandidates()
+			if len(got) != len(testCase.want) {
+				t.Fatalf("candidates = %v, want %v", got, testCase.want)
+			}
+			for index := range got {
+				if strings.Join(got[index], ".") != strings.Join(testCase.want[index], ".") {
+					t.Fatalf("candidate %d = %v, want %v", index, got[index], testCase.want[index])
+				}
+			}
+		})
+	}
+}
+
+func TestAdvancedAsyncValidateAcceptsTaskIDPathList(t *testing.T) {
+	config := validAdvancedAsyncConfig()
+	config.Fields.TaskIDPath = nil
+	config.Fields.TaskIDPaths = [][]string{{"id"}, {"task_id"}}
+	if err := config.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+
+	config.Fields.TaskIDPaths = append(config.Fields.TaskIDPaths, nil)
+	if err := config.Validate(); err == nil {
+		t.Fatal("an empty alternative must be rejected at save time")
 	}
 }
 

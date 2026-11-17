@@ -333,9 +333,21 @@ func (a *Adaptor) ParseResponse(c *gin.Context, resp *http.Response, info *relay
 	if err := common.Unmarshal(body, &decoded); err != nil {
 		return nil, taskError(fmt.Errorf("upstream returned invalid JSON: %w", err), "invalid_upstream_response", http.StatusBadGateway)
 	}
-	taskID, ok := kitdto.AdvancedAsyncStringAt(decoded, config.Fields.TaskIDPath)
-	if !ok || taskID == "" {
-		return nil, taskError(fmt.Errorf("upstream response has no task id at %s", strings.Join(config.Fields.TaskIDPath, ".")), "invalid_upstream_response", http.StatusBadGateway)
+	// The task id field is spelled differently per vendor (Ark "id", the async
+	// Images wrappers "task_id"), so the channel may declare an ordered list.
+	// First non-empty value wins; the order is the operator's priority.
+	candidates := config.Fields.TaskIDCandidates()
+	taskID := ""
+	tried := make([]string, 0, len(candidates))
+	for _, path := range candidates {
+		tried = append(tried, strings.Join(path, "."))
+		if value, ok := kitdto.AdvancedAsyncStringAt(decoded, path); ok && value != "" {
+			taskID = value
+			break
+		}
+	}
+	if taskID == "" {
+		return nil, taskError(fmt.Errorf("upstream response has no task id at %s", strings.Join(tried, " or ")), "invalid_upstream_response", http.StatusBadGateway)
 	}
 	return &channel.TaskSubmitResponse{
 		UpstreamTaskID: taskID,

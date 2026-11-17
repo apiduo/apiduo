@@ -72,7 +72,20 @@ type AdvancedAsyncQuery struct {
 // Each entry is a path of object keys and array indexes, for example
 // ["data", "task", "id"] or ["output", "0", "url"].
 type AdvancedAsyncFields struct {
-	TaskIDPath    []string `json:"task_id_path"`
+	// TaskIDPath is the single path to the task id in the submit reply.
+	// TaskIDPaths supersedes it when non-empty.
+	TaskIDPath []string `json:"task_id_path"`
+	// TaskIDPaths are ordered alternatives for the task id in the submit
+	// reply: the first path that yields a non-empty value wins, so priority is
+	// list order and nothing is hardcoded.
+	//
+	// Vendors spell the same field differently — Volcengine Ark answers
+	// {"id": ...}, the async Images wrappers answer {"task_id": ...} — and a
+	// channel must be able to accept both without the operator having to know
+	// which one this reply used. The list wins when both forms are present;
+	// TaskIDPath stays supported so configurations saved before it existed
+	// keep working.
+	TaskIDPaths   [][]string `json:"task_id_paths,omitempty"`
 	StatusPath    []string `json:"status_path"`
 	ResultURLPath []string `json:"result_url_path,omitempty"`
 	ProgressPath  []string `json:"progress_path,omitempty"`
@@ -86,6 +99,24 @@ type AdvancedAsyncFields struct {
 	// NOT_START / SUBMITTED / QUEUED / IN_PROGRESS / SUCCESS / FAILURE /
 	// UNKNOWN. When empty, common vendor words are recognized.
 	StatusMap map[string]string `json:"status_map,omitempty"`
+}
+
+// TaskIDCandidates returns the task-id paths to try, in priority order.
+//
+// An empty path is dropped rather than returned: LookupAdvancedAsyncPath
+// treats an empty path as the root, so keeping one would read the whole reply
+// body as the task id on a vendor that omits the field entirely.
+func (f AdvancedAsyncFields) TaskIDCandidates() [][]string {
+	candidates := make([][]string, 0, len(f.TaskIDPaths)+1)
+	for _, path := range f.TaskIDPaths {
+		if len(path) > 0 {
+			candidates = append(candidates, path)
+		}
+	}
+	if len(candidates) == 0 && len(f.TaskIDPath) > 0 {
+		candidates = append(candidates, f.TaskIDPath)
+	}
+	return candidates
 }
 
 // AdvancedAsyncBilling selects how the submitted task is charged.
@@ -332,8 +363,8 @@ func (c *AdvancedAsyncConfig) Validate() error {
 		return err
 	}
 
-	if len(c.Fields.TaskIDPath) == 0 {
-		return fmt.Errorf("advanced_async.fields.task_id_path is required")
+	if len(c.Fields.TaskIDCandidates()) == 0 {
+		return fmt.Errorf("advanced_async.fields.task_id_path or task_id_paths is required")
 	}
 	if len(c.Fields.StatusPath) == 0 {
 		return fmt.Errorf("advanced_async.fields.status_path is required")
@@ -346,6 +377,17 @@ func (c *AdvancedAsyncConfig) Validate() error {
 		"error_path":      c.Fields.ErrorPath,
 	} {
 		if err := validateAdvancedAsyncFieldPath(name, path); err != nil {
+			return err
+		}
+	}
+	for index, path := range c.Fields.TaskIDPaths {
+		// An empty alternative would be returned by TaskIDCandidates only after
+		// being dropped, so it never reaches the parser; reject it at save time
+		// instead of silently ignoring a line the operator wrote.
+		if len(path) == 0 {
+			return fmt.Errorf("advanced_async.fields.task_id_paths[%d] is empty", index)
+		}
+		if err := validateAdvancedAsyncFieldPath(fmt.Sprintf("task_id_paths[%d]", index), path); err != nil {
 			return err
 		}
 	}

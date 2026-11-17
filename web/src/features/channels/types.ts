@@ -200,6 +200,8 @@ export interface AdvancedAsyncQuery {
 
 export interface AdvancedAsyncFields {
   task_id_path: string[]
+  /** Ordered alternatives for the task id; the first non-empty one wins. */
+  task_id_paths?: string[][]
   status_path: string[]
   result_url_path?: string[]
   progress_path?: string[]

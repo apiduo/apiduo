@@ -47,9 +47,14 @@ export const ADVANCED_ASYNC_SYNC_ENTRY_PATHS = [
   '/v1/images/edits',
 ]
 
-/** 内置图像异步协议的默认入口（下游端点，可改）。 */
-export const ADVANCED_ASYNC_IMAGE_ENTRY_PATH =
-  '/v1/images/generations/async'
+/**
+ * 内置图像异步协议的默认入口（下游端点，可改）。
+ *
+ * 取网关自有的别名 /async/v1/images/generations，而不是静态路由
+ * /v1/images/generations/async：后者命中后不经过分发器，图片动作头没人设置，
+ * 任务会被记成视频动作；别名由分发器改道，动作正确。
+ */
+export const ADVANCED_ASYNC_IMAGE_ENTRY_PATH = '/async/v1/images/generations'
 
 /**
  * 方舟协议的三条内置入口，客户端 base URL 怎么写都能对上：
@@ -182,8 +187,17 @@ function normalizeFields(fields: AdvancedAsyncFields | undefined): AdvancedAsync
     const value = gatewayStatus.trim().toUpperCase()
     if (key && value) statusMap[key] = value
   }
+  // 任务号拼写随上游不同（方舟 id、海螺 task_id），候选按顺序尝试、首个非空
+  // 生效；旧的单条 task_id_path 在列表缺席时充当唯一候选，与后端同规则。
+  const taskIDCandidates = (fields?.task_id_paths || [])
+    .map((path) => (path || []).map((s) => s.trim()).filter(Boolean))
+    .filter((path) => path.length > 0)
+  const taskIDPath = (fields?.task_id_path || [])
+    .map((s) => s.trim())
+    .filter(Boolean)
   return {
-    task_id_path: (fields?.task_id_path || []).map((s) => s.trim()).filter(Boolean),
+    task_id_path: taskIDCandidates[0] || taskIDPath,
+    task_id_paths: taskIDCandidates.length > 0 ? taskIDCandidates : undefined,
     status_path: (fields?.status_path || []).map((s) => s.trim()).filter(Boolean),
     result_url_path: (fields?.result_url_path || [])
       .map((s) => s.trim())
@@ -251,7 +265,11 @@ export function validateAdvancedAsyncConfig(
         'Async channels never serve synchronous traffic; /v1/images/generations cannot be an incoming path',
     }
   }
-  if (!config.fields?.task_id_path?.length) {
+  const hasTaskIDPath =
+    (config.fields?.task_id_paths || []).some(
+      (path) => (path || []).length > 0
+    ) || Boolean(config.fields?.task_id_path?.length)
+  if (!hasTaskIDPath) {
     return { message: 'Task id path is required' }
   }
   if (!config.fields?.status_path?.length) {
@@ -347,7 +365,7 @@ export type AdvancedAsyncProtocolPreset = {
 }
 
 // 内置 images 形状：提交拿任务号，GET <入站>/{id} 拿标准 Images 响应。
-// 入站默认 /v1/images/generations/async，与同步入口分开。
+// 入站默认 /async/v1/images/generations（网关别名），与同步入口分开。
 const IMAGES_CONFIG: AdvancedAsyncConfig = {
   protocol: 'images',
   incoming_paths: [ADVANCED_ASYNC_IMAGE_ENTRY_PATH],
@@ -366,6 +384,7 @@ const IMAGES_CONFIG: AdvancedAsyncConfig = {
   },
   fields: {
     task_id_path: ['id'],
+    task_id_paths: [['id'], ['task_id']],
     status_path: ['status'],
     result_url_path: ['data', '0', 'url'],
     error_path: ['error', 'message'],
@@ -402,6 +421,7 @@ const ARK_CONFIG: AdvancedAsyncConfig = {
   },
   fields: {
     task_id_path: ['id'],
+    task_id_paths: [['id'], ['task_id']],
     status_path: ['status'],
     result_url_path: ['content', 'video_url'],
     error_path: ['error', 'message'],

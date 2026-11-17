@@ -528,11 +528,21 @@ export function AdvancedAsyncEditorDialog({
                   )}
                 </p>
                 <div className='grid gap-3 sm:grid-cols-2'>
-                  <PathField
+                  <TaskIDPathField
                     label={t('Task id path')}
-                    value={config.fields.task_id_path}
-                    onChange={(path) => updateFields({ task_id_path: path })}
-                    placeholder='id'
+                    value={
+                      config.fields.task_id_paths?.length
+                        ? config.fields.task_id_paths
+                        : [config.fields.task_id_path].filter(
+                            (path) => (path || []).length > 0
+                          )
+                    }
+                    onChange={(paths) =>
+                      updateFields({
+                        task_id_path: paths[0] || [],
+                        task_id_paths: paths.length > 1 ? paths : undefined,
+                      })
+                    }
                   />
                   <PathField
                     label={t('Status path')}
@@ -626,6 +636,41 @@ function PathField(props: {
         value={formatPathInput(props.value)}
         placeholder={props.placeholder || 'data.task.id'}
         onChange={(event) => props.onChange(parsePathInput(event.target.value))}
+      />
+    </Field>
+  )
+}
+
+// 任务号拼写随上游不同（方舟 id、海螺 task_id），所以这一格接受逗号分隔的
+// 多条路径：靠前的优先，首个取到非空值的生效。输入过程中不规范化，失焦才
+// 提交 —— 否则刚敲下的逗号会被即时裁掉，第二段永远打不进去。
+function TaskIDPathField(props: {
+  label: string
+  value: string[][]
+  onChange: (value: string[][]) => void
+}) {
+  const formatted = props.value.map((path) => path.join('.')).join(', ')
+  const commit = (raw: string) => {
+    const paths = raw
+      .split(',')
+      .map((part) => parsePathInput(part))
+      .filter((path) => path.length > 0)
+    props.onChange(paths)
+  }
+  return (
+    <Field label={props.label}>
+      <input
+        key={formatted}
+        className='border-input bg-background h-9 w-full rounded-md border px-3 font-mono text-sm'
+        defaultValue={formatted}
+        placeholder='id, task_id'
+        onBlur={(event) => commit(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            commit(event.currentTarget.value)
+          }
+        }}
       />
     </Field>
   )

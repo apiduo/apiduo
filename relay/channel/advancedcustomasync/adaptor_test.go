@@ -129,6 +129,56 @@ func TestParseResponseRejectsMissingTaskID(t *testing.T) {
 	}
 }
 
+func TestParseResponseFallsBackToSecondTaskIDPath(t *testing.T) {
+	config := testConfig()
+	config.Fields.TaskIDPath = nil
+	config.Fields.TaskIDPaths = [][]string{{"id"}, {"task_id"}}
+	adaptor := testAdaptor(t, config)
+	body := `{"task_id":"hailuo_123","status":"queued"}`
+	resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}
+
+	parsed, taskErr := adaptor.ParseResponse(nil, resp, adaptor.info)
+	if taskErr != nil {
+		t.Fatalf("parse response: %s", taskErr.Message)
+	}
+	if parsed.UpstreamTaskID != "hailuo_123" {
+		t.Fatalf("task id = %q", parsed.UpstreamTaskID)
+	}
+}
+
+func TestParseResponsePrefersEarlierTaskIDPath(t *testing.T) {
+	config := testConfig()
+	config.Fields.TaskIDPath = nil
+	config.Fields.TaskIDPaths = [][]string{{"id"}, {"task_id"}}
+	adaptor := testAdaptor(t, config)
+	body := `{"id":"cgt-1","task_id":"ignored"}`
+	resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}
+
+	parsed, taskErr := adaptor.ParseResponse(nil, resp, adaptor.info)
+	if taskErr != nil {
+		t.Fatalf("parse response: %s", taskErr.Message)
+	}
+	if parsed.UpstreamTaskID != "cgt-1" {
+		t.Fatalf("task id = %q, want the first candidate", parsed.UpstreamTaskID)
+	}
+}
+
+func TestParseResponseNamesEveryTaskIDCandidateWhenMissing(t *testing.T) {
+	config := testConfig()
+	config.Fields.TaskIDPath = nil
+	config.Fields.TaskIDPaths = [][]string{{"id"}, {"task_id"}}
+	adaptor := testAdaptor(t, config)
+	resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"queued"}`))}
+
+	_, taskErr := adaptor.ParseResponse(nil, resp, adaptor.info)
+	if taskErr == nil {
+		t.Fatal("expected missing task id error")
+	}
+	if !strings.Contains(taskErr.Message, "id or task_id") {
+		t.Fatalf("message should name both candidates, got %q", taskErr.Message)
+	}
+}
+
 func TestParseTaskResultMapsStatusAndResult(t *testing.T) {
 	adaptor := testAdaptor(t, testConfig())
 	task := &model.Task{ChannelId: 7}

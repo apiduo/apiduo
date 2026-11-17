@@ -23,6 +23,9 @@ POST /v1/images/generations/async        → 直接命中（静态路由，与�
   打开本地执行（见下节）后才放开。
 - `/v1/images/generations/async` 现在是静态路由：仍然可用，但不再需要渠道声明，
   在 `incoming_paths` 里再写它不会改变行为。
+- 前端 Images 预设的入站默认值就是别名 `/async/v1/images/generations`
+  （`ADVANCED_ASYNC_IMAGE_ENTRY_PATH`）。面板因此会在 `incoming_paths` 里写一条与内置
+  入口同名的路径：冗余但无害（内置入口优先），作用是让「高级异步路由」面板有值可显示。
 
 自定义业务分段（`/jimeng/...`）仍然走渠道声明制，规则不变。
 
@@ -160,11 +163,16 @@ worker 派发时读这个值并夹到进程上限内；没声明的渠道沿用�
 
 | 形状 | 例子 | 用途 |
 |---|---|---|
-| 默认 | `/v1/images/generations/async` | 内置静态路由，Images 协议免配置 |
+| 默认 | `/async/v1/images/generations` | 内置别名，Images 协议免配置 |
 | 按业务分段 | `/jimeng/v1/images/generations`、`/hailuo/v1/images/generations` | 业务/供应商各占一段，客户端按业务决定打哪条 |
 
 两种都合法。`{biz}` 段**由运营在渠道里写死**，不是通配符：即梦的渠道只接 `/jimeng/...`，
 不会顺带接走海螺的流量。
+
+**默认值取网关别名而不是静态路由**（`ADVANCED_ASYNC_IMAGE_ENTRY_PATH`）：静态路由
+`/v1/images/generations/async` 命中后不经过分发器，`X-Apiduo-Task-Action` 没人设置，
+任务会被记成 `text_to_video`，任务详情里的图片制品也因此取不到。别名走 NoRoute，
+分发器会把动作补齐再改道。两条路径都能用，区别只在日志与制品是否记为图片。
 
 ## 客户端怎么调
 
