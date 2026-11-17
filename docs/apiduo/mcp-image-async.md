@@ -510,7 +510,7 @@ hint         = 上游已判定成功但没给地址，产物可能仍在控制�
 | 上游端点 | `POST https://hailuo.1task.cn/v1/images/generations`（OpenAI 形状） |
 | 渠道类型 | **1（OpenAI）**，不是 8001 |
 | models | `gpt-image-2` |
-| group / priority / weight | `default` / 1 / 1（与 #29 一致） |
+| group / priority / weight | `default` / **0** / 1（低于 #29 的 priority=1，构成回退层） |
 | 价格 | `options.ModelPrice` 里 `gpt-image-2: 0.02` —— **不配会走默认倍率，按 token 算图片** |
 | MCP 声明 | `async=0`、`priority=50`、`$0.02/次` |
 
@@ -530,3 +530,93 @@ hint         = 上游已判定成功但没给地址，产物可能仍在控制�
 `nano-banana-2` 只在 8001（异步），`gpt-image-2` 只在 type 1（同步）。如果将来把同一个模型名
 同时挂到两类渠道上，网关会在两条路径上分别返回对应形状 —— 但 **MCP 层仍然只能声明一种**
 （`uk_mcp_profile_model`），这是刻意的：客户端不该根据「这次调用是不是同步」来决定怎么解析。
+
+---
+
+## 附二：同名双渠道 —— priority 是回退链，weight 是同层分流
+
+2026-11-18 核实。此前本文与线上配置都把这层理解错过一次，记录在此以免再犯。
+
+### 机制：`retry` 直接是优先级层的索引
+
+`GetRandomSatisfiedChannel`（`model/channel_cache.go:171-174`）：
+
+```go
+if retry >= len(uniquePriorities) {
+    retry = len(uniquePriorities) - 1
+}
+targetPriority := int64(sortedUniquePriorities[retry])
+```
+
+`uniquePriorities` 按降序排列，`retry` 当下标用：
+
+| retry | 取哪一层 |
+|---|---|
+| 0 | 最高 priority |
+| 1 | 次高 |
+| ≥ 层数 | 卡在最低层 |
+
+`retry` 是请求级重试计数（非 auto group 走 `service/channel_select.go:205` 的
+`max(GetRetry()-affinityRetryOffset, 0)`），重试循环在 `controller/relay.go:684`，
+**每轮重新调用 `getChannel`**，不复用上一轮的渠道。线上 `RetryTimes = 1` ⇒ 一次重试
+⇒ 刚好够降一层。
+
+### 当前配置（`nano-banana-2`，线上）
+
+| 渠道 | type | priority | weight | 角色 | 异步路径上的形态 |
+|---|---|---|---|---|---|
+| #29 `hailuo-image` | 8001 | **1** | 1 | 主 | 上游异步提交，76–80 s |
+| #33 `hailuo-sync` | 1 | **0** | 1 | 回退 | 网关本地执行（落任务 + worker 重放同步请求） |
+
+主提交失败 → `retry=1` → 落到 #33 → 本地执行 → 仍回 `202 + task_id`。
+**客户端看到的形状不变**，这是回退能对 agent 透明的原因。
+
+### 三条硬边界
+
+1. **只在提交失败时回退。** `decideTaskRetry`（`controller/relay.go:1094`）里
+   `taskErr.NoRetry → stop "task_accepted"`、`StatusCode/100 == 2 → stop`，只有
+   429 / 307 / 5xx 才 retry。任务已被上游接受后的失败（`task_failed`）**不回退** ——
+   那一刻已经计费，回退等于二次扣费。
+2. **同 priority 不构成回退。** 只有一层时 `retry` 被 clamp 到 0，重试会在同层按 weight
+   再随机一次，**可能打回同一个渠道**。「同名双通道 + 回退」必须分 priority 层。
+3. **同步路径没有回退。** 8001 渠道在同步端点被 `channelMatchesFilter` 过滤，只剩 #33
+   一条候选，`len(channels)==1` 直接返回，priority 不参与。
+
+### 错误做法留档：用 `weight=0` 做隔离
+
+一度把 #33 的 `weight` 设为 0，想靠权重把它排除在异步候选外。效果确实有（weight=0 的
+渠道在有正权重同伴时命中概率为 0），但**语义是错的** —— 那是「禁用」，不是「低优先级
+备份」。正确做法是 priority 分层：回退顺序由 `retry` 驱动，不由权重驱动。
+
+### 断链验证（2026-11-18 00:10，已实测）
+
+手法：把 #29 的 `base_url` 临时改成 `http://127.0.0.1:1`（容器内 ECONNREFUSED，即时失败
+而非超时 —— 超时会拿 504，而 504 在 `alwaysSkipRetryStatusCodes` 里，不重试），重启后提交一次。
+
+| 观测点 | 结果 |
+|---|---|
+| MCP 返回 | `http=200`、**60 ms**、`status=working`、`task_id` 198 字符 |
+| 落点 | `tasks.id=71`、`channel_id=33`、`platform=local-image-async` |
+| 终态 | 6 次轮询后 `completed`，**全程 57 s**，1 张 JPG |
+| 产物 | `https://cdn.hailuoai.video/moss/prod/2026-11-18-00/...jpg` |
+| 计费 | `tasks.quota=5000`；#33 `used_quota` 10009→15009；**#29 停在 100000 未动** |
+
+三条结论：
+
+1. **回退发生在提交阶段，客户端完全无感。** 形状、`poll_after_ms`、句柄长度都与主路径一致。
+2. **失败的主渠道不产生计费。** #29 的连接在到达上游前就断了，`used_quota` 未变。
+   只有真正出图的那一次（#33）扣了 $0.01，任务表只有 1 条记录。
+3. **回退目标不比主路径慢。** 这次本地执行 57 s，反而快于 #29 的 76–80 s ——
+   因为 worker 在后台跑，不受客户端连接与上游同步等待的约束。
+
+### 回退目标的可靠性（未变）
+
+#33 的**同步路径**实测 3 次中 1 次失败（40.8 s 后 `task_failed`「内容生成失败」，且失败计费）。
+本地执行这条链路只成功过 1 次，样本不足以判断失败率是否相同。所以这条链可靠地兜的是
+「#29 整体不可用」（账号封禁、上游全挂），**不兜「上游偶发执行失败」** —— 后者在异步语义下
+已经没有第二次机会。
+
+### 想加长回退链
+
+`RetryTimes` 是全局配置（`options.RetryTimes`，线上为 1）。三层 priority 需要
+`RetryTimes ≥ 2`，代价是所有请求的重试上限一起变长，不是图片专用。
