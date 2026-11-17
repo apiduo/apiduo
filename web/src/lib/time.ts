@@ -153,6 +153,7 @@ export function formatDateTimeObject(date: Date): string {
   return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
 }
 
+/* APIDUO:announcement-time:BEGIN */
 /**
  * Format Date object for space-constrained lists: MM-DD HH:mm.
  *
@@ -190,6 +191,7 @@ export function toLocalRFC3339(date: Date): string {
 export function formatMonthDay(date: Date): string {
   return dayjs(date).format('MM-DD')
 }
+/* APIDUO:announcement-time:END */
 
 /**
  * Format timestamp for chart display based on time granularity

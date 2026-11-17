@@ -22,7 +22,9 @@ import { useState, useMemo } from 'react'
 import { useStatus } from '@/hooks/use-status'
 import { getNotice } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
+/* APIDUO:announcement:BEGIN */
 import { isChangelog } from '@/features/dashboard/lib/announcement-category'
+/* APIDUO:announcement:END */
 import { useNotificationStore } from '@/stores/notification-store'
 
 function hashString(input: string): string {
@@ -84,6 +86,7 @@ export function useNotifications() {
   // Fetch Announcements from status
   const { status, loading: statusLoading } = useStatus()
   const announcementsEnabled = status?.announcements_enabled ?? false
+/* APIDUO:announcement:BEGIN */
   // 两者共用同一个数组，按 category 分流：
   // 公告进面板与铃铛，功能更新进顶部的横幅。
   const announcements = useMemo<Record<string, unknown>[]>(() => {
@@ -150,6 +153,7 @@ export function useNotifications() {
     unreadChangelogs,
     readAnnouncementKeys,
   ])
+/* APIDUO:announcement:END */
 
   const markAnnouncementsAsRead = () => {
     if (announcements.length > 0) {
@@ -205,6 +209,7 @@ export function useNotifications() {
     unreadNoticeCount: unreadCounts.notice,
     unreadAnnouncementsCount: unreadCounts.announcements,
 
+/* APIDUO:announcement:BEGIN */
     // 功能更新：只服务顶部横幅，与铃铛分开计数
     unreadChangelogs,
     unreadChangelogCount: unreadCounts.changelog,
@@ -213,6 +218,7 @@ export function useNotifications() {
       if (keys.length > 0) markAnnouncementsRead(keys)
     },
 
+/* APIDUO:announcement:END */
     // Popover state
     popoverOpen,
     setPopoverOpen: handlePopoverOpenChange,

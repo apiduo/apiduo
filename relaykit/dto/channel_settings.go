@@ -113,6 +113,7 @@ const (
 	AwsApiTypeMantle      AwsApiType = "mantle"
 )
 
+/* APIDUO:async:BEGIN */
 // LocalWorkerConfig is the channel's own share of the local image worker.
 type LocalWorkerConfig struct {
 	// Concurrency is how many of this channel's tasks may run at once. Zero or
@@ -120,6 +121,7 @@ type LocalWorkerConfig struct {
 	Concurrency int `json:"concurrency,omitempty"`
 }
 
+/* APIDUO:async:END */
 type ChannelOtherSettings struct {
 	AzureResponsesVersion                 string                `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType         `json:"vertex_key_type,omitempty"`    // "json" or "api_key"
@@ -143,6 +145,7 @@ type ChannelOtherSettings struct {
 	UpstreamModelUpdateLastRemovedModels  []string              `json:"upstream_model_update_last_removed_models,omitempty"`  // 上次检测到的可删除模型
 	UpstreamModelUpdateIgnoredModels      []string              `json:"upstream_model_update_ignored_models,omitempty"`       // 手动忽略的模型
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
+/* APIDUO:async:BEGIN */
 	// APIDUO:local-worker:BEGIN
 	// LocalWorker bounds how many tasks this channel may run at once.
 	//
@@ -178,6 +181,7 @@ type ChannelOtherSettings struct {
 	// APIDUO:artifact-storage:BEGIN
 	ArtifactStorage *ChannelArtifactStorageConfig `json:"artifact_storage,omitempty"`
 	// APIDUO:artifact-storage:END
+/* APIDUO:async:END */
 	// PluginConfig is the config a type-61 channel gives its plugin, checked
 	// against the plugin's meta.channelConfig when the channel is saved.
 	PluginConfig json.RawMessage `json:"plugin_config,omitempty"`
@@ -653,12 +657,14 @@ func validateAdvancedCustomRouteModelRule(index int, incomingPath string, model 
 	if pattern == "" {
 		return fmt.Errorf("advanced_custom.advanced_routes[%d].models regex is empty for incoming_path %s: %s", index, incomingPath, model)
 	}
+/* APIDUO:async:BEGIN */
 	// APIDUO:route-validate-cache:BEGIN
 	// 复用带缓存的编译：Validate() 在 adaptor.resolve() 里每请求都跑。
 	if compileAdvancedCustomModelRegex(pattern) == nil {
 		return fmt.Errorf("advanced_custom.advanced_routes[%d].models regex is invalid for incoming_path %s: %s", index, incomingPath, model)
 	}
 	// APIDUO:route-validate-cache:END
+/* APIDUO:async:END */
 	return nil
 }
 

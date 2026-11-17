@@ -40,10 +40,12 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+/* APIDUO:announcement:BEGIN */
 import {
   ANNOUNCEMENT_DOT_COLORS,
   type AnnouncementType,
 } from '@/lib/colors'
+/* APIDUO:announcement:END */
 import { formatDateTimeObject } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
@@ -130,12 +132,14 @@ function getRelativeTime(publishDate: string | Date, t: TFunction): string {
  * Announcement status dot indicator
  */
 function AnnouncementDot({ type }: { type?: string }) {
+/* APIDUO:announcement:BEGIN */
   const kind = (type || 'default') as AnnouncementType
   return (
     <span
       className='mt-1.5 inline-block size-2 shrink-0 rounded-full'
       // 与仪表盘面板的色条取同一组颜色，避免同一条公告在两处显示成两种色
       style={{ background: ANNOUNCEMENT_DOT_COLORS[kind] }}
+/* APIDUO:announcement:END */
     />
   )
 }

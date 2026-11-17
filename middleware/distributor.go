@@ -15,7 +15,9 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+/* APIDUO:async:BEGIN */
 	"github.com/QuantumNous/new-api/pkg/endpoint"
+/* APIDUO:async:END */
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -32,6 +34,7 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+/* APIDUO:async:BEGIN */
 // APIDUO:async-endpoint-filter:BEGIN
 //
 // apiduoFilterRequestPath is the path the request-path filter judges.
@@ -65,6 +68,7 @@ func Distribute() func(c *gin.Context) {
 		constraints.AddFilter(taskdto.ChannelFilter{
 			Kind:        taskdto.FilterRequestPath,
 			RequestPath: apiduoFilterRequestPath(c),
+/* APIDUO:async:END */
 		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
@@ -101,9 +105,11 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 				// check path is /pg/chat/completions
+/* APIDUO:async:BEGIN */
 				// APIDUO:playground-path-alias:BEGIN
 				if isPlaygroundChatRequest(c) {
 					// APIDUO:playground-path-alias:END
+/* APIDUO:async:END */
 					usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 					playgroundRequest := &dto.PlayGroundRequest{}
 					err = common.UnmarshalBodyReusable(c, playgroundRequest)
@@ -136,7 +142,9 @@ func Distribute() func(c *gin.Context) {
 					Ctx:         c,
 					ModelName:   modelRequest.Model,
 					TokenGroup:  usingGroup,
+/* APIDUO:async:BEGIN */
 					RequestPath: apiduoFilterRequestPath(c),
+/* APIDUO:async:END */
 					Retry:       common.GetPointer(0),
 				})
 			}
@@ -550,12 +558,14 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 	}
 	// The routing name is also the billing name, so a model named in the body
 	// must not replace it: DeepSeek ignores that field.
+/* APIDUO:async:BEGIN */
 	// APIDUO:endpoint-registry:BEGIN One table owns every endpoint whose path
 	// implies the model. Adding an endpoint must not add a branch here.
 	if spec, ok := endpoint.Match(c.Request.Method, c.Request.URL.Path); ok {
 		modelRequest.Model = spec.Model
 	}
 	// APIDUO:endpoint-registry:END
+/* APIDUO:async:END */
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/generations") {
 		modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "dall-e")
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/edits") {
@@ -590,9 +600,11 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
+/* APIDUO:async:BEGIN */
 	// APIDUO:playground-path-alias:BEGIN
 	if isPlaygroundChatRequest(c) {
 		// APIDUO:playground-path-alias:END
+/* APIDUO:async:END */
 		// playground chat completions
 		req, err := getModelFromRequest(c)
 		if err != nil {
@@ -739,9 +751,11 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
 	key, index, newAPIError := channel.GetNextEnabledKey()
+/* APIDUO:async:BEGIN */
 	// APIDUO:multi-key-sticky:BEGIN
 	key, index, newAPIError = overrideStickyChannelKey(c, channel, key, index, newAPIError)
 	// APIDUO:multi-key-sticky:END
+/* APIDUO:async:END */
 	if newAPIError != nil {
 		return newAPIError
 	}

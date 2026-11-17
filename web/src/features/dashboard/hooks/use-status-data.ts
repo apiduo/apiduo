@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/* APIDUO:announcement:BEGIN */
 import { useMemo } from 'react'
 
 import { useStatus } from '@/hooks/use-status'
 
 import { isChangelog } from '../lib/announcement-category'
+/* APIDUO:announcement:END */
 import type { AnnouncementItem, ApiInfoItem, FAQItem } from '../types'
 
 /**
@@ -48,6 +50,7 @@ export function useApiInfo() {
  * Get announcements list
  */
 export function useAnnouncements() {
+/* APIDUO:announcement:BEGIN */
   const { items, loading } = useStatusData<AnnouncementItem>(
     'announcements_enabled',
     'announcements'
@@ -60,6 +63,7 @@ export function useAnnouncements() {
     [items]
   )
   return { items: visible, loading }
+/* APIDUO:announcement:END */
 }
 
 /**

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Megaphone } from 'lucide-react'
+/* APIDUO:announcement:BEGIN */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -87,6 +88,7 @@ export function AnnouncementsPanel() {
     if (item.id !== undefined && item.id !== null) {
       markAnnouncementsRead([`id:${item.id}`])
     }
+/* APIDUO:announcement:END */
     setSelectedAnnouncement(item)
     setIsDialogOpen(true)
   }
@@ -108,6 +110,7 @@ export function AnnouncementsPanel() {
       height='h-72'
       contentClassName='p-0'
     >
+/* APIDUO:announcement:BEGIN */
       <div ref={scrollHostRef} className='relative'>
         <ScrollArea className='h-72'>
         <div>
@@ -164,6 +167,7 @@ export function AnnouncementsPanel() {
           </div>
         )}
       </div>
+/* APIDUO:announcement:END */
 
       <AnnouncementDetailModal
         open={isDialogOpen}

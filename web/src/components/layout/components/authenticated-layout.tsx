@@ -32,7 +32,9 @@ import { ApiduoMarkDefs } from '@/features/apiduo-marks/mark-defs'
 import { ApiduoAppearanceProvider } from '@/features/apiduo-appearance'
 /* APIDUO:appearance:END */
 
+/* APIDUO:announcement:BEGIN */
 import { AnnouncementBanner } from '@/components/announcement-banner'
+/* APIDUO:announcement:END */
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
 

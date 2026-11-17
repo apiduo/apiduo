@@ -10,7 +10,6 @@
 3	middleware/access_token_routes.go
 3	middleware/audit.go
 22	middleware/auth_test.go
-1	middleware/distributor.go
 1	middleware/trusted_proxies.go
 8	model/audit_other.go
 17	model/log.go
@@ -41,7 +40,6 @@
 2	web/src/features/dashboard/components/overview/overview-dashboard.tsx
 46	web/src/features/dashboard/index.tsx
 16	web/src/features/dashboard/section-registry.tsx
-51	web/src/features/dashboard/types.ts
 1	web/src/features/security/components/dialogs/access-token-create-dialog.tsx
 3	web/src/features/security/components/dialogs/access-token-edit-dialog.tsx
 12	web/src/features/system-settings/components/settings-page.tsx

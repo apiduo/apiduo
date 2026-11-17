@@ -1,7 +1,9 @@
 package helper
 
 import (
+/* APIDUO:async:BEGIN */
 	"github.com/QuantumNous/new-api/pkg/modelalias"
+/* APIDUO:async:END */
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
@@ -15,6 +17,7 @@ func ModelMappedHelper(c *gin.Context, info *relaycommon.RelayInfo, request dto.
 	// map model name
 	modelMapping := c.GetString("model_mapping")
 	if modelMapping != "" && modelMapping != "{}" {
+/* APIDUO:async:BEGIN */
 		// APIDUO:model-mapping-pure:BEGIN
 		// The resolution lives in a function without a gin context because the
 		// worker needs it too: when a rate-limited task moves to another
@@ -29,6 +32,7 @@ func ModelMappedHelper(c *gin.Context, info *relaycommon.RelayInfo, request dto.
 			info.UpstreamModelName = upstream
 		}
 		// APIDUO:model-mapping-pure:END
+/* APIDUO:async:END */
 	}
 
 	if request != nil {

@@ -257,6 +257,7 @@ export interface ProcessedUserChartData {
 // Announcement Types
 // ============================================================================
 
+/* APIDUO:announcement:BEGIN */
 /**
  * 发布公告时间线上的一个阶段。
  *
@@ -357,3 +358,4 @@ export interface UserBalanceItem {
   quota: number
   daily: number[]
 }
+/* APIDUO:announcement:END */

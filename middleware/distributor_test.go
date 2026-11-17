@@ -1,7 +1,9 @@
 package middleware
 
 import (
+/* APIDUO:async:BEGIN */
 	"context"
+/* APIDUO:async:END */
 	"bytes"
 	"errors"
 	"fmt"
@@ -15,7 +17,9 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+/* APIDUO:async:BEGIN */
 	"github.com/QuantumNous/new-api/pkg/endpoint"
+/* APIDUO:async:END */
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -478,6 +482,7 @@ func TestSharedEndpointRebindsToBoundNewAPIExtension(t *testing.T) {
 	assert.Equal(t, "alpha", c.GetString("task_plugin_key"), "the first bound candidate executes regardless of the earlier pin")
 	assert.Equal(t, "alpha", c.MustGet(jsplugin.ContextKeyPinnedEndpoint).(jsplugin.PinnedEndpoint).Plugin.Meta.Key)
 }
+/* APIDUO:async:BEGIN */
 
 // A built-in asynchronous endpoint is rewritten onto the internal relay path
 // before distribution, so the filter must judge the path the client called.
@@ -505,3 +510,4 @@ func TestApiduoFilterRequestPathPrefersClientPathForBuiltInEndpoint(t *testing.T
 		apiduoFilterRequestPath(newContext("/api/v3/contents/generations/tasks")),
 		"非内置端点的客户端路径不改变判定")
 }
+/* APIDUO:async:END */

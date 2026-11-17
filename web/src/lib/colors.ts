@@ -141,6 +141,7 @@ export function getAnnouncementColorClass(type?: string): string {
   return ANNOUNCEMENT_TYPE_COLORS[validType] || ANNOUNCEMENT_TYPE_COLORS.default
 }
 
+/* APIDUO:announcement:BEGIN */
 /**
  * 铃铛圆点专用色。
  *
@@ -207,6 +208,7 @@ export const ANNOUNCEMENT_TEXT_COLORS: Record<AnnouncementType, string> = {
   error: 'color-mix(in oklab, var(--destructive) 90%, var(--foreground))',
 }
 
+/* APIDUO:announcement:END */
 /**
  * Semantic colors for tags and badges
  */

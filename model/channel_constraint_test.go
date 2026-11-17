@@ -6,7 +6,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+/* APIDUO:async:BEGIN */
 	"github.com/QuantumNous/new-api/pkg/endpoint"
+/* APIDUO:async:END */
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
@@ -222,6 +224,7 @@ func TestChannelSatisfiesFilters(t *testing.T) {
 // A task plugin channel takes a Responses WebSocket session when the switch
 // is on and its plugin's /v1/responses route for the model has no converter,
 // the rule an Advanced Custom channel follows.
+/* APIDUO:async:BEGIN */
 // A built-in asynchronous endpoint has no synchronous implementation. Letting
 // a synchronous channel win would execute the image body as whatever that
 // channel's task plugin expects — a video job, in the sora mapping's case.
@@ -266,6 +269,7 @@ func TestChannelSatisfiesFiltersBuiltInAsyncEndpoint(t *testing.T) {
 	require.True(t, ok)
 }
 
+/* APIDUO:async:END */
 func TestTaskPluginChannelResponsesWebSocket(t *testing.T) {
 	for key, relay := range map[string]string{
 		"ws-native":    `[{incoming_path: "/v1/responses", upstream_path: "/responses", models: ["m1"]}]`,
@@ -298,6 +302,7 @@ func TestTaskPluginChannelResponsesWebSocket(t *testing.T) {
 	ok, _ = ChannelSatisfiesFilters(channel("ws-missing", true), "m1", filters)
 	assert.False(t, ok)
 }
+/* APIDUO:async:BEGIN */
 
 // 排除过滤器：任务重试时要能说「不要再是这一条」。
 func TestChannelSatisfiesFiltersExcludeChannels(t *testing.T) {
@@ -316,3 +321,4 @@ func TestChannelSatisfiesFiltersExcludeChannels(t *testing.T) {
 	ok, _ = ChannelSatisfiesFilters(first, "m", []dto.ChannelFilter{{Kind: dto.FilterExcludeChannels}})
 	assert.True(t, ok)
 }
+/* APIDUO:async:END */

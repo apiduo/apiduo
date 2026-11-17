@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { RichContent } from '@/components/rich-content'
+/* APIDUO:announcement:BEGIN */
 import { StatusBadge } from '@/components/status-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ANNOUNCEMENT_LEVEL_BADGES } from '@/lib/colors'
@@ -96,6 +97,7 @@ export function AnnouncementDetailModal({
               <AnnouncementTimeline phases={announcement.phases} />
             </div>
           )}
+/* APIDUO:announcement:END */
           {announcement?.extra && (
             <div>
               <h4 className='mb-2 font-medium'>

@@ -201,6 +201,7 @@ func validateAnnouncements(announcementsStr string) error {
 		if exceedsMaxCharacters(content, 500) {
 			return common.NewMessage("Announcement #{{index}} content cannot exceed 500 characters", map[string]any{"index": i + 1})
 		}
+/* APIDUO:announcement:BEGIN */
 		if title, exists := ann["title"]; exists {
 			if titleStr, ok := title.(string); ok && exceedsMaxCharacters(titleStr, 60) {
 				return common.NewMessage("Announcement #{{index}} title cannot exceed 60 characters", map[string]any{"index": i + 1})
@@ -283,6 +284,7 @@ func validateAnnouncementPhases(raw any, index int) error {
 		if desc, ok := phase["desc"].(string); ok && exceedsMaxCharacters(desc, 200) {
 			return common.NewMessage("Announcement #{{index}} phase #{{phase}} description cannot exceed 200 characters", map[string]any{"index": index, "phase": j + 1})
 		}
+/* APIDUO:announcement:END */
 	}
 	return nil
 }
@@ -314,6 +316,7 @@ func validateFAQ(faqStr string) error {
 	return nil
 }
 
+/* APIDUO:announcement:BEGIN */
 // announcementTime parses one RFC3339 time field of an announcement.
 //
 // The bool reports whether the field was present and parseable. Callers treat
@@ -359,6 +362,7 @@ func GetAnnouncements() []map[string]any {
 		return ti.After(tj)
 	})
 	return visible
+/* APIDUO:announcement:END */
 }
 
 func GetFAQ() []map[string]any {

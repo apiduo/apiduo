@@ -2,7 +2,7 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-files	167
-blocks	452
-added	4881
-deleted	37
+files	171
+blocks	524
+added	5555
+deleted	38

@@ -19,7 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2, Save } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+/* APIDUO:announcement:BEGIN */
 import { useFieldArray, useForm, useFormContext, useWatch } from 'react-hook-form'
+/* APIDUO:announcement:END */
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -60,6 +62,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+/* APIDUO:announcement:BEGIN */
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
@@ -147,6 +150,7 @@ const announcementSchema = z.object({
       path: ['expiresAt'],
     }
   )
+/* APIDUO:announcement:END */
 
 type AnnouncementFormValues = z.infer<typeof announcementSchema>
 
@@ -184,12 +188,14 @@ const typeOptions = [
     badgeVariant: 'danger' as const,
   },
 ]
+/* APIDUO:announcement:BEGIN */
 const kindOptions = [
   { value: 'feature', label: 'New feature', color: 'bg-blue-500' },
   { value: 'improvement', label: 'Improvement', color: 'bg-emerald-500' },
   { value: 'fix', label: 'Fix', color: 'bg-gray-500' },
 ]
 
+/* APIDUO:announcement:END */
 
 export function AnnouncementsSection({
   enabled,
@@ -211,6 +217,7 @@ export function AnnouncementsSection({
   const form = useForm<AnnouncementFormValues>({
     resolver: zodResolver(announcementSchema),
     defaultValues: {
+/* APIDUO:announcement:BEGIN */
       category: 'announcement',
       title: '',
       content: '',
@@ -233,6 +240,7 @@ export function AnnouncementsSection({
   const category = useWatch({ control: form.control, name: 'category' })
   const isChangelog = category === 'changelog'
 
+/* APIDUO:announcement:END */
   useEffect(() => {
     try {
       const parsed = JSON.parse(data || '[]')
@@ -269,6 +277,7 @@ export function AnnouncementsSection({
   const handleAdd = () => {
     setEditingAnnouncement(null)
     form.reset({
+/* APIDUO:announcement:BEGIN */
       category: 'announcement',
       title: '',
       content: '',
@@ -292,6 +301,7 @@ export function AnnouncementsSection({
       type: announcement.type,
       extra: announcement.extra || '',
       phases: announcement.phases ?? [],
+/* APIDUO:announcement:END */
     })
     setShowDialog(true)
   }
@@ -335,6 +345,7 @@ export function AnnouncementsSection({
   }
 
   const handleSubmitForm = (values: AnnouncementFormValues) => {
+/* APIDUO:announcement:BEGIN */
     // 阶段按时间排序后存，用户不用关心输入顺序；
     // 全空的 desc 不落库，避免渲染时出现一个空的描述行
     const phases = (values.phases ?? [])
@@ -372,6 +383,7 @@ export function AnnouncementsSection({
     } else {
       const newId = Math.max(...announcements.map((item) => item.id), 0) + 1
       setAnnouncements((prev) => [...prev, { id: newId, ...payload }])
+/* APIDUO:announcement:END */
       toast.success(t('Announcement added. Click "Save Settings" to apply.'))
     }
     setHasChanges(true)
@@ -573,6 +585,7 @@ export function AnnouncementsSection({
             onSubmit={form.handleSubmit(handleSubmitForm)}
             className='space-y-4'
           >
+/* APIDUO:announcement:BEGIN */
             <FormField
               control={form.control}
               name='category'
@@ -683,6 +696,7 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+/* APIDUO:announcement:END */
             <FormField
               control={form.control}
               name='content'
@@ -715,7 +729,9 @@ export function AnnouncementsSection({
                     <DateTimePicker
                       value={field.value ? new Date(field.value) : undefined}
                       onChange={(date) =>
+/* APIDUO:announcement:BEGIN */
                         field.onChange(date ? toLocalRFC3339(date) : '')
+/* APIDUO:announcement:END */
                       }
                       placeholder={t('Select publish date')}
                     />
@@ -729,6 +745,7 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+/* APIDUO:announcement:BEGIN */
             {!isChangelog && (
               <>
             <FormField
@@ -755,6 +772,7 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+/* APIDUO:announcement:END */
             <FormField
               control={form.control}
               name='type'
@@ -802,8 +820,10 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+/* APIDUO:announcement:BEGIN */
               </>
             )}
+/* APIDUO:announcement:END */
             <FormField
               control={form.control}
               name='extra'
@@ -825,6 +845,7 @@ export function AnnouncementsSection({
                 </FormItem>
               )}
             />
+/* APIDUO:announcement:BEGIN */
 
             <div className={cn('space-y-2', isChangelog && 'hidden')}>
               <div className='flex items-center justify-between gap-2'>
@@ -871,6 +892,7 @@ export function AnnouncementsSection({
                 </p>
               )}
             </div>
+/* APIDUO:announcement:END */
           </form>
         </Form>
       </Dialog>
@@ -898,6 +920,7 @@ export function AnnouncementsSection({
     </SettingsSection>
   )
 }
+/* APIDUO:announcement:BEGIN */
 
 /**
  * 一行阶段。单独抽出来是因为日期要用 useWatch 取值 ——
@@ -954,3 +977,4 @@ function PhaseRow({
     </div>
   )
 }
+/* APIDUO:announcement:END */

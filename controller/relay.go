@@ -16,10 +16,12 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+/* APIDUO:async:BEGIN */
 	apiduotrace "github.com/QuantumNous/new-api/pkg/apiduo/trace"
 	"github.com/QuantumNous/new-api/pkg/endpoint"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin" // APIDUO:trace:BEGIN
 	// APIDUO:trace:END
+/* APIDUO:async:END */
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -76,9 +78,11 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	requestId := c.GetString(common.RequestIdKey)
+/* APIDUO:async:BEGIN */
 	// APIDUO:trace:BEGIN
 	apiduotrace.Begin(c)
 	// APIDUO:trace:END
+/* APIDUO:async:END */
 	//group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 
@@ -178,9 +182,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if relayFormat != types.RelayFormatOpenAIRealtime {
 			perfmetrics.RecordRelayResult(c.Request.Context(), relayInfo, resultErr)
 		}
+/* APIDUO:async:BEGIN */
 		// APIDUO:trace:BEGIN
 		apiduoTraceFinalize(c, relayInfo, resultErr, relayFormat)
 		// APIDUO:trace:END
+/* APIDUO:async:END */
 		if recovered != nil {
 			panic(recovered)
 		}
@@ -603,7 +609,9 @@ func taskReportError(taskErr *taskdto.TaskError) *types.NewAPIError {
 // come from c.Request.Context: native task endpoints use the client context,
 // while the Responses bridge supplies an independently bounded context.
 func executeTaskSubmission(c *gin.Context, relayInfo *relaycommon.RelayInfo) (*taskSubmissionOutcome, *taskdto.TaskError) {
+/* APIDUO:async:BEGIN */
 	return executeTaskSubmissionWith(c, relayInfo, apiduoTaskSubmit)
+/* APIDUO:async:END */
 }
 
 type taskSubmitAttempt func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *taskdto.TaskError)
@@ -797,6 +805,7 @@ func executeTaskSubmissionWith(
 	stage = "insert"
 	task := model.InitTask(result.Platform, relayInfo)
 	task.PrivateData.Execution = service.TaskExecutionSnapshotFromContext(c)
+/* APIDUO:async:BEGIN */
 	// APIDUO:local-image-async:BEGIN
 	// A task the gateway executes itself is marked here and nowhere else: this
 	// is the only write of a task row, so the poller can trust the column and
@@ -836,6 +845,7 @@ func executeTaskSubmissionWith(
 		task.PrivateData.UpstreamKeyAt = common.GetTimestamp()
 	}
 	// APIDUO:multi-key-task-binding:END
+/* APIDUO:async:END */
 	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 	task.PrivateData.BillingSource = relayInfo.BillingSource
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
@@ -918,6 +928,7 @@ func executeTaskSubmissionWith(
 		return nil, taskErr
 	}
 	durable = true
+/* APIDUO:async:BEGIN */
 	// APIDUO:local-image-async:BEGIN
 	// A local task exists only on paper until a worker is told about it. The
 	// periodic pass is the safety net for rows a crash left behind; a live
@@ -927,6 +938,7 @@ func executeTaskSubmissionWith(
 		service.KickLocalImageAsyncWorker()
 	}
 	// APIDUO:local-image-async:END
+/* APIDUO:async:END */
 	requestplugin.TaskCreated(c)
 	if immediateTerminal {
 		// Reported once settled, whatever the settlement did.
@@ -1001,6 +1013,7 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 			return
 		}
 	}
+/* APIDUO:async:BEGIN */
 	// APIDUO:image-async:BEGIN
 	// 图像异步（protocol=images）的客户端只要一个任务号：这类上游受理就是
 	// 202 + {task_id}，网关再塞 status/model/created_at 只是把自己的任务形状
@@ -1025,6 +1038,7 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 		}
 	}
 	// APIDUO:image-async:END
+/* APIDUO:async:END */
 	createdAt := outcome.Task.CreatedAt
 	if createdAt == 0 {
 		createdAt = outcome.Task.SubmitTime
@@ -1055,6 +1069,7 @@ func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
+/* APIDUO:async:BEGIN */
 	// APIDUO:local-image-async:BEGIN
 	// 改写说的是「上游容量不足」，只对上游的 429 成立。本地拒绝（排队已满、
 	// 参数非法）没有上游，套上这句话会让客户端去查一个不存在的上游问题。
@@ -1062,6 +1077,7 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 		taskErr.Message = i18n.T(c, i18n.MsgRelayGroupUpstreamSaturated)
 	}
 	// APIDUO:local-image-async:END
+/* APIDUO:async:END */
 	c.JSON(taskErr.StatusCode, taskErr)
 }
 

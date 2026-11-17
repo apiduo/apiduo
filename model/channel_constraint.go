@@ -3,6 +3,7 @@ package model
 import (
 	"slices"
 
+/* APIDUO:async:BEGIN */
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
@@ -29,6 +30,7 @@ var filterEvalOrder = []dto.ChannelFilterKind{
 // on test order.
 var apiduoLocalImageAsyncEnabled = common.LocalImageAsyncEnabled
 
+/* APIDUO:async:END */
 // ChannelSatisfiesFilters reports whether ch passes every filter.
 // On false, it returns the first violated filter in filterEvalOrder for error
 // attribution.
@@ -105,6 +107,7 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 
 func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
 	switch filter.Kind {
+/* APIDUO:async:BEGIN */
 	case dto.FilterExcludeChannels:
 		// APIDUO:exclude-channels:BEGIN
 		return !slices.Contains(filter.ExcludeChannelIDs, ch.Id)
@@ -171,6 +174,7 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 			return true
 		}
 		// APIDUO:primary-endpoint:END
+/* APIDUO:async:END */
 		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
 		if filter.TaskPluginKey == "" {
