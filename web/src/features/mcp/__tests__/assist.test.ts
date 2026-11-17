@@ -28,7 +28,6 @@ import {
 const FACTS: AssistFacts = {
   modelId: 'doubao-seedream-5-0-flash',
   kind: 'image',
-  protocol: 'ark',
   async: false,
   displayName: '',
 }
@@ -178,8 +177,7 @@ describe('ruleAssist', () => {
       ...FACTS,
       modelId: 'doubao-seedance-1-0-pro',
       kind: 'video',
-      protocol: 'ark',
-      async: true,
+          async: true,
     })
     expect(out.patch.summary).toContain('视频')
     expect(out.patch.tags).toContain('文生视频')
