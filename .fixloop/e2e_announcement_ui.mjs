@@ -88,6 +88,18 @@ check('列表出现「E2E 界面公告」', parsed.text !== undefined, String(ro
 check('  列表带「警告」级别', parsed.hasWarning === true, JSON.stringify(parsed));
 check('  列表带日期', /\d{2}-\d{2} \d{2}:\d{2}/.test(parsed.text || ''), parsed.text);
 
+// ---- 1b. 公告面板不得混入 changelog ----
+// 这条是 bsk 那边先发现的：useAnnouncements 一开始没按 category 过滤，
+// changelog 会同时出现在公告面板和横幅里。CDP 判据原先漏了这条断言。
+const panelHasChangelog = await ev(`(function () {
+  var vp = document.querySelector('[data-slot="scroll-area-viewport"]');
+  if (!vp) return 'no viewport';
+  return [...vp.querySelectorAll('button')].some(function (b) {
+    return b.textContent.indexOf('E2E 功能更新') >= 0;
+  });
+})()`);
+check('公告面板不含 changelog', panelHasChangelog === false, String(panelHasChangelog));
+
 // ---- 2. 溢出提示（当前 7 条，h-72 放不下） ----
 const hint = await ev(`(function () {
   var t = document.body.innerText;

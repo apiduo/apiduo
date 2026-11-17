@@ -275,6 +275,10 @@ export interface AnnouncementPhase {
 export interface AnnouncementItem {
   id?: number
   title?: string
+  /** 缺省视为公告。changelog 只出现在顶部功能更新横幅，不进公告面板。 */
+  category?: 'announcement' | 'changelog'
+  /** 仅 changelog 使用：变更类型（新增/优化/修复）。 */
+  kind?: 'feature' | 'improvement' | 'fix'
   content: string
   publishDate?: string
   /** 失效时间。到点后后端不再下发，前端只做展示，不需要自己过滤。 */
