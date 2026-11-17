@@ -5,4 +5,4 @@
 files	171
 blocks	524
 added	5555
-deleted	38
+deleted	412
