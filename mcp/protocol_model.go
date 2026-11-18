@@ -121,6 +121,9 @@ func listEnabledViews() ([]modelView, error) {
 		if out[i].Priority != out[j].Priority {
 			return out[i].Priority > out[j].Priority
 		}
+		// 同优先级仍要有一个确定的名次，否则每次查询的先后可能不同。
+		// 这里按模型名字典序（ID 字段存的就是 model_id）：确定，但名字靠前者占先 ——
+		// 想让某个模型当默认，就把它的 priority 拉开，别指望同值时的排序。
 		return out[i].ID < out[j].ID
 	})
 	return out, nil

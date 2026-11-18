@@ -64,7 +64,8 @@ export type ModelProfile = {
   cost: string;
   /**
    * 同一 kind 内的排序权重：越大越靠前，第一条即「调用方不指定 model 时的默认」。
-   * 同值时按 id 升序，所以默认模型是确定的，不会随查询顺序漂移。
+   * 同值时按 model_id 字典序（不是数据库自增 id —— protocol_model.go 把 ID 存成模型名），
+   * 所以名次确定，但名字靠前的会占先。默认模型要稳就显式拉开 priority。
    * 与渠道的 priority 无关 —— 那个决定走哪条渠道，不参与这里。
    */
   priority: number;
