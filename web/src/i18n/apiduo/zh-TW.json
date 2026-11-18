@@ -1,5 +1,10 @@
 {
   "translation": {
+    "mcp.Default priority": "預設優先級",
+    "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "呼叫方未指定 model 時，優先級高者先被選中。只在同一產物類型內競爭；同值按 model_id 字典序。",
+    "mcp.Cost note (optional)": "價格說明（選填）",
+    "mcp.$0.01/run — shown to agents verbatim": "$0.01/次 —— 原樣顯示給 agent",
+    "mcp.Free text: fixed price, ratio, or an expression. Never parsed into a number.": "自由文字：固定價、倍率或計費表達式。不會被解析成數字。",
     "Appearance effects": "外觀特效",
     "Decorative highlight painted on the surfaces apiduo adds. It is what makes them readable as one family, and it follows the theme colour unless a colour is chosen below.": "裝飾性高光，只畫在 apiduo 新增的介面上。它讓這些介面看起來屬於同一套；預設跟隨主題色，除非在下面另選了顏色。",
     "Enable appearance effects": "啟用外觀特效",

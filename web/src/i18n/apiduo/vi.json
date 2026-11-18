@@ -1,5 +1,10 @@
 {
   "translation": {
+    "mcp.Default priority": "Độ ưu tiên mặc định",
+    "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "Ưu tiên cao hơn sẽ được chọn khi bên gọi bỏ qua model. Chỉ so sánh trong cùng loại đầu ra; bằng nhau thì theo thứ tự chữ cái của model_id.",
+    "mcp.Cost note (optional)": "Ghi chú chi phí (tùy chọn)",
+    "mcp.$0.01/run — shown to agents verbatim": "0,01 $/lần — hiển thị nguyên văn cho agent",
+    "mcp.Free text: fixed price, ratio, or an expression. Never parsed into a number.": "Văn bản tự do: giá cố định, hệ số hoặc biểu thức. Không bao giờ được phân tích thành số.",
     "Appearance effects": "Hiệu ứng giao diện",
     "Decorative highlight painted on the surfaces apiduo adds. It is what makes them readable as one family, and it follows the theme colour unless a colour is chosen below.": "Vệt sáng trang trí chỉ vẽ trên các bề mặt do apiduo thêm vào. Nó khiến chúng trông cùng một bộ; màu mặc định theo chủ đề trừ khi chọn màu bên dưới.",
     "Enable appearance effects": "Bật hiệu ứng giao diện",

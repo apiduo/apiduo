@@ -1,5 +1,10 @@
 {
   "translation": {
+    "mcp.Default priority": "Default priority",
+    "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.",
+    "mcp.Cost note (optional)": "Cost note (optional)",
+    "mcp.$0.01/run — shown to agents verbatim": "$0.01/run — shown to agents verbatim",
+    "mcp.Free text: fixed price, ratio, or an expression. Never parsed into a number.": "Free text: fixed price, ratio, or an expression. Never parsed into a number.",
     "Multi-key: Token sticky": "Multi-key: Token sticky",
     "Token Sticky": "Token Sticky",
     "One token sticks to one key, so the upstream prompt cache keeps hitting": "One token sticks to one key, so the upstream prompt cache keeps hitting",

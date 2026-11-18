@@ -1,5 +1,10 @@
 {
   "translation": {
+    "mcp.Default priority": "デフォルト優先度",
+    "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "呼び出し側が model を省略した場合、優先度の高いものが選ばれます。同じ出力種別内でのみ競合し、同値は model_id の辞書順です。",
+    "mcp.Cost note (optional)": "コスト表記（任意）",
+    "mcp.$0.01/run — shown to agents verbatim": "$0.01/回 — agent にそのまま表示されます",
+    "mcp.Free text: fixed price, ratio, or an expression. Never parsed into a number.": "自由記述：固定価格・倍率・計算式のいずれか。数値には変換されません。",
     "Appearance effects": "外観エフェクト",
     "Decorative highlight painted on the surfaces apiduo adds. It is what makes them readable as one family, and it follows the theme colour unless a colour is chosen below.": "apiduo が追加した画面だけに描く装飾ハイライトです。同じ一群に見えるようにするためのもので、下で色を選ばない限りテーマ色に従います。",
     "Enable appearance effects": "外観エフェクトを有効にする",

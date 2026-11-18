@@ -1,5 +1,10 @@
 {
   "translation": {
+    "mcp.Default priority": "Priorité par défaut",
+    "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "La priorité la plus élevée l'emporte lorsque l'appelant omet model. La comparaison se fait au sein du même type de sortie ; à égalité, ordre alphabétique du model_id.",
+    "mcp.Cost note (optional)": "Note de coût (facultatif)",
+    "mcp.$0.01/run — shown to agents verbatim": "0,01 $/exécution — affiché tel quel aux agents",
+    "mcp.Free text: fixed price, ratio, or an expression. Never parsed into a number.": "Texte libre : prix fixe, ratio ou expression. Jamais converti en nombre.",
     "Appearance effects": "Effets d'apparence",
     "Decorative highlight painted on the surfaces apiduo adds. It is what makes them readable as one family, and it follows the theme colour unless a colour is chosen below.": "Rehaut décoratif peint uniquement sur les surfaces ajoutées par apiduo. C'est ce qui les fait lire comme une même famille ; il suit la couleur du thème sauf si une couleur est choisie ci-dessous.",
     "Enable appearance effects": "Activer les effets d'apparence",

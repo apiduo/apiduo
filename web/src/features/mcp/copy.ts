@@ -44,6 +44,13 @@ const FALLBACK: Record<string, string> = {
   Protocol: '协议',
   Execution: '执行方式',
   'Display name (optional)': '显示名（可选）',
+  'Default priority': '默认优先级',
+  'Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.':
+    '调用方不指定 model 时，优先级高的先被选中。只在同一产物类型内竞争；同值按 model_id 字典序。',
+  'Cost note (optional)': '价格说明（可选）',
+  '$0.01/run — shown to agents verbatim': '$0.01/次 —— 原样展示给 agent',
+  'Free text: fixed price, ratio, or an expression. Never parsed into a number.':
+    '自由文本：固定价、倍率或计费表达式。不会被解析成数字。',
   'Ref image limit': '参考图上限',
   'Ref video limit': '参考视频上限',
   'Prompt limit': '提示词上限',
