@@ -1,0 +1,4 @@
+PASS G1  优先级 label 为中文
+PASS G2  价格 label 为中文
+PASS G3  priority 显示 24
+PASS G4  cost 显示库中值

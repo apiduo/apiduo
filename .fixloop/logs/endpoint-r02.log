@@ -1,0 +1,8 @@
+cmd: ./.fixloop/e2e_endpoint_registry.sh 
+pass=9 fail=6
+migration-models: got=mock-gpt
+migration-batch: got=mock-gpt
+migration-residue: got={"file_relay":{"purposes":["file-extract","batch"],"max_upload_bytes":1048576}}
+migration-ability: missing @files/upload/batch row
+tools-search-log: no deepseek-search consume row
+files-content: 

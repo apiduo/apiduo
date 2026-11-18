@@ -1,0 +1,9 @@
+cmd: ./.fixloop/e2e_endpoint_registry.sh --no-build
+pass=8 fail=7
+migration-models: got=mock-gpt
+migration-batch: got=mock-gpt
+migration-residue: got={"file_relay":{"purposes":["file-extract","batch"],"max_upload_bytes":1048576}}
+migration-ability: missing @files/upload/batch row
+tools-search: {"id": "chatcmpl-mock-1", "object": "chat.completion", "created": 1794803537, "model": "mock-gpt", "choices": [{"index": 0, "message": {"role": "assistant", "co
+tools-search-log: no deepseek-search consume row
+files-content: {"error":{"message":"not found","type":"invalid_request_error","param":"","code":"upstream_file_error"}}

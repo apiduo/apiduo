@@ -1,0 +1,7 @@
+R3 G5 写路径（手动 bsk 流程）
+1. 新建模型：Model ID=e2e-probe-tmp / kind=image / 执行方式=同步直返 / priority=7 / cost=$0.01/次
+2. 保存 → 列表 11→12，出现 @e78 button "e2e-probe-tmp image · sync · manual"
+3. 读回 UI：spinbutton "7" / textbox "$0.01/次"
+4. 读回 DB：id=34, model_id=e2e-probe-tmp, kind=image, async=0, enabled=1, priority=7, cost=$0.01/次
+5. 删除（alertdialog 确认）→ DB: probe_rows=0, total_rows=11
+结论：UI → API → DB 全链路打通，且清理彻底。

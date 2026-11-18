@@ -1,0 +1,3 @@
+cmd: ./.fixloop/e2e_endpoint_registry.sh --no-build
+pass=15 fail=0
+
