@@ -15,9 +15,14 @@
 #   - 项目名必须是 apiduo-cn。docker compose 以 project name 隔离资源，
 #     改名会被当成新项目，把所有容器重建一遍。
 #   - 端口只绑回环。PAT 的 allow_ips 白名单依赖 ClientIP()，裸绑 0.0.0.0
-#     后同私网主机可伪造 X-Forwarded-For 绕过白名单。
-#   - 不设 TRUSTED_PROXIES 是有意的。nginx 在宿主机，设成回环会让
-#     ClientIP 变成内网地址，令牌白名单直接失效。
+#     后同私网主机可伪造 X-Forwarded-For 绕过白名单。这条绑定本身就是
+#     X-Forwarded-For 伪造的唯一入口控制 —— 同网段主机根本连不进来。
+#   - 不设 TRUSTED_PROXIES 是有意的，但理由不是「设了会让 ClientIP 失效」，
+#     而是「没测过」。容器看到的对端可能是 127.0.0.1（iptables DNAT），也可能是
+#     网桥网关（docker-proxy 用户态转发）；钉错的那一个会让 ClientIP 恒定成
+#     网关，日志与 allow_ips 一起失效。要钉先测：
+#       bash preflight.sh --proxy-peer
+#     对端是回环才写 TRUSTED_PROXIES=127.0.0.1/32，网络重建后要复核。
 name: apiduo-cn
 
 x-logging: &default-logging

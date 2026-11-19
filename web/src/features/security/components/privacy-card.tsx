@@ -39,14 +39,16 @@ type PrivacyCardProps = {
 
 export function PrivacyCard(props: PrivacyCardProps) {
   const { t } = useTranslation()
-  const [recordIpLog, setRecordIpLog] = useState(() =>
-    Boolean(parseUserSettings(props.profile.setting).record_ip_log)
+  /* APIDUO:secure-defaults:BEGIN */
+  const [recordIpLog, setRecordIpLog] = useState(
+    () => parseUserSettings(props.profile.setting).record_ip_log !== false
   )
   useEffect(() => {
     setRecordIpLog(
-      Boolean(parseUserSettings(props.profile.setting).record_ip_log)
+      parseUserSettings(props.profile.setting).record_ip_log !== false
     )
   }, [props.profile.setting])
+  /* APIDUO:secure-defaults:END */
 
   const save = useMutation({
     mutationFn: async () => {

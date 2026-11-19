@@ -19,15 +19,29 @@ type UserSetting struct {
 	UpstreamModelUpdateNotifyEnabled bool    `json:"upstream_model_update_notify_enabled,omitempty"` // 是否接收上游模型更新定时检测通知（仅管理员）
 	ChannelNotifyEnabled             *bool   `json:"channel_notify_enabled,omitempty"`               // 是否接收渠道通知（仅管理员），未设置时 root 接收、其他管理员不接收
 	AcceptUnsetRatioModel            bool    `json:"accept_unset_model_ratio_model,omitempty"`       // AcceptUnsetRatioModel 是否接受未设置价格的模型
-	RecordIpLog                      bool    `json:"record_ip_log,omitempty"`                        // 是否记录请求和错误日志IP
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
+	// APIDUO:secure-defaults:BEGIN
+	// 未表态（nil）按开启处理，只有显式关闭才落成 false。指针是必需的：
+	// bool + omitempty 无法区分「没选过」和「选了关」。
+	RecordIpLog *bool `json:"record_ip_log,omitempty"` // 是否记录请求和错误日志IP
+	// APIDUO:secure-defaults:END
 	// APIDUO:discount:BEGIN
 	// ApiduoDiscounts 个人模型折扣规则，有序数组，数组顺序即优先级。原始 JSON 保存，解析失败只丢弃折扣。
 	ApiduoDiscounts json.RawMessage `json:"apiduo_discounts,omitempty"`
 	// APIDUO:discount:END
 }
+
+// APIDUO:secure-defaults:BEGIN
+// RecordsIP reports whether request and error logs should carry the client IP.
+// An unset choice means on: auditability is the safer default, and only an
+// explicit opt-out turns it off.
+func (s UserSetting) RecordsIP() bool {
+	return s.RecordIpLog == nil || *s.RecordIpLog
+}
+
+// APIDUO:secure-defaults:END
 
 var (
 	NotifyTypeEmail   = "email"   // Email 邮件

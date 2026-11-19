@@ -1334,7 +1334,10 @@ type UpdateUserSettingRequest struct {
 	UpstreamModelUpdateNotifyEnabled *bool   `json:"upstream_model_update_notify_enabled,omitempty"`
 	ChannelNotifyEnabled             *bool   `json:"channel_notify_enabled,omitempty"`
 	AcceptUnsetModelRatioModel       bool    `json:"accept_unset_model_ratio_model"`
-	RecordIpLog                      bool    `json:"record_ip_log"`
+	// APIDUO:secure-defaults:BEGIN
+	// 缺省表示「本次不表态」，保留已存值，而不是把它写成 false。
+	RecordIpLog *bool `json:"record_ip_log"`
+	// APIDUO:secure-defaults:END
 }
 
 func UpdateUserSetting(c *gin.Context) {
@@ -1430,7 +1433,11 @@ func UpdateUserSetting(c *gin.Context) {
 	settings.NotifyType = req.QuotaWarningType
 	settings.QuotaWarningThreshold = req.QuotaWarningThreshold
 	settings.AcceptUnsetRatioModel = req.AcceptUnsetModelRatioModel
-	settings.RecordIpLog = req.RecordIpLog
+	// APIDUO:secure-defaults:BEGIN
+	if req.RecordIpLog != nil {
+		settings.RecordIpLog = req.RecordIpLog
+	}
+	// APIDUO:secure-defaults:END
 	if req.QuotaWarningEnabled != nil {
 		settings.QuotaWarningEnabled = req.QuotaWarningEnabled
 	}

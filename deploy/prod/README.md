@@ -26,13 +26,50 @@
 ssh ai-prod 'bash /opt/apiduo-cn/preflight.sh'
 ```
 
-10 项检查，`FAIL` 必须清零。重点看三项：
+9 节检查，`FAIL` 必须清零。重点看三项：
 
 1. **`/api/status` 的 `success` 字段**，不是 HTTP 200。`/api/status` 恒 200，
    只有 `success=true` 才说明 DB 连上、迁移跑完。
-2. **`/api/setup` 的 `root_init` 必须是 `false`**。若为 `true`，任何人都能走初始化
-   向导创建 root 账号接管站点 —— 空库重建后最容易漏这一步。
+2. **`/api/setup` 的 `status` 必须是 `true`**。`status=false` 表示既没有 setup 记录
+   也没有 root 用户，`POST /api/setup` 对所有人开放，可被直接创建 root 接管站点。
+   注意别只看 `root_init`：空库（危险）和已初始化（正常）都会返回 `false`，
+   这个字段单独用会给出假绿灯。
 3. **备份新鲜度 ≤ 26h**。cron 静默失败是常态，别靠"应该跑了"判断。
+
+## 二·五、盗刷追溯链路（出事后靠什么定位到人）
+
+一条请求的 IP 能落到日志里，要下面五条同时成立（preflight 第 9 节把可自动判定的都查了）：
+
+| 环节 | 判据 | 断了会怎样 |
+|---|---|---|
+| nginx 转发客户端地址 | `proxy_set_header X-Forwarded-For` | 所有请求记成代理地址 |
+| 端口只绑回环 | `127.0.0.1:39047 → 3000` | 同网段主机可直连并伪造 XFF |
+| 应用信任该代理 | `TRUSTED_PROXIES` 不写全放行 | 同上 |
+| 日志开关 | `record_ip_log` 未表态 = 开 | 日志 IP 为空 |
+| 保留期 | ClickHouse `logs` TTL 360 天 | 事后查不到 |
+
+**不设 `TRUSTED_PROXIES` ≠ 不能追溯。** 默认只信回环 + 私网，而 nginx 用
+`$proxy_add_x_forwarded_for` 把真实地址追加在末尾，gin 从右往左跳过可信代理，
+取到的就是真实客户端；客户端自己塞的 XFF 前缀会被忽略（
+`middleware/trusted_proxies_test.go` 的 `...StopsAtPublicClientInForwardedChain`
+锁的就是这个行为）。
+
+真正的缺口在私网侧：容器同时接在 `apiduo-obs_default` 与 `apiduo-langfuse_default`
+上，这两个网络里的任何容器都能绕过 nginx 直连 `apiduo-cn:3000`，而默认信任整个
+私网 —— 它可以把 `X-Forwarded-For` 写成任意地址，从而绕过 PAT 的 `allow_ips`
+与按 IP 的限流。钉 `TRUSTED_PROXIES` 的价值在这里，不在公网侧。
+
+只有当「容器看到的对端」也在私网里、且你要把信任面收窄时才需要显式钉。钉之前先测：
+
+```bash
+ssh ai-prod 'bash /opt/apiduo-cn/preflight.sh --proxy-peer'
+```
+
+- 采到 **回环** ⇒ 可以写 `TRUSTED_PROXIES=127.0.0.1/32`，比默认更窄且不影响 ClientIP。
+- 采到 **网桥网关**（如 `172.18.0.1`）⇒ 写 `127.0.0.1/32` 会让 ClientIP 恒定成网关，
+  日志与 `allow_ips` 一起失效。**保持未设置**，靠端口回环绑定挡住伪造。
+
+改 `.env` 后必须 `up -d --force-recreate`，`docker restart` 不重读 `env_file`。
 
 ## 三、发版（push main 自动发版）
 

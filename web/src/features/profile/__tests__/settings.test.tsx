@@ -107,6 +107,19 @@ describe('user settings saves across profile and security', () => {
     })
   })
 
+  // APIDUO:secure-defaults:BEGIN
+  it('keeps IP recording on for a user who never chose when saving notifications', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: { success: true, data: profile },
+    })
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    await updateUserSettings({ quota_warning_threshold: 2500 })
+    expect(sentBody(put)).toMatchObject({ record_ip_log: true })
+  })
+  // APIDUO:secure-defaults:END
+
   it('alternating notification and IP saves retains the latest values from each page', async () => {
     let saved = { ...settings }
     vi.spyOn(api, 'get').mockImplementation(async () => ({

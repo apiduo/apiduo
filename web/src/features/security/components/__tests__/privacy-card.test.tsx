@@ -49,21 +49,33 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function renderPrivacy() {
+/* APIDUO:secure-defaults:BEGIN */
+function renderPrivacy(overrides: Partial<UserProfile> = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const onUpdate = vi.fn()
   const rendered = render(
     <QueryClientProvider client={client}>
-      <PrivacyCard profile={profile} onUpdate={onUpdate} />
+      <PrivacyCard profile={{ ...profile, ...overrides }} onUpdate={onUpdate} />
       <Toaster />
     </QueryClientProvider>
   )
   return { ...rendered, onUpdate }
 }
+/* APIDUO:secure-defaults:END */
 
 describe('privacy settings', () => {
+  /* APIDUO:secure-defaults:BEGIN */
+  it('shows a user who never chose as recording IP addresses', () => {
+    const { onUpdate } = renderPrivacy({ setting: '{}' })
+    expect(
+      screen.getByRole('switch', { name: 'Record IP Address' })
+    ).toBeChecked()
+    expect(onUpdate).not.toHaveBeenCalled()
+  })
+  /* APIDUO:secure-defaults:END */
+
   it('keyboard toggling off saves false and refreshes the displayed profile', async () => {
     vi.spyOn(api, 'get').mockResolvedValue({
       data: { success: true, data: profile },

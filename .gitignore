@@ -11,10 +11,12 @@ build
 *.db-shm
 *.db-wal
 logs
+# APIDUO:fix-loop:BEGIN
 # fix-loop 的日志是交付证据（runs.ndjson 的 log_path 必须可复核）。
 # 上面的 `logs` 规则会连它一起吃，这里显式取回。
 !.fixloop/logs/
 !.fixloop/logs/**
+# APIDUO:fix-loop:END
 web/dist
 web/node_modules
 .env

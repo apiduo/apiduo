@@ -680,7 +680,10 @@ func TestUpdateUserSettingKeepsWhatTheRequestLeavesOut(t *testing.T) {
 			want: kept(dto.UserSetting{
 				NotifyType: dto.NotifyTypeWebhook, WebhookUrl: "https://example.com/hook", WebhookSecret: "hook-secret",
 				QuotaWarningThreshold: 2000, QuotaWarningEnabled: &off, ChannelNotifyEnabled: &on, UpstreamModelUpdateNotifyEnabled: true,
-				AcceptUnsetRatioModel: true, RecordIpLog: true,
+				// APIDUO:secure-defaults:BEGIN
+				AcceptUnsetRatioModel: true,
+				RecordIpLog:           &on,
+				// APIDUO:secure-defaults:END
 			}),
 		},
 		{
@@ -697,6 +700,15 @@ func TestUpdateUserSettingKeepsWhatTheRequestLeavesOut(t *testing.T) {
 			wantSuccess: true,
 			want:        kept(dto.UserSetting{NotifyType: dto.NotifyTypeEmail, QuotaWarningEnabled: &on, ChannelNotifyEnabled: &on, UpstreamModelUpdateNotifyEnabled: true}),
 		},
+		// APIDUO:secure-defaults:BEGIN
+		{
+			name:        "an explicit opt-out from IP recording is stored",
+			role:        common.RoleCommonUser,
+			body:        `{"notify_type":"email","quota_warning_threshold":0,"quota_warning_enabled":true,"channel_notify_enabled":false,"upstream_model_update_notify_enabled":false,"record_ip_log":false}`,
+			wantSuccess: true,
+			want:        kept(dto.UserSetting{NotifyType: dto.NotifyTypeEmail, QuotaWarningEnabled: &on, ChannelNotifyEnabled: &on, UpstreamModelUpdateNotifyEnabled: true, RecordIpLog: &off}),
+		},
+		// APIDUO:secure-defaults:END
 		{
 			name: "negative threshold",
 			role: common.RoleCommonUser,
