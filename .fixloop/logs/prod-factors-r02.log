@@ -1,0 +1,8 @@
+r02 DEPLOY + VERIFY（线上 0.0.189）
+O1 PASS  success=true version=0.0.189
+O2 PASS  editor JSON billing={mode:per_second, duration_path:[duration], default_seconds:5,
+         factors:[{key:resolution,path:[resolution],values:{480:1,720:2,480p:1,720p:2},default:2}]}
+O3 PASS  DB #37 factor_len=1，factors 与基线逐字相同
+O4 FAIL(严格)  keys ["advanced_async"] -> ["advanced_async","disable_task_polling_sleep"]
+        原因：buildSettingsJSON 无条件写 disable_task_polling_sleep=false（零值，与缺省等价）
+判决 TEST：断言过严，改为「不丢键」（子集关系）

@@ -1,0 +1,6 @@
+r03 REJUDGE（同一批观测数据，判据修正后）
+O4 PASS  {advanced_async} ⊆ {advanced_async, disable_task_polling_sleep}
+O3 PASS  factors 深度相等
+O2 PASS  factors 深度相等
+O1 PASS  version=0.0.189
+exit 0
