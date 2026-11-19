@@ -24,8 +24,15 @@ describe('apiduo locale overlays', () => {
     // A translated value in en.json renders Chinese on the English console.
     // That already happened once while this overlay was being assembled from
     // the working tree, so it is now a hard rule rather than a review note.
+    //
+    // `useMcpCopy()` looks up `mcp.<source>` and falls back to a Chinese
+    // FALLBACK map, so an MCP entry must repeat the source string *without*
+    // the prefix. Comparing against the raw key would force the console to
+    // render "mcp.Default priority".
     const en = translation('src/i18n/apiduo/en.json')
-    const translated = Object.entries(en).filter(([key, value]) => value !== key)
+    const translated = Object.entries(en).filter(
+      ([key, value]) => value !== key.replace(/^mcp\./, '')
+    )
     expect(translated).toEqual([])
   })
 
