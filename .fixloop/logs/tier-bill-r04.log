@@ -1,0 +1,21 @@
+== setup
+  PASS  gateway is up  [http://127.0.0.1:39047]
+  PASS  app restarted with the new channel  [apiduo-local-app]
+  PASS  save per-call / per-second / per-token expressions  [200 ]
+  PASS  an unknown usage key is still rejected  [400 model tier-bill-call: expression references usage keys [image_count] but the model has no task plugin usage schema]
+== guard
+  PASS  missing duration is rejected, not billed as zero  [400 expr run error: invalid operation: <nil> * float64 (1:27) | tier("base", u("seco]
+== billing
+  PASS  per call: 0.10 per request, duration ignored  [quota=50000 want=50000 task=task_ua9b958Iw7ssPHafYnyGxIByldjz0jp7]
+  PASS  per call: same price whatever the duration  [quota=50000 want=50000 task=task_kqkuwRi4em5ZC3NFVLu7PAtN0CttCtxr]
+  PASS  per second: 5s x 720p(2) x 0.01  [quota=50000 want=50000 task=task_sBPw1I9bRfzVrWFF4WEaqUUToN1AvLKP]
+  PASS  per second: 2s x 480p(1) x 0.01  [quota=10000 want=10000 task=task_mW58W4dGwNZr7K16M6Zkgma5tG3SfuEm]
+  PASS  per token: 5s -> 120000 tokens x $10/1M  [quota=600000 want=600000 task=task_9pTxjoUNBF9Q43daCQeRGtAKh5huwMIe]
+  PASS  per token: 2s -> 48000 tokens x $10/1M  [quota=240000 want=240000 task=task_qjNb1dUpoSgRc8cuT3IkD5m81tM9Guuf]
+  PASS  legacy per_call channel path is unchanged  [quota=5000 want=5000 task=task_rEl7WPBSG4x0cJRhcDy37bU8x2Pt70xI]
+  PASS  legacy per_second channel path is unchanged  [quota=25000 want=25000 task=task_k9a8Tm4U2N96BkcQGxUfkXm4s8oU8ozb]
+  PASS  user quota is debited by the settled total  [user=3970000 want=3970000]
+  PASS  token quota matches the user balance  [token=3970000 want=3970000]
+  PASS  each token settlement is recorded with its actual quota  [{"task_9pTxjoUNBF9Q43daCQeRGtAKh5huwMIe": [600000, "600000"], "task_qjNb1dUpoSgRc8cuT3IkD5m81tM9Guuf": [240000, "240000"]}]
+  WARN  vendor reported no usage -> task SUCCESS, settled quota 0 (token_fallback_price is not applied on the expression path)
+== PASS

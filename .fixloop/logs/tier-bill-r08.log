@@ -1,0 +1,22 @@
+== setup
+  PASS  gateway is up  [http://127.0.0.1:39047]
+  PASS  app restarted with the new channel  [apiduo-local-app]
+  PASS  save per-call / per-second / per-token expressions  [200 ]
+  PASS  an unknown usage key is still rejected  [400 model tier-bill-call: expression references usage keys [image_count] but the model has no task plugin usage schema]
+== guard
+  PASS  missing duration is rejected and names the missing fact  [400 model tier-bill-second: the price expression needs usage facts this request does not provide [second]
+== billing
+  PASS  per call: 0.10 per request, duration ignored  [quota=50000 want=50000 task=task_N72gQjXSN8MitoSvaUmKqmpg41LFvFg0]
+  PASS  per call: same price whatever the duration  [quota=50000 want=50000 task=task_8OI0Oyevy6o4MMveZcONrjyzvWKD3LOv]
+  PASS  per second: 5s x 720p(2) x 0.01  [quota=50000 want=50000 task=task_TPUWZs662tMOFtDvCWwerCV0GXQL9Ngv]
+  PASS  per second: 2s x 480p(1) x 0.01  [quota=10000 want=10000 task=task_vDWp2cBxzoGvUVWkxtMIZbW71EeLwbyI]
+  PASS  per token: 5s -> 120000 tokens x $10/1M  [quota=600000 want=600000 task=task_trJaGJ1ldLGGZq5xD420ivFtwriHTFIt]
+  PASS  per token: 2s -> 48000 tokens x $10/1M  [quota=240000 want=240000 task=task_yCy13B384Y6xLVL1hwV04bZAaP0IyIye]
+  PASS  no usage falls back to per second  [quota=50000 want=50000 task=task_h3HiCWTT29UlfDTHuD9gSo7yjzPqAOsK]
+  PASS  no usage and no duration falls back to per call  [quota=100000 want=100000 task=task_syPkY0lS19mzreyhOGjAWVIXM6lXMxUX]
+  PASS  legacy per_call channel path is unchanged  [quota=5000 want=5000 task=task_wWx9dCsd4j35LKoTfC39jAWktSeQBB8f]
+  PASS  legacy per_second channel path is unchanged  [quota=25000 want=25000 task=task_xpwghIztQYvuFO99mA2VvgkXoYsuZ2Oj]
+  PASS  user quota is debited by the settled total  [user=3820000 want=3820000]
+  PASS  token quota matches the user balance  [token=3820000 want=3820000]
+  PASS  each token settlement records its reservation and actual quota  [{"task_yCy13B384Y6xLVL1hwV04bZAaP0IyIye": [20000, 240000], "task_trJaGJ1ldLGGZq5xD420ivFtwriHTFIt": [50000, 600000]}]
+== PASS

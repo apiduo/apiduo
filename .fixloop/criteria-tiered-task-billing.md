@@ -32,12 +32,13 @@
 | C6 | 老路径：无表达式 + 渠道 per_call + ModelPrice 0.01 | quota = 5000 |
 | C7 | 资金：用户 quota 与令牌 remain_quota | 减少额 = 各任务 quota 之和（3770000 = 5000000−1230000） |
 | C8 | 结算留痕：按 token 的任务记录预扣与实结 | pre_consumed=100000→actual=600000；100000→240000 |
-| C9 | 面板展示（bsk 人工） | 模型广场搜 `tier-bill`：3 张卡显示「动态计费 / 特殊计费表达式」+ 原文；legacy 显示「按次计费 $0.01/请求」 |
+| C9 | 面板**读写**（bsk 人工） | 读：模型广场搜 `tier-bill`，3 张卡显示「动态计费 / 特殊计费表达式」+ 原文；写：模型管理 → 定价 → 改表达式保存 → 下一笔任务按新价结算 |
 | C10 | 老路径：渠道 `billing.models` 指定 per_second + ModelPrice 0.01 | 5s → quota = 25000 |
 | C11 | 缺 duration 的**纯按秒**表达式 | 400 `model_price_error`，message 含 `seconds` 与 `usage facts` |
 | C12 | 上游不报用量 → 按次退档 | 5s × $0.20 = quota 100000 |
 | C13 | 退档后时长不参与计价 | 30s 同样 = quota 100000 |
 | C14 | 退档留审计：系统日志行带 `usage_fallback` | 两条退档任务各一行 `tokens_missing`，预扣/实结均 100000；报用量的任务**没有**这类行 |
+| C15 | 保存期拦截裸 token 价 | PATCH 保存 `tier("base", u("tokens") * …)` → 400，message 含 `charge something` |
 
 ## 判据里写的标准表达式（按 token）
 
@@ -53,7 +54,7 @@ u("tokens") > 0
 
 ## 结果（2026-11-19）
 
-- 16/16 全绿，退出码 0，日志 `.fixloop/logs/tier-bill-r10.log`（56 秒）。
+- 17/17 全绿，退出码 0，日志 `.fixloop/logs/tier-bill-r12.log`（约 60 秒）。
   失败路径另验：`APIDUO_BASE=…:39999` → 退出 1。
 - C14 的审计行实测（ClickHouse，type=4）：
   `{"usage_fallback":"tokens_missing","matched_tier":"call","pre_consumed_quota":100000,
@@ -61,8 +62,12 @@ u("tokens") > 0
   `quota=0`（它不是一笔扣费）。同时服务端 `[WARN] task … settled without usage tokens`。
 - 首轮红（旧构建）：保存被拒 `400 ... expression references usage keys [count]
   but the model has no task plugin usage schema` —— 与改动要补的分支一致。
-- C9 用 bsk 实测：三张卡显示表达式原文，`tier-bill-legacy` 显示「按次计费
-  $0.01 / 请求」。
+- C9 用 bsk 实测（读）：三张卡显示表达式原文，`tier-bill-legacy` 显示
+  「按次计费 $0.01 / 请求」。
+- C9 用 bsk 实测（写）：模型管理 → 定价 → 把 `tier-bill-call` 的表达式从
+  `* 0.10` 改成 `* 0.12` → 保存（toast「模型定价已保存」）→ 提交 duration=7
+  的任务，`tasks.quota = 60000`（0.12 × 500000），改价前同一请求是 50000。
+  改后已把表达式恢复为 0.10。
 - **退档改变了预扣**：按 token 的模型现在在提交时按次档预扣（100000），结算时
   补差到 600000 / 240000。之前裸 token 表达式预扣为 0，所以结算日志的 `quota`
   字段等于实结；现在 `quota` 是差额，实结看 `actual_quota`。
@@ -85,10 +90,9 @@ u("tokens") > 0
 
 ## uncovered
 
-- 面板**写**路径（模型定价弹窗里改表达式再保存）—— 判据走的是同一个
-  `PATCH /api/option/model_pricing`，前端是否把表达式写进请求体不由本循环判定。
-- **裸 token 表达式没有保存期拦截**：回退顺序目前是书写约定，不是强制。
-  没写回退链的模型在不报用量的回包下仍会结算 0。
+- **历史裸 token 表达式仍放行**：保存期拦截只对「新写或改写」的表达式生效
+  （`unchanged` 为真时跳过），否则编辑其它字段会被历史表达式拦住。
+  这类模型靠 C14 的审计行暴露。
 - 失败/取消任务的退款（表达式结算只在成功任务上生效，属既有行为）。
 - 并发下同一用户多任务结算的余额一致性（任务并发提交，但额度扣减是串行的）。
 - 除 `count/seconds/tokens/factor` 之外的未来事实键。
@@ -98,7 +102,7 @@ u("tokens") > 0
 | 闸门 | 命令 | 结果 |
 |---|---|---|
 | 标记覆盖 | `go run ./tools/markercheck` | 通过；本轮新增 8 个上游文件的标记块 |
-| 合并面预算 | `go run ./tools/markercheck -cost` | 与 `.apiduo/merge-budget.txt` 一致（183/555/5917/432 → 后来控制器测试再加 1 文件，见下） |
+| 合并面预算 | `go run ./tools/markercheck -cost` | 与 `.apiduo/merge-budget.txt` 一致（184 文件 / 560 块 / 6006 行 / 433 删除） |
 | 全仓单测 | `go test ./...` | 见下方记录 |
 
 首跑时这两个闸门都是红的：8 个上游文件的新增行没有包进
@@ -109,9 +113,14 @@ u("tokens") > 0
 ## 代码改动（本轮）
 
 - `service/task_billing.go`：新增 `recordedUsageFallback`（表达式读 `tokens` 且
-  合并后为 0 / 缺失）与 `recordUsageFallbackAudit`（系统日志行 +
+  合并后为 0 / 缺失）与 `RecordTaskUsageFallbackAudit`（系统日志行 +
   `usage_fallback=tokens_missing`）。`service/task_polling.go` 在结算分支调用，
   位置在 `RecalculateTaskQuota` 之前，所以行里能同时写到预扣与实结。
+  `controller/relay.go` 在任务落库后对**即付即结**的成功任务补调同一函数，
+  该路径没有轮询，不补就永远没有审计行。
+- `setting/billing_setting/tiered_billing.go`：`TaskTokenPriceNeedsFallback` ——
+  用 `tokens=0` 的用量向量试算，结果为 0 就拒绝保存（`model_pricing_config.go`
+  在 8001 分支、仅对改动的表达式调用）。
 - `relay/relay_task.go`：表达式求值失败且存在「声明了但本次没有的事实」时，
   客户端错误点名缺失事实，原始引擎错误写服务端日志（C11）。
 - `relay/relay_task_test.go`：`TestRealtimeFetchRefundsTaskItFindsFailed` 按

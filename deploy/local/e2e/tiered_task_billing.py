@@ -352,6 +352,22 @@ def save_expressions(admin):
     message = str(body.get("message") or "")
     ok &= check("an unknown usage key is still rejected",
                 status >= 400 and "usage" in message.lower(), f"{status} {message[:120]}")
+
+    # A bare token price would settle at zero whenever the vendor omits usage,
+    # and nothing downstream can tell that apart from a free model.
+    entries, empty_version = pricing_versions(admin, [PER_TOKEN])
+    version = (entries.get(PER_TOKEN) or {}).get("version") or empty_version
+    status, body = call("PATCH", "/api/option/model_pricing", {"changes": [{
+        "model_name": PER_TOKEN,
+        "expected_version": version,
+        "pricing": {
+            "billing_setting.billing_mode": "tiered_expr",
+            "billing_setting.billing_expr": 'tier("base", u("tokens") * 10.0 / 1000000)',
+        },
+    }]}, token=admin)
+    message = str(body.get("message") or "")
+    ok &= check("a token price without a fallback is rejected",
+                status >= 400 and "charge something" in message, f"{status} {message[:120]}")
     return ok
 
 

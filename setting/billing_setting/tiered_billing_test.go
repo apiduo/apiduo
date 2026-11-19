@@ -146,4 +146,27 @@ func TestAdvancedAsyncUsageSchemaReturnsIndependentCopy(t *testing.T) {
 	require.False(t, IsAdvancedAsyncUsageKey("injected"))
 }
 
+// A token price without a non-token tier settles at zero whenever the vendor
+// omits usage. The save path has to refuse it, or the hole is invisible.
+func TestTaskTokenPriceNeedsFallback(t *testing.T) {
+	accepted := []string{
+		`u("tokens") > 0 ? tier("token", u("tokens") * 10.0 / 1000000) : tier("call", u("count") * 0.20)`,
+		`u("tokens") > 0 ? tier("token", u("tokens") * 10.0 / 1000000) : tier("second", u("seconds") * u("factor") * 0.02)`,
+		`tier("base", u("seconds") * u("factor") * 0.01)`,
+	}
+	for _, expression := range accepted {
+		require.NoError(t, TaskTokenPriceNeedsFallback(expression), expression)
+	}
+
+	rejected := []string{
+		`tier("base", u("tokens") * 10.0 / 1000000)`,
+		`u("tokens") > 0 ? tier("token", u("tokens") * 10.0 / 1000000) : tier("free", u("tokens") * 0)`,
+	}
+	for _, expression := range rejected {
+		err := TaskTokenPriceNeedsFallback(expression)
+		require.Error(t, err, expression)
+		require.Contains(t, err.Error(), "charge something", expression)
+	}
+}
+
 // APIDUO:task-usage-facts:END

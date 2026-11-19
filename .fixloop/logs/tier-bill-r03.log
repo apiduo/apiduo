@@ -1,0 +1,17 @@
+== setup
+  PASS  gateway is up  [http://127.0.0.1:39047]
+  PASS  app restarted with the new channel  [apiduo-local-app]
+  PASS  save per-call / per-second / per-token expressions  [200 ]
+  PASS  an unknown usage key is still rejected  [400 model tier-bill-call: expression references usage keys [image_count] but the model has no task plugin usage schema]
+== billing
+  PASS  per call: 0.10 per request, duration ignored  [quota=50000 want=50000 task=task_Q2AFMzE5SP87ub5oovoyyIA64TcQvw1v]
+  PASS  per call: same price whatever the duration  [quota=50000 want=50000 task=task_140XHc884NGtc3sqsHJW9LJNHSneRZ1W]
+  PASS  per second: 5s x 720p(2) x 0.01  [quota=50000 want=50000 task=task_FStV2Jztfr62AhLG1mzjtpshI2oE1BKh]
+  PASS  per second: 2s x 480p(1) x 0.01  [quota=10000 want=10000 task=task_JMxPRdH8LBHUZWmxTixrbUDiYoqKYFDo]
+  PASS  per token: 5s -> 120000 tokens x $10/1M  [quota=600000 want=600000 task=task_Zr4SswpUq1bLvbBeJbmSGei4vSlqXneM]
+  PASS  per token: 2s -> 48000 tokens x $10/1M  [quota=240000 want=240000 task=task_QtFShEeA5GQJRplF59XwecQbWcAxD8lm]
+  PASS  legacy per_call channel path is unchanged  [quota=5000 want=5000 task=task_NXrlI2CxqBmF224cxnXHev2zkOz7DfOw]
+  PASS  user quota is debited by the settled total  [user=3995000 want=3995000]
+  PASS  token quota matches the user balance  [token=3995000 want=3995000]
+  PASS  each token settlement is recorded with its actual quota  [{"task_Zr4SswpUq1bLvbBeJbmSGei4vSlqXneM": [600000, "600000"], "task_QtFShEeA5GQJRplF59XwecQbWcAxD8lm": [240000, "240000"]}]
+== PASS

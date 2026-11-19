@@ -606,6 +606,11 @@ func validateModelPricing(name string, values, previous PricingValues) error {
 				// tokens/factor 四个事实，模型没有插件 schema 可声明。按内置
 				// 表校验，而不是把这类模型一律拒之门外。
 				err = billing_setting.SmokeTestTaskExpr(expression, billing_setting.AdvancedAsyncUsageSchema())
+				if err == nil && !unchanged {
+					// 新写的 token 价必须有非 token 档，否则上游不报用量时结算 0；
+					// 未改动的历史表达式保持可保存，避免编辑其它字段被它拦住。
+					err = billing_setting.TaskTokenPriceNeedsFallback(expression)
+				}
 				// APIDUO:task-usage-facts:END
 			} else if !unchanged || len(billingexpr.UsedUsageKeys(expression)) == 0 {
 				err = billing_setting.SmokeTestExpr(expression)

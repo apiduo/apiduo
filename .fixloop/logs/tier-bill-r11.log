@@ -1,0 +1,23 @@
+== setup
+  PASS  gateway is up  [http://127.0.0.1:39047]
+  PASS  app restarted with the new channel  [apiduo-local-app]
+  PASS  save per-call / per-second / per-token expressions  [200 ]
+  PASS  an unknown usage key is still rejected  [400 model tier-bill-call: expression references usage keys [image_count] but the model has no task plugin usage schema]
+== guard
+  PASS  missing duration is rejected and names the missing fact  [400 model tier-bill-second: the price expression needs usage facts this request does not provide [second]
+== billing
+  PASS  per call: 0.10 per request, duration ignored  [quota=50000 want=50000 task=task_MBCX6W1ck9UQvgHokxI92z1rPp8pZv1w]
+  PASS  per call: same price whatever the duration  [quota=50000 want=50000 task=task_Gg6rIH3aRkb7CmLppkyjyizRNGP0vXKe]
+  PASS  per second: 5s x 720p(2) x 0.01  [quota=50000 want=50000 task=task_qcj7IFiDEHQTcCMddgJOj9Wj2NIF17av]
+  PASS  per second: 2s x 480p(1) x 0.01  [quota=10000 want=10000 task=task_KbLifvl0zLLRi3BborP6RomB0j46NDm9]
+  PASS  per token: 5s -> 120000 tokens x $10/1M  [quota=600000 want=600000 task=task_flNubLTyAkCpdEO3rG7MKFdKpkeOmJmG]
+  PASS  per token: 2s -> 48000 tokens x $10/1M  [quota=240000 want=240000 task=task_9Cli32ym6rFJKOQjevjME6EgHrriIaRa]
+  PASS  no usage falls back to per call  [quota=100000 want=100000 task=task_iBmXQ4vVtkvmEXmaPRoEEKfogtYxp8W6]
+  PASS  no usage ignores duration in the call tier  [quota=100000 want=100000 task=task_yhw64itMFCUesRzUlniHyjpCrVEOJ3sj]
+  PASS  legacy per_call channel path is unchanged  [quota=5000 want=5000 task=task_fHO8MIiNm2SOiz3beiWHHRrGFpIt4k3b]
+  PASS  legacy per_second channel path is unchanged  [quota=25000 want=25000 task=task_G4FoKrH6MbwlKkBvONhspT3n4HXCnNEp]
+  PASS  user quota is debited by the settled total  [user=3770000 want=3770000]
+  PASS  token quota matches the user balance  [token=3770000 want=3770000]
+  PASS  each token settlement records its reservation and actual quota  [{"task_9Cli32ym6rFJKOQjevjME6EgHrriIaRa": [100000, 240000], "task_flNubLTyAkCpdEO3rG7MKFdKpkeOmJmG": [100000, 600000]}]
+  PASS  fallback settlement leaves an audit row, token settlement does not  [{"task_iBmXQ4vVtkvmEXmaPRoEEKfogtYxp8W6": ["tokens_missing", 100000, 100000], "task_yhw64itMFCUesRzUlniHyjpCrVEOJ3sj": ["tokens_missing", 100000, 100000]}]
+== PASS

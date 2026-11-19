@@ -268,6 +268,27 @@ func IsAdvancedAsyncUsageKey(key string) bool {
 	return ok
 }
 
+// TaskTokenPriceNeedsFallback rejects a task price that reads the vendor's
+// token count but charges nothing when that count is missing. Without a
+// fallback the task settles at zero whenever the vendor omits usage, which the
+// owner cannot tell apart from a free model.
+func TaskTokenPriceNeedsFallback(expression string) error {
+	if !billingexpr.UsedUsageKeys(expression)["tokens"] {
+		return nil
+	}
+	cost, _, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: map[string]any{
+		// The facts a channel always publishes, with nothing reported.
+		"count": float64(1), "factor": float64(1), "seconds": float64(1), "tokens": float64(0),
+	}})
+	if err != nil {
+		return fmt.Errorf("a token-priced task expression must stay evaluable without usage tokens: %w", err)
+	}
+	if cost <= 0 {
+		return fmt.Errorf("a token-priced task expression must charge something when the vendor reports no usage tokens; add a non-token tier")
+	}
+	return nil
+}
+
 // APIDUO:task-usage-facts:END
 
 // SmokeTestTaskExpr validates a task usage expression against the usage facts
