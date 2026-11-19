@@ -232,15 +232,17 @@ else
 fi
 
 # 9.7 追溯窗口由日志 TTL 决定。只记 7 天等于「一周前的盗刷查不到」。
+#     system.tables 没有 ttl 列，TTL 只出现在 engine_full 里。
 ttl="$(docker exec "$CH" clickhouse-client --password="$chp" -q \
-    "SELECT ttl_expression FROM system.tables WHERE database='apiduo_cn_logs' AND name='logs'" 2>/dev/null)"
-ttl_days="$(printf '%s' "$ttl" | grep -oE '[0-9]+' | sort -n | tail -1)"
+    "SELECT engine_full FROM system.tables WHERE database='apiduo_cn_logs' AND name='logs'" 2>/dev/null \
+    | grep -oE 'toIntervalDay\([0-9]+\)' | head -1)"
+ttl_days="$(printf '%s' "$ttl" | grep -oE '[0-9]+' || true)"
 if [ -n "$ttl_days" ] && [ "$ttl_days" -ge 90 ]; then
     pass "日志保留 ${ttl_days} 天"
 elif [ -n "$ttl_days" ]; then
     note "日志保留仅 ${ttl_days} 天（$ttl）—— 事后追溯窗口过短"
 else
-    note "读不到 logs 的 TTL（${ttl:-查询失败}）"
+    note "读不到 logs 的按天 TTL（engine_full 里没有 toIntervalDay）"
 fi
 
 echo
