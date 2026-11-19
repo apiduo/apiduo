@@ -1,0 +1,13 @@
+r04 全面回归（线上 0.0.189 + 本地栈）
+B1  本地后端 E2E     PASS  19 条全过，退出 0
+B2  go test ./...    PASS* 首次 1 FAIL（model.TestRecordChangeIsNonBlocking / no such table:
+                          change_events），单跑 PASS，包内连跑 2 次 PASS ⇒ 偶发
+F1  渠道列表          PASS  19 行（截图）
+F2  模型管理          PASS  61 行，HappyHorse「特殊计费表达式」（截图）
+F3  任务日志          PASS  空态；CH today()=0 与页面一致
+F4  通用日志          PASS  同上；近 6h 42 条、最新 23:10
+F5  factors 往返      PASS  r02/r03
+W1  前端全量单测      FAIL  3486 用例 / 1 失败（修前 2 失败）
+    - i18n 英文覆盖层断言：已修（去 mcp. 前缀比较），改后 3/3 通过，中文污染仍红
+    - command-menu 管理员条目：预存在（0f35a1442 同样失败），未定位，未修
+未覆盖：线上真实计费、C15 线上复验（均需真实请求/改线上价格）
