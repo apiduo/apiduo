@@ -58,3 +58,39 @@
 1. **线上真实计费**：factors 是否乘进结算未在线上发任务（本地 C4 覆盖 5s×720p×2→50000）。
 2. **C15 线上复验**：需要改真实模型定价，风险高于收益；本地 API 层已覆盖。
 3. **B2 的偶发失败**：3 次运行中 1 次失败，未复现；未做修复（与本次改动无关的既有测试隔离问题）。
+
+## 补充验证（2026-11-20 00:52–01:05）：两条未覆盖项
+
+### ① 线上真实计费：factor 是否乘进结算 —— PASS
+
+渠道 #18 `hailuo-video`（`per_second`，price $0.0104/s，factor 480→0.57 / 720→1），
+同一模型、同一 5 秒、只改 resolution：
+
+| resolution | factor | 预扣 quota | 结算 quota | 美元 | 期望 |
+|---|---|---|---|---|---|
+| 720 | 1 | 26000 | 26000 | 0.0520 | 0.0104×5×1 ✓ |
+| 480 | 0.57 | 14820 | 14820 | 0.0296 | 0.0104×5×0.57 ✓ |
+
+- 比值 14820/26000 = **0.57**，两点同秒数 ⇒ 差异只能来自 resolution 维度。
+- 两条任务均 `SUCCESS`；结算 = 预扣，未发生二次改价。
+- 令牌「已用 0.0816」与两笔之和一致（0.0520+0.0296）。
+- 实际消费 **$0.0816**。
+
+### ② C15 保存期拦截（线上）—— PASS
+
+面板 → 模型管理 → ltx23 → 定价，把表达式改成裸 token 价
+`tier("base", u("tokens") * 10.0 / 1000000)` 并保存：
+
+```
+model ltx23: a token-priced task expression must charge something when the
+vendor reports no usage tokens; add a non-token tier
+```
+
+- 库中 `billing_setting.billing_expr.ltx23` 仍是
+  `tier("base", u("seconds") * u("factor") * 0.01)`，`billing_mode=tiered_expr`
+  ⇒ 拒绝发生在写入之前，无副作用。
+
+### 验证用令牌
+
+新建 `factors-e2e-1120`（无限配额），用完已**禁用**，实测 `/v1/models` 返回 401。
+未删除（面板行菜单未展开），如需清理可在「API 密钥」页删除。
