@@ -17,9 +17,9 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
-/* APIDUO:async:BEGIN */
+	/* APIDUO:async:BEGIN */
 	"github.com/QuantumNous/new-api/pkg/urlguard"
-/* APIDUO:async:END */
+	/* APIDUO:async:END */
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
@@ -169,7 +169,7 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-/* APIDUO:async:BEGIN */
+	/* APIDUO:async:BEGIN */
 	// APIDUO:local-image-async:BEGIN
 	// Local tasks run here but are not gated by GetTaskAdaptorFunc: they have no
 	// adaptor, because there is no upstream task to adapt. Skipping them when
@@ -181,7 +181,7 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 	if GetTaskAdaptorFunc == nil {
 		return summary
 	}
-/* APIDUO:async:END */
+	/* APIDUO:async:END */
 
 	common.SysLog(common.LogText("task progress polling started"))
 	sweepTimedOutTasks(ctx)
@@ -587,7 +587,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if privateData.Key != "" {
 		key = privateData.Key
 	}
-/* APIDUO:async:BEGIN */
+	/* APIDUO:async:BEGIN */
 	// APIDUO:multi-key-task-binding:BEGIN
 	// 多 key 渠道的 Channel.Key 是所有 key 用换行拼起来的：拿它当一把 key
 	// 发出去，上游只会回 401，任务永远停在 NOT_START。轮询必须用提交这个
@@ -599,7 +599,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		}
 	}
 	// APIDUO:multi-key-task-binding:END
-/* APIDUO:async:END */
+	/* APIDUO:async:END */
 	snap := task.Snapshot()
 	resp, err := adaptor.FetchTask(baseURL, key, task, proxy)
 	if err != nil {
@@ -714,7 +714,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		} else if taskResult.Url != "" {
-/* APIDUO:async:BEGIN */
+			/* APIDUO:async:BEGIN */
 			// APIDUO:result-url:BEGIN
 			// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.). The client may
 			// render it as a link, so a scheme it would execute must not be
@@ -730,7 +730,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			}
 			task.PrivateData.ResultURL = validated
 			// APIDUO:result-url:END
-/* APIDUO:async:END */
+			/* APIDUO:async:END */
 		} else {
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
@@ -743,7 +743,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		if task.FinishTime == 0 {
 			task.FinishTime = now
 		}
-/* APIDUO:poll-failure-confirm:BEGIN */
+		/* APIDUO:poll-failure-confirm:BEGIN */
 		task.FailReason = SanitizeUpstreamReason(taskResult.Reason, resp.StatusCode)
 		if task.FailReason == "" {
 			task.FailReason = task.PrivateData.PendingFailure
@@ -751,7 +751,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		if task.FailReason == "" {
 			task.FailReason = "upstream reported failure"
 		}
-/* APIDUO:poll-failure-confirm:END */
+		/* APIDUO:poll-failure-confirm:END */
 		logger.LogInfo(ctx, common.LogText("Task %s failed: %s", task.TaskID, task.FailReason))
 		taskResult.Progress = taskcommon.ProgressComplete
 		shouldFinalizeBilling = true
@@ -869,6 +869,11 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		}
 		bc.TieredSnapshot.UsageFacts = usageFacts
 		bc.TieredSnapshot.EstimatedTier = result.MatchedTier
+		// APIDUO:task-usage-audit:BEGIN
+		// Audit before the quota moves: the row reports what was reserved and
+		// what the fallback tier settled on. A no-op when tokens were reported.
+		RecordTaskUsageFallbackAudit(ctx, task, task.Quota, result.ActualQuotaAfterGroup)
+		// APIDUO:task-usage-audit:END
 		RecalculateTaskQuota(ctx, task, result.ActualQuotaAfterGroup, common.NewMessage("Settled by the task usage expression"), result.Clamp)
 		return true
 	}
@@ -943,7 +948,7 @@ func unrecognizedPollDetail(reason string, body []byte) string {
 }
 
 func recordPollFailure(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, class string, statusCode int, detail string) error {
-/* APIDUO:async:BEGIN */
+	/* APIDUO:async:BEGIN */
 	// APIDUO:task-poll-unrecognized:BEGIN
 	// 上游在 2xx 里给了一个我们读不懂（或根本没写）的状态：它**没有说失败**，
 	// 只是这条状态我们还认不出来。这种「不知道」不该累计成失败 —— 二十次就把
@@ -955,7 +960,7 @@ func recordPollFailure(ctx context.Context, adaptor TaskPollingAdaptor, task *mo
 		return nil
 	}
 	// APIDUO:task-poll-unrecognized:END
-/* APIDUO:async:END */
+	/* APIDUO:async:END */
 	task.PrivateData.PollFailures++
 	// TASK_POLL_MAX_FAILURES <= 0 disables the consecutive-failure cutoff, matching
 	// TASK_TIMEOUT_MINUTES semantics; the 72h sweep (TASK_TIMEOUT_MINUTES default

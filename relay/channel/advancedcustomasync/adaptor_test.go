@@ -2,6 +2,7 @@ package advancedcustomasync
 
 import (
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 
@@ -534,7 +536,7 @@ func TestValidateRequestSetsImageActionForImagesProtocol(t *testing.T) {
 
 func TestValidateRequestKeepsContentInferenceForArkProtocol(t *testing.T) {
 	cases := map[string]string{
-		`{"model":"doubao-seedance-1-0-pro","content":[{"type":"text","text":"a cat"}]}`: constant.TaskActionTextToVideo,
+		`{"model":"doubao-seedance-1-0-pro","content":[{"type":"text","text":"a cat"}]}`:               constant.TaskActionTextToVideo,
 		`{"model":"doubao-seedance-1-0-pro","content":[{"type":"image_url","image_url":{"url":"x"}}]}`: constant.TaskActionImageToVideo,
 	}
 	for body, want := range cases {
@@ -647,6 +649,210 @@ func TestValidateRequestRejectsArkCallbackURL(t *testing.T) {
 		}
 		if !strings.Contains(taskErr.Message, "callback_url") {
 			t.Fatalf("%s: message must name the field: %s", tc.name, taskErr.Message)
+		}
+	}
+}
+
+// 三类模式共用同一组 facts：按次读 count、按秒读 seconds、按 token 读 tokens。
+// 这里把三种表达式都真跑一遍，避免"接口实现了但表达式算不出来"这种情况。
+func TestExtractUsageFactsPowersPerSecondExpression(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{
+		Mode: kitdto.AdvancedAsyncBillingPerSecond,
+		Factors: []kitdto.AdvancedAsyncBillingFactor{{
+			Key:     "resolution",
+			Path:    []string{"resolution"},
+			Values:  map[string]float64{"480p": 1, "720p": 2},
+			Default: 2,
+		}},
+	}
+	adaptor := testAdaptor(t, config)
+	adaptor.submitBody = []byte(`{"model":"vendor-model","duration":5,"resolution":"720p"}`)
+
+	facts := adaptor.ExtractUsageFacts(nil, nil)
+	if facts["seconds"] != float64(5) {
+		t.Fatalf("seconds = %v, want 5", facts["seconds"])
+	}
+	if facts["count"] != float64(1) {
+		t.Fatalf("count = %v, want 1", facts["count"])
+	}
+	if facts["tokens"] != float64(0) {
+		t.Fatalf("tokens = %v, want 0 before the vendor answers", facts["tokens"])
+	}
+	if facts["factor"] != float64(2) {
+		t.Fatalf("factor = %v, want 2", facts["factor"])
+	}
+
+	cost, _, err := billingexpr.RunExprWithRequest(
+		`tier("base", u("seconds") * u("factor") * 0.01)`,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{Usage: facts},
+	)
+	if err != nil {
+		t.Fatalf("per-second expression must evaluate: %v", err)
+	}
+	if math.Abs(cost-0.10) > 1e-9 {
+		t.Fatalf("per-second cost = %v, want 0.10 (5s x 720p x 0.01)", cost)
+	}
+}
+
+func TestExtractUsageFactsPowersPerCallAndPerTokenExpressions(t *testing.T) {
+	adaptor := testAdaptor(t, testConfig())
+	adaptor.submitBody = []byte(`{"model":"vendor-model","duration":5}`)
+	facts := adaptor.ExtractUsageFacts(nil, nil)
+
+	perCall, _, err := billingexpr.RunExprWithRequest(
+		`tier("request", u("count") * 0.10)`,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{Usage: facts},
+	)
+	if err != nil {
+		t.Fatalf("per-call expression must evaluate: %v", err)
+	}
+	if math.Abs(perCall-0.10) > 1e-9 {
+		t.Fatalf("per-call cost = %v, want 0.10", perCall)
+	}
+
+	// 完成回包后 poller 会用实测值覆盖这份 facts，这里模拟覆盖后的求值。
+	facts["tokens"] = float64(120000)
+	perToken, _, err := billingexpr.RunExprWithRequest(
+		`tier("base", u("tokens") * 10.0 / 1000000)`,
+		billingexpr.TokenParams{},
+		billingexpr.RequestInput{Usage: facts},
+	)
+	if err != nil {
+		t.Fatalf("per-token expression must evaluate: %v", err)
+	}
+	if math.Abs(perToken-1.2) > 1e-9 {
+		t.Fatalf("per-token cost = %v, want 1.2 (120000 tokens x $10/1M)", perToken)
+	}
+}
+
+// 缺 duration、缺分辨率时不能算出 nil：兜底值必须来自渠道配置。
+func TestExtractUsageFactsFallsBackToConfiguredDefaults(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{
+		Mode:           kitdto.AdvancedAsyncBillingPerSecond,
+		DefaultSeconds: 3,
+		Factors: []kitdto.AdvancedAsyncBillingFactor{{
+			Key:     "resolution",
+			Path:    []string{"resolution"},
+			Values:  map[string]float64{"480p": 1, "720p": 2},
+			Default: 2,
+		}},
+	}
+	adaptor := testAdaptor(t, config)
+	adaptor.submitBody = []byte(`{"model":"vendor-model"}`)
+
+	facts := adaptor.ExtractUsageFacts(nil, nil)
+	if facts["seconds"] != float64(3) {
+		t.Fatalf("seconds = %v, want the channel default 3", facts["seconds"])
+	}
+	if facts["factor"] != float64(2) {
+		t.Fatalf("factor = %v, want the factor default 2", facts["factor"])
+	}
+}
+
+func TestParseTaskResultPublishesTokenUsageFacts(t *testing.T) {
+	config := testConfig()
+	config.Fields.TotalTokensPath = []string{"usage", "total_tokens"}
+	adaptor := testAdaptor(t, config)
+	task := &model.Task{ChannelId: 7}
+	task.PrivateData.UpstreamTaskID = "upstream-42"
+
+	body := []byte(`{"data":{"task":{"state":"DONE_VENDOR"}},"usage":{"total_tokens":120000}}`)
+	result, err := adaptor.ParseTaskResult(task, nil, body)
+	if err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if result.UsageFacts["tokens"] != float64(120000) {
+		t.Fatalf("usage facts = %v, want tokens=120000", result.UsageFacts)
+	}
+}
+
+// 渠道未初始化时只能给安全常量，不能凭空造出 factor/seconds —— 那种请求在
+// 校验阶段就该 400，走到计费说明配置已经坏了。
+func TestExtractUsageFactsWithoutConfigKeepsOnlyConstants(t *testing.T) {
+	adaptor := &Adaptor{}
+	facts := adaptor.ExtractUsageFacts(nil, nil)
+	if facts["count"] != float64(1) || facts["tokens"] != float64(0) {
+		t.Fatalf("facts = %v, want count=1 tokens=0", facts)
+	}
+	if _, ok := facts["factor"]; ok {
+		t.Fatalf("no config must not invent a factor: %v", facts["factor"])
+	}
+}
+
+// 上游不报用量时不能留下一个空 map：空 map 会被当成"事实存在但为空"，
+// 与"没有事实"在合并语义里是两回事。
+func TestParseTaskResultLeavesUsageFactsNilWithoutTokens(t *testing.T) {
+	adaptor := testAdaptor(t, testConfig())
+	task := &model.Task{ChannelId: 7}
+	task.PrivateData.UpstreamTaskID = "upstream-42"
+
+	body := []byte(`{"data":{"task":{"state":"DONE_VENDOR","video_url":"https://cdn.example/v.mp4"}}}`)
+	result, err := adaptor.ParseTaskResult(task, nil, body)
+	if err != nil {
+		t.Fatalf("parse result: %v", err)
+	}
+	if result.UsageFacts != nil {
+		t.Fatalf("usage facts = %v, want nil when the vendor reports no tokens", result.UsageFacts)
+	}
+}
+
+// 多个 factor 是相乘而不是取其一，否则叠加"分辨率 + 画质"两档时只算一档。
+func TestExtractUsageFactsMultipliesEveryFactor(t *testing.T) {
+	config := testConfig()
+	config.Billing = kitdto.AdvancedAsyncBilling{
+		Mode: kitdto.AdvancedAsyncBillingPerSecond,
+		Factors: []kitdto.AdvancedAsyncBillingFactor{
+			{
+				Key:     "resolution",
+				Path:    []string{"resolution"},
+				Values:  map[string]float64{"480p": 1, "720p": 2},
+				Default: 2,
+			},
+			{
+				Key:     "quality",
+				Path:    []string{"quality"},
+				Values:  map[string]float64{"standard": 1, "high": 1.5},
+				Default: 1,
+			},
+		},
+	}
+	adaptor := testAdaptor(t, config)
+	adaptor.submitBody = []byte(`{"model":"vendor-model","duration":4,"resolution":"720p","quality":"high"}`)
+
+	facts := adaptor.ExtractUsageFacts(nil, nil)
+	if facts["factor"] != float64(3) {
+		t.Fatalf("factor = %v, want 3 (2 x 1.5)", facts["factor"])
+	}
+	if facts["seconds"] != float64(4) {
+		t.Fatalf("seconds = %v, want 4", facts["seconds"])
+	}
+}
+
+// 端到端口径：上游返回 tokens 就按 token 结算；不报用量时按次兜底。
+// 中间不插按秒档是刻意的：seconds 事实在请求没带 duration 时不存在，多一档
+// 就多一条「缺字段即 400」的路径 —— 而退档的意义恰恰是不让请求失败。
+func TestTokenFallbackToPerCallExpression(t *testing.T) {
+	expr := `u("tokens") > 0 ? tier("token", u("tokens") * 9.8 / 1000000) : tier("call", u("count") * 0.20)`
+	cases := []struct {
+		name  string
+		facts map[string]any
+		want  float64
+	}{
+		{"token present bills per token", map[string]any{"count": float64(1), "seconds": float64(5), "factor": float64(2), "tokens": float64(100000)}, 0.98},
+		{"token missing falls back to per call", map[string]any{"count": float64(1), "seconds": float64(5), "factor": float64(2), "tokens": float64(0)}, 0.20},
+		{"fallback survives a request without duration", map[string]any{"count": float64(1), "factor": float64(1), "tokens": float64(0)}, 0.20},
+	}
+	for _, tc := range cases {
+		cost, _, err := billingexpr.RunExprWithRequest(expr, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: tc.facts})
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if math.Abs(cost-tc.want) > 1e-9 {
+			t.Fatalf("%s: cost = %v, want %v", tc.name, cost, tc.want)
 		}
 	}
 }

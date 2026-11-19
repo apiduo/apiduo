@@ -39,6 +39,10 @@ type Adaptor struct {
 
 var _ channel.TaskAdaptor = (*Adaptor)(nil)
 
+// TaskUsageFactsProvider is what lets a model on this channel use the tiered
+// expression pricing instead of the legacy billing.mode path.
+var _ channel.TaskUsageFactsProvider = (*Adaptor)(nil)
+
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	a.info = info
 	if info == nil {
@@ -188,6 +192,54 @@ func (a *Adaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) m
 		return nil
 	}
 	return ratios
+}
+
+// ExtractUsageFacts publishes the dimensions a tiered task expression prices.
+// Without it a model on this channel could only be billed through
+// billing.mode, so one model could not express per-call, per-second and
+// per-token pricing at the same time. The facts keep stable names:
+//
+//	per call    tier("request", u("count") * 0.10)
+//	per second  tier("base", u("seconds") * u("factor") * 0.01)
+//	per token   tier("base", u("tokens") * 9.8 / 1000000)
+//
+// tokens stays zero until the vendor reports a count; the completion poll
+// overlays the measured value through TaskInfo.UsageFacts, so settlement
+// re-evaluates against real numbers while the reservation used zero.
+func (a *Adaptor) ExtractUsageFacts(c *gin.Context, info *relaycommon.RelayInfo) map[string]any {
+	facts := map[string]any{
+		"count":  float64(1),
+		"tokens": float64(0),
+	}
+	if a.config == nil {
+		return facts
+	}
+	// Seconds: a client-declared duration wins, the channel fallback covers a
+	// body without one. Per-call and per-token expressions never read it.
+	seconds := a.requestedSeconds()
+	if seconds <= 0 {
+		seconds = a.config.Billing.DefaultSeconds
+	}
+	if seconds > 0 {
+		facts["seconds"] = seconds
+	}
+	// Factors share their source with EstimateBilling and are collapsed into a
+	// single fixed fact, so an expression does not need to know how many
+	// factors a channel declares. An absent or unmatched value resolves to the
+	// configured default instead of nil.
+	decoded := any(map[string]any{})
+	if len(a.submitBody) > 0 {
+		if err := common.Unmarshal(a.submitBody, &decoded); err != nil {
+			decoded = map[string]any{}
+		}
+	}
+	factor := float64(1)
+	for _, entry := range a.config.Billing.Factors {
+		multiplier, _, _ := entry.MultiplierOf(decoded)
+		factor *= multiplier
+	}
+	facts["factor"] = factor
+	return facts
 }
 
 // apiduoBillingModelName is the model name a per-model billing override is
@@ -462,6 +514,17 @@ func (a *Adaptor) ParseTaskResult(task *model.Task, resp *http.Response, respBod
 	// numbers; the host recalculates the quota when these are present.
 	result.CompletionTokens = advancedAsyncTokensAt(decoded, config.Fields.CompletionTokensPath)
 	result.TotalTokens = advancedAsyncTokensAt(decoded, config.Fields.TotalTokensPath)
+	// A tiered expression reads the vendor's own count through u("tokens").
+	// The poller merges these facts over the frozen submission facts, so a
+	// per-token model settles on measured usage instead of the reservation.
+	// Merge instead of replace: a future fact added here must not silently
+	// drop one another.
+	if result.TotalTokens > 0 {
+		if result.UsageFacts == nil {
+			result.UsageFacts = make(map[string]any, 1)
+		}
+		result.UsageFacts["tokens"] = float64(result.TotalTokens)
+	}
 	if status == "FAILURE" && result.Reason == "" {
 		result.Reason = "upstream reported failure"
 	}

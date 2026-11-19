@@ -484,3 +484,61 @@ func EvaluateTaskCompletionUsage(snap *billingexpr.BillingSnapshot, facts map[st
 	}
 	return result, usage, err
 }
+
+// APIDUO:task-usage-audit:BEGIN
+// recordedUsageFallback reports whether a task priced by the vendor's token
+// count settled without one, which means the expression took its non-token
+// tier. The amount alone cannot tell: a fallback that equals the reservation
+// writes no consume row at all, so support could not answer "why was this
+// charged the call price?" after the fact.
+func recordedUsageFallback(expression string, usage map[string]any) bool {
+	if !billingexpr.UsedUsageKeys(expression)["tokens"] {
+		return false
+	}
+	switch tokens := usage["tokens"].(type) {
+	case float64:
+		return tokens <= 0
+	case int:
+		return tokens <= 0
+	case int64:
+		return tokens <= 0
+	default:
+		// Absent or unreadable: the token tier cannot have been taken.
+		return true
+	}
+}
+
+// RecordTaskUsageFallbackAudit writes the audit row when the frozen snapshot
+// says the task settled without the token count its price expression reads. It
+// is a system log, not a charge: the quota already moved through the task's own
+// settlement, and a zero-amount consume row would pollute the owner's billing
+// list. Exported because the immediate-settlement path only has the persisted
+// task after the fact; the polling path calls it in the same place.
+func RecordTaskUsageFallbackAudit(ctx context.Context, task *model.Task, reserved, settled int) {
+	bc := task.PrivateData.BillingContext
+	if bc == nil || bc.TieredSnapshot == nil {
+		return
+	}
+	snap := bc.TieredSnapshot
+	if !recordedUsageFallback(snap.ExprString, snap.UsageFacts) {
+		return
+	}
+	logger.LogWarn(ctx, common.LogText("task %s settled without usage tokens (model %s, tier %s, reserved %s, settled %s)",
+		task.TaskID, taskModelName(task), snap.EstimatedTier, logger.LogQuota(reserved), logger.LogQuota(settled)))
+	other := taskBillingOther(task)
+	other.SetPublic("usage_fallback", "tokens_missing")
+	other.SetPublic("pre_consumed_quota", reserved)
+	other.SetPublic("actual_quota", settled)
+	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+		UserId:    task.UserId,
+		LogType:   model.LogTypeSystem,
+		Content:   []*common.Message{common.NewMessage("Task settled on the fallback tier: the vendor reported no usage tokens", nil)},
+		ChannelId: task.ChannelId,
+		ModelName: taskModelName(task),
+		TokenId:   task.PrivateData.TokenId,
+		Group:     task.Group,
+		Other:     other,
+	})
+}
+
+// APIDUO:task-usage-audit:END

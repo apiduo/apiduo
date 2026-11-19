@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	// APIDUO:task-usage-facts:BEGIN
+	"slices"
+	// APIDUO:task-usage-facts:END
 	"strconv"
 	"strings"
 
@@ -39,6 +42,12 @@ type TaskSubmitResult struct {
 	Quota          int
 	Immediate      *relaycommon.TaskInfo
 	PluginState    []byte
+	// APIDUO:task-usage-audit:BEGIN
+	// ReservedQuota is what the submission pre-consumed before an immediate
+	// terminal result settled it. The audit row reports both numbers, and the
+	// polling path has them on the task while this path does not.
+	ReservedQuota int
+	// APIDUO:task-usage-audit:END
 	//PerCallPrice   types.PriceData
 }
 
@@ -316,7 +325,16 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		if runErr != nil || cost < 0 {
 			if runErr == nil {
 				runErr = fmt.Errorf("negative task expression result")
+				// APIDUO:task-usage-facts:BEGIN
+			} else if missing := missingUsageFacts(exprStr, facts); len(missing) > 0 {
+				// A missing fact surfaces as "<nil> * float64" plus the whole
+				// expression: the client reads a syntax error while the actual
+				// cause is a body field it did not send. The raw engine error
+				// stays in the server log so the rewrite cannot hide a real bug.
+				logger.LogWarn(c, common.LogText("task model %s expression run failed: %v", modelName, runErr))
+				runErr = fmt.Errorf("model %s: the price expression needs usage facts this request does not provide %v", modelName, missing)
 			}
+			// APIDUO:task-usage-facts:END
 			return nil, service.TaskErrorWrapper(runErr, "model_price_error", http.StatusBadRequest, common.UpstreamAddresses(c)...)
 		}
 		groupRatioInfo := helper.HandleGroupRatio(c, info)
@@ -411,6 +429,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
+	// APIDUO:task-usage-audit:BEGIN
+	reservedQuota := info.PriceData.Quota
+	// APIDUO:task-usage-audit:END
 	finalQuota := info.PriceData.Quota
 	if parsed.Immediate != nil && parsed.Immediate.Status == model.TaskStatusFailure {
 		finalQuota = 0
@@ -447,8 +468,28 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Quota:          finalQuota,
 		Immediate:      parsed.Immediate,
 		PluginState:    parsed.PluginState,
+		// APIDUO:task-usage-audit:BEGIN
+		ReservedQuota: reservedQuota,
+		// APIDUO:task-usage-audit:END
 	}, nil
 }
+
+// APIDUO:task-usage-facts:BEGIN
+// missingUsageFacts lists the literal u() keys the expression references that
+// this request did not publish. It is consulted only after evaluation failed,
+// so a key read from a branch that never runs cannot produce a false report.
+func missingUsageFacts(expression string, facts map[string]any) []string {
+	var missing []string
+	for key := range billingexpr.UsedUsageKeys(expression) {
+		if _, ok := facts[key]; !ok {
+			missing = append(missing, key)
+		}
+	}
+	slices.Sort(missing)
+	return missing
+}
+
+// APIDUO:task-usage-facts:END
 
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。
 // 公式: baseQuota × ∏(ratio) — 其中 baseQuota 是不含 OtherRatios 的基础额度。

@@ -6593,6 +6593,7 @@
     "Task plugins": "Плагины задач",
     "Task pricing": "Тарификация задач",
     "Task pricing must be converted manually using the task usage schema.": "Тарифы задач необходимо преобразовать вручную по схеме использования задачи.",
+    "Task settled on the fallback tier: the vendor reported no usage tokens": "Задача рассчитана по резервному тарифу: поставщик не сообщил расход токенов",
     "Task timed out": "Истекло время выполнения задачи",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "Истекло время выполнения задачи (задачи старой системы не возмещаются; обратитесь к администратору)",
     "Task usage data is required to estimate this expression. Check the model's task plugin configuration.": "Для оценки стоимости по этому выражению нужны данные использования задач. Проверьте настройки плагина задач модели.",

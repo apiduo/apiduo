@@ -601,6 +601,12 @@ func validateModelPricing(name string, values, previous PricingValues) error {
 					schema, _ := plugin.Meta.UsageForModel(target.Declared)
 					err = billing_setting.SmokeTestTaskExpr(expression, schema)
 				}
+			} else if keys := billingexpr.UsedUsageKeys(expression); len(keys) > 0 && onlyAdvancedAsyncUsageKeys(keys) { // APIDUO:task-usage-facts:BEGIN
+				// 非插件任务渠道（type 8001）由适配器直接提供 count/seconds/
+				// tokens/factor 四个事实，模型没有插件 schema 可声明。按内置
+				// 表校验，而不是把这类模型一律拒之门外。
+				err = billing_setting.SmokeTestTaskExpr(expression, billing_setting.AdvancedAsyncUsageSchema())
+				// APIDUO:task-usage-facts:END
 			} else if !unchanged || len(billingexpr.UsedUsageKeys(expression)) == 0 {
 				err = billing_setting.SmokeTestExpr(expression)
 			}
@@ -756,3 +762,19 @@ func mutateModelPricingOptions(mutate func(*gorm.DB, map[string]map[string]any) 
 	ratio_setting.InvalidateExposedDataCache()
 	return nil
 }
+
+// APIDUO:task-usage-facts:BEGIN
+// onlyAdvancedAsyncUsageKeys reports whether every literal u() key belongs to
+// the built-in facts of a non-plugin task channel (type 8001). A key outside
+// that table keeps the plugin-schema error, so a chat model cannot quietly
+// start reading task facts it will never receive.
+func onlyAdvancedAsyncUsageKeys(keys map[string]bool) bool {
+	for key := range keys {
+		if !billing_setting.IsAdvancedAsyncUsageKey(key) {
+			return false
+		}
+	}
+	return true
+}
+
+// APIDUO:task-usage-facts:END

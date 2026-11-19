@@ -6593,6 +6593,7 @@
     "Task plugins": "Task plugins",
     "Task pricing": "Task pricing",
     "Task pricing must be converted manually using the task usage schema.": "Task pricing must be converted manually using the task usage schema.",
+    "Task settled on the fallback tier: the vendor reported no usage tokens": "Task settled on the fallback tier: the vendor reported no usage tokens",
     "Task timed out": "Task timed out",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "Task timed out (a task left by the old system is not refunded; contact the administrator)",
     "Task usage data is required to estimate this expression. Check the model's task plugin configuration.": "Task usage data is required to estimate this expression. Check the model's task plugin configuration.",

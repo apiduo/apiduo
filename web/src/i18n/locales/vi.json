@@ -6593,6 +6593,7 @@
     "Task plugins": "Plugin tác vụ",
     "Task pricing": "Giá tác vụ",
     "Task pricing must be converted manually using the task usage schema.": "Cần chuyển đổi giá tác vụ thủ công theo lược đồ mức sử dụng tác vụ.",
+    "Task settled on the fallback tier: the vendor reported no usage tokens": "Tác vụ được tính theo mức giá dự phòng: nhà cung cấp không báo cáo token sử dụng",
     "Task timed out": "Tác vụ hết thời gian",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "Tác vụ hết thời gian (tác vụ còn sót từ hệ thống cũ không được hoàn tiền; hãy liên hệ quản trị viên)",
     "Task usage data is required to estimate this expression. Check the model's task plugin configuration.": "Cần dữ liệu sử dụng tác vụ để ước tính chi phí theo biểu thức này. Hãy kiểm tra cấu hình plugin tác vụ của mô hình.",

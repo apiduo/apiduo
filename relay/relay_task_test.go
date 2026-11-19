@@ -125,11 +125,28 @@ func TestRealtimeFetchRefundsTaskItFindsFailed(t *testing.T) {
 	tryRealtimeFetch(task, true)
 
 	var stored model.Task
+	// APIDUO:poll-failure-confirm:BEGIN
+	// A poll that reports failure is not the task's terminal state yet: a
+	// wrapping upstream says "failure" when its own fetch fails while the
+	// generation behind it keeps running. The first report is held for
+	// confirmation, so neither the status nor the money moves.
+	require.NoError(t, database.First(&stored, task.ID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusInProgress), stored.Status,
+		"one failure report is not terminal")
+	assert.Equal(t, 1000, stored.Quota, "nothing is refunded before the terminal state")
+	var user model.User
+	require.NoError(t, database.First(&user, 7).Error)
+	assert.Equal(t, 100, user.Quota)
+
+	// The second report confirms it: the task becomes terminal and the refund
+	// follows the terminal state.
+	tryRealtimeFetch(task, true)
+	// APIDUO:poll-failure-confirm:END
+
 	require.NoError(t, database.First(&stored, task.ID).Error)
 	assert.Equal(t, model.TaskStatus(model.TaskStatusFailure), stored.Status)
 	assert.Equal(t, "blocked by safety", stored.FailReason)
 	assert.Zero(t, stored.Quota, "the failed task is refunded")
-	var user model.User
 	require.NoError(t, database.First(&user, 7).Error)
 	assert.Equal(t, 1100, user.Quota)
 }

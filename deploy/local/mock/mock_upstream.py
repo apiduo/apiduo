@@ -30,6 +30,9 @@ SLOW_ACTIVE = [0]
 SLOW_MAX = [0]
 SLOW_LOCK = threading.Lock()
 TASK_POLLS = {}
+# 任务型上游回报的 token 数。按 duration 折算（每秒 24000），这样「按 token
+# 结算」读到的是只有完成回包才有的数字，客户端无法在提交时自己算出来。
+TASK_TOKENS = {}
 
 
 def log(line: str) -> None:
@@ -119,6 +122,36 @@ class Handler(BaseHTTPRequestHandler):
                 "task_id": task_id,
                 "status": "SUCCEEDED",
                 "url": f"http://mock-upstream:18080/mock/out/{task_id}.png",
+            })
+            return
+        if path.startswith("/mock/tasks/query/"):
+            task_id = path[len("/mock/tasks/query/"):]
+            polls = TASK_POLLS.get(task_id, 0) + 1
+            TASK_POLLS[task_id] = polls
+            if polls < 2:
+                self._json({"task_id": task_id, "status": "RUNNING"})
+                return
+            # 终态才带 usage：客户端/网关在轮询阶段读不到 token 数。
+            self._json({
+                "task_id": task_id,
+                "status": "SUCCEEDED",
+                "url": f"http://mock-upstream:18080/mock/out/{task_id}.mp4",
+                "usage": {"total_tokens": TASK_TOKENS.get(task_id, 0)},
+            })
+            return
+        if path.startswith("/mock/tasks/query-nousage/"):
+            # 完成回包不带 usage：运营配了 total_tokens_path、上游却没报用量时
+            # 的样子。按 token 的表达式在这种回包下会读到 tokens=0。
+            task_id = path[len("/mock/tasks/query-nousage/"):]
+            polls = TASK_POLLS.get(task_id, 0) + 1
+            TASK_POLLS[task_id] = polls
+            if polls < 2:
+                self._json({"task_id": task_id, "status": "RUNNING"})
+                return
+            self._json({
+                "task_id": task_id,
+                "status": "SUCCEEDED",
+                "url": f"http://mock-upstream:18080/mock/out/{task_id}.mp4",
             })
             return
         if path.startswith("/mock/bad-url/query/"):
@@ -248,6 +281,7 @@ class Handler(BaseHTTPRequestHandler):
                 SLOW_ACTIVE[0] = 0
                 SLOW_MAX[0] = 0
             TASK_POLLS.clear()
+            TASK_TOKENS.clear()
             self._json({"reset": True})
             return
 
@@ -285,6 +319,23 @@ class Handler(BaseHTTPRequestHandler):
         if path.rstrip("/") == "/mock/fail-500":
             log("mock failure endpoint hit")
             self._json({"error": {"message": "mock upstream failure"}}, 500)
+            return
+
+        if path.rstrip("/") == "/mock/tasks/submit":
+            try:
+                request = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                request = {}
+            TASK_SEQ[0] += 1
+            task_id = f"mock-task-{TASK_SEQ[0]}"
+            TASK_POLLS[task_id] = 0
+            try:
+                seconds = float(request.get("duration") or 5)
+            except (TypeError, ValueError):
+                seconds = 5.0
+            TASK_TOKENS[task_id] = int(seconds * 24000)
+            log(f"submit task {task_id} model={request.get('model')} duration={seconds} tokens={TASK_TOKENS[task_id]}")
+            self._json({"task_id": task_id, "status": "QUEUED"})
             return
 
         if path.rstrip("/") == "/mock/images/submit":

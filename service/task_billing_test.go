@@ -1810,3 +1810,30 @@ func TestSettle_TokenRecalcFallsBackToCompletionTokens(t *testing.T) {
 		})
 	}
 }
+
+// APIDUO:task-usage-audit:BEGIN
+// A token-priced task that settles without a token count took the fallback
+// tier, and that has to be recordable: the amount alone cannot say it, because
+// a fallback equal to the reservation writes no consume row at all.
+func TestRecordedUsageFallbackDetectsMissingTokens(t *testing.T) {
+	const expression = `u("tokens") > 0 ? tier("token", u("tokens") * 10.0 / 1000000) : tier("call", u("count") * 0.20)`
+	cases := []struct {
+		name       string
+		expression string
+		usage      map[string]any
+		want       bool
+	}{
+		{"token fact absent", expression, map[string]any{"count": float64(1)}, true},
+		{"token count zero", expression, map[string]any{"count": float64(1), "tokens": float64(0)}, true},
+		{"token count reported", expression, map[string]any{"count": float64(1), "tokens": float64(120000)}, false},
+		{"integer token count reported", expression, map[string]any{"tokens": int64(5)}, false},
+		{"expression never reads tokens", `tier("call", u("count") * 0.2)`, map[string]any{"count": float64(1)}, false},
+	}
+	for _, tc := range cases {
+		if got := recordedUsageFallback(tc.expression, tc.usage); got != tc.want {
+			t.Fatalf("%s: recordedUsageFallback = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// APIDUO:task-usage-audit:END

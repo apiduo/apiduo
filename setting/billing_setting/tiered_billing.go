@@ -243,6 +243,33 @@ func smokeTestExpr(exprStr string) error {
 	return nil
 }
 
+// APIDUO:task-usage-facts:BEGIN
+// advancedAsyncUsageSchema describes the usage facts a non-plugin task channel
+// (type 8001) publishes for itself. These models have no plugin to declare a
+// schema, so saving their price validates u() keys against this fixed table.
+// The keys must stay in sync with advancedcustomasync.ExtractUsageFacts.
+var advancedAsyncUsageSchema = map[string]jsplugin.UsageFieldSchema{
+	"count":   {Type: "number", Unit: "count"},
+	"seconds": {Type: "number", Unit: "second"},
+	"tokens":  {Type: "number", Unit: "token"},
+	"factor":  {Type: "number", Unit: "count"},
+}
+
+// AdvancedAsyncUsageSchema returns a copy of the built-in facts of a non-plugin
+// task channel, so a caller cannot mutate the package-level table by accident.
+func AdvancedAsyncUsageSchema() map[string]jsplugin.UsageFieldSchema {
+	return maps.Clone(advancedAsyncUsageSchema)
+}
+
+// IsAdvancedAsyncUsageKey reports whether a literal u() key belongs to the
+// built-in task facts. Other undeclared keys keep the plugin-schema rejection.
+func IsAdvancedAsyncUsageKey(key string) bool {
+	_, ok := advancedAsyncUsageSchema[strings.TrimSpace(key)]
+	return ok
+}
+
+// APIDUO:task-usage-facts:END
+
 // SmokeTestTaskExpr validates a task usage expression against the usage facts
 // declared by its plugin. Literal u() keys must be declared; dynamic calls are
 // still exercised by the generated runtime vectors when possible.

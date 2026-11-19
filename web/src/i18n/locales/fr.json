@@ -6593,6 +6593,7 @@
     "Task plugins": "Plugins de tâche",
     "Task pricing": "Tarification des tâches",
     "Task pricing must be converted manually using the task usage schema.": "La tarification des tâches doit être convertie manuellement selon leur schéma d’utilisation.",
+    "Task settled on the fallback tier: the vendor reported no usage tokens": "Tâche réglée au tarif de repli : le fournisseur n'a signalé aucun token d'usage",
     "Task timed out": "La tâche a expiré",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "La tâche a expiré (une tâche laissée par l'ancien système n'est pas remboursée ; contactez l'administrateur)",
     "Task usage data is required to estimate this expression. Check the model's task plugin configuration.": "Les données d’utilisation des tâches sont nécessaires pour estimer le coût de cette expression. Vérifiez la configuration du plugin de tâches du modèle.",

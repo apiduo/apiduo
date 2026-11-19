@@ -128,3 +128,22 @@ func TestSmokeTestExprRejectsTaskUsageWithoutSchema(t *testing.T) {
 
 	require.NoError(t, SmokeTestExpr(`tier("base", p * 2 + c * 8)`))
 }
+
+// APIDUO:task-usage-facts:BEGIN
+// 内置事实表是包级变量，借出去必须给副本，否则调用方一次 delete 就能让
+// 之后所有保存校验失去这一项。
+func TestAdvancedAsyncUsageSchemaReturnsIndependentCopy(t *testing.T) {
+	schema := AdvancedAsyncUsageSchema()
+	require.Contains(t, schema, "seconds")
+
+	delete(schema, "seconds")
+	schema["injected"] = jsplugin.UsageFieldSchema{Unit: "count"}
+
+	fresh := AdvancedAsyncUsageSchema()
+	require.Contains(t, fresh, "seconds", "删除副本的键不能影响内置表")
+	require.NotContains(t, fresh, "injected", "副本上的新增不能回流内置表")
+	require.True(t, IsAdvancedAsyncUsageKey("factor"))
+	require.False(t, IsAdvancedAsyncUsageKey("injected"))
+}
+
+// APIDUO:task-usage-facts:END

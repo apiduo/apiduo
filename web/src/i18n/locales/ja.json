@@ -6593,6 +6593,7 @@
     "Task plugins": "タスクプラグイン",
     "Task pricing": "タスク料金",
     "Task pricing must be converted manually using the task usage schema.": "タスク料金はタスクの使用量スキーマに基づいて手動で変換してください。",
+    "Task settled on the fallback tier: the vendor reported no usage tokens": "タスクはフォールバック料金で精算されました：上流が使用トークンを報告しませんでした",
     "Task timed out": "タスクがタイムアウトしました",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "タスクがタイムアウトしました（旧システムのタスクは返金されません。管理者に連絡してください）",
     "Task usage data is required to estimate this expression. Check the model's task plugin configuration.": "この式の料金を見積もるにはタスク使用量データが必要です。モデルのタスクプラグイン設定をご確認ください。",

@@ -182,7 +182,19 @@ export function parseTaskResult() { return {}; }
 	assert.Contains(t, rejectedDeclared.Body.String(), `"success":false`)
 	assert.Contains(t, rejectedDeclared.Body.String(), `usage key \"image_count\" is not declared`)
 
-	unresolvable := putExpr("unknown-alias-model", `u("seconds")`)
+	// APIDUO:task-usage-facts:BEGIN
+	// A model with neither a plugin nor an alias can still be priced from the
+	// built-in task facts: its advanced-async channel is configured separately
+	// and may not exist yet, so the price cannot be gated on one. A key outside
+	// that table stays rejected, which is what keeps a chat quantity from being
+	// sold as task usage.
+	builtinFacts := putExpr("unknown-alias-model", `u("seconds")`)
+	assert.Equal(t, http.StatusOK, builtinFacts.Code)
+	assert.Contains(t, builtinFacts.Body.String(), `"success":true`)
+
+	unresolvable := putExpr("unknown-alias-model", `u("image_count")`)
+	// APIDUO:task-usage-facts:END
+
 	assert.Equal(t, http.StatusOK, unresolvable.Code)
 	assert.Contains(t, unresolvable.Body.String(), `"success":false`)
 	assert.Contains(t, unresolvable.Body.String(), "no task plugin usage schema")

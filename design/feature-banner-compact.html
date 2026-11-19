@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>窄版顶部横幅 · 三个方案</title>
+<style>
+  /* ---- 取自 web/src/styles/theme.css 的真实色板 ---- */
+  :root{
+    --radius: 1rem;
+    --bg: oklch(1 0 0);
+    --fg: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --border: oklch(0.93 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-fg: oklch(0.49 0 0);
+    --primary: oklch(0.692 0.141 243.716);
+    --primary-fg: oklch(1 0 0);
+    --shadow: 0 1px 2px rgb(0 0 0 / .05), 0 6px 18px -8px rgb(0 0 0 / .12);
+    --sidebar: oklch(0.985 0 0);
+    --kind-feature: oklch(0.67 0.15 243);
+    --kind-improvement: oklch(0.66 0.15 163);
+    --kind-fix: oklch(0.62 0 0);
+  }
+  html.dark{
+    --bg: oklch(0.235 0 0);
+    --fg: oklch(0.965 0 0);
+    --card: oklch(0.285 0 0);
+    --border: oklch(1 0 0 / 10%);
+    --muted: oklch(0.305 0 0);
+    --muted-fg: oklch(0.78 0 0);
+    --primary: oklch(0.54 0.142 248.516);
+    --primary-fg: oklch(1 0 0);
+    --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 24px -10px rgb(0 0 0 / .55);
+    --sidebar: oklch(0.225 0 0);
+    --kind-feature: oklch(0.76 0.14 250);
+    --kind-improvement: oklch(0.76 0.14 163);
+    --kind-fix: oklch(0.76 0 0);
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: color-mix(in oklab, var(--bg) 92%, var(--fg));
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  code{
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: .86em;
+    background: color-mix(in oklab, var(--fg) 7%, transparent);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .doc{ max-width: 1240px; margin: 0 auto; padding: 40px 28px 72px; }
+
+  /* ---------- 文档头 ---------- */
+  .doc-head{
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 24px; margin-bottom: 36px;
+  }
+  .eyebrow{
+    margin: 0 0 8px; font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--muted-fg);
+  }
+  .doc-head h1{ margin: 0; font-size: 26px; letter-spacing: -.01em; font-weight: 650; }
+  .lede{ margin: 10px 0 0; max-width: 62ch; color: var(--muted-fg); font-size: 13.5px; }
+  #theme{
+    flex: none; height: 30px; padding: 0 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card); color: var(--fg);
+    font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  #theme:hover{ background: color-mix(in oklab, var(--fg) 5%, var(--card)); }
+
+  /* ---------- 区块 ---------- */
+  .block{ margin-top: 34px; }
+  .block:first-of-type{ margin-top: 0; }
+  .block-head{ display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .block-head h2{ margin: 0; font-size: 15px; font-weight: 620; }
+  .block-head p{ margin: 0; font-size: 12.5px; color: var(--muted-fg); flex-basis: 100%; }
+  .tag{
+    display: inline-block; padding: 1px 7px; border-radius: 5px;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .02em; vertical-align: 1px;
+  }
+  .tag--rec{
+    color: var(--primary);
+    background: color-mix(in oklab, var(--primary) 14%, transparent);
+  }
+  .tag--alt{ color: var(--muted-fg); background: color-mix(in oklab, var(--fg) 8%, transparent); }
+
+  /* ---------- 应用窗口 ---------- */
+  .frame{
+    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    background: var(--bg); box-shadow: var(--shadow);
+  }
+  .frame-bar{
+    display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--fg) 3%, var(--bg));
+  }
+  .dot{ width: 9px; height: 9px; border-radius: 50%; background: color-mix(in oklab, var(--fg) 18%, transparent); }
+  .frame-url{
+    margin-left: 8px; font-size: 11.5px; color: var(--muted-fg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .app{ display: flex; height: 470px; overflow: hidden; }
+
+  .sb{
+    width: 188px; flex: none; padding: 14px 10px;
+    border-right: 1px solid var(--border); background: var(--sidebar);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .sb-brand{ display: flex; align-items: center; gap: 8px; padding: 0 8px 14px; font-size: 13px; font-weight: 620; }
+  .sb-mark{
+    width: 20px; height: 20px; border-radius: 6px;
+    background: linear-gradient(145deg, var(--primary), color-mix(in oklab, var(--primary) 55%, oklch(0.7 0.19 320)));
+  }
+  .sb-item{
+    height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 8px;
+    border-radius: 7px; font-size: 12.5px; color: var(--muted-fg);
+  }
+  .sb-item.is-active{ background: color-mix(in oklab, var(--primary) 16%, transparent); color: var(--fg); font-weight: 560; }
+  .sb-dot{ width: 12px; height: 12px; border-radius: 4px; border: 1.4px solid currentColor; opacity: .55; }
+
+  .main{ flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar{
+    height: 46px; flex: none; display: flex; align-items: center; gap: 14px;
+    padding: 0 18px; border-bottom: 1px solid var(--border);
+    font-size: 12.5px; color: var(--muted-fg);
+  }
+  .topbar b{ font-weight: 560; color: var(--fg); }
+  .topbar .spacer{ flex: 1; }
+  .topbar .avatar{ width: 22px; height: 22px; border-radius: 50%; background: color-mix(in oklab, var(--fg) 14%, transparent); }
+
+  .viewport{ flex: 1; min-height: 0; overflow-y: auto; }
+  .viewport::-webkit-scrollbar{ width: 8px; }
+  .viewport::-webkit-scrollbar-thumb{ background: color-mix(in oklab, var(--fg) 16%, transparent); border-radius: 4px; }
+
+  /* ---------- 页面内容占位 ---------- */
+  .content{ padding: 20px 22px 26px; }
+  .content h3{ margin: 0 0 4px; font-size: 17px; font-weight: 620; letter-spacing: -.01em; }
+  .content .sub{ margin: 0 0 18px; font-size: 12.5px; color: var(--muted-fg); }
+  .cards{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .card{
+    border: 1px solid var(--border); border-radius: 12px; background: var(--card);
+    padding: 14px; min-height: 92px;
+  }
+  .card .k{ margin: 0; font-size: 11.5px; color: var(--muted-fg); }
+  .card .v{ margin: 6px 0 0; font-size: 22px; font-weight: 620; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .card .d{ margin: 4px 0 0; font-size: 11px; color: var(--kind-improvement); }
+  .panel{
+    margin-top: 12px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--card); padding: 14px; min-height: 150px;
+  }
+  .panel .bar{ height: 8px; border-radius: 4px; background: color-mix(in oklab, var(--fg) 8%, transparent); margin-bottom: 9px; }
+  .panel .bar:nth-child(2){ width: 72%; }
+  .panel .bar:nth-child(3){ width: 46%; }
+
+  /* ---------- 横幅通用 ---------- */
+  .banner{
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) * .75);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .banner.is-gone{ opacity: 0; transform: translateY(-6px) scale(.985); pointer-events: none; }
+
+  .row{ display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 9px; min-height: 42px; }
+  .glyph{
+    flex: none; width: 26px; height: 26px; border-radius: 8px;
+    display: grid; place-items: center;
+    color: var(--primary);
+    background: color-mix(in oklab, var(--primary) 15%, transparent);
+  }
+  .glyph svg{ width: 14px; height: 14px; }
+
+  .text{ min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 8px; }
+  .text .n{ font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .text .sep{ color: color-mix(in oklab, var(--muted-fg) 60%, transparent); }
+  .text .latest{
+    font-size: 12px; color: var(--muted-fg);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .btn{
+    flex: none; height: 26px; padding: 0 9px; border-radius: 7px;
+    border: 0; background: transparent; color: var(--muted-fg);
+    font: inherit; font-size: 12px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .btn:hover{ background: color-mix(in oklab, var(--fg) 7%, transparent); color: var(--fg); }
+  .btn .chev{ transition: transform .18s ease; }
+  .banner[data-expanded="true"] .btn .chev{ transform: rotate(180deg); }
+  .btn-x{
+    flex: none; width: 26px; height: 26px; padding: 0;
+    display: grid; place-items: center; border: 0; border-radius: 7px;
+    background: transparent; color: var(--muted-fg); cursor: pointer;
+  }
+  .btn-x:hover{ background: color-mix(in oklab, var(--fg) 8%, transparent); color: var(--fg); }
+  .btn-x svg{ width: 13px; height: 13px; }
+
+  /* ---------- 列表 ---------- */
+  .list{
+    margin: 0; padding: 2px 10px 0; list-style: none;
+    border-top: 1px solid var(--border);
+    max-height: min(232px, 38vh); overflow-y: auto;
+    display: none;
+  }
+  .banner[data-expanded="true"] .list{ display: block; }
+  .list::-webkit-scrollbar{ width: 7px; }
+  .list::-webkit-scrollbar-thumb{ background: color-mix(in oklab, var(--fg) 15%, transparent); border-radius: 4px; }
+
+  .list li{
+    display: flex; gap: 9px; align-items: flex-start;
+    padding: 9px 2px; border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+  }
+  .list li:last-child{ border-bottom: 0; }
+  .kind{ flex: none; width: 6px; height: 6px; border-radius: 50%; margin-top: 6px; }
+  .kind--feature{ background: var(--kind-feature); }
+  .kind--improvement{ background: var(--kind-improvement); }
+  .kind--fix{ background: var(--kind-fix); }
+  .list time{
+    flex: none; font-size: 11px; line-height: 18px; color: var(--muted-fg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .item{ min-width: 0; }
+  /* p 默认带 1em 上下 margin，不清会把标题压到时间下方 12px */
+  .item .t{ margin: 0; font-size: 12.5px; line-height: 18px; font-weight: 560; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .item .body{ margin: 2px 0 0; font-size: 11.5px; line-height: 17px; color: var(--muted-fg); }
+  .pill{ padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 560; }
+  /* 浅底深字：亮色下 bg-primary + 白字只有 ~3.1:1，10px 小字不达标 */
+  .pill--new{
+    background: color-mix(in oklab, var(--primary) 18%, transparent);
+    color: color-mix(in oklab, var(--primary) 66%, var(--fg));
+    font-weight: 650;
+  }
+
+  .list-foot{
+    display: none; justify-content: flex-end;
+    padding: 7px 12px; border-top: 1px solid var(--border);
+    background: color-mix(in oklab, var(--fg) 2.5%, var(--card));
+  }
+  .banner[data-expanded="true"] .list-foot{ display: flex; }
+
+  /* ---------- A：居中窄卡 ---------- */
+  .wrap-a{ padding: 12px 22px 0; }
+  .banner--a{ width: 100%; max-width: 680px; margin: 0 auto; }
+
+  /* ---------- B：右上浮卡 ---------- */
+  .frame--mini .app{ height: 400px; position: relative; }
+  .banner--b{
+    position: absolute; top: 58px; right: 14px; width: 336px; z-index: 5;
+  }
+  .banner--b .row{ padding: 9px 8px 9px 10px; }
+  .banner--b .text{ display: block; }
+  .banner--b .text .latest{ display: block; margin-top: 1px; }
+  .banner--b .list{ max-height: 210px; }
+
+  /* ---------- C：胶囊条 ---------- */
+  .wrap-c{ padding: 14px 22px 0; display: flex; justify-content: center; position: relative; }
+  .capsule{
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 34px; padding: 0 6px 0 11px;
+    border-radius: 999px; border: 1px solid var(--border);
+    background: var(--card); box-shadow: var(--shadow);
+    font-size: 12.5px; cursor: pointer; color: var(--fg);
+    transition: opacity .18s ease;
+  }
+  .capsule:hover{ background: color-mix(in oklab, var(--fg) 4%, var(--card)); }
+  .capsule .dotp{ width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+  .capsule .c-n{ font-weight: 560; }
+  .capsule .c-latest{ color: var(--muted-fg); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .capsule .c-sep{ color: color-mix(in oklab, var(--muted-fg) 55%, transparent); }
+  .popover{
+    position: absolute; top: 56px; left: 50%; transform: translateX(-50%) translateY(-4px);
+    width: 440px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--card); box-shadow: var(--shadow); overflow: hidden;
+    opacity: 0; pointer-events: none; transition: opacity .16s ease, transform .16s ease;
+    z-index: 6;
+  }
+  .popover.is-open{ opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  .popover .list{ display: block; border-top: 0; max-height: 220px; }
+  .popover .list-foot{ display: flex; }
+
+  /* ---------- 对比表 ---------- */
+  .table{ width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .table th, .table td{ text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .table th{ font-weight: 560; color: var(--muted-fg); font-size: 11.5px; letter-spacing: .02em; }
+  .table tr:last-child td{ border-bottom: 0; }
+  .table td:first-child{ font-weight: 600; white-space: nowrap; }
+  .table-wrap{ border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card); }
+
+  /* ---------- 落地代码 ---------- */
+  .code{
+    margin: 0; padding: 16px 18px; border-radius: 12px; overflow-x: auto;
+    background: var(--card); border: 1px solid var(--border);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; line-height: 1.7; color: var(--fg);
+  }
+  .code .c{ color: var(--muted-fg); }
+  .code .a{ color: var(--kind-improvement); }
+  .notes{ margin: 14px 0 0; padding-left: 18px; color: var(--muted-fg); font-size: 12.5px; }
+  .notes li{ margin: 5px 0; }
+  .notes b{ color: var(--fg); font-weight: 560; }
+
+  @media (max-width: 900px){
+    .doc{ padding: 24px 16px 56px; }
+    .sb{ display: none; }
+    .cards{ grid-template-columns: 1fr 1fr; }
+    .grid2{ grid-template-columns: 1fr !important; }
+  }
+  .grid2{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+</style>
+</head>
+<body>
+<div class="doc">
+
+  <header class="doc-head">
+    <div>
+      <p class="eyebrow">Apiduo · 功能更新横幅</p>
+      <h1>窄版顶部横幅</h1>
+      <p class="lede">
+        现状是一条 <code>border-b</code> 通栏，横贯整个内容区。下面三版都把宽度收下来：A 是主线，
+        保留「推内容不遮内容」；B 完全不占布局；C 只占一行胶囊。灰块是页面内容，滚轮可测遮挡与滚动行为。
+      </p>
+    </div>
+    <button id="theme">亮色</button>
+  </header>
+
+  <!-- ============ A ============ -->
+  <section class="block">
+    <div class="block-head">
+      <h2><span class="tag tag--rec">推荐</span>&nbsp;A · 居中窄卡</h2>
+      <p>最大 680px，与内容列居中对齐。折叠态 42px 高，展开在卡片内部生长，页面布局不被覆盖。</p>
+    </div>
+
+    <div class="frame">
+      <div class="frame-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="frame-url">apiduo.cn / 概览</span>
+      </div>
+      <div class="app">
+        <aside class="sb">
+          <div class="sb-brand"><span class="sb-mark"></span>Apiduo</div>
+          <div class="sb-item"><span class="sb-dot"></span>概览</div>
+          <div class="sb-item"><span class="sb-dot"></span>数据看板</div>
+          <div class="sb-item"><span class="sb-dot"></span>API 密钥</div>
+          <div class="sb-item"><span class="sb-dot"></span>MCP</div>
+          <div class="sb-item"><span class="sb-dot"></span>使用日志</div>
+          <div class="sb-item"><span class="sb-dot"></span>任务日志</div>
+        </aside>
+        <div class="main">
+          <div class="topbar">
+            <b>概览</b><span>模型广场</span><span>排行榜</span><span>文档</span>
+            <span class="spacer"></span><span>搜索</span><span class="avatar"></span>
+          </div>
+          <div class="viewport">
+            <div class="wrap-a">
+              <div class="banner banner--a" id="bannerA" data-expanded="false">
+                <div class="row">
+                  <span class="glyph">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+                  </span>
+                  <div class="text">
+                    <span class="n">2 项功能更新</span>
+                    <span class="sep">·</span>
+                    <span class="latest">公告支持阶段时间线</span>
+                  </div>
+                  <button class="btn" data-toggle="A">
+                    查看
+                    <svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </button>
+                  <button class="btn-x" data-close="A" aria-label="关闭">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <ul class="list">
+                  <li>
+                    <span class="kind kind--feature"></span>
+                    <time>11-17 04:22</time>
+                    <div class="item">
+                      <p class="t">公告支持阶段时间线<span class="pill" style="color:var(--kind-feature);background:color-mix(in oklab, var(--kind-feature) 14%, transparent)">新增</span><span class="pill pill--new">NEW</span></p>
+                      <p class="body">公告可以挂一条垂直时间线，标出当前进行到哪一步。</p>
+                    </div>
+                  </li>
+                  <li>
+                    <span class="kind kind--improvement"></span>
+                    <time>11-17 04:22</time>
+                    <div class="item">
+                      <p class="t">公告支持失效时间<span class="pill" style="color:var(--kind-improvement);background:color-mix(in oklab, var(--kind-improvement) 14%, transparent)">优化</span></p>
+                      <p class="body">到达结束后自动从仪表盘消失，不需要手工删除。</p>
+                    </div>
+                  </li>
+                </ul>
+                <div class="list-foot">
+                  <button class="btn" data-close="A">全部标为已读</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="content">
+              <h3>概览</h3>
+              <p class="sub">最近 24 小时</p>
+              <div class="cards">
+                <div class="card"><p class="k">请求数</p><p class="v">12,480</p><p class="d">+8.2%</p></div>
+                <div class="card"><p class="k">消费</p><p class="v">$43.16</p><p class="d">+2.4%</p></div>
+                <div class="card"><p class="k">平均延迟</p><p class="v">812<span style="font-size:12px;font-weight:400"> ms</span></p><p class="d">-11.7%</p></div>
+              </div>
+              <div class="panel"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+              <div class="cards" style="margin-top:12px">
+                <div class="card"><p class="k">今日请求</p><p class="v">3,102</p><p class="d">+1.1%</p></div>
+                <div class="card"><p class="k">今日消费</p><p class="v">$11.84</p><p class="d">-0.6%</p></div>
+                <div class="card"><p class="k">错误率</p><p class="v">0.42<span style="font-size:12px;font-weight:400"> %</span></p><p class="d">-0.08%</p></div>
+              </div>
+              <div class="panel"><div class="bar" style="width:88%"></div><div class="bar" style="width:61%"></div><div class="bar" style="width:34%"></div></div>
+              <p class="sub" style="margin:14px 0 0">往下滚 —— 横幅是这一列的兄弟节点，不随内容滚动。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ B / C ============ -->
+  <section class="block">
+    <div class="block-head">
+      <h2>B / C · 更轻的两条路</h2>
+      <p>B 完全不占布局，代价是盖住页面右上角；C 只占一条胶囊，代价是展开要额外弹层。</p>
+    </div>
+    <div class="grid2">
+
+      <div class="frame frame--mini">
+        <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="frame-url">B · 右上浮卡 336px</span></div>
+        <div class="app" style="position:relative">
+          <div class="main">
+            <div class="topbar"><b>概览</b><span class="spacer"></span><span class="avatar"></span></div>
+            <div class="viewport">
+              <div class="banner banner--b" id="bannerB" data-expanded="false">
+                <div class="row">
+                  <span class="glyph">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+                  </span>
+                  <div class="text">
+                    <span class="n">2 项功能更新</span>
+                    <span class="latest">公告支持阶段时间线</span>
+                  </div>
+                  <button class="btn" data-toggle="B">查看</button>
+                  <button class="btn-x" data-close="B" aria-label="关闭">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <ul class="list">
+                  <li><span class="kind kind--feature"></span><time>11-17</time>
+                    <div class="item"><p class="t">公告支持阶段时间线</p><p class="body">可以挂一条垂直时间线。</p></div>
+                  </li>
+                  <li><span class="kind kind--improvement"></span><time>11-17</time>
+                    <div class="item"><p class="t">公告支持失效时间</p><p class="body">到点自动消失。</p></div>
+                  </li>
+                </ul>
+              </div>
+              <div class="content">
+                <h3>概览</h3>
+                <p class="sub">浮卡压在内容之上，不改变页面高度</p>
+                <div class="cards" style="grid-template-columns:1fr 1fr">
+                  <div class="card"><p class="k">请求数</p><p class="v">12,480</p></div>
+                  <div class="card"><p class="k">消费</p><p class="v">$43.16</p></div>
+                </div>
+                <div class="panel"><div class="bar"></div><div class="bar"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="frame frame--mini">
+        <div class="frame-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="frame-url">C · 胶囊条</span></div>
+        <div class="app">
+          <div class="main">
+            <div class="topbar"><b>概览</b><span class="spacer"></span><span class="avatar"></span></div>
+            <div class="viewport">
+              <div class="wrap-c">
+                <button class="capsule" id="capC">
+                  <span class="dotp"></span>
+                  <span class="c-n">2 项功能更新</span>
+                  <span class="c-sep">·</span>
+                  <span class="c-latest">公告支持阶段时间线</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="popover" id="popC">
+                  <ul class="list">
+                    <li><span class="kind kind--feature"></span><time>11-17 04:22</time>
+                      <div class="item"><p class="t">公告支持阶段时间线<span class="pill pill--new">NEW</span></p><p class="body">公告可以挂一条垂直时间线。</p></div>
+                    </li>
+                    <li><span class="kind kind--improvement"></span><time>11-17 04:22</time>
+                      <div class="item"><p class="t">公告支持失效时间</p><p class="body">到点自动从仪表盘消失。</p></div>
+                    </li>
+                  </ul>
+                  <div class="list-foot"><button class="btn" id="closeC">全部标为已读</button></div>
+                </div>
+              </div>
+              <div class="content">
+                <h3>概览</h3>
+                <p class="sub">胶囊宽度随内容，不撑满</p>
+                <div class="cards" style="grid-template-columns:1fr 1fr">
+                  <div class="card"><p class="k">请求数</p><p class="v">12,480</p></div>
+                  <div class="card"><p class="k">消费</p><p class="v">$43.16</p></div>
+                </div>
+                <div class="panel"><div class="bar"></div><div class="bar"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 对照 ============ -->
+  <section class="block">
+    <div class="block-head">
+      <h2>取舍对照</h2>
+      <p>四个维度：占不占布局、遮不遮内容、展开成本、移动端成本。</p>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>方案</th><th>宽度</th><th>定位</th><th>占据布局</th><th>展开成本</th><th>风险</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>A · 居中窄卡</td>
+            <td>≤ 680px，居中</td>
+            <td>流内，推内容</td>
+            <td>42px（含上下留白约 66px）</td>
+            <td>卡片内部生长，max-h 232 滚动</td>
+            <td>比通栏多占两侧留白；极窄屏会退化成通栏</td>
+          </tr>
+          <tr>
+            <td>B · 右上浮卡</td>
+            <td>336px 固定</td>
+            <td>absolute / fixed</td>
+            <td>0</td>
+            <td>卡片内部生长</td>
+            <td>盖住页面右上操作区；移动端必须改底部抽屉</td>
+          </tr>
+          <tr>
+            <td>C · 胶囊条</td>
+            <td>fit-content</td>
+            <td>流内居中</td>
+            <td>34px</td>
+            <td>需要 popover 或 dialog</td>
+            <td>长标题必须截断；多一层弹层，焦点管理复杂</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="notes">
+      <li><b>推荐 A 的理由</b>：项目现有约束是「推内容不遮内容」（<code>authenticated-layout.tsx</code> 注释已写明），A 是唯一同时满足「窄」和这条约束的形态。</li>
+      <li><b>不推荐 B</b>：内容区右上角是通知铃铛与头像的位置，浮卡会长期压住可点区域；且 <code>fixed</code> 在侧栏折叠、滚动容器里都要额外处理。</li>
+      <li><b>C 的问题不在视觉</b>：胶囊很好看，但要让 3 条以上可读，就必须引入 popover —— 一个「横幅」不值得为它增加一层浮层和 focus 管理。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 落地 ============ -->
+  <section class="block">
+    <div class="block-head">
+      <h2>落地改动</h2>
+      <p>只动 <code>web/src/components/announcement-banner.tsx</code> 的容器，后端与接口不变。</p>
+    </div>
+<pre class="code"><span class="c">// 现状：通栏，贴边，无圆角</span>
+- &lt;div className=<span class="a">'bg-muted/40 border-b'</span>&gt;
+
+<span class="c">// 改为：外层负责留白，内层负责卡片</span>
++ &lt;div className=<span class="a">'px-4 pt-3 sm:px-6'</span>&gt;
++   &lt;div className=<span class="a">'mx-auto w-full max-w-[680px] overflow-hidden rounded-xl border bg-card shadow-sm'</span>&gt;
+
+<span class="c">// 折叠态一行：图标块 + 文案 + 查看 + 关闭</span>
+  &lt;div className=<span class="a">'flex min-h-[42px] items-center gap-2.5 pr-2 pl-2.5'</span>&gt;
+    &lt;span className=<span class="a">'grid size-[26px] shrink-0 place-items-center rounded-lg bg-primary/15 text-primary'</span>&gt;
+      &lt;Megaphone className=<span class="a">'size-3.5'</span> /&gt;
+    &lt;/span&gt;
+
+<span class="c">// 展开态：列表 + 底部批量操作，高度封顶</span>
+  &lt;ul className=<span class="a">'max-h-[232px] overflow-y-auto border-t px-2.5'</span>&gt;
+  &lt;div className=<span class="a">'flex justify-end border-t px-3 py-1.5'</span>&gt;
+    &lt;Button size=<span class="a">'sm'</span> variant=<span class="a">'ghost'</span> onClick={markChangelogsAsRead}&gt;全部标为已读&lt;/Button&gt;</pre>
+    <ul class="notes">
+      <li><b>行为要一起改</b>：现在 <code>Hide</code> 与 <code>×</code> 语义重叠（折叠 vs 全部已读）。窄卡只留「查看/收起」+「×」，「全部标为已读」下移到展开后的底栏。</li>
+      <li><b>空态不留白</b>：<code>unreadChangelogs.length === 0</code> 时整个外层 wrapper 一起返回 null，否则 <code>pt-3</code> 会留下 12px 空白。</li>
+      <li><b>阈值建议</b>：<code>max-w-[680px]</code> 可按内容列宽调；若想更克制用 560，若列表时间+标题常换行就上到 760。</li>
+    </ul>
+  </section>
+
+</div>
+
+<script>
+  const root = document.documentElement
+  const themeBtn = document.getElementById('theme')
+  themeBtn.addEventListener('click', () => {
+    root.classList.toggle('dark')
+    themeBtn.textContent = root.classList.contains('dark') ? '亮色' : '暗色'
+  })
+
+  document.querySelectorAll('[data-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.toggle
+      const banner = document.getElementById('banner' + id)
+      const open = banner.dataset.expanded === 'true'
+      banner.dataset.expanded = String(!open)
+      btn.childNodes[0].nodeValue = open ? '查看' : '收起'
+    })
+  })
+
+  document.querySelectorAll('[data-close]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const banner = document.getElementById('banner' + btn.dataset.close)
+      banner.classList.add('is-gone')
+      setTimeout(() => {
+        banner.classList.remove('is-gone')
+        banner.dataset.expanded = 'false'
+        const toggle = banner.querySelector('[data-toggle]')
+        if (toggle) toggle.childNodes[0].nodeValue = '查看'
+      }, 1400)
+    })
+  })
+
+  const cap = document.getElementById('capC')
+  const pop = document.getElementById('popC')
+  cap.addEventListener('click', () => pop.classList.toggle('is-open'))
+  document.getElementById('closeC').addEventListener('click', () => {
+    pop.classList.remove('is-open')
+    cap.style.opacity = '0'
+    setTimeout(() => { cap.style.opacity = '1' }, 1400)
+  })
+  document.addEventListener('click', (event) => {
+    if (!pop.contains(event.target) && !cap.contains(event.target)) pop.classList.remove('is-open')
+  })
+</script>
+</body>
+</html>

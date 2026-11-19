@@ -6593,6 +6593,7 @@
     "Task plugins": "任務外掛",
     "Task pricing": "任務定價",
     "Task pricing must be converted manually using the task usage schema.": "任務定價需根據任務用量定義手動轉換。",
+    "Task settled on the fallback tier: the vendor reported no usage tokens": "任務按兜底檔結算：上游未回報用量 token",
     "Task timed out": "任務逾時",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "任務逾時（舊系統遺留任務，不進行退款，請聯絡管理員）",
     "Task usage data is required to estimate this expression. Check the model's task plugin configuration.": "此運算式需要任務用量資料才能估算費用，請檢查模型的任務外掛設定。",

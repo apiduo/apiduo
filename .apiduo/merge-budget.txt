@@ -2,36 +2,7 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
-#
-# 2026-11-17 added 5568 -> 5570：高级异步的字段类型在
-# web/src/features/channels/types.ts 里，task_id_paths 只能加在那个接口上，
-# 多出两行（字段 + 注释）。其余文件都是我方自有文件，不计入。
-#
-# 2026-11-17 added 5570 -> 5575：authenticated-layout.tsx 的内容区需要自己
-# 成为 flex 容器（+flex +flex-col），否则页面不滚动。改动落在既有
-# APIDUO:appearance 标记块内，只是行数增加。
-#
-# 2026-11-17 files 171->172 / blocks 524->527 / added 5575->5627 / deleted 412->415：
-# 1) 任务失败原因清洗（SanitizeUpstreamReason）——实现放在新文件
-#    service/apiduo_upstream_reason.go，但调用点必须在 TaskErrorWrapper 里；
-# 2) 轮询报 failure 需要二次确认：状态机在 service/task_polling.go，
-#    PendingFailure 字段在 model/task.go 的 TaskPrivateData 上；
-# 3) 测试单独放新文件，未计入。
-# 4) 三个调用点/分支必须就地加标记块（error.go 的 Message、task_polling 的
-#    失败原因与二次确认、测试里的两次轮询），标记块 527->530、added +6。
-#
-# 2026-11-19 files 172->178 / blocks 530->543 / added 5633->5713 / deleted 415->431：
-# 「记录 IP 地址」改为安全默认开启。
-# 1) 判据只能在 model/log.go 的两个写日志点（消费日志、错误日志），否则会出现
-#    开关显示开启而日志里没有 IP；bool + omitempty 无法区分「没选过」和「选了关」，
-#    dto.UserSetting.RecordIpLog 只能是 *bool，两处各加一个标记块。
-# 2) 请求体缺省 = 不表态，controller/user.go 改条件赋值，旧客户端不会把它写成 false。
-# 3) 前端 normalizeUserSettings 缺省必须回 true，否则保存通知设置会顺手关掉 IP 记录。
-# 4) .gitignore 里 4 行 fix-loop 例外是历史欠账（此前未标记），本次一并补上 fix-loop 块。
-# 5) 再 +1 块 / +6 行：controller 测试补一条「显式关闭会落盘」的用例，
-#    否则 false 分支只有 DTO 层覆盖，接口层一旦退回无条件赋值不会被发现。
-files	178
-blocks	544
-added	5719
-deleted	431
-
+files	184
+blocks	560
+added	5959
+deleted	435
