@@ -2,7 +2,36 @@
 # 只允许下调。改完功能跑 go run ./tools/markercheck -cost 看明细，
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
+#
+# 注意：-update 会用这里的固定表头覆盖整个文件，下面按日期记的理由会丢。
+# 收紧时请先把理由抄下来，或手工只改四个数字。
+#
+# 2026-11-19 files 178->184 / blocks 544->560 / added 5719->6006 / deleted 431->433：
+# 8001 任务渠道的表达式计费（按次 / 按秒 / 按 token）。
+# 1) model/model_pricing_config.go：保存校验放行「只引用任务事实」的表达式，
+#    并拒绝没有回退档的 token 价（否则上游不报用量时结算 0）。判定函数紧挨
+#    调用点，读的是 billing_setting 的内置事实表，不能外移。
+# 2) setting/billing_setting/tiered_billing.go：内置事实表 + 两个访问器 +
+#    回退校验；键集合必须与 advancedcustomasync.ExtractUsageFacts 同源。
+# 3) relay/relay_task.go：缺事实时把客户端错误改写成点名缺失项（import 加
+#    slices），并给 TaskSubmitResult 加 ReservedQuota（即付即结的审计要用）。
+# 4) service/task_billing.go + task_polling.go + controller/relay.go：退档审计行。
+#    判定与写入必须在结算分支里，只有那里同时拿得到「预扣还是原值」与
+#    「合并后的用量事实」；即付即结路径只能在任务落库后补写。
+# 5) controller/billing_option_test.go：上游断言「无插件模型写 u("seconds")
+#    必须拒绝」与新分支相反，改为放行内置事实键、仍拒绝越界键。
+# 6) deleted +2：终态用例把 var user 前移进断言块、控制器用例替换了旧断言行，
+#    属于移动/替换，不是删功能。
+# 2026-11-19 added 6006->6015：8001 渠道的 advanced_async.billing.factors 被面板
+# 静默丢弃。normalizeAdvancedAsyncConfig 重建 billing 时只取五个键，加载与保存各丢
+# 一次 ⇒ 打开渠道保存即抹掉分辨率加价，且不报错。
+# 1) channels/types.ts：既有 APIDUO:advanced-async 块内补 9 行（factors 类型 + 字段），
+#    不新增标记块、不改上游行。
+# 2) lib/advanced-async.ts：normalizer 透传 factors、applyAdvancedAsyncProtocol 保留；
+#    该文件不在上游，不计入合并面。
+# 3) lib/__tests__/advanced-async.test.ts：新增用例，验证「加载→保存」两次归一化后
+#    factors 仍在（移除修复后三条用例必红）。
 files	184
 blocks	560
-added	5959
-deleted	435
+added	6015
+deleted	433

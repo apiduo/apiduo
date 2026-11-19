@@ -211,12 +211,21 @@ export interface AdvancedAsyncFields {
   status_map?: Record<string, string>
 }
 
+export interface AdvancedAsyncBillingFactor {
+  key: string
+  path: string[]
+  values: Record<string, number>
+  default?: number
+}
+
 export interface AdvancedAsyncBilling {
   mode?: string
   models?: Record<string, string>
   duration_path?: string[]
   default_seconds?: number
   token_fallback_price?: number
+  /** Preserved verbatim: the panel has no editor for this table. */
+  factors?: AdvancedAsyncBillingFactor[]
 }
 /* APIDUO:advanced-async:END */
 

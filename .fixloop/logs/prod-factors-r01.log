@@ -1,0 +1,6 @@
+r01 RED (线上 0.0.188)
+O1 FAIL  version=0.0.188（期望 0.0.189）
+O2 FAIL  编辑器 JSON billing={"mode":"per_second","duration_path":["duration"],"default_seconds":5}
+         缺少 factors；DB #37 factors=[{"key":"resolution",...,"default":2}]
+O3/O4 SKIP 未部署，不做写入
+结论：判据对当前线上版本为红，红因与本地 3 条用例一致（normalizer 丢 factors）。

@@ -154,6 +154,11 @@ export function normalizeAdvancedAsyncConfig(
         .filter(Boolean),
       default_seconds: config.billing?.default_seconds || undefined,
       token_fallback_price: config.billing?.token_fallback_price || undefined,
+      // Carried through untouched: the panel cannot edit this table, so any
+      // rebuild that drops it silently removes a live resolution surcharge.
+      factors: config.billing?.factors?.length
+        ? config.billing.factors
+        : undefined,
     },
   }
 }
@@ -482,9 +487,9 @@ export function detectAdvancedAsyncProtocol(
   return 'custom'
 }
 
-// applyAdvancedAsyncProtocol swaps in a preset while keeping the credentials
-// the operator already typed. Auth is the one field that is never safe to
-// reset: it usually carries a hand-written template, not the {api_key} default.
+// applyAdvancedAsyncProtocol swaps in a preset while keeping what a preset can
+// never reconstruct. Auth usually carries a hand-written template, and the
+// factor table has no editor at all, so resetting either loses operator input.
 export function applyAdvancedAsyncProtocol(
   current: AdvancedAsyncConfig,
   protocol: AdvancedAsyncProtocol
@@ -498,6 +503,10 @@ export function applyAdvancedAsyncProtocol(
     protocol,
     submit: { ...preset.config.submit, auth: current.submit?.auth },
     query: { ...preset.config.query, auth: current.query?.auth },
+    billing: {
+      ...preset.config.billing,
+      factors: current.billing?.factors,
+    },
   })
 }
 // APIDUO:advanced-async-preset:END
