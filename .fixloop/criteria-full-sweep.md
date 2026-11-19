@@ -94,3 +94,57 @@ vendor reports no usage tokens; add a non-token tier
 
 新建 `factors-e2e-1120`（无限配额），用完已**禁用**，实测 `/v1/models` 返回 401。
 未删除（面板行菜单未展开），如需清理可在「API 密钥」页删除。
+
+## 补充验证之二（2026-11-20 01:15–01:40）：per_call / per_token / 命令面板
+
+### ③ per_call —— PASS
+
+#29 `hailuo-image-01`（legacy `per_call`，ModelPrice $0.0025，无表达式）：
+
+```
+POST /async/v1/images/generations -> 202 task_wpdv1...
+quota = 1250  (0.0025 × 500000)
+终态 SUCCESS，quota 仍为 1250（无二次改价）
+```
+
+1250 与 ModelPrice 精确相等 ⇒ legacy per_call 路径生效。
+局限：图像请求无 duration，无法用「时长不影响价格」再验一次差异（线上没有
+「有 duration_path 且无表达式」的 per_call 渠道）。
+
+### ④ per_token —— 部分（回退分支 PASS，token 分支无法线上复现）
+
+把 `hailuo-video` 表达式临时改为
+`u("tokens") > 0 ? tier("token", u("tokens")*1.0/1000000) : tier("call", u("count")*0.02)`，
+提一条 5 秒 720p 任务：
+
+| 阶段 | 值 | 说明 |
+|---|---|---|
+| 预扣 | 10000 ($0.02) | = call 档 |
+| 终态 | SUCCESS | — |
+| 结算 | 10000，未变 | 见下 |
+
+ClickHouse `logs`（type=4）原文：
+`Task settled on the fallback tier: the vendor reported no usage tokens`，
+`actual_quota=10000`；type=2 行记录 `factor: 1, count: 1, tokens: 0, seconds: 5`。
+
+⇒ 上游 `usage.total_tokens` 未上报，网关走**回退档**并按约定写审计行 —— 回退分支线上通过。
+token 实际结算（tokens>0 → 按量计费）**仍只有本地覆盖**（C5：120000→600000），
+线上无法复现，因为可达上游不报用量。
+
+验证后已把表达式还原为 `tier("base", u("seconds") * u("factor") * 0.0104)`，
+并核过库中值（逐字一致）。
+
+### ⑤ 命令面板 —— **不是产品缺陷**（推翻上一轮的判断）
+
+上一轮据单测失败推断「管理员搜不到管理页」，本轮在真实后台核实：打开命令面板，
+条目包含 渠道 / 模型 / 用户 / 增长 / 服务质量 / 兑换码 / 订阅 / 系统信息 / 插件 /
+请求处理 / 系统设置。
+
+⇒ 产品行为正常，`command-menu.test.tsx` 的失败是**测试环境伪影**（harness 只挂了
+root route，缺真实路由/数据上下文）。上一轮的「用户可见缺陷」结论作废。
+
+### 本轮消费与清理
+
+- 新增消费：图像 $0.0025 + token 回退任务 $0.0200，累计约 **$0.1041**。
+- 两枚验证令牌 `factors-e2e-1120` / `factors-e2e-call` 均已**禁用**，实测均返回 401；
+  本地密钥文件已删除。
