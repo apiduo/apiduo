@@ -1197,6 +1197,7 @@ func TestFrontendSimulationContract(t *testing.T) {
 	}
 }
 
+// APIDUO:billingexpr-cache:BEGIN
 // An empty hash must not become a shared cache slot: a snapshot restored
 // without its hash would otherwise be priced by whichever expression compiled
 // first. Two different expressions, both called with hash "", must each keep
@@ -1222,3 +1223,4 @@ func TestRunExprByEmptyHashDoesNotReuseAnotherExpression(t *testing.T) {
 		t.Errorf("second expression reused the first one's program: got %v, want 0.9", second)
 	}
 }
+// APIDUO:billingexpr-cache:END

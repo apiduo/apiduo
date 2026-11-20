@@ -187,6 +187,7 @@ func compileFromCacheByHash(exprStr, hash string) (*vm.Program, error) {
 }
 
 func compileEntryFromCacheByHash(exprStr, hash string) (*cachedEntry, error) {
+	// APIDUO:billingexpr-cache:BEGIN
 	// An empty hash would share the "" cache slot with every other expression:
 	// a snapshot restored without its hash (an older row, a hand-written
 	// fixture) would then be priced by whichever expression compiled first,
@@ -194,6 +195,7 @@ func compileEntryFromCacheByHash(exprStr, hash string) (*cachedEntry, error) {
 	if hash == "" {
 		hash = ExprHashString(exprStr)
 	}
+	// APIDUO:billingexpr-cache:END
 	cacheMu.RLock()
 	if entry, ok := cache[hash]; ok {
 		cacheMu.RUnlock()
