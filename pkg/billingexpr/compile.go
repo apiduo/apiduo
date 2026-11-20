@@ -187,6 +187,13 @@ func compileFromCacheByHash(exprStr, hash string) (*vm.Program, error) {
 }
 
 func compileEntryFromCacheByHash(exprStr, hash string) (*cachedEntry, error) {
+	// An empty hash would share the "" cache slot with every other expression:
+	// a snapshot restored without its hash (an older row, a hand-written
+	// fixture) would then be priced by whichever expression compiled first,
+	// silently and with the wrong amount. Recomputing costs one SHA-256.
+	if hash == "" {
+		hash = ExprHashString(exprStr)
+	}
 	cacheMu.RLock()
 	if entry, ok := cache[hash]; ok {
 		cacheMu.RUnlock()

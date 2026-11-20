@@ -1196,3 +1196,29 @@ func TestFrontendSimulationContract(t *testing.T) {
 		})
 	}
 }
+
+// An empty hash must not become a shared cache slot: a snapshot restored
+// without its hash would otherwise be priced by whichever expression compiled
+// first. Two different expressions, both called with hash "", must each keep
+// their own result.
+func TestRunExprByEmptyHashDoesNotReuseAnotherExpression(t *testing.T) {
+	billingexpr.InvalidateCache()
+	usage := map[string]any{"count": float64(1)}
+
+	first, _, err := billingexpr.RunExprByHashWithRequest(
+		`tier("a", u("count") * 0.1)`, "", billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: usage})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := billingexpr.RunExprByHashWithRequest(
+		`tier("b", u("count") * 0.9)`, "", billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: usage})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != 0.1 {
+		t.Errorf("first expression: got %v, want 0.1", first)
+	}
+	if second != 0.9 {
+		t.Errorf("second expression reused the first one's program: got %v, want 0.9", second)
+	}
+}
