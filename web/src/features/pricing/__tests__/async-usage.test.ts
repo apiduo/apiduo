@@ -151,3 +151,40 @@ describe('type 8001 price summaries', () => {
     ).toBeNull()
   })
 })
+
+// APIDUO:async-usage:BEGIN
+describe('type 8001 prices after a JSON round trip', () => {
+  // /api/pricing serializes the schema, so the browser never sees the module
+  // constant. Display must not depend on object identity.
+  const roundTripped = JSON.parse(
+    JSON.stringify(ASYNC_USAGE_SCHEMA)
+  ) as typeof ASYNC_USAGE_SCHEMA
+
+  test('keeps the resolution multiplier out of the billed quantities', () => {
+    const tiers = getTaskPricingDisplayTiers(
+      'tier("base", u("seconds") * u("factor") * 0.01)',
+      roundTripped
+    )
+
+    expect(tiers).toHaveLength(1)
+    expect(tiers[0]?.unitPrices).toEqual({ seconds: 0.01 })
+    expect(tiers[0]?.multipliers).toEqual(['factor'])
+  })
+
+  test('still expands the per-request and token fallback shapes', () => {
+    expect(
+      getTaskPricingDisplayTiers(
+        'tier("request", u("count") * 0.10)',
+        roundTripped
+      ).map((tier) => tier.unitPrices)
+    ).toEqual([{ count: 0.1 }])
+
+    expect(
+      getTaskPricingDisplayTiers(
+        'u("tokens") > 0 ? tier("token", u("tokens") * 10.0 / 1000000) : tier("call", u("count") * 0.20)',
+        roundTripped
+      ).map((tier) => tier.unitPrices)
+    ).toEqual([{ tokens: 10 }, { count: 0.2 }])
+  })
+})
+// APIDUO:async-usage:END

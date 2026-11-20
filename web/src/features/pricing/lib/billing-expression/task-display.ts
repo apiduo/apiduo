@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { BillingUsageSchema } from '../../types'
 // APIDUO:async-usage:BEGIN
-import { ASYNC_MULTIPLIER_KEYS, ASYNC_USAGE_SCHEMA } from '../async-usage'
+import { ASYNC_MULTIPLIER_KEYS } from '../async-usage'
 // APIDUO:async-usage:END
 import type { TaskTier } from './display'
 import { compileBillingExpression } from './parser'
@@ -357,7 +357,13 @@ export function readConditionalTaskPricing(
     )
   }
   // APIDUO:async-usage:BEGIN
-  const multiplierKeys = schema === ASYNC_USAGE_SCHEMA ? ASYNC_MULTIPLIER_KEYS : new Set<string>()
+  // A `factor` usage field scales the rate (type 8001 resolution tiers) instead
+  // of being billed per unit. Decided by the declared field, never by object
+  // identity: the schema also arrives over JSON, where it is a fresh object.
+  const multiplierKeys =
+    schema.factor?.type === 'number'
+      ? ASYNC_MULTIPLIER_KEYS
+      : new Set<string>()
   // APIDUO:async-usage:END
   const context: TaskDisplayContext = {
     source,
