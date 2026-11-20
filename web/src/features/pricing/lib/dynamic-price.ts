@@ -26,7 +26,11 @@ import type {
   TokenUnit,
 } from '../types'
 // APIDUO:async-usage:BEGIN
-import { mergeTaskPricingTiers, resolveUsageSchema } from './async-usage'
+import {
+  isBuiltinFactTable,
+  mergeTaskPricingTiers,
+  resolveUsageSchema,
+} from './async-usage'
 // APIDUO:async-usage:END
 import {
   BILLING_PRICING_VARS,
@@ -161,7 +165,14 @@ export function isDynamicPricingModel(model: PricingModel): boolean {
 }
 
 export function hasTaskUsageSchema(model: PricingModel): boolean {
-  return Object.keys(model.billing_usage_schema ?? {}).length > 0
+  // APIDUO:async-usage:BEGIN
+  // A type 8001 model is priced by an expression like every other dynamic
+  // price: the gateway publishes its built-in facts but it has no plugin
+  // schema to declare. Badge and filter must keep calling it dynamic.
+  const schema = model.billing_usage_schema
+  if (!schema || isBuiltinFactTable(schema)) return false
+  return Object.keys(schema).length > 0
+  // APIDUO:async-usage:END
 }
 
 export function isTaskUsagePricingModel(model: PricingModel): boolean {

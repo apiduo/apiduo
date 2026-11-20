@@ -57,9 +57,10 @@ export function usePricingData(enabled = true) {
         ? vendorMap.get(model.vendor_id)
         : undefined
       // APIDUO:async-usage:BEGIN
-      // A type 8001 expression prices a task from the channel's built-in
-      // usage facts but carries no plugin schema. Resolve it once here so
-      // the list, table, details and breakdown all read the same table.
+      // A type 8001 expression prices tasks from the channel's built-in usage
+      // facts and declares no plugin schema. Attach the resolved table here so
+      // the card, table, details and breakdown read one source. Badge and
+      // filter ignore a built-in table on purpose (see hasTaskUsageSchema).
       const usageSchema = resolveUsageSchema(model)
       // APIDUO:async-usage:END
       return {

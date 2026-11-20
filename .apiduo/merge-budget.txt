@@ -50,10 +50,13 @@
 #    使 markercheck 常红，与本次功能无关。
 #    added 6398->6404：倍率判据由「schema 引用相等」改为「schema 声明了 factor 数值字段」，
 #    后端下发 JSON 后引用必不相等，线上曾因此整体回退到源码（见 0.0.191）。
+# 8) 8001 的表达式计费不另立分类：hasTaskUsageSchema 忽略网关下发的内置事实表，
+#    徽标与筛选继续按「动态计费 / 按量计费」计。用户 2026-11-20 明确要求
+#    「计费表达式都叫动态计费」。blocks +1 / added +13 / deleted +1 都来自该判据。
 # 7) files +13：pricing 组件/库/测试与 i18n 七个语言文件各成了一个挂接文件；
 #    详情页的说明行再 +1（model-details.tsx），卡片内部档位标签的抑制 +1 块。
 
 files	197
-blocks	605
-added	6404
-deleted	451
+blocks	606
+added	6417
+deleted	452

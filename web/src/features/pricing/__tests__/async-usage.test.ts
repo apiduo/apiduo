@@ -24,7 +24,9 @@ import {
   resolveUsageSchema,
   usesAsyncMultiplier,
 } from '../lib/async-usage'
+import { getBillingModeLabelKey } from '../lib/billing-mode'
 import { getDynamicPricingSummary } from '../lib/dynamic-price'
+import { getModelQuotaType } from '../lib/filters'
 import { getTaskPricingDisplayTiers } from '../lib/task-matrix-display'
 import type { PricingModel } from '../types'
 
@@ -219,6 +221,40 @@ describe('gateway-serialized built-in facts', () => {
         })
       )
     ).toBe(pluginSchema)
+  })
+})
+// APIDUO:async-usage:END
+
+// APIDUO:async-usage:BEGIN
+describe('badge and filter of a gateway-published fact table', () => {
+  const gatewaySchema = Object.fromEntries(
+    Object.entries(ASYNC_USAGE_SCHEMA).map(([key, definition]) => [
+      key,
+      { type: definition.type, unit: definition.unit },
+    ])
+  )
+
+  test('an expression price stays dynamic, never task billing', () => {
+    const model = asyncModel('tier("base", u("seconds") * u("factor") * 0.01)', {
+      billing_usage_schema: gatewaySchema,
+    })
+
+    // The gateway's fact table is published for API consumers; it does not
+    // turn an expression price into a different billing category.
+    expect(getBillingModeLabelKey(model)).toBe('Dynamic Pricing')
+    expect(getModelQuotaType(model)).toBe('token')
+    expect(getDynamicPricingSummary(model, options)?.primaryEntries[0]?.value).toBe(
+      0.01
+    )
+  })
+
+  test('a plugin-declared schema keeps task billing', () => {
+    const model = asyncModel('tier("base", u("seconds") * 0.4)', {
+      billing_usage_schema: { seconds: { type: 'number', unit: 'second' } },
+    })
+
+    expect(getBillingModeLabelKey(model)).toBe('Task billing')
+    expect(getModelQuotaType(model)).toBe('task')
   })
 })
 // APIDUO:async-usage:END

@@ -102,7 +102,7 @@ function withBuiltinLabels(declared: BillingUsageSchema): BillingUsageSchema {
  * plugin declares; that key is what separates it from a plugin schema that
  * happens to use one of the same names (e.g. `seconds`).
  */
-function isBuiltinFactTable(schema: BillingUsageSchema): boolean {
+export function isBuiltinFactTable(schema: BillingUsageSchema): boolean {
   const keys = Object.keys(schema)
   return (
     keys.length > 0 &&
