@@ -227,3 +227,26 @@ func GetUserLanguage(userId int) string {
 	}
 	return userCache.GetSetting().Language
 }
+
+// APIDUO:log-ip-context:BEGIN
+// shouldRecordIP reports whether this request's log carries the client IP.
+//
+// The auth middleware wrote the caller's setting into the context from the same
+// user row it read (WriteContext above), so a relay request must not read that
+// row again: without Redis, GetUserSetting is a database round trip per log.
+// The fallback keeps callers with no authenticated context (background tasks,
+// channel tests) unchanged.
+func shouldRecordIP(c *gin.Context, userId int) bool {
+	if c != nil {
+		if setting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting); ok {
+			return setting.RecordsIP()
+		}
+	}
+	setting, err := GetUserSetting(userId, false)
+	if err != nil {
+		return false
+	}
+	return setting.RecordsIP()
+}
+
+// APIDUO:log-ip-context:END

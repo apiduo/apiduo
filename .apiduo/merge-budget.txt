@@ -56,7 +56,18 @@
 # 7) files +13：pricing 组件/库/测试与 i18n 七个语言文件各成了一个挂接文件；
 #    详情页的说明行再 +1（model-details.tsx），卡片内部档位标签的抑制 +1 块。
 
-files	197
-blocks	606
-added	6417
-deleted	452
+# 2026-11-20 files 197->198 / blocks 606->607 / added 6417->6440 / deleted 452->458：
+# 日志写入不再为 IP 列回查用户行。认证中间件已经把同一行用户数据的设置写进
+# 上下文（UserBase.WriteContext），而 model/log.go 里两处 RecordXxxLog 又各自
+# GetUserSetting 一次 —— 没有 Redis 的部署（线上 apiduo-cn 就没有）每次都是
+# 一条多余的 SQL。判定函数 shouldRecordIP 落在 model/user_cache.go，紧跟
+# WriteContext：它读的正是那个函数写进上下文的值，放别处等于把同一契约拆两半
+# （files +1 即此）。log.go 两处调用点各自把一行包进原有的 secure-defaults 块。
+# 实测：每请求 SQL 5.88->4.71、容器 CPU 3525->3312 µs（50 rps 定速，批更新开启）。
+# 判据 model/log_ip_setting_test.go：上下文说「不记」不能被库里的默认值覆盖，
+# 上下文说「记」也不能被库里的关闭覆盖。
+
+files	198
+blocks	607
+added	6440
+deleted	458

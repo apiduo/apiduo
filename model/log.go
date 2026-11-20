@@ -309,12 +309,9 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	// APIDUO:trace:END
 	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		// APIDUO:secure-defaults:BEGIN
-		needRecordIp = settingMap.RecordsIP()
-		// APIDUO:secure-defaults:END
-	}
+	// APIDUO:secure-defaults:BEGIN
+	needRecordIp := shouldRecordIP(c, userId)
+	// APIDUO:secure-defaults:END
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -386,12 +383,9 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	// APIDUO:trace:END
 	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		// APIDUO:secure-defaults:BEGIN
-		needRecordIp = settingMap.RecordsIP()
-		// APIDUO:secure-defaults:END
-	}
+	// APIDUO:secure-defaults:BEGIN
+	needRecordIp := shouldRecordIP(c, userId)
+	// APIDUO:secure-defaults:END
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
