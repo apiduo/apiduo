@@ -192,6 +192,18 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               {t('Token or per-call pricing')}
             </span>
           )}
+          {/* APIDUO:async-usage:BEGIN */}
+          {dynamicSummary.isAsyncMultiplier && (
+            <span className='text-muted-foreground col-span-full text-xs'>
+              {t('× resolution factor')}
+            </span>
+          )}
+          {dynamicSummary.hasTokenUsageFallback && (
+            <span className='text-muted-foreground col-span-full text-xs'>
+              {t('per-token, else per request')}
+            </span>
+          )}
+          {/* APIDUO:async-usage:END */}
           {cardExamplePrice && (
             <span className='text-muted-foreground col-span-full text-xs break-words'>
               {cardExamplePrice.label} ≈ {cardExamplePrice.formatted}
@@ -200,6 +212,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           {dynamicSummary.isTaskUsage &&
             dynamicSummary.tierCount > 1 &&
             dynamicSummary.tier?.label &&
+            // APIDUO:async-usage:BEGIN
+            // An expression's own tier names ("call", "token") are internal
+            // labels; the condition line above already says when each applies.
+            !dynamicSummary.hasTokenUsageFallback &&
+            // APIDUO:async-usage:END
             !dynamicSummary.primaryEntries.some(
               (entry) => entry.formattedRange
             ) && (

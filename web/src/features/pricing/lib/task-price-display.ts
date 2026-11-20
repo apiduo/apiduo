@@ -35,6 +35,9 @@ import { formatBillingCondition } from './billing-expression/condition-display'
 import { compileBillingExpression } from './billing-expression/parser'
 import { visitExpression } from './billing-expression/types'
 import { getTaskPricingDisplayTiers } from './task-matrix-display'
+// APIDUO:async-usage:BEGIN
+import { formatAsyncUsageCondition } from './async-usage'
+// APIDUO:async-usage:END
 
 export function taskPriceLabel(
   description: LocalizedTextValue | undefined,
@@ -105,13 +108,20 @@ export function taskTierConditions(
   tier: ParsedTaskTier,
   schema: BillingUsageSchema | undefined,
   language: string,
-  t: (key: string) => string
+  // APIDUO:async-usage:BEGIN
+  t: (key: string, options?: Record<string, unknown>) => string
+  // APIDUO:async-usage:END
 ): string {
   const usage = taskPricingConditions(tier.conditions, schema, language, t)
+  // APIDUO:async-usage:BEGIN
+  // A usage threshold (`u("tokens") > 0`) names the metered quantity, so it is
+  // shown as "Token usage > 0" rather than as raw expression source.
   const time = tier.conditionText
     ? (formatBillingCondition(tier.conditionText, t, language) ??
+      formatAsyncUsageCondition(tier.conditionText, schema, language, t) ??
       tier.conditionText)
     : ''
+  // APIDUO:async-usage:END
   return [usage, time].filter(Boolean).join(' · ')
 }
 

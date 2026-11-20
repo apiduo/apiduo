@@ -588,3 +588,36 @@ func TestModelPricingSnapshotListsUsedBuiltinPrices(t *testing.T) {
 		})
 	}
 }
+
+// APIDUO:task-usage-facts:BEGIN
+// A type 8001 channel prices tasks from its built-in usage facts but has no
+// plugin to declare them. Public pricing must carry that table, otherwise every
+// consumer can only print the raw expression.
+func TestPricingCarriesBuiltinTaskUsageFacts(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+	saved := config.GlobalConfig.ExportAllConfigs()
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+
+	insertPricingEndpointChannel(t, 960, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	for _, name := range []string{"async-bill-model", "async-chat-model"} {
+		insertPricingEndpointAbility(t, 960, name)
+	}
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"async-bill-model":"tiered_expr","async-chat-model":"tiered_expr"}`,
+		"billing_setting.billing_expr": `{"async-bill-model":"tier(\"base\", u(\"seconds\") * u(\"factor\") * 0.01)","async-chat-model":"tier(\"base\", p * 2 + c * 8)"}`,
+	}))
+	InvalidatePricingCache()
+
+	prices := pricingByModel(GetPricing())
+	require.Contains(t, prices, "async-bill-model")
+	schema := prices["async-bill-model"].BillingUsageSchema
+	assert.Len(t, schema, 4)
+	assert.Equal(t, "count", schema["count"].Unit)
+	assert.Equal(t, "second", schema["seconds"].Unit)
+	assert.Equal(t, "token", schema["tokens"].Unit)
+	assert.Equal(t, "count", schema["factor"].Unit)
+	// A chat-only expression keeps the built-in facts to itself.
+	assert.Nil(t, prices["async-chat-model"].BillingUsageSchema)
+}
+// APIDUO:task-usage-facts:END

@@ -830,6 +830,18 @@ function PriceSection(props: {
             </div>
           </div>
         )}
+        {/* APIDUO:async-usage:BEGIN */}
+        {dynamicSummary.isAsyncMultiplier && (
+          <p className='text-muted-foreground mt-3 text-xs'>
+            {t('The rate above is multiplied by the resolution factor')}
+          </p>
+        )}
+        {dynamicSummary.hasTokenUsageFallback && (
+          <p className='text-muted-foreground mt-3 text-xs'>
+            {t('Charged per token when usage is reported, per request otherwise')}
+          </p>
+        )}
+        {/* APIDUO:async-usage:END */}
       </section>
     )
   }

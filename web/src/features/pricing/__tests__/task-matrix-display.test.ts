@@ -105,7 +105,9 @@ describe('conditional task price display', () => {
     'tier("base", u("seconds") * u("seconds"))',
     'tier("base", u("seconds") / u("seconds"))',
     'tier("base", u("seconds") * (param("resolution") == "4K" ? 0.15 : 0.09))',
-    'tier("base", u("seconds") * (u("seconds") > 30 ? 0.15 : 0.09))',
+    // APIDUO:async-usage:BEGIN
+    // A usage threshold picks a rate by volume; it is expanded below instead.
+    // APIDUO:async-usage:END
     'tier("base", u("seconds") * (u("missing") == "4K" ? 0.15 : 0.09))',
     'tier("base", u("seconds") * (u("resolution") == "4K" ? 0.15 : 1 / 0))',
     'tier("base", u("seconds") * (u("resolution") == "4K" ? 0.15 : -0.09))',
@@ -134,9 +136,15 @@ describe('conditional task price display', () => {
     expect(
       rows
         .filter((row) => row.constant === 0)
+        // APIDUO:async-usage:BEGIN
+        // An unmentioned quantity is not billed by that tier at all; only an
+        // explicit `* 0` keeps a zero price.
         .every(
-          (row) => row.unitPrices.seconds === 0 && row.unitPrices.clips === 0
+          (row) =>
+            (row.unitPrices.seconds ?? 0) === 0 &&
+            (row.unitPrices.clips ?? 0) === 0
         )
+      // APIDUO:async-usage:END
     ).toBe(true)
   })
 

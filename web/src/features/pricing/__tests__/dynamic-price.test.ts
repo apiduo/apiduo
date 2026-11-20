@@ -248,8 +248,9 @@ describe('task dynamic pricing', () => {
   test('falls back for a non-canonical task expression', () => {
     const model = pricingModel({
       billing_mode: 'tiered_expr',
-      billing_expr:
-        'u("seconds") > 30 ? tier("long", u("seconds") * 0.3) : tier("short", u("seconds") * 0.4)',
+      // APIDUO:async-usage:BEGIN
+      billing_expr: 'tier("base", max(u("seconds") * 0.3, 1))',
+      // APIDUO:async-usage:END
       billing_usage_schema: {
         seconds: { type: 'number', unit: 'second' },
       },
@@ -261,6 +262,28 @@ describe('task dynamic pricing', () => {
     assert.equal(summary.isSpecialExpression, true)
     assert.equal(summary.tiers.length, 0)
   })
+
+  // APIDUO:async-usage:BEGIN
+  test('expands a usage-threshold task expression into priced branches', () => {
+    const model = pricingModel({
+      billing_mode: 'tiered_expr',
+      billing_expr:
+        'u("seconds") > 30 ? tier("long", u("seconds") * 0.3) : tier("short", u("seconds") * 0.4)',
+      billing_usage_schema: {
+        seconds: { type: 'number', unit: 'second' },
+      },
+    })
+
+    const summary = getDynamicPricingSummary(model, summaryOptions)
+
+    assert.ok(summary)
+    assert.equal(summary.isSpecialExpression, false)
+    assert.equal(summary.tiers.length, 2)
+    assert.equal(summary.primaryEntries[0]?.unit, 'second')
+    assert.match(summary.primaryEntries[0]?.formattedRange ?? '', /0[.,]3/)
+    assert.match(summary.primaryEntries[0]?.formattedRange ?? '', /0[.,]4/)
+  })
+  // APIDUO:async-usage:END
 
   test('summarizes different task tier prices as a range while preserving the fallback price', () => {
     const model = pricingModel({

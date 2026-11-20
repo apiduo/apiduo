@@ -279,6 +279,12 @@
     "Image protocol is off: the entries below forward on their own routes, unchanged.": "圖片協議未開啟：以下入口按各自路由原樣轉發，不做任何轉換。",
     "This channel only declares image models ({{models}}).": "這條渠道只宣告了圖片模型（{{models}}）。",
     "Set up as an image channel": "按圖片渠道配置",
-    "Fills in a primary endpoint and one upstream path; both stay editable.": "會填好主端點和「上游 1 條路」，之後都能改。"
+    "Fills in a primary endpoint and one upstream path; both stay editable.": "會填好主端點和「上游 1 條路」，之後都能改。",
+    "× resolution factor": "× 解析度倍率",
+    "per-token, else per request": "有 Token 用量時按量計費，否則按次",
+    "Without {{field}}": "無 {{field}}",
+    "{{field}} {{operator}} {{value}}": "{{field}} {{operator}} {{value}}",
+    "The rate above is multiplied by the resolution factor": "上面的單價還要乘解析度倍率（不同檔位倍率見渠道設定）",
+    "Charged per token when usage is reported, per request otherwise": "上游回報 token 用量時按 token 計費，未回報時按次計費"
   }
 }

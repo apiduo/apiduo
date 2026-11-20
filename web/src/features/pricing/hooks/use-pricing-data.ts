@@ -23,6 +23,9 @@ import { useStatus } from '@/hooks/use-status'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getPricing } from '../api'
+// APIDUO:async-usage:BEGIN
+import { resolveUsageSchema } from '../lib/async-usage'
+// APIDUO:async-usage:END
 
 export function usePricingData(enabled = true) {
   const { status } = useStatus()
@@ -53,8 +56,19 @@ export function usePricingData(enabled = true) {
       const vendor = model.vendor_id
         ? vendorMap.get(model.vendor_id)
         : undefined
+      // APIDUO:async-usage:BEGIN
+      // A type 8001 expression prices a task from the channel's built-in
+      // usage facts but carries no plugin schema. Resolve it once here so
+      // the list, table, details and breakdown all read the same table.
+      const usageSchema = resolveUsageSchema(model)
+      // APIDUO:async-usage:END
       return {
         ...model,
+        // APIDUO:async-usage:BEGIN
+        ...(usageSchema && usageSchema !== model.billing_usage_schema
+          ? { billing_usage_schema: usageSchema }
+          : {}),
+        // APIDUO:async-usage:END
         key: model.model_name,
         vendor_name: vendor?.name,
         vendor_icon: vendor?.icon,

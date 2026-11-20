@@ -25,6 +25,9 @@ import type {
   PricingModel,
   TokenUnit,
 } from '../types'
+// APIDUO:async-usage:BEGIN
+import { mergeTaskPricingTiers, resolveUsageSchema } from './async-usage'
+// APIDUO:async-usage:END
 import {
   BILLING_PRICING_VARS,
   getCurrentTimePricingTiers,
@@ -99,6 +102,12 @@ export type DynamicPricingSummary = {
   isMixedBilling?: boolean
   providerCount?: number
   hasUnconfiguredProviders?: boolean
+  // APIDUO:async-usage:BEGIN
+  /** The rate is scaled by a resolution/quality factor, not billed flat. */
+  isAsyncMultiplier?: boolean
+  /** The per-token rate falls back to a per-request charge without usage. */
+  hasTokenUsageFallback?: boolean
+  // APIDUO:async-usage:END
 }
 
 export function getTaskUsageQuantityUnitLabelKey(
@@ -156,7 +165,11 @@ export function hasTaskUsageSchema(model: PricingModel): boolean {
 }
 
 export function isTaskUsagePricingModel(model: PricingModel): boolean {
-  return model.billing_mode === 'tiered_expr' && hasTaskUsageSchema(model)
+  // APIDUO:async-usage:BEGIN
+  // A type 8001 expression reads the channel's built-in usage facts and
+  // declares no plugin schema; it is still priced per usage unit.
+  return model.billing_mode === 'tiered_expr' && Boolean(resolveUsageSchema(model))
+  // APIDUO:async-usage:END
 }
 
 export function isUnconfiguredTaskUsageModel(model: PricingModel): boolean {
@@ -259,7 +272,9 @@ export function getDynamicPricingTiers(
     model.billing_expr || ''
   )
   if (isTaskUsagePricingModel(model)) {
-    return getTaskPricingDisplayTiers(billingExpr, model.billing_usage_schema)
+    // APIDUO:async-usage:BEGIN
+    return getTaskPricingDisplayTiers(billingExpr, resolveUsageSchema(model))
+    // APIDUO:async-usage:END
   }
   return parseTiersFromExpr(billingExpr)
 }
@@ -510,10 +525,14 @@ export function getDynamicPricingSummary(
   const tier = isTaskUsage
     ? (summaryTiers.at(-1) ?? null)
     : (summaryTiers[0] ?? null)
-  let entries = getDynamicPriceEntries(tier, {
+  // APIDUO:async-usage:BEGIN
+  const usageSchema = resolveUsageSchema(model)
+  const entriesTier = isTaskUsage ? mergeTaskPricingTiers(summaryTiers) : tier
+  let entries = getDynamicPriceEntries(entriesTier ?? tier, {
     ...options,
-    usageSchema: model.billing_usage_schema,
+    usageSchema,
   })
+  // APIDUO:async-usage:END
   let isMixedBilling = false
   if (!isTaskUsage) {
     const tokenTier = summaryTiers.find(
@@ -532,7 +551,12 @@ export function getDynamicPricingSummary(
   }
   if (isTaskUsage) {
     const priceRanges = new Map<string, { min: number; max: number }>()
-    for (const [field] of getTaskNumberFields(model.billing_usage_schema)) {
+    // APIDUO:async-usage:BEGIN
+    const taskNumberFields = getTaskNumberFields(usageSchema)
+    // APIDUO:async-usage:END
+    // APIDUO:async-usage:BEGIN
+    for (const [field] of taskNumberFields) {
+    // APIDUO:async-usage:END
       let min = Number.POSITIVE_INFINITY
       let max = Number.NEGATIVE_INFINITY
       for (const taskTier of tiers) {
@@ -561,6 +585,15 @@ export function getDynamicPricingSummary(
     })
   }
   const rawExpression = model.billing_expr || ''
+  // APIDUO:async-usage:BEGIN
+  const taskPricingTiers = tiers.filter(isTaskPricingTier)
+  const isAsyncMultiplier = taskPricingTiers.some(
+    (item) => (item.multipliers?.length ?? 0) > 0
+  )
+  const hasTokenUsageFallback = taskPricingTiers.some((item) =>
+    item.conditionText?.includes('u("tokens")')
+  )
+  // APIDUO:async-usage:END
 
   return {
     tiers,
@@ -591,6 +624,10 @@ export function getDynamicPricingSummary(
             !PRIMARY_DYNAMIC_FIELDS.has(entry.field)
         ),
     isTaskUsage,
+    // APIDUO:async-usage:BEGIN
+    ...(isAsyncMultiplier ? { isAsyncMultiplier } : {}),
+    ...(hasTokenUsageFallback ? { hasTokenUsageFallback } : {}),
+    // APIDUO:async-usage:END
     isTimePricing: timeTiers !== null,
     ...(isMixedBilling ? { isMixedBilling } : {}),
   }

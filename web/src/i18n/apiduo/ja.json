@@ -199,6 +199,12 @@
     "Image protocol is off: the entries below forward on their own routes, unchanged.": "Image protocol is off: the entries below forward on their own routes, unchanged.",
     "This channel only declares image models ({{models}}).": "This channel only declares image models ({{models}}).",
     "Set up as an image channel": "Set up as an image channel",
-    "Fills in a primary endpoint and one upstream path; both stay editable.": "Fills in a primary endpoint and one upstream path; both stay editable."
+    "Fills in a primary endpoint and one upstream path; both stay editable.": "Fills in a primary endpoint and one upstream path; both stay editable.",
+    "× resolution factor": "× 解像度倍率",
+    "per-token, else per request": "トークン使用量があれば従量、なければリクエスト課金",
+    "Without {{field}}": "{{field}} なし",
+    "{{field}} {{operator}} {{value}}": "{{field}} {{operator}} {{value}}",
+    "The rate above is multiplied by the resolution factor": "上記の単価には解像度倍率が掛かります（倍率はチャネル設定を参照）",
+    "Charged per token when usage is reported, per request otherwise": "トークン使用量が報告された場合はトークン課金、なければリクエスト課金"
   }
 }

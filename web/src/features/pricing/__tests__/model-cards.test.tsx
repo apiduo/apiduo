@@ -578,8 +578,9 @@ describe('model cards', () => {
   })
 
   it('keeps an unrecognized expression visible with the special billing message', () => {
-    const expression =
-      'u("seconds") > 30 ? tier("long", u("seconds") * 0.3) : tier("short", u("seconds") * 0.4)'
+    // APIDUO:async-usage:BEGIN
+    const expression = 'tier("base", max(u("seconds") * 0.3, 1))'
+    // APIDUO:async-usage:END
     render(
       <ModelCard
         model={pricingModel({
@@ -841,3 +842,51 @@ describe('model cards', () => {
     vi.useRealTimers()
   })
 })
+
+// APIDUO:async-usage:BEGIN
+describe('model cards with type 8001 price expressions', () => {
+  it('shows a per-request rate instead of expression source', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          billing_mode: 'tiered_expr',
+          billing_expr: 'tier("request", u("count") * 0.10)',
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Special billing expression')).toBeNull()
+    expect(screen.getByText(/0[.,]1/)).toBeVisible()
+  })
+
+  it('names the resolution multiplier beside a per-second rate', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          billing_mode: 'tiered_expr',
+          billing_expr: 'tier("base", u("seconds") * u("factor") * 0.01)',
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Special billing expression')).toBeNull()
+    expect(screen.getByText(/0[.,]01/)).toBeVisible()
+    expect(screen.getByText('× resolution factor')).toBeVisible()
+  })
+
+  it('shows the token rate and its per-request fallback', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          billing_mode: 'tiered_expr',
+          billing_expr:
+            'u("tokens") > 0 ? tier("token", u("tokens") * 10.0 / 1000000) : tier("call", u("count") * 0.20)',
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.queryByText('Special billing expression')).toBeNull()
+    expect(screen.getByText('per-token, else per request')).toBeVisible()
+  })
+})
+// APIDUO:async-usage:END

@@ -194,6 +194,12 @@
     "Image protocol is off: the entries below forward on their own routes, unchanged.": "Image protocol is off: the entries below forward on their own routes, unchanged.",
     "This channel only declares image models ({{models}}).": "This channel only declares image models ({{models}}).",
     "Set up as an image channel": "Set up as an image channel",
-    "Fills in a primary endpoint and one upstream path; both stay editable.": "Fills in a primary endpoint and one upstream path; both stay editable."
+    "Fills in a primary endpoint and one upstream path; both stay editable.": "Fills in a primary endpoint and one upstream path; both stay editable.",
+    "× resolution factor": "× facteur de résolution",
+    "per-token, else per request": "Au token si fourni, sinon par requête",
+    "Without {{field}}": "Sans {{field}}",
+    "{{field}} {{operator}} {{value}}": "{{field}} {{operator}} {{value}}",
+    "The rate above is multiplied by the resolution factor": "Le tarif ci-dessus est multiplié par le facteur de résolution (voir le canal)",
+    "Charged per token when usage is reported, per request otherwise": "Facturé au token si l'usage est fourni, sinon par requête"
   }
 }

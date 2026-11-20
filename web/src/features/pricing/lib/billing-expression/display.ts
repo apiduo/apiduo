@@ -318,6 +318,10 @@ export type TaskTier = {
   conditions: { field: string; value: string }[]
   constant: number
   unitPrices: Record<string, number>
+  // APIDUO:async-usage:BEGIN
+  /** Facts that scale this tier's rate instead of adding a billed quantity. */
+  multipliers?: string[]
+  // APIDUO:async-usage:END
 }
 
 /** `unreachable` marks a branch that can never match a request, so callers skip

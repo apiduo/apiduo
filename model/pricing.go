@@ -431,6 +431,16 @@ func updatePricing() {
 			pricing.BillingUsageSchema = jsplugin.CloneUsageSchema(usageSchema)
 			pricing.BillingUsageExamples = jsplugin.CloneUsageExamples(usageExamples)
 		}
+		// APIDUO:task-usage-facts:BEGIN
+		// A type 8001 channel prices its tasks from the built-in usage facts and
+		// has no plugin to declare them. Without the table, every consumer of
+		// /api/pricing can only print the raw expression.
+		if len(pricing.BillingUsageSchema) == 0 &&
+			pricing.BillingMode == billing_setting.BillingModeTieredExpr &&
+			len(billingexpr.UsedUsageKeys(pricing.BillingExpr)) > 0 {
+			pricing.BillingUsageSchema = billing_setting.AdvancedAsyncUsageSchema()
+		}
+		// APIDUO:task-usage-facts:END
 		providers := pluginGeneration.PluginsByModel(model)
 		hasProviderOverride, relayed := false, false
 		for _, provider := range providers {

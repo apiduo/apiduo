@@ -3,6 +3,7 @@
 # 确认下降后跑 go run ./tools/markercheck -cost -update 收紧。
 # 格式：<key>	<value>
 #
+
 # 注意：-update 会用这里的固定表头覆盖整个文件，下面按日期记的理由会丢。
 # 收紧时请先把理由抄下来，或手工只改四个数字。
 #
@@ -31,7 +32,26 @@
 #    该文件不在上游，不计入合并面。
 # 3) lib/__tests__/advanced-async.test.ts：新增用例，验证「加载→保存」两次归一化后
 #    factors 仍在（移除修复后三条用例必红）。
-files	184
-blocks	560
-added	6015
-deleted	433
+
+# 2026-11-20 files 184->196 / blocks 560->603 / added 6015->6381 / deleted 433->451：
+# 8001 表达式计费在定价页只显示源码（billv-call / billv-second / billv-token），
+# 因为 /api/pricing 不带 usage schema，且展示解析器不认 factor 倍率与用量阈值。
+# 1) model/pricing.go：无插件 schema 的 tiered_expr 模型下发内置事实表，公共契约
+#    补全；不放前端做魔法判断，第三方与 MCP 消费方同一份数据。
+# 2) web/.../lib/async-usage.ts：新文件（不计合并面），承载内置事实表、倍率语义、
+#    用量阈值文案、跨档合并。上游文件只留最小挂接点。
+# 3) task-display.ts：符号线性价格支持「量 × 倍率」与 u() 数值阈值条件。放在这里
+#    而不是新文件，是因为它要复用 taskPriceBranches 的符号计算，复制一份等于第二套
+#    解析器。
+# 4) dynamic-price.ts：任务档位按解析出的 schema 判定，entries 覆盖所有档位字段；
+#    原逻辑只看最后一档，token/按次回退链只剩按次价。
+# 5) 前端 4 个测试文件更新：用量阈值不再算「无法展开」，未提及的用量字段不再写成 0。
+# 6) 顺带补 pkg/billingexpr 两个文件的 APIDUO 标记：0bed8e77e 的空哈希修复漏标，
+#    使 markercheck 常红，与本次功能无关。
+# 7) files +13：pricing 组件/库/测试与 i18n 七个语言文件各成了一个挂接文件；
+#    详情页的说明行再 +1（model-details.tsx），卡片内部档位标签的抑制 +1 块。
+
+files	197
+blocks	605
+added	6398
+deleted	451

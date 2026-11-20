@@ -17,6 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { BillingUsageSchema } from '../../types'
+// APIDUO:async-usage:BEGIN
+import { ASYNC_MULTIPLIER_KEYS, ASYNC_USAGE_SCHEMA } from '../async-usage'
+// APIDUO:async-usage:END
 import type { TaskTier } from './display'
 import { compileBillingExpression } from './parser'
 import { TIME_FUNCTIONS, visitExpression, type ExpressionNode } from './types'
@@ -27,12 +30,19 @@ type PriceBranch = {
   // Actual USD per unit; token display scaling happens only at the boundary.
   prices: Record<string, number>
   times: Map<string, boolean>
+  // APIDUO:async-usage:BEGIN
+  /** Facts that scale the rate instead of being billed per unit (type 8001). */
+  multipliers: string[]
+  // APIDUO:async-usage:END
 }
 type TaskDisplayContext = {
   source: string
   schema: BillingUsageSchema
   facts: Record<string, string | boolean>
   remaining: number
+  // APIDUO:async-usage:BEGIN
+  multiplierKeys: ReadonlySet<string>
+  // APIDUO:async-usage:END
 }
 const MAX_DISPLAY_ROWS = 128
 
@@ -61,6 +71,23 @@ function taskDisplayCondition(
     if (typeof right === 'boolean') return left
     return `(${left}) ${node.operator} (${right})`
   }
+  // APIDUO:async-usage:BEGIN
+  // A quantity threshold (u("tokens") > 0) selects a rate by usage volume
+  // rather than by a declared enum value, so it is shown as a condition.
+  if (
+    ['==', '!=', '<', '<=', '>', '>='].includes(node.operator) &&
+    node.left.kind === 'call' &&
+    node.left.name === 'u' &&
+    node.left.args[0]?.kind === 'literal' &&
+    typeof node.left.args[0].value === 'string' &&
+    node.right.kind === 'literal' &&
+    typeof node.right.value === 'number'
+  ) {
+    const field = node.left.args[0].value
+    if (context.schema[field]?.type !== 'number') return null
+    return context.source.slice(node.start, node.end)
+  }
+  // APIDUO:async-usage:END
   if (['==', '!='].includes(node.operator)) {
     for (const [probe, literal] of [
       [node.left, node.right],
@@ -119,7 +146,11 @@ function taskPriceBranches(
     typeof node.value === 'number' &&
     node.value >= 0
   ) {
-    return [{ constant: node.value, prices: {}, times: new Map() }]
+    // APIDUO:async-usage:BEGIN
+    return [
+      { constant: node.value, prices: {}, times: new Map(), multipliers: [] },
+    ]
+    // APIDUO:async-usage:END
   }
   if (
     node.kind === 'call' &&
@@ -134,7 +165,11 @@ function taskPriceBranches(
     ) {
       return null
     }
-    return [{ constant: 0, prices: { [field]: 1 }, times: new Map() }]
+    // APIDUO:async-usage:BEGIN
+    return [
+      { constant: 0, prices: { [field]: 1 }, times: new Map(), multipliers: [] },
+    ]
+    // APIDUO:async-usage:END
   }
   if (
     node.kind === 'call' &&
@@ -193,6 +228,44 @@ function taskPriceBranches(
       ) {
         continue
       }
+      // APIDUO:async-usage:BEGIN
+      // A type 8001 price reads `quantity * multiplier * unit price`. The
+      // multiplier is a rate scaler, never a second billed quantity, so a
+      // factor side whose coefficient is exactly 1 folds into multipliers.
+      if (node.operator === '*') {
+        const factorSide = [a, b].find(
+          (branch) =>
+            Object.keys(branch.prices).length > 0 &&
+            branch.constant === 0 &&
+            Object.keys(branch.prices).every(
+              (field) =>
+                context.multiplierKeys.has(field) && branch.prices[field] === 1
+            )
+        )
+        const quantitySide = factorSide === a ? b : a
+        if (
+          factorSide &&
+          Object.keys(quantitySide.prices).length > 0 &&
+          quantitySide.multipliers.every(
+            (field) => !context.multiplierKeys.has(field)
+          )
+        ) {
+          branches.push({
+            label: a.label ?? b.label,
+            constant: quantitySide.constant,
+            prices: { ...quantitySide.prices },
+            times: new Map([...a.times, ...b.times]),
+            multipliers: [
+              ...new Set([
+                ...quantitySide.multipliers,
+                ...Object.keys(factorSide.prices),
+              ]),
+            ],
+          })
+          continue
+        }
+      }
+      // APIDUO:async-usage:END
       const aQuantity = Object.keys(a.prices).length > 0
       const bQuantity = Object.keys(b.prices).length > 0
       const prices: Record<string, number> = {}
@@ -235,6 +308,9 @@ function taskPriceBranches(
         constant,
         prices,
         times: new Map([...a.times, ...b.times]),
+        // APIDUO:async-usage:BEGIN
+        multipliers: [...new Set([...a.multipliers, ...b.multipliers])],
+        // APIDUO:async-usage:END
       })
     }
   }
@@ -280,11 +356,17 @@ export function readConditionalTaskPricing(
       values.map((value) => ({ ...facts, [field]: value }))
     )
   }
+  // APIDUO:async-usage:BEGIN
+  const multiplierKeys = schema === ASYNC_USAGE_SCHEMA ? ASYNC_MULTIPLIER_KEYS : new Set<string>()
+  // APIDUO:async-usage:END
   const context: TaskDisplayContext = {
     source,
     schema,
     facts: {},
     remaining: 20000,
+    // APIDUO:async-usage:BEGIN
+    multiplierKeys,
+    // APIDUO:async-usage:END
   }
   const tiers: TaskTier[] = []
   for (const facts of combinations) {
@@ -299,9 +381,14 @@ export function readConditionalTaskPricing(
       for (const field of fields) {
         const definition = schema[field]
         if (definition.type !== 'number' || !definition.unit) continue
+        // APIDUO:async-usage:BEGIN
+        if (context.multiplierKeys.has(field)) continue
+        // A field this branch never mentions is not billed here; writing 0
+        // would turn a mutually exclusive fallback into a free tier.
+        if (branch.prices[field] === undefined) continue
         unitPrices[field] =
-          (branch.prices[field] ?? 0) *
-          (definition.unit === 'token' ? 1_000_000 : 1)
+          branch.prices[field] * (definition.unit === 'token' ? 1_000_000 : 1)
+        // APIDUO:async-usage:END
       }
       if (
         !Object.keys(unitPrices).length ||
@@ -323,6 +410,11 @@ export function readConditionalTaskPricing(
         ...(conditionText ? { conditionText } : {}),
         constant: branch.constant,
         unitPrices,
+        // APIDUO:async-usage:BEGIN
+        ...(branch.multipliers.length > 0
+          ? { multipliers: [...branch.multipliers] }
+          : {}),
+        // APIDUO:async-usage:END
       })
     }
   }

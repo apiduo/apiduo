@@ -36,7 +36,12 @@ import { buildDiscountedPrices } from '../lib/discount-display'
 import { isTokenBasedModel } from '../lib/model-helpers'
 import { withBasePricing } from '../lib/plugin-pricing'
 import { formatPrice, formatRequestPrice } from '../lib/price'
-import { taskUsageUnitLabel } from '../lib/task-price-display'
+// APIDUO:async-usage:BEGIN
+import {
+  taskPriceLabel,
+  taskUsageUnitLabel,
+} from '../lib/task-price-display'
+// APIDUO:async-usage:END
 import type { PricingModel, TokenUnit } from '../types'
 
 export type ModelPriceCellOptions = {
@@ -147,10 +152,12 @@ export function ModelPriceCell(props: {
           suffix = `/${t('{{unit}} tokens', { unit: tokenUnitLabel })}`
         }
         return {
+          // APIDUO:async-usage:BEGIN
           label:
             entry.labelKind === 'schema'
-              ? entry.shortLabel
+              ? taskPriceLabel(entry.description, entry.shortLabel, i18n.language)
               : t(entry.shortLabel),
+          // APIDUO:async-usage:END
           value: `${entry.formattedRange ?? entry.formatted}${suffix}`,
         }
       })
@@ -175,6 +182,14 @@ export function ModelPriceCell(props: {
     if (dynamic.isMixedBilling) {
       caption += ` · ${t('Token or per-call pricing')}`
     }
+    // APIDUO:async-usage:BEGIN
+    if (dynamic.isAsyncMultiplier) {
+      caption += ` · ${t('× resolution factor')}`
+    }
+    if (dynamic.hasTokenUsageFallback) {
+      caption += ` · ${t('per-token, else per request')}`
+    }
+    // APIDUO:async-usage:END
     if (providerCaption) caption += ` · ${providerCaption}`
     if (unconfiguredCaption) caption += ` · ${unconfiguredCaption}`
     if (dynamic.tierCount > 1) {

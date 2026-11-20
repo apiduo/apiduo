@@ -291,6 +291,10 @@ export type ParsedTaskTier = {
   conditions: TaskTierCondition[]
   constant: number
   unitPrices: Record<string, number>
+  // APIDUO:async-usage:BEGIN
+  /** Facts that scale this tier's rate instead of adding a billed quantity. */
+  multipliers?: string[]
+  // APIDUO:async-usage:END
 }
 
 // ---------------------------------------------------------------------------
