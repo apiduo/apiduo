@@ -17,15 +17,30 @@ import (
 // to tell tok1 from tok2. Six characters is enough to disambiguate a handful of
 // keys and far too little to reconstruct one.
 //
-// Keys short enough that head and tail would overlap return empty: showing the
-// whole secret is worse than showing nothing.
+// Keys shorter than head+tail get a narrower window rather than nothing: a
+// self-hosted service key is `sk-` plus its subdomain, eight to twelve
+// characters, so the 10+6 rule matched none of them and every row of the panel
+// read `#1 #2 #3` — the exact choice this label exists to make. The window
+// still hides at least a third of the key (and never more than four characters
+// per side), so the row stays distinguishable without being reproducible.
 func multiKeyPreview(key string) string {
 	const head, tail = 10, 6
-	trimmed := strings.TrimSpace(key)
-	if len(trimmed) <= head+tail {
+	runes := []rune(strings.TrimSpace(key))
+	n := len(runes)
+	if n == 0 {
 		return ""
 	}
-	return trimmed[:head] + "…" + trimmed[len(trimmed)-tail:]
+	headLen, tailLen := head, tail
+	if n <= head+tail {
+		if n <= 2 {
+			// Too short to mask anything and still name the key.
+			return "…"
+		}
+		hidden := max(2, n/3)
+		headLen = min(4, (n-hidden)/2)
+		tailLen = min(4, n-hidden-headLen)
+	}
+	return string(runes[:headLen]) + "…" + string(runes[n-tailLen:])
 }
 
 // multiKeyKeyState is one key's disabled state, carried by identity rather than

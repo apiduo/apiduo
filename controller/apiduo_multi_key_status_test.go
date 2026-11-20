@@ -1,10 +1,17 @@
 package controller
 
 import (
+	"fmt"
+	"net/http"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -134,12 +141,79 @@ func TestMultiKeyPreviewKeepsHeadAndTail(t *testing.T) {
 	}
 }
 
-func TestMultiKeyPreviewHidesShortKeys(t *testing.T) {
-	for _, key := range []string{"", "   ", "short", "0123456789abcdef"} {
-		if got := multiKeyPreview(key); got != "" {
-			t.Fatalf("short key %q must not be previewed, got %q", key, got)
+// A self-hosted service key is `sk-` plus its subdomain: eight to twelve
+// characters, all of them shorter than the 10+6 window. Returning "" there left
+// the panel with rows labelled only `#1 #2 #3`, so they are masked instead of
+// dropped.
+func TestMultiKeyPreviewMasksShortKeys(t *testing.T) {
+	for key, want := range map[string]string{
+		"short":            "s…rt",
+		"sk-baidu":         "sk-…idu",
+		"sk-wenxin":        "sk-…xin",
+		"sk-a-1":           "sk…-1",
+		"abc":              "…c",
+		"ab":               "…",
+		"0123456789abcdef": "0123…cdef",
+	} {
+		if got := multiKeyPreview(key); got != want {
+			t.Fatalf("preview(%q) = %q, want %q", key, got, want)
 		}
 	}
+}
+
+// Whatever the length, the label must name the row without reproducing it: it
+// never equals the key, always keeps the ellipsis, and stays valid UTF-8 even
+// when the key is not ASCII.
+func TestMultiKeyPreviewNeverRevealsTheWholeKey(t *testing.T) {
+	keys := []string{"密钥一二三四五六七八九十"}
+	for n := 1; n <= 40; n++ {
+		keys = append(keys, strings.Repeat("k", n))
+	}
+	for _, key := range keys {
+		got := multiKeyPreview(key)
+		if got == "" || got == key || !strings.Contains(got, "…") {
+			t.Fatalf("preview(%q) = %q", key, got)
+		}
+		if !utf8.ValidString(got) {
+			t.Fatalf("preview(%q) split a multi-byte character: %q", key, got)
+		}
+		if strings.HasPrefix(got, "…") && len(key) > 3 {
+			t.Fatalf("preview(%q) hides its head entirely: %q", key, got)
+		}
+	}
+}
+
+// The operator picks a row by the tail it ends with; two keys that differ only
+// there must not share a label.
+func TestMultiKeyPreviewSeparatesKeysThatDifferInTheTail(t *testing.T) {
+	if multiKeyPreview("sk-1task-a") == multiKeyPreview("sk-1task-b") {
+		t.Fatalf("tail is not part of the short-key preview")
+	}
+}
+
+// The panel's three-key channel is the shape that broke: every key shorter
+// than the 10+6 window came back as an empty key_preview, so all three rows
+// were labelled only `#1 #2 #3`.
+func TestMultiKeyStatusReturnsPreviewForShortKeys(t *testing.T) {
+	setupTaskPluginBindChannelTest(t)
+	channel := &model.Channel{
+		Type:   constant.ChannelTypeOpenAI,
+		Key:    "sk-baidu\nsk-wenxin\nsk-1task",
+		Status: common.ChannelStatusEnabled,
+		Name:   "short-keys",
+		Models: "m",
+		Group:  "default",
+	}
+	channel.ChannelInfo = model.ChannelInfo{IsMultiKey: true, MultiKeySize: 3, MultiKeyMode: constant.MultiKeyModePolling}
+	require.NoError(t, channel.Insert())
+
+	response, raw := callChannelAPI(t, ManageMultiKeys, http.MethodPost, "/api/channel/multi_key/manage",
+		fmt.Sprintf(`{"channel_id":%d,"action":"get_key_status","page":1,"page_size":10}`, channel.Id))
+
+	require.True(t, response.Success, raw)
+	assert.Contains(t, raw, `"key_preview":"sk-…idu"`)
+	assert.Contains(t, raw, `"key_preview":"sk-…xin"`)
+	assert.Contains(t, raw, `"key_preview":"sk-…ask"`)
 }
 
 func TestMultiKeyPreviewTrimsWhitespace(t *testing.T) {
