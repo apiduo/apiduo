@@ -1,8 +1,9 @@
 # 高级自定义异步计费 · 线上验证报告（2026-11-20）
 
-结论：按次、按秒、按 token 三种形态在**线上二进制**上都按表达式结算，44 条判据全部通过
-（历史回放 28、正向结算 10 笔、守卫 1、审计 3、退款 1、资金守恒 1）。验证中发现
-**两个问题**：一个已修（表达式缓存空哈希串味），一个是既有设计取舍（结算补扣无余额下限）。
+结论：按次、按秒、按 token 三种形态在**线上二进制**上都按表达式结算，46 条判据全部通过
+（历史回放 28、正向结算 11 笔、守卫 1、审计 4、退款 1、资金守恒 1）。验证中发现
+**三个问题**：一个已修（表达式缓存空哈希串味），两个待定（结算补扣无余额下限、
+真实上游没有一个提供 token 计量）。
 
 ## 一、结论摘要
 
@@ -17,6 +18,7 @@
 | 任务失败全额退款 | PASS | 正向实测 1 笔 |
 | 历史任务终态 quota = 表达式(facts) | PASS | MySQL 快照回放 8/8 |
 | 历史提交预扣 = 表达式(facts) | PASS | ClickHouse 回放 20/20 |
+| 真实渠道配 per_token 表达式 → 走回退档并留审计行 | PASS | #37 minimaxH3 真实任务 1 笔（$0.01） |
 
 **真实上游消耗：$0。** 全部正向实测走本地 mock 上游（容器 `apiduo-billmock`，
 已在 `apiduo-cn_default` 网络内，测试后删除）。历史回放读的是已发生的真实账单。
@@ -138,7 +140,41 @@ mock 的 token 数由请求时长算出（`duration × 24000`），只出现在�
 | 按秒 + 无 duration + 渠道无 `default_seconds` | `400 model billv-second: the price expression needs usage facts this request does not provide [seconds]` | PASS |
 | 上游返回 failed | 预扣 25000 全额退回，`tasks.quota=0`，用户/令牌余额回到测试前 | PASS |
 
-### 4.5 资金守恒
+### 4.5 真实渠道上的按 token 表达式（#37 minimaxH3，真实上游）
+
+前面 §4.3 的 token 结算靠受控上游，因为线上没有任何上游会回传 token。为确认
+「真实渠道配 per_token 会发生什么」，在 #37 上做了一次真实验证：
+
+- 补 `fields.total_tokens_path = ["usage","total_tokens"]`、`completion_tokens_path`
+  （原配置是**空数组**，即使上游报用量也读不到）；
+- `billing_expr.minimaxH3` 改为
+  `u("tokens") > 0 ? tier("token", u("tokens") * 10.0 / 1000000) : tier("call", u("count") * 0.01)`；
+- 提交一笔真实任务（minimaxH3 / 5s / 480p，上游一次成功）。
+
+| 观测点 | 实测 |
+|---|---|
+| 任务终态 | `succeeded`（产物 `aivideomaker2api.1task.cn/v/cgt-20261120-c906c897.mp4`） |
+| `tasks.quota` | 5000 = $0.01 = call 档 |
+| 结算事实 | `{"count":1,"factor":1,"seconds":5,"tokens":0}` |
+| 预扣行（type=2） | `quota=5000`、`matched_tier=call`、内容 `tokens: 0` |
+| 审计行（type=4） | `usage_fallback=tokens_missing`、`pre=5000`、`actual=5000`、`tier=call` |
+| 用户余额 | 5,000,000 → 4,995,000（精确 5000） |
+
+关键点：**退档价等于预扣价时，差额为 0，消费差额行根本不写** —— 只有那条 type=4
+审计行能回答「这笔为什么按次收」。这也是 §四 强调审计行必须单独写的原因。
+
+上游侧的直接证据：aivideomaker 成功回包只有
+`content / created_at / duration / error / id / ratio / status / updated_at`，**没有 usage 字段**；
+hailuo 回包有 `usage`，但 `total_tokens` 与 `completion_tokens` 恒为 0，只有
+`forecast_credits`（积分）。33 条真实任务计费行的 `usage_facts.tokens` 全部为 0。
+
+⇒ 结论：真实渠道配 per_token **可以提交、可以结算、不会报错，但永远落在回退档**，
+与按次等价。要让 token 档真正生效，必须先有按 token 计量的上游。
+
+测后已逐字还原：`billing_expr.minimaxH3` 回到 `u("seconds") * u("factor") * 0.01`、
+`fields.*_tokens_path` 回到空数组、临时用户/令牌/任务/日志全部删除。
+
+### 4.6 资金守恒
 
 `billverify-user` 起始 5,000,000；19 笔实测任务累计结算 2,375,000；
 余额 2,625,000，`used_quota=2,375,000`，**逐位对上**。失败那笔 0 消耗。
@@ -161,7 +197,15 @@ mock 的 token 数由请求时长算出（`duration × 24000`），只出现在�
 回归测试 `TestRunExprByEmptyHashDoesNotReuseAnotherExpression`，敏感性已验证：
 去掉修复即红（0.1 vs 0.9）。
 
-### 5.2 设计取舍（待定）：结算补扣没有余额下限
+### 5.2 配置缺口（记录）：#37 的 token 路径是空数组
+
+`#37 aivideomaker2api-video` 的 `fields.completion_tokens_path` 与 `total_tokens_path`
+都是 `[]`，而 #18/#28/#38 都配了 `["usage","total_tokens"]`。空数组在
+`ParseTaskResult` 里等价于「不读」，所以即使上游哪天开始回传 usage，#37 也读不到。
+本轮验证时临时补上（无副作用，上游本就没有该字段），测后按最小改动原则还原为 `[]`。
+是否长期补上属于配置决定，未擅自保留。
+
+### 5.3 设计取舍（待定）：结算补扣没有余额下限
 
 `WalletFunding.Settle(delta>0)` → `DecreaseUserQuota` → `quota = quota - delta`，
 无下限判断；预扣走 `TryReserveUserQuota`（原子、余额不足即拒）。
@@ -203,8 +247,9 @@ mock 容器与 `/root/billmock`。
    本次也未验；表达式计费不读该字段。
 3. **并发重复结算**：同一 task 被两路轮询同时结算的竞态，需要并发工具，线上不便制造；
    仅有单测覆盖。
-4. **渠道 #37 真实上游**：上游号池 429 严重（11-19 记录 6 次提交 1 次成功），
-   未再触发真实任务，其按秒行为由历史回放覆盖（9/9 匹配）。
+4. **渠道 #37 的按秒行为**：由历史回放覆盖（9/9 匹配）；本轮只为回退档验证提交了
+   1 笔真实任务（一次成功，未触发 429）。
+5. **token 档在真实上游生效**：需要上游回传非零用量，当前 0 个渠道满足（见 §4.5）。
 
 ## 八、复现方法
 
