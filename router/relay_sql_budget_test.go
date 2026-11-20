@@ -39,11 +39,10 @@ import (
 //	9  UPDATE channels used_quota
 //	10 UPDATE users quota
 //	11 UPDATE tokens
-//	12 SELECT setting FROM users
-//	13 INSERT logs
+//	12 INSERT logs
 //
 // With MEMORY_CACHE_ENABLED the abilities and channels reads come from memory
-// instead: 5 reads + 5 writes. That is the deployed configuration (Redis implies
+// instead: 4 reads + 5 writes. That is the deployed configuration (Redis implies
 // the memory cache), which is why both paths get their own budget.
 //
 // Five of the statements are writes. Writes are the part that scales with
@@ -52,12 +51,16 @@ import (
 const (
 	// Without channel cache: abilities and channels are read per request.
 	//
-	// 9 而不是 8：渠道行被同一次请求读了两遍（清单第 5 条）。这是既有实现，
-	// 不是这批改动引入的；把它记成 9 是为了让成本显性化——真要优化掉那次
-	// 重复读，这里是唯一会立刻变红的地方，届时再降回 8。
-	relayReadBudgetNoCache = 9
+	// 8 而不是 7：渠道行被同一次请求读了两遍（清单第 5 条）。这是既有实现，
+	// 不是这批改动引入的；把它记成 8 是为了让成本显性化——真要优化掉那次
+	// 重复读，这里是唯一会立刻变红的地方，届时再降回 7。
+	//
+	// 2026-11-20 由 9 降到 8：日志写入的 IP 开关改读认证上下文
+	// （`model/user_cache.go` 的 shouldRecordIP），原先那条
+	// `SELECT setting FROM users` 不再出现。
+	relayReadBudgetNoCache = 8
 	// With MEMORY_CACHE_ENABLED: abilities and channels come from memory.
-	relayReadBudgetCached = 5
+	relayReadBudgetCached = 4
 	relayWriteBudget      = 5
 )
 
