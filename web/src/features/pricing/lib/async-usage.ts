@@ -75,6 +75,43 @@ export function usageFactKeys(expression: string): Set<string> | null {
 }
 
 /**
+ * Restore the localized labels of the built-in facts. The gateway publishes
+ * only structure (type/unit) over JSON; the console's own copy of a fact keeps
+ * its label and description. Facts outside the built-in table are left alone.
+ */
+function withBuiltinLabels(declared: BillingUsageSchema): BillingUsageSchema {
+  return Object.fromEntries(
+    Object.entries(declared).map(([key, definition]) => {
+      const builtin = ASYNC_USAGE_SCHEMA[key]
+      if (!builtin) return [key, definition]
+      return [
+        key,
+        {
+          ...builtin,
+          ...definition,
+          description: definition.description ?? builtin.description,
+          unitLabel: definition.unitLabel ?? builtin.unitLabel,
+        },
+      ]
+    })
+  )
+}
+
+/**
+ * The gateway's copy of the built-in table always carries `factor`, which no
+ * plugin declares; that key is what separates it from a plugin schema that
+ * happens to use one of the same names (e.g. `seconds`).
+ */
+function isBuiltinFactTable(schema: BillingUsageSchema): boolean {
+  const keys = Object.keys(schema)
+  return (
+    keys.length > 0 &&
+    keys.every((key) => Object.hasOwn(ASYNC_USAGE_SCHEMA, key)) &&
+    Object.hasOwn(schema, 'factor')
+  )
+}
+
+/**
  * Usage schema for a model's expression: the plugin schema when the model has
  * one, otherwise the type 8001 built-in facts. The built-in table only applies
  * when every `u()` key is one of its own, so a plugin expression can never be
@@ -83,11 +120,13 @@ export function usageFactKeys(expression: string): Set<string> | null {
 export function resolveUsageSchema(
   model: PricingModel
 ): BillingUsageSchema | undefined {
-  if (
-    model.billing_usage_schema &&
-    Object.keys(model.billing_usage_schema).length > 0
-  ) {
-    return model.billing_usage_schema
+  const declared = model.billing_usage_schema
+  if (declared && Object.keys(declared).length > 0) {
+    // A built-in table the gateway serialized carries no labels; the plugin
+    // tables (and any unknown fact) keep exactly what they declared.
+    return isBuiltinFactTable(declared)
+      ? withBuiltinLabels(declared)
+      : declared
   }
   if (model.billing_mode !== 'tiered_expr' || !model.billing_expr) {
     return undefined

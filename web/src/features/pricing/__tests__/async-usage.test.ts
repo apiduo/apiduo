@@ -188,3 +188,37 @@ describe('type 8001 prices after a JSON round trip', () => {
   })
 })
 // APIDUO:async-usage:END
+
+// APIDUO:async-usage:BEGIN
+describe('gateway-serialized built-in facts', () => {
+  test('restore the console labels the gateway does not publish', () => {
+    // The gateway publishes structure only (type/unit), never the labels.
+    const gatewaySchema = Object.fromEntries(
+      Object.entries(ASYNC_USAGE_SCHEMA).map(([key, definition]) => [
+        key,
+        { type: definition.type, unit: definition.unit },
+      ])
+    )
+    const schema = resolveUsageSchema(
+      asyncModel('tier("base", u("seconds") * u("factor") * 0.01)', {
+        billing_usage_schema: gatewaySchema,
+      })
+    )
+
+    // Without this the card would read "seconds" instead of the localized name.
+    expect(schema?.seconds?.description).toEqual({ en: 'Duration', zh: '时长' })
+    expect(schema?.count?.unitLabel).toEqual({ en: 'request', zh: '次' })
+  })
+
+  test('leave a plugin schema exactly as declared', () => {
+    const pluginSchema = { seconds: { type: 'number' as const, unit: 'second' as const } }
+    expect(
+      resolveUsageSchema(
+        asyncModel('tier("base", u("seconds") * 0.1)', {
+          billing_usage_schema: pluginSchema,
+        })
+      )
+    ).toBe(pluginSchema)
+  })
+})
+// APIDUO:async-usage:END
