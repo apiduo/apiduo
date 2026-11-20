@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chat-adapter · 模型身份隔离层</title>
+<style>
+  :root{
+    --bg:#0a0d13; --panel:#10151f; --panel2:#0c1119; --line:#1e2634;
+    --text:#e7edf7; --muted:#8d9bb0; --dim:#5f6b7d;
+    --mint:#5eead4; --blue:#7aa2f7; --amber:#f2b86b; --red:#f2777a; --violet:#b394f7;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.6;
+    background-image:radial-gradient(900px 500px at 12% -8%,rgba(94,234,212,.07),transparent 60%),
+                     radial-gradient(700px 400px at 88% 0%,rgba(122,162,247,.08),transparent 60%);}
+  a{color:inherit}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 28px 80px}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:20px;
+    padding:22px max(28px, calc((100vw - 1240px) / 2 + 28px)) 18px;
+    border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;
+    background:rgba(10,13,19,.86);backdrop-filter:blur(12px)}
+  .brand{display:flex;align-items:baseline;gap:12px}
+  .brand b{font-size:16px;letter-spacing:.02em}
+  .brand span{font-size:12px;color:var(--muted)}
+  .tag{font-family:var(--mono);font-size:11px;color:var(--mint);border:1px solid rgba(94,234,212,.35);
+    background:rgba(94,234,212,.07);border-radius:999px;padding:3px 9px;white-space:nowrap}
+  nav{display:flex;gap:18px;font-size:12.5px;color:var(--muted)}
+  nav a{text-decoration:none;padding:4px 0;border-bottom:1px solid transparent}
+  nav a:hover{color:var(--text);border-color:var(--dim)}
+
+  .hero{padding:52px 0 12px}
+  .kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+  h1{font-size:40px;line-height:1.22;margin:14px 0 14px;letter-spacing:-.02em;font-weight:650}
+  h1 em{font-style:normal;color:var(--mint)}
+  .lede{max-width:760px;color:var(--muted);font-size:15px}
+  .lede b{color:var(--text);font-weight:600}
+
+  .flow{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:0;margin:34px 0 8px;align-items:stretch}
+  .node{border:1px solid var(--line);background:var(--panel2);padding:16px 18px;border-radius:12px}
+  .node h4{margin:0 0 4px;font-size:13px;letter-spacing:.02em}
+  .node p{margin:0;font-size:12px;color:var(--muted)}
+  .node.core{border-color:rgba(94,234,212,.4);background:linear-gradient(180deg,rgba(94,234,212,.06),rgba(94,234,212,.015));
+    box-shadow:0 0 0 1px rgba(94,234,212,.08) inset}
+  .node.core h4{color:var(--mint)}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--dim);font-family:var(--mono);font-size:11px;
+    padding:0 8px;white-space:nowrap}
+  .flowmid{display:grid;grid-template-columns:1fr auto 1.1fr auto 1fr}
+
+  .guarantees{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:26px 0 10px}
+  .g{border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:var(--panel)}
+  .g .id{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .g h3{margin:6px 0 5px;font-size:13.5px;font-weight:600}
+  .g p{margin:0;font-size:12px;color:var(--muted);line-height:1.55}
+  .g.ok{border-left:2px solid rgba(94,234,212,.8)}
+  .g.warn{border-left:2px solid rgba(242,184,107,.9)}
+  .g.warn h3{color:var(--amber)}
+
+  section{padding:44px 0 6px;border-top:1px solid var(--line);margin-top:36px}
+  .sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:18px}
+  .sec-head h2{font-size:21px;margin:0;letter-spacing:-.01em;font-weight:620}
+  .sec-head .num{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.12em}
+  .sec-head p{margin:0;color:var(--muted);font-size:12.5px;max-width:560px;text-align:right}
+
+  .console{border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+  .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);
+    background:var(--panel2)}
+  .seg{display:flex;flex-wrap:wrap;gap:4px}
+  .seg button{appearance:none;border:1px solid transparent;background:transparent;color:var(--muted);
+    font:inherit;font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer}
+  .seg button:hover{color:var(--text);background:rgba(255,255,255,.03)}
+  .seg button.on{color:var(--text);background:#171e2b;border-color:#2a3547}
+  .spacer{flex:1}
+  .switch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+  .switch .track{width:34px;height:18px;border-radius:999px;background:#26303f;position:relative;transition:.18s}
+  .switch .thumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#8d9bb0;transition:.18s}
+  .switch.on .track{background:rgba(94,234,212,.28)}
+  .switch.on .thumb{left:18px;background:var(--mint)}
+  .btn{appearance:none;border:1px solid #2a3547;background:#171e2b;color:var(--text);font:inherit;font-size:12px;
+    padding:7px 14px;border-radius:8px;cursor:pointer}
+  .btn:hover{border-color:#3a4960}
+  .btn.primary{background:rgba(94,234,212,.14);border-color:rgba(94,234,212,.45);color:#c8fff5}
+  .btn.primary:hover{background:rgba(94,234,212,.2)}
+
+  .cols{display:grid;grid-template-columns:1fr 300px 1fr;gap:0}
+  .col{padding:16px;min-width:0;display:flex;flex-direction:column}
+  .col pre{flex:1}
+  .col + .col{border-left:1px solid var(--line)}
+  .col h5{margin:0 0 9px;font-size:11.5px;letter-spacing:.06em;color:var(--dim);font-family:var(--mono);
+    display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .col h5 .pill{font-family:var(--sans);letter-spacing:0;color:var(--muted);border:1px solid var(--line);
+    border-radius:999px;padding:1px 7px;font-size:10.5px}
+  pre{margin:0;background:#080b11;border:1px solid #18202c;border-radius:9px;padding:12px 13px;
+    font-family:var(--mono);font-size:12px;line-height:1.65;overflow:auto;max-height:330px;min-height:180px;
+    color:#c8d3e3;tab-size:2;white-space:pre;scrollbar-width:thin}
+  .jk{color:#7aa2f7}.js{color:#a5d6a7}.jn{color:#f2b86b}.jb{color:#b394f7}
+  .hk{color:#5a6678}.hv{color:#8d9bb0}
+  mark{background:rgba(242,184,107,.16);color:#ffd9a3;border-radius:3px;padding:0 1px;border-bottom:1px solid rgba(242,184,107,.5)}
+  .leakmark{background:rgba(242,119,122,.15);color:#ffb3b5;border-bottom:1px solid rgba(242,119,122,.6)}
+
+  .pipe{display:flex;flex-direction:column;gap:0;padding:6px 0}
+  .step{display:grid;grid-template-columns:20px 1fr;gap:10px;padding:7px 0;position:relative}
+  .step .dot{width:9px;height:9px;border-radius:50%;border:1px solid #2c384b;margin:6px auto 0;background:#0c1119;transition:.2s}
+  .step .body b{display:block;font-size:12px;font-weight:550;color:#b9c6d8}
+  .step .body span{display:block;font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .step.done .dot{background:var(--mint);border-color:var(--mint);box-shadow:0 0 0 3px rgba(94,234,212,.1)}
+  .step.done .body b{color:var(--text)}
+  .step.done .body span{color:var(--muted)}
+  .step.fail .dot{background:var(--red);border-color:var(--red)}
+
+  .result{border-top:1px solid var(--line);padding:16px}
+  .rhead{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:12px}
+  .meter{display:flex;align-items:baseline;gap:7px;border:1px solid var(--line);border-radius:9px;padding:6px 11px;
+    background:#0a0f16}
+  .meter b{font-family:var(--mono);font-size:19px;line-height:1;color:var(--mint)}
+  .meter span{font-size:11px;color:var(--muted)}
+  .meter.bad b{color:var(--red)}
+  .meter.warn b{color:var(--amber)}
+  .rhead .note{font-size:12px;color:var(--muted)}
+  .rhead .note code{font-family:var(--mono);color:var(--text);font-size:11.5px}
+  .views{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .views.one{grid-template-columns:1fr}
+  .findings{margin-top:14px;border-top:1px solid #18202c;padding-top:10px;display:grid;
+    grid-template-columns:1fr;gap:0;max-height:340px;overflow:auto}
+  .f{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:baseline;padding:5px 0;
+    border-bottom:1px dashed #161d28;font-size:12px}
+  .f code{font-family:var(--mono);font-size:11px;color:#a9b7ca}
+  .f .act{font-size:10.5px;font-family:var(--mono);padding:1px 6px;border-radius:5px;white-space:nowrap}
+  .act.fix{color:#c8fff5;background:rgba(94,234,212,.1);border:1px solid rgba(94,234,212,.3)}
+  .act.keep{color:#9fb0c6;background:rgba(141,155,176,.08);border:1px solid #26303f}
+  .act.drop{color:#ffc9cb;background:rgba(242,119,122,.09);border:1px solid rgba(242,119,122,.3)}
+  .act.risk{color:#ffd9a3;background:rgba(242,184,107,.09);border:1px solid rgba(242,184,107,.3)}
+  .f small{display:block;color:var(--dim);font-size:10.5px;margin-top:2px}
+
+  .rulebar{display:flex;gap:10px;align-items:center;margin:0 0 14px;flex-wrap:wrap}
+  .rulebar input{flex:1;min-width:240px;background:#080b11;border:1px solid #253044;color:var(--text);
+    border-radius:9px;padding:10px 13px;font-family:var(--mono);font-size:12.5px;outline:none}
+  .rulebar input:focus{border-color:rgba(94,234,212,.5)}
+  .resolve{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:11px;overflow:hidden}
+  .rcell{background:var(--panel);padding:14px 16px}
+  .rcell span{display:block;font-size:10.5px;letter-spacing:.08em;color:var(--dim);font-family:var(--mono);
+    text-transform:uppercase;margin-bottom:5px}
+  .rcell b{font-size:14px;font-weight:550}
+  .rcell b.mono{font-family:var(--mono);font-size:12.5px;word-break:break-all}
+  .rcell small{display:block;color:var(--muted);font-size:11.5px;margin-top:4px}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:500;
+    background:var(--panel2);position:sticky;top:0;z-index:2}
+  td code{font-family:var(--mono);font-size:11.5px;color:#b9c6d8}
+  .tbl{border:1px solid var(--line);border-radius:12px;overflow:auto;background:var(--panel)}
+  .chip{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:1px 7px;border-radius:5px;white-space:nowrap}
+  .chip.c1{color:#c8fff5;background:rgba(94,234,212,.1);border:1px solid rgba(94,234,212,.3)}
+  .chip.c2{color:#c9d8ff;background:rgba(122,162,247,.1);border:1px solid rgba(122,162,247,.28)}
+  .chip.c3{color:#ffd9a3;background:rgba(242,184,107,.09);border:1px solid rgba(242,184,107,.3)}
+  .chip.c4{color:#ffc9cb;background:rgba(242,119,122,.09);border:1px solid rgba(242,119,122,.3)}
+
+  .checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .check{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:baseline;
+    border:1px solid var(--line);border-radius:9px;padding:10px 13px;background:var(--panel)}
+  .check .ok{color:var(--mint);font-family:var(--mono);font-size:12px}
+  .check b{font-size:12.5px;font-weight:550;display:block}
+  .check small{color:var(--muted);font-size:11.5px;display:block;margin-top:1px}
+  .check .id{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+
+  .notes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:6px}
+  .note-card{border:1px solid var(--line);border-radius:11px;padding:15px 16px;background:var(--panel)}
+  .note-card h4{margin:0 0 6px;font-size:12.5px}
+  .note-card p{margin:0;color:var(--muted);font-size:12px}
+  .note-card.no{border-left:2px solid rgba(242,119,122,.7)}
+
+  .caption{margin:9px 2px 0;color:var(--dim);font-size:11.5px}
+  .caption code{font-family:var(--mono);color:var(--muted)}
+  footer{border-top:1px solid var(--line);margin-top:48px;padding-top:18px;display:flex;justify-content:space-between;
+    gap:20px;color:var(--dim);font-size:11.5px;flex-wrap:wrap}
+  footer code{font-family:var(--mono);color:var(--muted)}
+
+  @media (max-width:1080px){
+    .cols{grid-template-columns:1fr}
+    .col + .col{border-left:0;border-top:1px solid var(--line)}
+    .guarantees{grid-template-columns:repeat(2,1fr)}
+    .flowmid{grid-template-columns:1fr;gap:8px}
+    .arrow{padding:4px 0;font-size:0}
+    .arrow::after{content:'↓';font-size:14px;color:var(--dim)}
+    .views{grid-template-columns:1fr}
+    .resolve{grid-template-columns:1fr}
+    .checks{grid-template-columns:1fr}
+    .notes{grid-template-columns:1fr}
+    nav{display:none}
+    h1{font-size:30px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <b>chat-adapter</b>
+    <span>模型身份隔离层</span>
+    <span class="tag">设计稿 v0.1 · 只读演示台</span>
+  </div>
+  <nav>
+    <a href="#console">双视图</a>
+    <a href="#mapping">映射</a>
+    <a href="#surface">泄漏面</a>
+    <a href="#accept">验收</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <div class="hero">
+    <div class="kicker">Model identity isolation / chat modality</div>
+    <h1>客户端只知道<em>标签</em>，<br>上游真名只活在网关里。</h1>
+    <p class="lede">
+      模型重定向是两段式：<b>请求改名 + 响应归名</b>。只做一半，客户端读一次响应就知道上游是谁。
+      本产品把「模型名」从传输事实降级为标签，并在<b>出站字节</b>上保证这一点 —— 不靠约定，不靠全文替换。
+    </p>
+
+    <div class="flow flowmid">
+      <div class="node">
+        <h4>客户端</h4>
+        <p><code style="font-family:var(--mono);font-size:11px">model: acme-pro</code><br>只认识标签，不认识上游</p>
+      </div>
+      <div class="arrow">──▶</div>
+      <div class="node core">
+        <h4>chat-adapter</h4>
+        <p>映射 · 凭据重注入 · 逐字段归名 · 头白名单<br>唯一知道真名的进程，无状态</p>
+      </div>
+      <div class="arrow">──▶</div>
+      <div class="node">
+        <h4>上游</h4>
+        <p><code style="font-family:var(--mono);font-size:11px">deepseek-v4-flash-260425</code><br>只看到真名与客户端凭据</p>
+      </div>
+    </div>
+
+    <div class="guarantees">
+      <div class="g ok"><div class="id">G1</div><h3>请求面不出现上游名</h3><p>唯一改写点是映射层；未命中即 400（strict 默认开）。</p></div>
+      <div class="g ok"><div class="id">G2</div><h3>响应面全量归名</h3><p>model / 指纹 / 错误 / 头，全部落在对外名命名空间。</p></div>
+      <div class="g ok"><div class="id">G3</div><h3>失败面不泄漏</h3><p>错误文案默认泛化；无法脱敏时拒绝转发，不静默直通。</p></div>
+      <div class="g warn"><div class="id">N1</div><h3>模型身份不可保证</h3><p>内容自述与行为指纹属推断层，任何网关都消不掉。这条写在第一屏。</p></div>
+    </div>
+  </div>
+
+  <section id="console">
+    <div class="sec-head">
+      <div>
+        <div class="num">01 / DUAL VIEW</div>
+        <h2>一次请求，三个视角</h2>
+      </div>
+      <p>开关「脱敏」看裸奔形态：结构字段会立刻泄回真名。这是本产品最容易被省掉的一半。</p>
+    </div>
+
+    <div class="console">
+      <div class="toolbar">
+        <div class="seg" id="seg"></div>
+        <div class="spacer"></div>
+        <div class="switch on" id="sw">
+          <div class="track"><div class="thumb"></div></div>
+          <span id="swLabel">脱敏开启</span>
+        </div>
+        <button class="btn primary" id="send">发送请求</button>
+      </div>
+
+      <div class="cols">
+        <div class="col">
+          <h5>客户端请求 <span class="pill" id="reqMeta">POST /v1/chat/completions</span></h5>
+          <pre id="reqView"></pre>
+        </div>
+
+        <div class="col">
+          <h5>网关管线 <span class="pill">stateless</span></h5>
+          <div class="pipe" id="pipe"></div>
+        </div>
+
+        <div class="col">
+          <h5>上游原始 <span class="pill" id="upMeta">200</span></h5>
+          <pre id="rawView"></pre>
+        </div>
+      </div>
+
+      <div class="result">
+        <div class="rhead">
+          <div class="meter" id="meter"><b>0</b><span>处结构泄漏</span></div>
+          <div class="meter warn" id="meter2"><b>0</b><span>处推断残留</span></div>
+          <div class="note" id="note"></div>
+        </div>
+        <div class="views">
+          <div>
+            <h5 style="margin:0 0 9px;font-size:11.5px;letter-spacing:.06em;color:var(--dim);font-family:var(--mono)">出站字节 · 客户端所见</h5>
+            <pre id="pubView"></pre>
+          </div>
+          <div>
+            <h5 style="margin:0 0 9px;font-size:11.5px;letter-spacing:.06em;color:var(--dim);font-family:var(--mono)">处置清单 · 逐通道</h5>
+            <div class="findings" id="findings"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="mapping">
+    <div class="sec-head">
+      <div>
+        <div class="num">02 / MAPPING</div>
+        <h2>映射：先命中，再归名</h2>
+      </div>
+      <p>通配规则在构建期按具体度预排序；命中级别写进 trace，排障时先看它。</p>
+    </div>
+
+    <div class="rulebar">
+      <input id="probe" value="claude-3-5-sonnet-20240620" spellcheck="false" aria-label="输入对外模型名">
+      <span class="tag" id="strictTag">strict = true · 未命中 400</span>
+    </div>
+
+    <div class="resolve">
+      <div class="rcell"><span>命中规则</span><b class="mono" id="mRule">—</b><small id="mType">—</small></div>
+      <div class="rcell"><span>上游模型</span><b class="mono" id="mUp">—</b><small id="mWhy">—</small></div>
+      <div class="rcell"><span>响应回显</span><b class="mono" id="mPub">—</b><small>归名只用请求上下文，不做反向查表</small></div>
+    </div>
+
+    <div class="tbl" style="margin-top:14px">
+      <table>
+        <thead><tr><th style="width:26%">规则</th><th style="width:14%">类型</th><th style="width:26%">上游</th><th>说明</th></tr></thead>
+        <tbody id="rules"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="surface">
+    <div class="sec-head">
+      <div>
+        <div class="num">03 / LEAK SURFACE</div>
+        <h2>28 个泄漏通道，逐个定位</h2>
+      </div>
+      <p>不是「把 model 字段改了」就完事。头、错误、ID、产物 URL、用量指纹，各自失效方式不同。</p>
+    </div>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th style="width:8%">#</th><th style="width:30%">通道</th><th style="width:25%">处置</th><th>失效后果 / 依据</th></tr></thead>
+        <tbody id="surfaceRows"></tbody>
+      </table>
+    </div>
+    <p class="caption">表中为高频 14 条；完整 28 条通道与逐条依据见 <code>docs/apiduo/chat-adapter-solution.md</code> §6。</p>
+  </section>
+
+  <section id="accept">
+    <div class="sec-head">
+      <div>
+        <div class="num">04 / ACCEPTANCE</div>
+        <h2>用 canary 验收，不用「跑通了」</h2>
+      </div>
+      <p>随机 canary 名植入每个通道，断言出站 0 命中；删掉守卫必须转红，否则用例没咬住。</p>
+    </div>
+    <div class="checks" id="checks"></div>
+    <p class="caption">节选 10 条判据；完整 20 条对抗性用例与「变异自证」要求见方案 §9。只跑 1、2 两条不算验收。</p>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div>
+        <div class="num">05 / SCOPE</div>
+        <h2>做什么，不做什么</h2>
+      </div>
+      <p>边界写清楚，比能力列表更重要。</p>
+    </div>
+    <div class="notes">
+      <div class="note-card">
+        <h4>只做三件事</h4>
+        <p>请求改名、响应归名、出站面收敛。canonical 就是入站协议本身 —— 不做协议转换，vendor extras 一律透传。</p>
+      </div>
+      <div class="note-card">
+        <h4>无状态，无管理台</h4>
+        <p>配置进 Git，改配置走发布。在线改配置会引入第二份真相，灰度与回滚都要重做。</p>
+      </div>
+      <div class="note-card no">
+        <h4>明确不做</h4>
+        <p>负载均衡、准入鉴权、计费、模型能力矩阵、客户端可选上游地址（SSRF 面）。</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>chat-adapter · 设计稿 v0.1 · 原型仅演示形态，不含实现</div>
+    <div><code>docs/apiduo/chat-adapter-solution.md</code> · 蒸馏自 remap-service v0.1.26</div>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function hlJSON(text){
+  let out = '', i = 0;
+  while (i < text.length){
+    const c = text[i];
+    if (c === '"'){
+      let j = i + 1, buf = '';
+      while (j < text.length){
+        if (text[j] === '\\'){ buf += text[j] + text[j+1]; j += 2; continue; }
+        if (text[j] === '"') break;
+        buf += text[j]; j++;
+      }
+      let k = j + 1; while (k < text.length && /\s/.test(text[k])) k++;
+      const isKey = text[k] === ':';
+      out += '<span class="' + (isKey ? 'jk' : 'js') + '">"' + esc(buf) + '"</span>';
+      i = j + 1;
+    } else if (/[0-9\-]/.test(c)){
+      let j = i; while (j < text.length && /[0-9eE+\-.]/.test(text[j])) j++;
+      out += '<span class="jn">' + esc(text.slice(i, j)) + '</span>'; i = j;
+    } else if (/^(true|false|null)/.test(text.slice(i))){
+      const w = text.slice(i).match(/^(true|false|null)/)[0];
+      out += '<span class="jb">' + w + '</span>'; i += w.length;
+    } else { out += esc(c); i++; }
+  }
+  return out;
+}
+
+function pretty(obj){ return hlJSON(JSON.stringify(obj, null, 2)); }
+
+function markModel(html, name, cls){
+  if (!name) return html;
+  return html.split(esc(name)).join('<mark class="' + (cls || '') + '">' + esc(name) + '</mark>');
+}
+
+const SCEN = [
+  {
+    id:'chat', label:'Chat · 非流式', proto:'openai', path:'POST /v1/chat/completions',
+    alias:'acme-pro', upstream:'deepseek-v4-flash-260425', rule:'acme-pro = deepseek-v4-flash-260425', rewrites:2,
+    status:'200 OK · 812ms',
+    req:{ model:'acme-pro', messages:[{role:'user', content:'用一句话解释什么是幂等'}], temperature:0.7 },
+    raw:{ id:'chatcmpl-9f2b7c41e0a4', object:'chat.completion', created:1763568000,
+          model:'deepseek-v4-flash-260425', system_fingerprint:'fp_dsv4_260425',
+          choices:[{ index:0, message:{ role:'assistant', content:'幂等是指同一操作执行一次与执行多次，对系统状态产生的影响相同。' }, finish_reason:'stop' }],
+          usage:{ prompt_tokens:24, completion_tokens:37, total_tokens:61 } },
+    pub:{ id:'chatcmpl-9f2b7c41e0a4', object:'chat.completion', created:1763568000,
+          model:'acme-pro', system_fingerprint:'fp_acme_5c1d',
+          choices:[{ index:0, message:{ role:'assistant', content:'幂等是指同一操作执行一次与执行多次，对系统状态产生的影响相同。' }, finish_reason:'stop' }],
+          usage:{ prompt_tokens:24, completion_tokens:37, total_tokens:61 } },
+    rawHeaders:[['server','volc-gateway'],['x-tt-logid','0217635680001234ABCD'],['content-type','application/json']],
+    pubHeaders:[['content-type','application/json'],['x-request-id','req_ca_7f3a91']],
+    findings:[
+      {p:'model', a:'覆盖', t:'fix', n:'整体写为 acme-pro，不看原值'},
+      {p:'system_fingerprint', a:'HMAC', t:'fix', n:'保留「后端变了」信号，不暴露是谁'},
+      {p:'id', a:'透传', t:'keep', n:'不含真名；改写会破坏续接'},
+      {p:'choices[].message.content', a:'保留', t:'keep', n:'生成内容，T0 一字不改'},
+      {p:'usage', a:'保留', t:'risk', n:'用量指纹，不可消除'},
+      {p:'header.server', a:'删除', t:'drop', n:'白名单外'},
+      {p:'header.x-tt-logid', a:'删除', t:'drop', n:'换网关自生成 request id'}
+    ],
+    leaks:[{p:'body.model', n:'真名直接回给客户端'},{p:'body.system_fingerprint', n:'厂商指纹'}],
+    residual:[{p:'usage', n:'token 计数可反推模型档位'}]
+  },
+  {
+    id:'stream', label:'Chat · 流式', proto:'openai', path:'POST /v1/chat/completions  (stream=true)',
+    alias:'acme-pro', upstream:'deepseek-v4-flash-260425', rule:'acme-pro = deepseek-v4-flash-260425', rewrites:3,
+    status:'200 OK · 首字 640ms', sse:true,
+    req:{ model:'acme-pro', stream:true, messages:[{role:'user', content:'解释幂等'}] },
+    rawLines:[
+      '{"id":"chatcmpl-9f2b","object":"chat.completion.chunk","created":1763568000,"model":"deepseek-v4-flash-260425","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}',
+      '{"id":"chatcmpl-9f2b","object":"chat.completion.chunk","created":1763568000,"model":"deepseek-v4-flash-260425","choices":[{"index":0,"delta":{"content":"幂等"},"finish_reason":null}]}',
+      '{"id":"chatcmpl-9f2b","object":"chat.completion.chunk","created":1763568000,"model":"deepseek-v4-flash-260425","choices":[{"index":0,"delta":{"content":" 是同一操作执行多次结果相同。"},"finish_reason":"stop"}]}',
+      '[DONE]'
+    ],
+    pubLines:[
+      '{"id":"chatcmpl-9f2b","object":"chat.completion.chunk","created":1763568000,"model":"acme-pro","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}',
+      '{"id":"chatcmpl-9f2b","object":"chat.completion.chunk","created":1763568000,"model":"acme-pro","choices":[{"index":0,"delta":{"content":"幂等"},"finish_reason":null}]}',
+      '{"id":"chatcmpl-9f2b","object":"chat.completion.chunk","created":1763568000,"model":"acme-pro","choices":[{"index":0,"delta":{"content":" 是同一操作执行多次结果相同。"},"finish_reason":"stop"}]}',
+      '[DONE]'
+    ],
+    rawHeaders:[['server','volc-gateway'],['content-type','text/event-stream']],
+    pubHeaders:[['content-type','text/event-stream'],['x-request-id','req_ca_31d0be']],
+    findings:[
+      {p:'chunk[].model', a:'覆盖', t:'fix', n:'每个事件独立处理，共 3 处'},
+      {p:'chunk[].delta.content', a:'保留', t:'keep', n:'逐 token 不改写'},
+      {p:'[DONE]', a:'保留', t:'keep', n:'终止标记原样'},
+      {p:'注释心跳 : ping', a:'保留', t:'keep', n:'不计入首字，不参与脱敏'},
+      {p:'header.server', a:'删除', t:'drop', n:'白名单外'}
+    ],
+    leaks:[{p:'body.model ×3', n:'每个 chunk 都带真名'}],
+    residual:[{p:'usage', n:'流式尾包用量可用于指纹'}]
+  },
+  {
+    id:'anthropic', label:'Messages · Anthropic', proto:'anthropic', path:'POST /v1/messages',
+    alias:'acme-pro', upstream:'claude-sonnet-4-5-20250929', rule:'acme-pro = claude-sonnet-4-5-20250929', rewrites:1,
+    status:'200 OK · 1.2s',
+    req:{ model:'acme-pro', max_tokens:512, messages:[{role:'user', content:'hi'}] },
+    raw:{ id:'msg_01XFDUDYJgAACzvnptvVoYEL', type:'message', role:'assistant',
+          model:'claude-sonnet-4-5-20250929',
+          content:[{type:'text', text:'你好，有什么可以帮你？'}],
+          stop_reason:'end_turn', usage:{ input_tokens:9, output_tokens:18 } },
+    pub:{ id:'msg_01XFDUDYJgAACzvnptvVoYEL', type:'message', role:'assistant',
+          model:'acme-pro',
+          content:[{type:'text', text:'你好，有什么可以帮你？'}],
+          stop_reason:'end_turn', usage:{ input_tokens:9, output_tokens:18 } },
+    rawHeaders:[['anthropic-request-id','req_011CSHQ'],['content-type','application/json']],
+    pubHeaders:[['content-type','application/json'],['x-request-id','req_ca_88a1f2']],
+    findings:[
+      {p:'model', a:'覆盖', t:'fix', n:'message_start 事件里是 message.model'},
+      {p:'id', a:'透传', t:'keep', n:'msg_ 前缀是协议差异，非模型差异'},
+      {p:'content[].text', a:'保留', t:'keep', n:'生成内容'},
+      {p:'usage', a:'保留', t:'risk', n:'Anthropic 专有字段本身是协议指纹'},
+      {p:'header.anthropic-request-id', a:'删除', t:'drop', n:'上游 logid'}
+    ],
+    leaks:[{p:'body.model', n:'真名回显'}],
+    residual:[{p:'usage.cache_*', n:'缓存字段是强指纹（本例未出现）'}]
+  },
+  {
+    id:'error', label:'错误 · 429', proto:'openai', path:'POST /v1/chat/completions',
+    alias:'acme-pro', upstream:'deepseek-v4-flash-260425', rule:'acme-pro = deepseek-v4-flash-260425', rewrites:2,
+    status:'429 Too Many Requests · 12s',
+    req:{ model:'acme-pro', messages:[{role:'user', content:'hi'}] },
+    raw:{ error:{ code:'RateLimitExceeded', param:'model', type:'invalid_request_error',
+          message:'Account rate limit exceeded for model deepseek-v4-flash-260425 on ark.cn-beijing.volces.com. Request id 0217635680001234ABCD.' } },
+    pub:{ error:{ code:'rate_limit_exceeded', param:'model', type:'rate_limit_error',
+          message:'请求过于频繁，请稍后重试' } },
+    rawHeaders:[['retry-after','12'],['x-ratelimit-remaining-requests','0'],['x-tt-logid','0217635680001234ABCD']],
+    pubHeaders:[['retry-after','12'],['content-type','application/json'],['x-request-id','req_ca_5be027']],
+    findings:[
+      {p:'error.message', a:'重写', t:'fix', n:'真名 / host / logid 全部剔除'},
+      {p:'error.code', a:'重写', t:'fix', n:'generic 模式自造 code'},
+      {p:'error.param', a:'保留', t:'risk', n:'客户端要改的字段，属协议指纹'},
+      {p:'header.retry-after', a:'保留', t:'keep', n:'退避信号，值不标识厂商'},
+      {p:'header.x-ratelimit-*', a:'删除', t:'drop', n:'暴露账号配额画像'},
+      {p:'header.x-tt-logid', a:'删除', t:'drop', n:'上游可关联到控制台'}
+    ],
+    leaks:[{p:'body.error.message', n:'真名 + host + logid 三连'},{p:'header.x-ratelimit-*', n:'账号画像'}],
+    residual:[{p:'error.param', n:'字段名暴露上游协议形态'}]
+  },
+  {
+    id:'models', label:'GET /v1/models', proto:'openai', path:'GET /v1/models',
+    alias:'—', upstream:'（全部）', rule:'网关自造清单', rewrites:4,
+    status:'200 OK · 4ms',
+    req:{ method:'GET', path:'/v1/models' },
+    raw:{ object:'list', data:[
+      { id:'deepseek-v4-flash-260425', object:'model', owned_by:'system' },
+      { id:'deepseek-v4-pro-260425', object:'model', owned_by:'system' },
+      { id:'doubao-seed-1-6-250615', object:'model', owned_by:'system' }
+    ]},
+    pub:{ object:'list', data:[
+      { id:'acme-pro', object:'model', owned_by:'chat-adapter' },
+      { id:'acme-lite', object:'model', owned_by:'chat-adapter' }
+    ]},
+    rawHeaders:[['server','volc-gateway'],['content-type','application/json']],
+    pubHeaders:[['content-type','application/json'],['x-request-id','req_ca_c410aa']],
+    findings:[
+      {p:'data[].id', a:'自造', t:'fix', n:'只列已声明的对外别名'},
+      {p:'未映射的部署', a:'404', t:'drop', n:'不返回空列表冒充成功'},
+      {p:'owned_by', a:'覆盖', t:'fix', n:'不暴露组织标识'},
+      {p:'header.server', a:'删除', t:'drop', n:'白名单外'}
+    ],
+    leaks:[{p:'body.data[].id', n:'一次列出全部上游模型'}],
+    residual:[]
+  },
+  {
+    id:'tools', label:'工具调用 · 残留', proto:'openai', path:'POST /v1/chat/completions',
+    alias:'acme-writer', upstream:'deepseek-v4-pro-260425', rule:'acme-writer = deepseek-v4-pro-260425', rewrites:1,
+    status:'200 OK · 1.9s',
+    req:{ model:'acme-writer', messages:[{role:'user', content:'查一下 deepseek-v4 是什么，并自我介绍'}],
+          tools:[{ type:'function', function:{ name:'web_search', parameters:{ type:'object', properties:{ q:{type:'string'} } } } }] },
+    raw:{ id:'chatcmpl-77aa01', object:'chat.completion', created:1763568000,
+          model:'deepseek-v4-pro-260425',
+          choices:[{ index:0, message:{ role:'assistant',
+            content:'我是由 DeepSeek 训练的大语言模型，不是 deepseek-v4-flash。',
+            tool_calls:[{ id:'call_a91', type:'function', function:{ name:'web_search', arguments:'{"q":"deepseek-v4 是什么"}' } }] },
+            finish_reason:'tool_calls' }],
+          usage:{ prompt_tokens:88, completion_tokens:64, total_tokens:152 } },
+    pub:{ id:'chatcmpl-77aa01', object:'chat.completion', created:1763568000,
+          model:'acme-writer',
+          choices:[{ index:0, message:{ role:'assistant',
+            content:'我是由 DeepSeek 训练的大语言模型，不是 deepseek-v4-flash。',
+            tool_calls:[{ id:'call_a91', type:'function', function:{ name:'web_search', arguments:'{"q":"deepseek-v4 是什么"}' } }] },
+            finish_reason:'tool_calls' }],
+          usage:{ prompt_tokens:88, completion_tokens:64, total_tokens:152 } },
+    rawHeaders:[['server','volc-gateway'],['content-type','application/json']],
+    pubHeaders:[['content-type','application/json'],['x-request-id','req_ca_e77b13']],
+    findings:[
+      {p:'model', a:'覆盖', t:'fix', n:'结构层仍然有效'},
+      {p:'message.content', a:'保留', t:'risk', n:'「我是 DeepSeek」—— T0 不改写'},
+      {p:'tool_calls[].arguments', a:'保留', t:'risk', n:'内容字段，改写会破坏工具调用'},
+      {p:'tool_calls[].id', a:'保留', t:'keep', n:'call_ 是协议差异'}
+    ],
+    leaks:[{p:'body.model', n:'真名回显'}],
+    residual:[{p:'content', n:'模型自述，结构脱敏管不到'},{p:'tool arguments', n:'用户/模型写入的真名'}]
+  }
+];
+
+let cur = 0, sanitize = true, running = false;
+
+function buildSeg(){
+  $('seg').innerHTML = SCEN.map((s, i) =>
+    '<button data-i="' + i + '" class="' + (i === cur ? 'on' : '') + '">' + esc(s.label) + '</button>'
+  ).join('');
+  $('seg').querySelectorAll('button').forEach(b => b.onclick = () => {
+    cur = +b.dataset.i;
+    if (history.replaceState) history.replaceState(null, '', '?s=' + SCEN[cur].id + (sanitize ? '' : '&sanitize=off'));
+    buildSeg(); render(false);
+  });
+}
+
+function lineHTML(text, s, isPub){
+  let html = /^\[DONE\]$/.test(text.trim()) ? '<span class="jb">[DONE]</span>' : hlJSON(text);
+  if (isPub) html = markModel(html, s.upstream);
+  else html = markModel(html, s.upstream, 'leakmark');
+  return html;
+}
+
+function bodyHTML(s, isPub){
+  if (s.sse){
+    const lines = isPub ? s.pubLines : s.rawLines;
+    return lines.map(l => '<span class="hk">data: </span>' + lineHTML(l, s, isPub)).join('\n');
+  }
+  const obj = isPub ? s.pub : s.raw;
+  let html = pretty(obj);
+  html = markModel(html, s.upstream, isPub ? '' : 'leakmark');
+  return html;
+}
+
+function headerHTML(headers){
+  return headers.map(([k, v]) =>
+    '<span class="hk">' + esc(k) + '</span><span class="hk">: </span><span class="hv">' + esc(v) + '</span>'
+  ).join('\n');
+}
+
+function render(animate){
+  const s = SCEN[cur];
+  $('reqMeta').textContent = s.path;
+  $('upMeta').textContent = s.status.split(' · ')[0];
+
+  const reqShown = s.req;
+  $('reqView').innerHTML = pretty(reqShown);
+
+  const rawHTML = headerHTML(s.rawHeaders) + '\n' + bodyHTML(s, false);
+  $('rawView').innerHTML = rawHTML;
+
+  const leaks = sanitize ? 0 : s.leaks.length;
+  const residual = s.residual.length;
+  $('meter').className = 'meter' + (leaks ? ' bad' : '');
+  $('meter').innerHTML = '<b>' + leaks + '</b><span>处结构泄漏</span>';
+  $('meter2').className = 'meter' + (residual ? ' warn' : '');
+  $('meter2').innerHTML = '<b>' + residual + '</b><span>处推断残留</span>';
+
+  $('note').innerHTML = sanitize
+    ? '出站字节 <code>0</code> 命中上游真名；' + (residual ? '仍有 ' + residual + ' 处内容层残留（N1，不可消除）。' : '本场景无内容层残留。')
+    : '<span style="color:var(--red)">脱敏关闭：' + leaks + ' 个结构通道直接泄回真名，一次响应即可识别上游。</span>';
+
+  const pubHTML = headerHTML(sanitize ? s.pubHeaders : s.rawHeaders) + '\n' +
+    bodyHTML(s, sanitize);
+  $('pubView').innerHTML = pubHTML;
+
+  $('findings').innerHTML = s.findings.map(f => {
+    const cls = sanitize ? f.t : (f.t === 'keep' ? 'keep' : 'risk');
+    const label = sanitize ? f.a : (f.t === 'keep' ? '保留' : '未处理');
+    return '<div class="f"><div><code>' + esc(f.p) + '</code><small>' + esc(f.n) + '</small></div>' +
+      '<span class="act ' + cls + '">' + esc(label) + '</span></div>';
+  }).join('');
+
+  renderPipe(s, animate);
+}
+
+function renderPipe(s, animate){
+  const steps = [
+    ['解析入站路径', 'protocol = ' + s.proto],
+    ['映射解析', s.rule],
+    ['请求改名', s.alias === '—' ? '（无请求体）' : s.alias + ' → ' + s.upstream],
+    ['凭据重注入', s.proto === 'anthropic' ? 'x-api-key: ••••' : 'Authorization: Bearer ••••'],
+    ['转发上游', s.status],
+    ['逐字段归名', (sanitize ? (s.rewrites || s.findings.filter(f => f.t === 'fix').length) : 0) + ' 处改写'],
+    ['头白名单', (sanitize ? s.pubHeaders.length : s.rawHeaders.length) + ' / ' + s.rawHeaders.length + ' 保留'],
+    ['审计写入', 'public_model = ' + (s.alias === '—' ? '—' : s.alias)]
+  ];
+  const el = $('pipe');
+  el.innerHTML = steps.map((x, i) =>
+    '<div class="step" data-i="' + i + '"><div class="dot"></div>' +
+    '<div class="body"><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div></div>'
+  ).join('');
+
+  if (!animate){ el.querySelectorAll('.step').forEach(n => n.classList.add('done')); return; }
+  const nodes = [...el.querySelectorAll('.step')];
+  let i = 0;
+  const tick = () => {
+    if (i >= nodes.length){ running = false; return; }
+    nodes[i].classList.add('done'); i++;
+    setTimeout(tick, 150);
+  };
+  tick();
+}
+
+/* mapping */
+const RULES = [
+  { pat:'acme-pro', type:'精确', up:'deepseek-v4-flash-260425', note:'标准映射；响应回显 acme-pro', score:1000 },
+  { pat:'acme-writer', type:'精确', up:'deepseek-v4-pro-260425', note:'按用途分别名，共用可复用上游', score:1000 },
+  { pat:'claude-3-5-*', type:'前缀', up:'claude-sonnet-4-5', note:'字面量 10，锚定前缀 1', score:101 },
+  { pat:'*-flash', type:'后缀', up:'gemini-2.5-flash', note:'字面量 6，锚定后缀 1', score:61 },
+  { pat:'gpt-*-turbo', type:'中缀', up:'gpt-4.1', note:'两侧锚定，字面量 5', score:52 },
+  { pat:'*', type:'全匹配', up:'deepseek-v4-flash-260425', note:'catch-all 能匹配任意名字，配了它 strict 就失去意义', score:0 }
+];
+
+function resolve(name){
+  const n = name.trim().toLowerCase();
+  if (!n) return null;
+  let best = null;
+  for (const r of RULES){
+    const p = r.pat.toLowerCase();
+    let hit = false;
+    if (!p.includes('*')) hit = p === n;
+    else if (p === '*') hit = true;
+    else {
+      const first = p.indexOf('*');
+      const pre = p.slice(0, first), suf = p.slice(first + 1);
+      if (pre && suf) hit = n.startsWith(pre) && n.endsWith(suf);
+      else if (pre) hit = n.startsWith(pre);
+      else hit = n.endsWith(suf);
+    }
+    if (hit && (!best || r.score > best.score)) best = r;
+  }
+  return best;
+}
+
+function renderProbe(){
+  const v = $('probe').value;
+  const r = resolve(v);
+  if (!r){
+    $('mRule').textContent = '未命中';
+    $('mType').textContent = 'strict = true → 400，不转发';
+    $('mUp').textContent = '—';
+    $('mWhy').textContent = '漏配与「故意不配」必须不同形';
+    $('mPub').textContent = '—';
+    $('strictTag').style.borderColor = 'rgba(242,119,122,.5)';
+    $('strictTag').style.color = 'var(--red)';
+    return;
+  }
+  $('mRule').textContent = r.pat;
+  $('mType').textContent = r.type + ' · 具体度 ' + r.score;
+  $('mUp').textContent = r.up;
+  $('mWhy').textContent = r.note;
+  $('mPub').textContent = v + '（原名）';
+  $('strictTag').style.borderColor = 'rgba(94,234,212,.35)';
+  $('strictTag').style.color = 'var(--mint)';
+}
+
+function renderRules(){
+  $('rules').innerHTML = RULES.map(r =>
+    '<tr><td><code>' + esc(r.pat) + '</code></td><td><span class="chip ' +
+    (r.type === '精确' ? 'c1' : r.type === '全匹配' ? 'c3' : 'c2') + '">' + r.type + '</span></td>' +
+    '<td><code>' + esc(r.up) + '</code></td><td style="color:var(--muted)">' + esc(r.note) + '</td></tr>'
+  ).join('');
+}
+
+/* leak surface */
+const SURFACE = [
+  ['01','响应 model / response.model','覆盖','不看原值，整覆盖'],
+  ['02','system_fingerprint','HMAC 投影','保留后端变化信号'],
+  ['03','响应 id','默认透传','改写会破坏 previous_response_id'],
+  ['04','错误 message','重写','常同时含真名、host、logid'],
+  ['05','错误 code / type','泛化','厂商私有枚举本身是指纹'],
+  ['06','GET /v1/models','网关自造','否则一次列出全部上游模型'],
+  ['07','Server / Via / X-Powered-By','删除','白名单外一律不发'],
+  ['08','上游 logid / request id','删除','换网关自生成 ID'],
+  ['09','x-ratelimit-*','删除','暴露账号配额画像'],
+  ['10','产物 URL（签名 / AK / bucket）','rehost 或代理','签名里可能带凭据 ID'],
+  ['11','生成内容自述','T0 不改 / T1 可选','改写会篡改用户可见回答'],
+  ['12','token 用量与缓存命中','不可控','行为指纹，只能承认'],
+  ['13','X-Model-Map（公网直带）','拒绝','控制面头不能由数据面决定'],
+  ['14','X-Upstream-Base / Proxy','移除','SSRF + 拓扑泄漏']
+];
+
+function renderSurface(){
+  $('surfaceRows').innerHTML = SURFACE.map(r => {
+    const cls = /覆盖|HMAC|重写|泛化|自造|删除|rehost|拒绝|移除/.test(r[2]) ? 'c1'
+      : /透传|可选/.test(r[2]) ? 'c2' : 'c3';
+    return '<tr><td style="color:var(--dim);font-family:var(--mono)">' + r[0] + '</td><td><code>' + esc(r[1]) +
+      '</code></td><td><span class="chip ' + cls + '">' + esc(r[2]) + '</span></td><td style="color:var(--muted)">' +
+      esc(r[3]) + '</td></tr>';
+  }).join('');
+}
+
+/* acceptance */
+const CHECKS = [
+  ['A1','流式 40 chunk','逐事件归名，[DONE] 保留'],
+  ['A2','canary 植入错误体','出站 0 命中，host 被剔除'],
+  ['A3','generate 内容含 canary','内容完整保留，仅计数'],
+  ['A4','多对一 pro / lite','各回各的别名，不串味'],
+  ['A5','未命中 + strict','400，不转发上游'],
+  ['A6','响应急剧放大 > 16MB','400 拒绝，span 记 response_too_large'],
+  ['A7','GET /v1/models','只含别名；无映射 404'],
+  ['A8','公网自带 X-Model-Map','400，不生效'],
+  ['A9','头白名单','上游 logid 不存在'],
+  ['A10','变异自证','删守卫后用例转红']
+];
+
+function renderChecks(){
+  $('checks').innerHTML = CHECKS.map(c =>
+    '<div class="check"><span class="ok">✓</span><div><b>' + esc(c[1]) + '</b><small>' + esc(c[2]) +
+    '</small></div><span class="id">' + c[0] + '</span></div>'
+  ).join('');
+}
+
+$('sw').onclick = () => {
+  sanitize = !sanitize;
+  $('sw').classList.toggle('on', sanitize);
+  $('swLabel').textContent = sanitize ? '脱敏开启' : '脱敏关闭';
+  render(false);
+};
+$('send').onclick = () => {
+  if (running) return;
+  running = true;
+  render(true);
+};
+$('probe').addEventListener('input', renderProbe);
+
+const qs = new URLSearchParams(location.search);
+const qsIdx = SCEN.findIndex(s => s.id === qs.get('s'));
+if (qsIdx >= 0) cur = qsIdx;
+if (qs.get('sanitize') === 'off'){
+  sanitize = false;
+  $('sw').classList.remove('on');
+  $('swLabel').textContent = '脱敏关闭';
+}
+
+buildSeg();
+renderRules();
+renderSurface();
+renderChecks();
+renderProbe();
+render(false);
+</script>
+</body>
+</html>

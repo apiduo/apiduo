@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorkBuddy 深链 · 侧边栏落位原型</title>
+<style>
+:root{
+  --paper:#fcfcfa; --paper-2:#f4f4f1; --paper-3:#eceae4; --paper-4:#e3e1d9;
+  --rule:#e4e4de; --rule-2:#cfcfc7;
+  --ink:#1a1c1e; --ink-2:#45484b; --muted:#6b7076;
+  --accent:#9a3412; --accent-soft:#fdf0ea; --ok:#3f6f4a; --err:#a4161a;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:56px 32px 120px}
+code{font:12px/1.4 var(--mono);background:var(--paper-2);padding:1px 5px;border-radius:3px;color:var(--ink-2)}
+
+/* ---------- 文档头 ---------- */
+.kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-size:30px;line-height:1.2;letter-spacing:-.02em;margin:14px 0 0;font-weight:650}
+.lede{font-size:16px;line-height:1.75;color:var(--ink-2);max-width:70ch;margin:18px 0 0}
+.lede b{color:var(--ink);font-weight:650}
+.docmeta{margin-top:20px;padding-top:14px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 18px}
+
+/* ---------- 章节 ---------- */
+section{margin-top:56px;padding-top:36px;border-top:1px solid var(--rule)}
+.sechead{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+.secnum{font:11px/1 var(--mono);color:var(--accent);letter-spacing:.08em;padding-top:5px}
+h2{font-size:19px;margin:0;letter-spacing:-.01em;font-weight:650}
+.sub{color:var(--ink-2);margin:10px 0 0;max-width:72ch;font-size:14px;line-height:1.75}
+.sub b{color:var(--ink);font-weight:650}
+
+/* ---------- 三条本质差异 ---------- */
+.traits{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:28px;border-top:1px solid var(--rule)}
+.trait{padding:22px 26px 24px 0;border-right:1px solid var(--rule)}
+.trait:last-child{border-right:0;padding-right:0}
+.trait:nth-child(2),.trait:nth-child(3){padding-left:26px}
+.trait h3{font-size:14px;margin:0 0 8px;font-weight:650;display:flex;align-items:center;gap:8px}
+.trait .n{font:10px/1 var(--mono);color:#fff;background:var(--ink);width:16px;height:16px;display:grid;place-items:center;border-radius:2px;flex:none}
+.trait p{margin:0;font-size:13px;line-height:1.7;color:var(--ink-2)}
+.trait .fail{margin-top:10px;font-size:12px;color:var(--accent);font-family:var(--mono)}
+
+/* ---------- Demo ---------- */
+.demo{margin-top:26px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;padding:12px 0 14px;border-bottom:1px solid var(--rule)}
+.tgroup{display:flex;align-items:center;gap:7px}
+.tglabel{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--rule-2);border-radius:5px;overflow:hidden;background:var(--paper)}
+.seg button{appearance:none;border:0;background:transparent;font:12px/1 var(--sans);color:var(--ink-2);padding:6px 10px;cursor:pointer;border-right:1px solid var(--rule)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.seg button:hover:not([aria-pressed="true"]){background:var(--paper-2)}
+
+.demo-body{display:grid;grid-template-columns:560px minmax(0,1fr);gap:44px;margin-top:24px;align-items:start}
+
+/* ---------- 模拟应用 ---------- */
+.stage{border:1px solid var(--rule-2);background:var(--paper-2);height:492px;overflow:hidden;position:relative}
+.stage.collapsed .app{grid-template-columns:56px minmax(0,1fr)}
+.stage.mobile{height:520px;width:390px;border-radius:14px;display:flex;flex-direction:column}
+.stage.mobile .app{grid-template-columns:1fr;flex:1;height:auto;min-height:0}
+.app{display:grid;grid-template-columns:236px minmax(0,1fr);height:100%;transition:grid-template-columns .18s ease}
+
+/* 侧栏 */
+.sb{background:#f7f7f4;border-right:1px solid var(--rule);display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.sb-head{height:48px;display:flex;align-items:center;gap:9px;padding:0 12px;border-bottom:1px solid var(--rule);flex:none}
+.logo{width:22px;height:22px;border-radius:5px;background:var(--ink);color:var(--paper);display:grid;place-items:center;font:11px/1 var(--mono);font-weight:700;flex:none}
+.sb-brand{font-size:13px;font-weight:650;letter-spacing:-.01em;white-space:nowrap}
+.sb-brand span{color:var(--muted);font-weight:400}
+.brand-client{display:none;margin-left:auto;width:24px;height:24px;border:1px solid var(--rule-2);background:var(--paper);border-radius:4px;cursor:pointer;align-items:center;justify-content:center;flex:none}
+.stage[data-pos="b"] .brand-client{display:flex}
+.brand-client:hover{background:var(--paper-3)}
+.brand-client svg{width:13px;height:13px;stroke:var(--accent)}
+.sb-scroll{flex:1;overflow-y:auto;padding:8px 8px 4px;min-height:0}
+.sb-scroll::-webkit-scrollbar{width:0}
+.ngroup{margin-bottom:14px}
+.nglabel{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8b9096;font-weight:600;padding:0 8px 4px}
+.nitem{display:flex;align-items:center;gap:9px;height:31px;padding:0 8px;border-radius:5px;color:var(--ink-2);font-size:13px;cursor:pointer;white-space:nowrap;position:relative}
+.nitem:hover{background:#eeede8}
+.nitem.on{background:var(--paper-3);color:var(--ink);font-weight:600}
+.nitem svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;opacity:.8}
+.nitem .caret{margin-left:auto;opacity:.4;width:12px;height:12px}
+.nitem .badge{margin-left:auto;font:10px/1 var(--mono);color:var(--ink-2);background:var(--paper-4);border-radius:9px;padding:2px 6px}
+.stage.collapsed .sb-brand,.stage.collapsed .nglabel,.stage.collapsed .nitem span,
+.stage.collapsed .nitem .caret,.stage.collapsed .nitem .badge,.stage.collapsed .sb-foot-text,
+.stage.collapsed .sb-foot-grip{display:none}
+.stage.collapsed .nitem{justify-content:center;padding:0}
+.stage.collapsed .sb-head{justify-content:center;padding:0}
+.stage.collapsed .brand-client{display:none}
+
+/* 方案 C：导航组内平铺 */
+.client-group{display:none}
+.stage[data-pos="c"] .client-group{display:block}
+.client-group .nglabel{color:var(--accent)}
+.client-group .nitem .arr{margin-left:auto;font:10px/1 var(--mono);color:var(--muted);opacity:.9}
+.client-group .nitem.more{color:var(--muted);font-size:12px}
+
+/* 侧栏底部 / 方案 A */
+.sb-foot{display:none;flex:none;border-top:1px solid var(--rule);padding:8px;background:#f7f7f4}
+.stage[data-pos="a"] .sb-foot{display:block}
+.foot-btn{display:flex;align-items:center;gap:9px;width:100%;padding:7px 8px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);cursor:pointer;text-align:left;font:13px/1.2 var(--sans);color:var(--ink);position:relative}
+.foot-btn:hover{border-color:var(--rule-2);background:#fff}
+.foot-btn .w{width:22px;height:22px;border-radius:5px;background:var(--accent);color:#fff;display:grid;place-items:center;font:10px/1 var(--mono);font-weight:700;flex:none}
+.sb-foot-text{min-width:0;flex:1}
+.sb-foot-t1{font-size:12.5px;font-weight:600;display:block;line-height:1.3}
+.sb-foot-t2{font-size:10.5px;color:var(--muted);display:block;line-height:1.4;margin-top:1px}
+.sb-foot-grip{color:var(--muted);flex:none;width:13px;height:13px}
+.stage.collapsed .foot-btn{justify-content:center;padding:7px 0;border-color:transparent;background:transparent}
+.dot{position:absolute;top:6px;right:6px;width:5px;height:5px;border-radius:50%;background:var(--ok);display:none}
+.stage.collapsed .dot{display:block}
+.stage.uninstalled .dot{background:var(--accent)}
+
+/* 主区 */
+.main{background:var(--paper);min-width:0;overflow:hidden;position:relative}
+.m-head{height:48px;border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:10px;padding:0 16px}
+.m-title{font-size:13px;font-weight:650}
+.m-crumb{font-size:11px;color:var(--muted)}
+.m-body{padding:18px 16px}
+.skel-row{display:flex;align-items:center;gap:10px;height:34px;border-bottom:1px solid var(--rule)}
+.skel{height:8px;background:var(--paper-2);border-radius:2px}
+.m-note{margin-top:16px;font-size:11px;color:var(--muted);line-height:1.6;border-left:2px solid var(--rule-2);padding-left:9px}
+.stage.mobile .main{display:none}
+.stage.mobile .sb{border-right:0}
+.mobile-bar{display:none;height:48px;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--rule);background:var(--paper)}
+.stage.mobile .mobile-bar{display:flex}
+.stage.mobile .sb-head{display:none}
+.stage.mobile .sb-scroll{padding-top:10px}
+
+/* 客户端工作台（drill-in view） */
+.client-view{display:none;flex:1;flex-direction:column;min-height:0}
+.stage.view-client .sb-scroll,.stage.view-client .sb-foot,.stage.view-client .ngroup{display:none}
+.stage.view-client .client-view{display:flex}
+.stage.view-client .sb-back{display:flex}
+.stage.view-client .sb-head{display:none}
+.sb-back{display:none;height:44px;align-items:center;gap:7px;padding:0 10px;border-bottom:1px solid var(--rule);color:var(--muted);font-size:12px;cursor:pointer;flex:none;background:#f7f7f4}
+.sb-back:hover{color:var(--ink)}
+.sb-back svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8}
+.stage.collapsed .sb-back span{display:none}
+.client-status{flex:none;display:flex;align-items:center;gap:6px;padding:10px 10px 8px;font-size:10.5px;color:var(--muted)}
+.pill{font:10px/1 var(--mono);padding:2px 6px;border-radius:9px;border:1px solid var(--rule-2);color:var(--ink-2);background:var(--paper)}
+.pill.ok{color:var(--ok);border-color:#c6d8c9;background:#f2f7f3}
+.pill.no{color:var(--accent);border-color:#e8c9bd;background:var(--accent-soft)}
+.stage.uninstalled .pill.ok{display:none}
+.pill.no{display:none}
+.stage.uninstalled .pill.no{display:inline-block}
+.csearch{flex:none;margin:0 8px 8px;display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border:1px solid var(--rule);border-radius:5px;background:var(--paper)}
+.csearch svg{width:12px;height:12px;stroke:var(--muted);fill:none;stroke-width:1.9;flex:none}
+.csearch input{border:0;outline:0;background:transparent;font:12px/1 var(--sans);width:100%;color:var(--ink);padding:0}
+.csearch input::placeholder{color:#9aa0a6}
+.clist{flex:1;overflow-y:auto;padding:0 8px 10px;min-height:0}
+.clist::-webkit-scrollbar{width:0}
+.cglabel{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#8b9096;font-weight:700;padding:9px 8px 4px;display:flex;align-items:center;gap:6px}
+.cglabel i{font-style:normal;font:9px/1 var(--mono);color:var(--muted);letter-spacing:0}
+.chit{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:5px;cursor:pointer;font-size:12.5px;color:var(--ink-2);position:relative}
+.chit:hover{background:#eeede8;color:var(--ink)}
+.chit svg{width:14px;height:14px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;opacity:.75}
+.chit>span:not(.meta){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.chit .meta{margin-left:auto;display:flex;align-items:center;gap:5px;flex:none}
+.chit .kbd{font:9px/1 var(--mono);color:var(--muted);border:1px solid var(--rule-2);border-radius:3px;padding:2px 4px}
+.chit .ctx{font:9px/1 var(--sans);color:var(--accent);background:var(--accent-soft);border-radius:3px;padding:2px 4px;white-space:nowrap;max-width:54px;overflow:hidden;text-overflow:ellipsis}
+.chit .ext{font:9px/1 var(--mono);color:var(--muted);opacity:.75}
+.chit.dim{display:none}
+.cempty{display:none;padding:18px 10px;font-size:11.5px;color:var(--muted);line-height:1.7}
+.cempty.on{display:block}
+
+/* ---------- 评语卡 ---------- */
+.side{display:flex;flex-direction:column;gap:18px;min-width:0}
+.scheme{display:flex;gap:16px;align-items:flex-start;padding-bottom:16px;border-bottom:1px solid var(--rule)}
+.scheme svg{flex:none}
+.legend{font-size:11px;color:var(--muted);line-height:1.9;font-family:var(--mono)}
+.legend b{color:var(--accent);font-weight:700}
+.verdict-tag{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--accent)}
+.verdict-tag .tag{background:var(--accent);color:#fff;border-radius:2px;padding:2px 5px;font:10px/1 var(--mono)}
+.verdict h3{font-size:15px;margin:10px 0 8px;font-weight:650;letter-spacing:-.01em}
+.verdict p{margin:0 0 12px;font-size:13px;line-height:1.7;color:var(--ink-2)}
+.plist{list-style:none;margin:0;padding:0;font-size:12.5px;line-height:1.7;color:var(--ink-2)}
+.plist li{display:flex;gap:8px;padding:2px 0}
+.plist li i{font-style:normal;font-family:var(--mono);font-size:11px;flex:none;width:10px;text-align:center;padding-top:2px}
+.plist.pros li i{color:var(--ok)}
+.plist.cons li i{color:var(--accent)}
+.fail-note{margin-top:14px;padding-top:12px;border-top:1px dashed var(--rule-2);font-size:12px;line-height:1.7;color:var(--ink-2)}
+.fail-note b{color:var(--accent)}
+
+/* ---------- handoff 卡片 ---------- */
+.handoff{position:absolute;right:12px;bottom:12px;width:300px;background:var(--paper);border:1px solid var(--rule-2);border-radius:7px;padding:13px 14px;box-shadow:0 6px 24px -12px rgba(26,28,30,.28);display:none;z-index:5}
+.handoff.on{display:block;animation:rise .22s ease both}
+@keyframes rise{from{transform:translateY(6px)}to{transform:none}}
+.ho-head{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:650}
+.ho-head .w{width:19px;height:19px;border-radius:4px;background:var(--accent);color:#fff;display:grid;place-items:center;font:9px/1 var(--mono);font-weight:700;flex:none}
+.ho-spin{margin-left:auto;width:12px;height:12px;border:2px solid var(--rule-2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.handoff.failed .ho-spin{display:none}
+.ho-url{margin-top:7px;font:10px/1.5 var(--mono);color:var(--muted);word-break:break-all}
+.ho-steps{display:none;margin-top:11px;padding-top:10px;border-top:1px solid var(--rule)}
+.handoff.failed .ho-steps{display:block}
+.ho-q{font-size:11.5px;color:var(--ink-2);margin:0 0 8px}
+.ho-act{display:flex;flex-wrap:wrap;gap:6px}
+.ho-act button{appearance:none;font:11.5px/1 var(--sans);padding:6px 9px;border-radius:4px;border:1px solid var(--rule-2);background:var(--paper);color:var(--ink-2);cursor:pointer}
+.ho-act button:hover{background:var(--paper-2);color:var(--ink)}
+.ho-act button.primary{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.ho-act button.primary:hover{background:#000}
+.ho-tip{margin-top:9px;font-size:10.5px;line-height:1.6;color:var(--muted)}
+.handoff.failed .ho-head{color:var(--accent)}
+.handoff.uninst [data-act="retry"]{display:none}
+.handoff.uninst [data-act="copy"]{display:none}
+
+/* ---------- 矩阵表 ---------- */
+table{width:100%;border-collapse:collapse;margin-top:22px}
+th{text-align:left;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:0 14px 8px 0;border-bottom:1px solid var(--rule-2)}
+td{font-size:12.5px;line-height:1.6;color:var(--ink-2);padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+td:first-child{color:var(--ink);font-weight:600;white-space:nowrap}
+td code{font-size:11px}
+.mono-c{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* ---------- 数据契约 ---------- */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:44px;margin-top:24px}
+.two h3{font-size:13px;margin:0 0 10px;font-weight:650}
+.rulelist{list-style:none;margin:0;padding:0;font-size:12.5px;line-height:1.75;color:var(--ink-2)}
+.rulelist li{padding:7px 0;border-bottom:1px solid var(--rule);display:flex;gap:10px}
+.rulelist li b{color:var(--ink);font-weight:600;flex:none;min-width:88px;font-family:var(--mono);font-size:11.5px;padding-top:1px}
+
+/* ---------- 对抗审查 ---------- */
+.audit{margin-top:22px;display:grid;gap:0}
+.audit-item{padding:18px 0;border-bottom:1px solid var(--rule);display:grid;grid-template-columns:26px minmax(0,1fr);gap:14px}
+.audit-item .q{font-family:var(--mono);font-size:11px;color:var(--accent);padding-top:3px}
+.audit-item h3{font-size:13.5px;margin:0 0 6px;font-weight:650}
+.audit-item p{margin:0;font-size:12.5px;line-height:1.75;color:var(--ink-2)}
+.audit-item p b{color:var(--ink);font-weight:650}
+.no{list-style:none;margin:20px 0 0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:0 44px}
+.no li{font-size:12.5px;line-height:1.7;color:var(--ink-2);padding:8px 0;border-bottom:1px solid var(--rule);display:flex;gap:9px}
+.no li i{font-style:normal;color:var(--accent);font-family:var(--mono);font-size:11px;padding-top:2px}
+
+@media (max-width:940px){
+  .wrap{padding:36px 20px 80px}
+  .demo-body{grid-template-columns:1fr;gap:28px}
+  .traits{grid-template-columns:1fr}
+  .trait{border-right:0;border-bottom:1px solid var(--rule);padding:18px 0}
+  .trait:nth-child(2),.trait:nth-child(3){padding-left:0}
+  .two{grid-template-columns:1fr;gap:28px}
+  .no{grid-template-columns:1fr}
+  .stage{height:460px}
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <header>
+    <div class="kicker">产品原型 · apiduo 控制台侧边栏</div>
+    <h1>WorkBuddy 深链该落在侧边栏的哪儿</h1>
+    <p class="lede">
+      结论：<b>深链不进目录，进动作区</b>。侧边栏底部放一个常驻入口，点进去是一层 drill-in 的
+      「客户端工作台」，深链有多少条都收在里面；目录区最多保留三条用户自己钉的常用项。
+      这样未来从 5 条长到 50 条，侧边栏不变形。
+    </p>
+    <div class="docmeta">
+      <span>2026-11-20 · 待评审</span>
+      <span>示例 scheme <code>workbuddy://</code>（需与客户端注册表对齐）</span>
+      <span>复用既有 drill-in 视图，不新增弹窗容器</span>
+    </div>
+  </header>
+
+  <!-- 01 -->
+  <section>
+    <div class="sechead"><div class="secnum">01</div><h2>为什么不能「在导航里加一行」</h2></div>
+    <p class="sub">
+      侧边栏的每一行都在回答同一个问题：<b>我会去哪一页</b>。深链回答的是另一个问题：<b>我要离开网页</b>。
+      三个本质差异决定了它不能和页面条目同构：
+    </p>
+    <div class="traits">
+      <div class="trait">
+        <h3><span class="n">1</span>没有页面</h3>
+        <p>点完 Web 控制台还在原地，不发生任何导航。它因此不能有 active 态、不能有面包屑、不能被记成当前页。</p>
+        <div class="fail">→ 混进目录会出现两行同时高亮</div>
+      </div>
+      <div class="trait">
+        <h3><span class="n">2</span>会失败</h3>
+        <p>未安装客户端、系统没注册 scheme、浏览器静默拦截。普通链接最差是 404，深链最差是<b>点了完全没反应</b>。</p>
+        <div class="fail">→ 失败必须有人接住，不能交给浏览器</div>
+      </div>
+      <div class="trait">
+        <h3><span class="n">3</span>带上下文</h3>
+        <p>唤起客户端时通常要带上你正在看的东西——当前 API Key、当前模型、当前任务。同一个动作，参数不同就是不同入口。</p>
+        <div class="fail">→ 数量随资源维度线性膨胀</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section>
+    <div class="sechead"><div class="secnum">02</div><h2>三种摆法，切换看</h2></div>
+    <p class="sub">
+      下面三个方案共用同一个侧边栏骨架，只换深链入口的位置。右侧评语会跟着切换，<b>包括各自会在什么情况下失效</b>。
+    </p>
+
+    <div class="demo">
+      <div class="toolbar">
+        <div class="tgroup">
+          <span class="tglabel">位置</span>
+          <div class="seg" id="segPos">
+            <button data-pos="a" aria-pressed="true">A 底部固定</button>
+            <button data-pos="b" aria-pressed="false">B 顶部品牌</button>
+            <button data-pos="c" aria-pressed="false">C 导航组内</button>
+          </div>
+        </div>
+        <div class="tgroup">
+          <span class="tglabel">形态</span>
+          <div class="seg" id="segForm">
+            <button data-form="expanded" aria-pressed="true">展开</button>
+            <button data-form="collapsed" aria-pressed="false">折叠</button>
+          </div>
+        </div>
+        <div class="tgroup">
+          <span class="tglabel">端</span>
+          <div class="seg" id="segEnv">
+            <button data-env="desktop" aria-pressed="true">桌面</button>
+            <button data-env="mobile" aria-pressed="false">移动</button>
+          </div>
+        </div>
+        <div class="tgroup">
+          <span class="tglabel">客户端</span>
+          <div class="seg" id="segInst">
+            <button data-inst="1" aria-pressed="true">已安装</button>
+            <button data-inst="0" aria-pressed="false">未安装</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-body">
+        <!-- 模拟应用 -->
+        <div class="stage" id="stage" data-pos="a">
+          <div class="mobile-bar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#45484b" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            <span class="m-title">API Keys</span>
+            <span class="m-crumb" style="margin-left:auto;font-size:14px">×</span>
+          </div>
+          <div class="app">
+            <aside class="sb">
+              <div class="sb-head">
+                <div class="logo">A</div>
+                <div class="sb-brand">apiduo <span>/ console</span></div>
+                <button class="brand-client" id="brandClient" title="在 WorkBuddy 客户端打开">
+                  <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9"><path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+                </button>
+              </div>
+
+              <div class="sb-back" id="sbBack">
+                <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+                <span>返回</span>
+              </div>
+
+              <div class="sb-scroll">
+                <div class="ngroup">
+                  <div class="nglabel">Chat</div>
+                  <div class="nitem"><svg viewBox="0 0 24 24"><path d="M9 3h6v4l4 9a2 2 0 0 1-2 3H7a2 2 0 0 1-2-3l4-9z"/></svg><span>Playground</span></div>
+                  <div class="nitem"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 1 1-3-6.2M21 4v5h-5"/></svg><span>Chat</span></div>
+                </div>
+                <div class="ngroup">
+                  <div class="nglabel">General</div>
+                  <div class="nitem"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg><span>Overview</span></div>
+                  <div class="nitem on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>API Keys</span></div>
+                  <div class="nitem"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>Usage Logs</span></div>
+                  <div class="nitem"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg><span>Audit Logs</span></div>
+                  <div class="nitem"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/></svg><span>Task Logs</span><span class="badge">3</span></div>
+                </div>
+
+                <!-- C：导航组内平铺 -->
+                <div class="ngroup client-group">
+                  <div class="nglabel">WorkBuddy</div>
+                  <div class="nitem" data-open-client><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>新建对话</span><span class="arr">app</span></div>
+                  <div class="nitem" data-open-client><svg viewBox="0 0 24 24"><path d="M3 7h18v12H3zM3 7l9 6 9-6"/></svg><span>打开工作区</span><span class="arr">app</span></div>
+                  <div class="nitem" data-open-client><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 2.6 15H2.4a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 8L4.5 8a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2V4a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 17 5.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.7 1z"/></svg><span>模型与密钥</span><span class="arr">app</span></div>
+                  <div class="nitem more"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><span>还有 9 个入口</span></div>
+                </div>
+
+                <div class="ngroup">
+                  <div class="nglabel">Personal</div>
+                  <div class="nitem"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg><span>Wallet</span></div>
+                  <div class="nitem"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Profile</span></div>
+                </div>
+              </div>
+
+              <!-- 客户端工作台（drill-in view） -->
+              <div class="client-view">
+                <div class="client-status">
+                  <span>WorkBuddy 客户端</span>
+                  <span class="pill ok">已安装</span>
+                  <span class="pill no">未检测到</span>
+                </div>
+                <div class="csearch">
+                  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                  <input id="csearch" type="text" placeholder="搜索入口、动作或 scheme" autocomplete="off">
+                </div>
+                <div class="clist" id="clist"></div>
+                <div class="cempty" id="cempty">没有匹配的入口。<br>深链由管理员在「系统设置 → 导航」里维护。</div>
+              </div>
+
+              <!-- A：底部固定 -->
+              <div class="sb-foot">
+                <button class="foot-btn" id="footBtn">
+                  <span class="w">W</span>
+                  <span class="sb-foot-text">
+                    <span class="sb-foot-t1">WorkBuddy</span>
+                    <span class="sb-foot-t2" id="footSub">客户端 · 12 个入口</span>
+                  </span>
+                  <svg class="sb-foot-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18l6-6-6-6"/></svg>
+                  <span class="dot"></span>
+                </button>
+              </div>
+            </aside>
+
+            <div class="main">
+              <div class="m-head">
+                <span class="m-title">API Keys</span>
+                <span class="m-crumb">/ keys</span>
+              </div>
+              <div class="m-body">
+                <div class="skel-row"><div class="skel" style="width:34%"></div><div class="skel" style="width:12%;margin-left:auto"></div></div>
+                <div class="skel-row"><div class="skel" style="width:46%"></div><div class="skel" style="width:12%;margin-left:auto"></div></div>
+                <div class="skel-row"><div class="skel" style="width:28%"></div><div class="skel" style="width:12%;margin-left:auto"></div></div>
+                <div class="skel-row"><div class="skel" style="width:40%"></div><div class="skel" style="width:12%;margin-left:auto"></div></div>
+                <div class="m-note">
+                  点击深链后，这个页面原地不动。<br>
+                  所以深链条目不该有选中态，也不该被记成「当前页」。
+                </div>
+              </div>
+            </div>
+
+            <!-- handoff -->
+            <div class="handoff" id="handoff">
+              <div class="ho-head">
+                <span class="w">W</span>
+                <span id="hoTitle">正在唤起 WorkBuddy…</span>
+                <span class="ho-spin"></span>
+              </div>
+              <div class="ho-url" id="hoUrl">workbuddy://new</div>
+              <div class="ho-steps">
+                <p class="ho-q">没有收到响应？浏览器不会告诉我们失败，只能由你确认。</p>
+                <div class="ho-act">
+                  <button class="primary" data-act="retry">重新唤起</button>
+                  <button data-act="copy">复制链接</button>
+                  <button data-act="download">下载客户端</button>
+                </div>
+                <div class="ho-tip">
+                  已安装仍无反应：检查系统是否注册了 <code>workbuddy://</code>，
+                  或在客户端「设置 → 集成」里重新注册。
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 评语 -->
+        <div class="side">
+          <div class="scheme">
+            <svg width="86" height="196" viewBox="0 0 86 196" aria-label="侧边栏位置示意">
+              <rect x="1" y="1" width="84" height="194" fill="#f7f7f4" stroke="#cfcfc7"/>
+              <rect x="10" y="10" width="26" height="6" fill="#d8d6ce"/>
+              <line x1="10" y1="34" x2="66" y2="34" stroke="#d8d6ce" stroke-width="4" stroke-linecap="round"/>
+              <line x1="10" y1="46" x2="54" y2="46" stroke="#e3e1d9" stroke-width="4" stroke-linecap="round"/>
+              <line x1="10" y1="58" x2="60" y2="58" stroke="#e3e1d9" stroke-width="4" stroke-linecap="round"/>
+              <line x1="10" y1="76" x2="66" y2="76" stroke="#d8d6ce" stroke-width="4" stroke-linecap="round"/>
+              <line x1="10" y1="88" x2="50" y2="88" stroke="#e3e1d9" stroke-width="4" stroke-linecap="round"/>
+              <line x1="10" y1="100" x2="62" y2="100" stroke="#e3e1d9" stroke-width="4" stroke-linecap="round"/>
+              <line x1="10" y1="112" x2="46" y2="112" stroke="#e3e1d9" stroke-width="4" stroke-linecap="round"/>
+              <line x1="10" y1="130" x2="66" y2="130" stroke="#d8d6ce" stroke-width="4" stroke-linecap="round"/>
+              <line x1="10" y1="142" x2="56" y2="142" stroke="#e3e1d9" stroke-width="4" stroke-linecap="round"/>
+              <line x1="1" y1="164" x2="85" y2="164" stroke="#cfcfc7"/>
+              <circle id="pA" cx="72" cy="178" r="8" fill="#9a3412"/>
+              <text id="tA" x="72" y="181.5" font-size="8" fill="#fff" text-anchor="middle" font-family="monospace">A</text>
+              <circle id="pB" cx="72" cy="22" r="8" fill="none" stroke="#cfcfc7"/>
+              <text id="tB" x="72" y="25.5" font-size="8" fill="#6b7076" text-anchor="middle" font-family="monospace">B</text>
+              <circle id="pC" cx="72" cy="118" r="8" fill="none" stroke="#cfcfc7"/>
+              <text id="tC" x="72" y="121.5" font-size="8" fill="#6b7076" text-anchor="middle" font-family="monospace">C</text>
+            </svg>
+            <div class="legend">
+              <b>A</b> 滚动区外，常驻<br>
+              <b>B</b> 品牌位，单条<br>
+              <b>C</b> 目录内，随条目增长
+            </div>
+          </div>
+
+          <div class="verdict" id="verdict"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 -->
+  <section>
+    <div class="sechead"><div class="secnum">03</div><h2>选定形态：一个入口，一层视图，一张接住失败的卡</h2></div>
+    <p class="sub">
+      方案 A 的形状是三步，每一步都对应上面的一条本质差异。<b>复用既有的 drill-in 视图</b>，不新建弹窗——
+      侧边栏换视图时折叠态、移动端抽屉、返回箭头都是现成的。
+    </p>
+    <table>
+      <thead><tr><th style="width:88px">步骤</th><th style="width:200px">界面</th><th>解决的问题</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>① 入口</td>
+          <td>侧边栏底部常驻一行<br><span class="mono-c">W · WorkBuddy · 12 个入口</span></td>
+          <td>数量再多也只有一行，目录区永远是页面导航。折叠态退化为一个方块图标，仍可点。</td>
+        </tr>
+        <tr>
+          <td>② 收拢</td>
+          <td>drill-in 视图<br><span class="mono-c">← 返回 / 搜索 / 按用途分组</span></td>
+          <td>承载 10–50 条不失控。搜索是主要发现方式，分组只做粗筛。头部不写标题，与既有视图一致。</td>
+        </tr>
+        <tr>
+          <td>③ 交接</td>
+          <td>右下角 handoff 卡片<br><span class="mono-c">唤起中 → 没反应？→ 三个出口</span></td>
+          <td>浏览器无法汇报深链成败。中介卡的价值不是检测，是<b>把静默失败变成有下一步</b>。</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="sub" style="margin-top:20px">
+      注意②里的<b>「携带」标记</b>：带上下文的深链（当前工作区、当前 API Key）在右上角显示一枚赭红 chip。
+      同一个 scheme 复制多份会造成"看起来一样、点了不一样"的困惑，chip 是目前最便宜的解释手段。
+    </p>
+  </section>
+
+  <!-- 04 -->
+  <section>
+    <div class="sechead"><div class="secnum">04</div><h2>状态矩阵</h2></div>
+    <p class="sub">深链的复杂度几乎全在异常分支。以下六种状态必须在设计阶段就定好，不能留到实现时临时决定。</p>
+    <table>
+      <thead><tr><th style="width:120px">状态</th><th style="width:250px">入口表现</th><th>点击后</th></tr></thead>
+      <tbody>
+        <tr><td>已安装</td><td>底部入口常态；面板显示 <span class="pill ok">已安装</span></td><td>handoff 卡片 → 系统接管 → 卡片自动消失</td></tr>
+        <tr><td>未安装</td><td>副标题改为「安装客户端」，状态点变赭红</td><td>不发起深链，直接给下载入口（置灰是反模式）</td></tr>
+        <tr><td>点击无响应</td><td>无变化</td><td>2.5s 后卡片转为「没有收到响应？」，给重试 / 复制 / 下载</td></tr>
+        <tr><td>无权限</td><td>条目不渲染（复用 <code>min_role</code>）</td><td>—</td></tr>
+        <tr><td>折叠态</td><td>只剩 W 方块，右上角绿点表示可用</td><td>点击展开为临时面板或进入视图</td></tr>
+        <tr><td>移动端</td><td>抽屉底部同一位置，滚动区外</td><td>唤起本机 App；未安装走应用商店</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 05 -->
+  <section>
+    <div class="sechead"><div class="secnum">05</div><h2>数据与治理</h2></div>
+    <div class="two">
+      <div>
+        <h3>条目字段（在既有 NavApp 上扩展，不新建表）</h3>
+        <ul class="rulelist">
+          <li><b>slug</b>稳定标识，创建后不可改</li>
+          <li><b>href</b><code>workbuddy://…</code>，仅客户端 scheme</li>
+          <li><b>group</b>常用 / 工作流 / 开发者</li>
+          <li><b>context</b>需要注入的变量：key、model、task</li>
+          <li><b>min_role</b>复用现有角色常量</li>
+          <li><b>pinned</b>用户自己钉，不是管理员配</li>
+          <li><b>source</b>内置（随版本）vs 自定义</li>
+        </ul>
+      </div>
+      <div>
+        <h3>三条治理规则</h3>
+        <ul class="rulelist">
+          <li><b>一</b>内置条目随版本发布，管理员只能停用不能改 href，避免升级后地址失效</li>
+          <li><b>二</b>自定义条目必须填 scheme 白名单，只允许 <code>workbuddy://</code>，不允许任意协议</li>
+          <li><b>三</b>目录区最多 3 条 pinned，超出提示去面板里管理，否则扩张会从"用户偏好"重新长回来</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 -->
+  <section>
+    <div class="sechead"><div class="secnum">06</div><h2>对抗审查：这套方案哪里会垮</h2></div>
+    <div class="audit">
+      <div class="audit-item">
+        <div class="q">Q1</div>
+        <div>
+          <h3>底部是低频区，用户可能永远看不见</h3>
+          <p>成立。缓解手段是首次进入时给一次性提示，并把未安装态改成<b>「安装客户端」</b>而不是隐藏入口。
+          但必须承认：如果产品目标是把客户端当主入口，底部就不够——那就该升级成独立的顶层分组，代价是目录语义被稀释。
+          <b>这是产品定位问题，不是布局问题</b>。</p>
+        </div>
+      </div>
+      <div class="audit-item">
+        <div class="q">Q2</div>
+        <div>
+          <h3>为什么不用 Cmd+K 命令面板，那才是"很多入口"的标准答案</h3>
+          <p>命令面板解决的是"我知道叫什么、要找它"，前提是你已经知道有这个东西。
+          深链入口需要<b>可发现</b>，不能只活在快捷键里。结论：面板里也支持 Cmd+K 作为加速器，但它不是唯一入口。</p>
+        </div>
+      </div>
+      <div class="audit-item">
+        <div class="q">Q3</div>
+        <div>
+          <h3>handoff 卡片检测不到失败，是不是自欺欺人</h3>
+          <p>检测确实做不到——Web 无法得知 OS 是否接管了 scheme。卡片的价值不是检测，是<b>提供退出路径</b>：
+          复制链接、下载客户端、重试。没有它，用户面对的是一片空白，只能怀疑自己点错了。
+          另外这个卡片必须在当前页面内，不能是新标签页，因为深链会夺走焦点。</p>
+        </div>
+      </div>
+      <div class="audit-item">
+        <div class="q">Q4</div>
+        <div>
+          <h3>十二个入口已经需要搜索了，五十个怎么办</h3>
+          <p>五十个时搜索成为主要路径，分组退化为筛选器。<b>真正的风险不是数量，是命名</b>：
+          「打开工作区」和「打开项目」这种近似条目会让搜索失效。治理规则里应加一条——
+          同一分组内名称不得前缀相同。</p>
+        </div>
+      </div>
+      <div class="audit-item">
+        <div class="q">Q5</div>
+        <div>
+          <h3>带上下文的深链会不会把 URL 撑爆、把 Key 泄露到系统日志</h3>
+          <p>会。<b>API Key 不得进 query string</b>——它会被系统深链日志、剪贴板管理器、浏览器历史各记一份。
+          正确做法是只传标识（key id），由客户端回调网关换取；或走一次性 token。这条是硬约束，不是优化项。</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size:13px;margin:32px 0 0;font-weight:650">明确不做</h3>
+    <ul class="no">
+      <li><i>×</i>不在目录区平铺深链（超过 3 条就失控）</li>
+      <li><i>×</i>不做悬浮球（遮挡内容，且与侧边栏职责重复）</li>
+      <li><i>×</i>不为深链新造弹窗容器（复用 drill-in 视图）</li>
+      <li><i>×</i>不在未安装时把入口置灰（改成安装动作）</li>
+      <li><i>×</i>不给深链条目选中态（它没有页面）</li>
+      <li><i>×</i>不把 API Key 放进深链参数</li>
+    </ul>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  var stage = document.getElementById('stage')
+  var state = { pos: 'a', form: 'expanded', env: 'desktop', inst: '1' }
+
+  var LINKS = [
+    { g: '常用', items: [
+      { name: '新建对话', href: 'workbuddy://new', icon: 'plus', kbd: 'N' },
+      { name: '打开工作区', href: 'workbuddy://workspace/open?id=apiduo', icon: 'folder', ctx: '当前', ctxTip: '携带当前工作区' },
+      { name: '模型与密钥', href: 'workbuddy://settings/providers', icon: 'key', ctx: 'Key', ctxTip: '携带当前 API Key 的标识' }
+    ]},
+    { g: '工作流', items: [
+      { name: '定时任务', href: 'workbuddy://automations', icon: 'clock' },
+      { name: '审批队列', href: 'workbuddy://approvals', icon: 'check' },
+      { name: '技能市场', href: 'workbuddy://skills', icon: 'grid' },
+      { name: '专家中心', href: 'workbuddy://experts', icon: 'user' }
+    ]},
+    { g: '开发者', items: [
+      { name: 'MCP 服务器', href: 'workbuddy://mcp', icon: 'plug' },
+      { name: '日志与追踪', href: 'workbuddy://logs', icon: 'list' },
+      { name: '用量统计', href: 'workbuddy://usage', icon: 'chart' },
+      { name: '任务队列', href: 'workbuddy://tasks', icon: 'layers' },
+      { name: '设置', href: 'workbuddy://settings', icon: 'gear' }
+    ]}
+  ]
+
+  var ICONS = {
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    folder: '<path d="M3 7h6l2 2h10v10H3z"/>',
+    key: '<circle cx="8" cy="12" r="4"/><path d="M12 12h9M17 12v3"/>',
+    clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+    check: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
+    grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    plug: '<path d="M9 3v6M15 3v6M7 9h10v3a5 5 0 0 1-10 0z"/><path d="M12 17v4"/>',
+    list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+    chart: '<path d="M3 3v18h18"/><path d="M7 15l4-6 3 3 5-7"/>',
+    layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>'
+  }
+
+  var VERDICTS = {
+    a: {
+      tag: '方案 A', stance: '推荐',
+      title: '底部固定，独立入口',
+      body: '侧边栏滚动区之外常驻一行，点进去是 drill-in 的客户端工作台。位置固定，数量无关。',
+      pros: ['目录区保持纯页面导航，语义不被稀释', '深链从 5 条涨到 50 条，侧边栏不变形', '折叠态仍可达，退化为一个方块', '复用既有 drill-in 基础设施，无新增容器'],
+      cons: ['视觉权重低，首次需要一次性提示', '与折叠按钮争同一块区域'],
+      fail: '会在定位错误时失效：如果客户端的真实目标是取代 Web 成为主工作台，底部就太弱，应升级为顶层分组。'
+    },
+    b: {
+      tag: '方案 B', stance: '备选',
+      title: '顶部品牌位，单条动作',
+      body: 'logo 右侧一枚图标，语义是「把当前页交给客户端」。它天然携带上下文，但只能承载一条。',
+      pros: ['上下文最强：打开的就是你正在看的这页', '位置显眼，不占目录空间', '适合做成固定动作而非入口清单'],
+      cons: ['一条就是上限，与「未来很多深链」直接冲突', '与 logo 抢占注意力，品牌区被工具化'],
+      fail: '会在数量增长时崩塌：第三条深链开始就无处安放，只能再造一个面板，等于回到方案 A 但多了两套 UI。'
+    },
+    c: {
+      tag: '方案 C', stance: '不推荐',
+      title: '导航组内平铺',
+      body: '在目录里新开一组「WorkBuddy」，深链就是普通条目。实现最省事，发现性也最好。',
+      pros: ['发现性最强，不需要教育用户', '与现有 NavApp 体系零改动', '用户不用学任何新交互'],
+      cons: ['每条都长得像页面入口，误点率高', '条目增加会挤出真正的页面导航', '无法表达「离开网页」的语义'],
+      fail: '会在第八条左右失效：分组比其它所有分组都长，用户开始滚动才能找到 API Keys，目录失去预测能力。'
+    }
+  }
+
+  function renderVerdict() {
+    var v = VERDICTS[state.pos]
+    var html = '<span class="verdict-tag"><span class="tag">' + v.tag + '</span>' + v.stance + '</span>'
+    html += '<h3>' + v.title + '</h3><p>' + v.body + '</p>'
+    html += '<ul class="plist pros">'
+    v.pros.forEach(function (t) { html += '<li><i>+</i><span>' + t + '</span></li>' })
+    html += '</ul><ul class="plist cons">'
+    v.cons.forEach(function (t) { html += '<li><i>−</i><span>' + t + '</span></li>' })
+    html += '</ul><div class="fail-note"><b>失效条件</b>　' + v.fail + '</div>'
+    document.getElementById('verdict').innerHTML = html
+    ;['A', 'B', 'C'].forEach(function (k) {
+      var dot = document.getElementById('p' + k)
+      var txt = document.getElementById('t' + k)
+      var on = k.toLowerCase() === state.pos
+      dot.setAttribute('fill', on ? '#9a3412' : 'none')
+      dot.setAttribute('stroke', on ? '#9a3412' : '#cfcfc7')
+      txt.setAttribute('fill', on ? '#fff' : '#6b7076')
+    })
+  }
+
+  function renderStage() {
+    stage.dataset.pos = state.pos
+    stage.classList.toggle('collapsed', state.form === 'collapsed')
+    stage.classList.toggle('mobile', state.env === 'mobile')
+    stage.classList.toggle('uninstalled', state.inst === '0')
+    document.getElementById('footSub').textContent = state.inst === '1' ? '客户端 · 12 个入口' : '未安装 · 点击安装'
+  }
+
+  function renderClientList(filter) {
+    var q = (filter || '').trim().toLowerCase()
+    var html = ''
+    var shown = 0
+    LINKS.forEach(function (group) {
+      var rows = group.items.filter(function (it) {
+        return !q || it.name.toLowerCase().indexOf(q) >= 0 || it.href.toLowerCase().indexOf(q) >= 0
+      })
+      if (!rows.length) return
+      shown += rows.length
+      html += '<div class="cglabel">' + group.g + ' <i>' + rows.length + '</i></div>'
+      rows.forEach(function (it) {
+        html += '<div class="chit" data-href="' + it.href + '" role="button" tabindex="0">'
+        html += '<svg viewBox="0 0 24 24">' + (ICONS[it.icon] || ICONS.grid) + '</svg>'
+        html += '<span>' + it.name + '</span>'
+        html += '<span class="meta">'
+        if (it.ctx) html += '<span class="ctx" title="' + (it.ctxTip || '携带上下文') + '">携 ' + it.ctx + '</span>'
+        if (it.kbd) html += '<span class="kbd">' + it.kbd + '</span>'
+        if (!it.kbd && !it.ctx) html += '<span class="ext">app</span>'
+        html += '</span></div>'
+      })
+    })
+    document.getElementById('clist').innerHTML = html
+    document.getElementById('cempty').classList.toggle('on', shown === 0)
+    bindHits()
+  }
+
+  function expandIfCollapsed() {
+    if (state.form !== 'collapsed') return
+    state.form = 'expanded'
+    var btns = document.getElementById('segForm').querySelectorAll('button')
+    ;[].forEach.call(btns, function (x) {
+      x.setAttribute('aria-pressed', x.dataset.form === 'expanded' ? 'true' : 'false')
+    })
+    renderStage()
+  }
+
+  function openClientView() {
+    expandIfCollapsed()
+    stage.classList.add('view-client')
+    renderClientList(document.getElementById('csearch').value)
+    document.getElementById('csearch').focus()
+  }
+
+  function closeClientView() {
+    stage.classList.remove('view-client')
+    hideHandoff()
+  }
+
+  var hoTimer = null
+  function showHandoff(href) {
+    var el = document.getElementById('handoff')
+    el.classList.add('on')
+    el.classList.remove('failed')
+    el.classList.toggle('uninst', state.inst === '0')
+    var q = el.querySelector('.ho-q')
+    q.textContent = state.inst === '0'
+      ? '本机没有检测到 WorkBuddy 客户端，深链无法被系统接管。'
+      : '没有收到响应？浏览器不会告诉我们失败，只能由你确认。'
+    document.getElementById('hoTitle').textContent = state.inst === '1' ? '正在唤起 WorkBuddy…' : 'WorkBuddy 未安装'
+    document.getElementById('hoUrl').textContent = href
+    clearTimeout(hoTimer)
+    if (state.inst === '0') {
+      el.classList.add('failed')
+      document.getElementById('hoTitle').textContent = 'WorkBuddy 未安装'
+      return
+    }
+    hoTimer = setTimeout(function () {
+      el.classList.add('failed')
+      document.getElementById('hoTitle').textContent = '没有收到响应？'
+    }, 2500)
+  }
+
+  function hideHandoff() {
+    clearTimeout(hoTimer)
+    document.getElementById('handoff').classList.remove('on')
+  }
+
+  function bindHits() {
+    var hits = document.querySelectorAll('.chit')
+    for (var i = 0; i < hits.length; i++) {
+      hits[i].onclick = function () { showHandoff(this.dataset.href) }
+      hits[i].onkeydown = function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showHandoff(this.dataset.href) }
+      }
+    }
+  }
+
+  document.getElementById('segPos').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return
+    state.pos = b.dataset.pos
+    ;[].forEach.call(this.querySelectorAll('button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false')
+    })
+    closeClientView(); renderStage(); renderVerdict()
+  })
+
+  document.getElementById('segForm').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return
+    state.form = b.dataset.form
+    ;[].forEach.call(this.querySelectorAll('button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false')
+    })
+    if (state.form === 'collapsed') closeClientView()
+    renderStage()
+  })
+
+  document.getElementById('segEnv').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return
+    state.env = b.dataset.env
+    ;[].forEach.call(this.querySelectorAll('button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false')
+    })
+    if (state.env === 'mobile') closeClientView()
+    renderStage()
+  })
+
+  document.getElementById('segInst').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return
+    state.inst = b.dataset.inst
+    ;[].forEach.call(this.querySelectorAll('button'), function (x) {
+      x.setAttribute('aria-pressed', x === b ? 'true' : 'false')
+    })
+    renderStage(); hideHandoff()
+  })
+
+  document.getElementById('footBtn').addEventListener('click', openClientView)
+  document.getElementById('brandClient').addEventListener('click', function () { showHandoff('workbuddy://open?page=keys') })
+  document.getElementById('sbBack').addEventListener('click', closeClientView)
+
+  document.getElementById('csearch').addEventListener('input', function () {
+    renderClientList(this.value)
+  })
+
+  document.querySelectorAll('[data-open-client]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      if (state.pos !== 'c') return
+      openClientView()
+    })
+  })
+
+  document.querySelectorAll('.ho-act button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var act = btn.dataset.act
+      if (act === 'retry') {
+        showHandoff(document.getElementById('hoUrl').textContent)
+      } else if (act === 'copy') {
+        var t = document.getElementById('hoUrl').textContent
+        if (navigator.clipboard) navigator.clipboard.writeText(t)
+        btn.textContent = '已复制'
+        setTimeout(function () { btn.textContent = '复制链接' }, 1400)
+      } else {
+        hideHandoff()
+      }
+    })
+  })
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if (document.getElementById('handoff').classList.contains('on')) hideHandoff()
+      else if (stage.classList.contains('view-client')) closeClientView()
+    }
+  })
+
+  renderVerdict()
+  renderStage()
+  renderClientList('')
+})()
+</script>
+</body>
+</html>
