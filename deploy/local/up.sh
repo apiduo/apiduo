@@ -40,6 +40,9 @@ DEBUG=false
 # 生产形态就是开着的（仓库根 compose 与线上 apiduo-cn 都显式写 true）。本地没有
 # Redis 可以兜底强制打开，漏了这一行就落到「直查库」的选路代码，测了等于没测。
 MEMORY_CACHE_ENABLED=true
+# 配额/令牌用量的写走批更新，与根 compose 和线上一致。关着就是每请求就地
+# UPDATE，本地实测每请求 19.7 条 SQL，测出来的形态与线上不是一回事。
+BATCH_UPDATE_ENABLED=true
 EOF
   chmod 600 .env.app
   echo "已生成 .env.app（应用配置）"
