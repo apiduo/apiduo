@@ -164,6 +164,18 @@ class Handler(BaseHTTPRequestHandler):
                 "url": "javascript:alert(document.cookie)",
             })
             return
+        if path.startswith("/mock/out/"):
+            # Task adaptors point finished results here. Serving real bytes is
+            # what lets an end-to-end media download check content, not just a
+            # URL shape.
+            body = b"apiduo-mock-media"
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+            return
         if path.rstrip("/").endswith("/v1/models"):
             self._json({"object": "list", "data": [{"id": "mock-gpt", "object": "model", "created": int(time.time()), "owned_by": "mock"}]})
             return
