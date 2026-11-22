@@ -67,7 +67,18 @@
 # 判据 model/log_ip_setting_test.go：上下文说「不记」不能被库里的默认值覆盖，
 # 上下文说「记」也不能被库里的关闭覆盖。
 
+# 2026-11-22 files 198->198 / blocks 607->608 / added 6440->6456 / deleted 458->459：
+# 合入上游 24 个提交（8542c9d64，插件声明作用范围 + 缓存计费分档 + 私有渠道媒体下载）。
+# 1) service/task_polling_test.go：上游新测试「进度到 100% 仍要轮询」假设第一次收到
+#    failure 就落终态，与 apiduo 的二次确认相反（b40b19934：包装层回源失败也会回
+#    failure，背后生成仍在跑）。补一段 APIDUO 断言：第一次失败保持 IN_PROGRESS、
+#    不退款、调度器继续运行，第二次才落终态。files 不变。
+# 2) controller/pricing.go：上游把 GetPricing 的用户来源改成上下文里的 user_group，
+#    删掉了 `userId, exists := c.Get("id")`。apiduo 的个人折扣仍需要用户 id 取设置，
+#    在折扣块内重新取一次，不恢复上游已删的那次 GetUserCache。
+# 3) deleted +1 来自 pricing.go 上游删掉的行；added 与 blocks 的其余部分即上面两处。
+
 files	198
-blocks	607
-added	6440
-deleted	458
+blocks	608
+added	6456
+deleted	459

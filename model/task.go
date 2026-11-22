@@ -484,8 +484,9 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
 	// APIDUO:local-image-async:BEGIN A local task has no upstream id to poll,
 	// and the timeout sweep must not kill it on the upstream deadline.
-	err := DB.Where("progress != ?", "100%").
-		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
+	// Upstream progress can reach 100% before the task enters a terminal state,
+	// so the sweep keys on status only.
+	err := DB.Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
 		Where("execution_mode <> ?", TaskExecutionModeLocal).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
@@ -501,12 +502,11 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
-	// get all tasks progress is not 100%
+	// Upstream progress can reach 100% before the task enters a terminal state.
 	// APIDUO:local-image-async:BEGIN A local task has no upstream id; the
 	// poller would query the vendor with the gateway's own task id every tick
 	// and give up after TaskPollMaxFailures.
-	err = DB.Where("progress != ?", "100%").
-		Where("status != ?", TaskStatusFailure).
+	err = DB.Where("status != ?", TaskStatusFailure).
 		Where("status != ?", TaskStatusSuccess).
 		Where("execution_mode <> ?", TaskExecutionModeLocal).
 		Limit(limit).Order("id").Find(&tasks).Error
@@ -530,7 +530,6 @@ func HasUnfinishedSyncTasks() bool {
 	// leave every local task with no scheduler to pick it up — the worker would
 	// only run while some unrelated upstream task happened to be pending.
 	err := DB.Model(&Task{}).
-		Where("progress != ?", "100%").
 		Where("status != ?", TaskStatusFailure).
 		Where("status != ?", TaskStatusSuccess).
 		Limit(1).
