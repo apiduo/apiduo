@@ -78,7 +78,16 @@
 #    在折扣块内重新取一次，不恢复上游已删的那次 GetUserCache。
 # 3) deleted +1 来自 pricing.go 上游删掉的行；added 与 blocks 的其余部分即上面两处。
 
+# 2026-11-22（CI 修复）blocks 608->609 / added 6456->6461：
+# 首次推送被 Marker coverage 拦下：两处手工融合的行落在标记块外。两处都必须
+# 直接改上游文件的那一行，挪不进新文件：
+# 1) controller/video_proxy.go：trustedOrigin 判定要看 channel 是否还在
+#    （apiduo 允许渠道删除后继续直连），新增 1 个 1 行块。
+# 2) web/.../dynamic-price.ts：上游的 priceOptions 与 entries 调用句要换成
+#    apiduo 的 resolveUsageSchema / entriesTier，扩展现有 async-usage 块
+#    覆盖这 5 行（块数不变）。
+
 files	198
-blocks	608
-added	6456
+blocks	609
+added	6461
 deleted	459

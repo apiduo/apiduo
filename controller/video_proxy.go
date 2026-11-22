@@ -227,7 +227,10 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 	}
 	// APIDUO:artifact-deleted-channel:END
 	var trustedOrigin *url.URL
+	// APIDUO:artifact-deleted-channel-guard:BEGIN
+	// 渠道可能已被删除：没有可信上游源可比，trustedOrigin 只能是 nil。
 	if channel != nil && taskHasPluginExecution(task) && !descriptor.Credentialless {
+		// APIDUO:artifact-deleted-channel-guard:END
 		baseURL := channel.GetBaseURL()
 		if baseURL == "" {
 			baseURL = constant.GetChannelBaseURL(channel.Type)

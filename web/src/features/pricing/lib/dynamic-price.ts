@@ -537,9 +537,10 @@ export function getDynamicPricingSummary(
     ? (summaryTiers.at(-1) ?? null)
     : (summaryTiers[0] ?? null)
   // APIDUO:async-usage:BEGIN
+  // resolveUsageSchema 给内置事实表补本地化文案；entriesTier 让 entries 覆盖
+  // 所有档位而不是最后一档。上游的 cachePricingMode 只改缓存列标签，原样保留。
   const usageSchema = resolveUsageSchema(model)
   const entriesTier = isTaskUsage ? mergeTaskPricingTiers(summaryTiers) : tier
-  // APIDUO:async-usage:END
   const priceOptions = {
     ...options,
     modelName: model.model_name,
@@ -552,6 +553,7 @@ export function getDynamicPricingSummary(
     usageSchema,
   }
   let entries = getDynamicPriceEntries(entriesTier ?? tier, priceOptions)
+  // APIDUO:async-usage:END
   let isMixedBilling = false
   if (!isTaskUsage) {
     const tokenTier = summaryTiers.find(
