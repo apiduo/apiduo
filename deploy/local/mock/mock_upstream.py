@@ -78,6 +78,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        # Vendor-shaped headers a proxy would otherwise forward verbatim.
+        self.send_header("Openai-Organization", "org-mock-abc123")
+        self.send_header("Openai-Processing-Ms", "42")
+        self.send_header("X-Request-Id", "req_mock_upstream")
         # 模拟上游限流响应头，用于验证「满」维度采集链路。
         # 真实上游（OpenAI）在每次成功响应里都会带这组头。
         self.send_header("x-ratelimit-limit-requests", "10000")
@@ -401,17 +405,87 @@ class Handler(BaseHTTPRequestHandler):
             req = {}
 
         model = req.get("model", "mock-gpt")
+
+        # 错误注入：上游自己的错误文案里带着真实模型名，正是重定向增强要挡住
+        # 的那一类泄漏。用映射目标名触发，测试里把 model_mapping 指向 fail-* 即可。
+        failure = {
+            "fail-400": (400, "invalid_request_error", "invalid_request",
+                         f"The model `{model}` does not exist"),
+            "fail-404": (404, "invalid_request_error", "model_not_found",
+                         f"model {model} not found"),
+            "fail-429": (429, "rate_limit_error", "rate_limit_exceeded",
+                         f"Rate limit reached for {model}"),
+            "fail-500": (500, "server_error", "server_error",
+                         f"upstream {model} is overloaded"),
+            "fail-ctx": (400, "invalid_request_error", "context_length_exceeded",
+                         f"This model's maximum context length is 8192 tokens, but {model} got more"),
+            "fail-filter": (400, "invalid_request_error", "content_filter",
+                            f"The safety system rejected the request for {model}"),
+            "fail-auth": (401, "authentication_error", "invalid_api_key",
+                          f"Incorrect API key provided for {model}"),
+            "fail-perm": (403, "permission_error", "permission_denied",
+                          f"You do not have access to {model}"),
+            "fail-large": (413, "invalid_request_error", "request_too_large",
+                           f"Request body too large for {model}"),
+            "fail-param": (400, "invalid_request_error", "invalid_parameter",
+                           f"Unsupported parameter for {model}: vendor_only_flag"),
+            "fail-503": (503, "server_error", "server_error",
+                         f"{model} is temporarily unavailable"),
+        }.get(model)
+
+        # A gateway/proxy in front of the vendor: HTML body, no JSON to parse.
+        if model == "fail-nonjson":
+            log(f"injected html failure model={model}")
+            body = f"<html><body>502 Bad Gateway: {model} unavailable</body></html>".encode()
+            self.send_response(502)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        # Empty body with a 500: nothing to parse, nothing to echo.
+        if model == "fail-empty":
+            log(f"injected empty failure model={model}")
+            body = b""
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if failure:
+            status, err_type, code, message = failure
+            log(f"injected failure model={model} status={status}")
+            body = json.dumps({
+                "error": {
+                    "message": message,
+                    "type": err_type,
+                    "param": "model" if status < 500 else "",
+                    "code": code,
+                }
+            }).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            if status == 429:
+                self.send_header("Retry-After", "12")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         stream = bool(req.get("stream"))
+        fingerprint = "fp_mock_123"
         text = "pong from mock upstream"
         prompt_tokens = sum(len(str(m.get("content", ""))) for m in req.get("messages", [])) // 4 + 1
         completion_tokens = len(text) // 4 + 1
 
         if not stream:
             self._json({
-                "id": "chatcmpl-mock-1",
+                "id": "chatcmpl-9f2b7c1a4d3e",
                 "object": "chat.completion",
                 "created": int(time.time()),
                 "model": model,
+                "system_fingerprint": fingerprint,
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": prompt_tokens + completion_tokens},
             })
@@ -424,20 +498,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         for piece in ("pong ", "from ", "mock ", "upstream"):
             chunk = {
-                "id": "chatcmpl-mock-1",
+                "id": "chatcmpl-9f2b7c1a4d3e",
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
                 "model": model,
+                "system_fingerprint": fingerprint,
                 "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}],
             }
             self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
             self.wfile.flush()
             time.sleep(0.01)
         final = {
-            "id": "chatcmpl-mock-1",
+            "id": "chatcmpl-9f2b7c1a4d3e",
             "object": "chat.completion.chunk",
             "created": int(time.time()),
             "model": model,
+            "system_fingerprint": fingerprint,
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": prompt_tokens + completion_tokens},
         }
