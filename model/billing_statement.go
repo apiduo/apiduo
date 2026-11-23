@@ -338,10 +338,27 @@ func BillingLineCursorFromLog(log *Log) BillingLineCursor {
 //
 // 代客查看时用它兜底：用户被删除后 users 表查不到名字，但已出账的账单还在，
 // 不能因为查不到人就 404 —— 那会让运营没法核对历史账单。
-func BillingStatementExistsForUser(userId int) (bool, error) {
+//
+// 必须同时看草稿月：当月还没出账，billing_statements 里根本没有行，只查那张表
+// 会把「这个月有 60 万次请求、但用户已被删除」的老客户判成不存在（线上实测
+// user_id=64/65 全部用户列表显示 user#64，点进详情却返回 User not found.）。
+// start/end 是该账期的边界，传 0 表示不查用量维度。
+func BillingStatementExistsForUser(userId int, start, end int64) (bool, error) {
 	var count int64
-	err := DB.Model(&BillingStatement{}).Where("user_id = ?", userId).Count(&count).Error
-	return count > 0, err
+	if err := DB.Model(&BillingStatement{}).Where("user_id = ?", userId).Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return true, nil
+	}
+	if start >= end {
+		return false, nil
+	}
+	used, err := CountUserLogsForBilling(userId, start, end)
+	if err != nil {
+		return false, err
+	}
+	return used > 0, nil
 }
 
 // StreamBillingStatementLines 按时间正序把全部明细分批交给 fn，供导出使用。

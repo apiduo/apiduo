@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
@@ -17,6 +18,40 @@ import (
 //
 // 聚合下推到数据库：一个月几十万行，搬进 Go 再 GROUP BY 会同时占满连接与内存，
 // 而这些请求还要和转发抢同一个连接池。
+
+// ClickHouse 聚合查询的内存策略。
+//
+// 线上账单页首屏连续三次全挂，报 (total) memory limit exceeded（current RSS
+// 4.00 GiB / maximum 4.00 GiB），连 internal=0 也一样，前端只剩骨架。根因是
+// 服务端两个默认值叠在一起：max_bytes_before_external_group_by=0 让分组聚合
+// 只走内存、永不落盘，max_threads=32 又按线程数放大中间缓冲，而一个 60 万行
+// 账期的汇总要把 other 大列（实测 185 MiB）逐行解四次 JSON。
+//
+// 手工加一组 settings 后同一查询秒级返回，所以这里固化成「到 200MB 就落盘 +
+// 限 2 线程 + 限 1G 预算」。只作用于这两个聚合查询，不影响转发链路。
+const (
+	billingAggregateMemoryUsage = 1_000_000_000 // 1 GiB，比服务端默认 4G 更保守
+	billingAggregateSpillBytes  = 200_000_000   // 200 MB，超过就溢写到磁盘
+	billingAggregateThreads     = 2             // 默认 32，是中间缓冲的主要放大项
+)
+
+// billingAggregateContext 给聚合查询挂上上面那组内存策略。
+//
+// 只能走查询级 settings（clickhouse.Context 随 statement.Context 下发到驱动），
+// 不能拼进 SQL：GORM 把 Table() 的表达式放在 FROM 位置，写
+// `Table("(?) AS agg SETTINGS ...")` 会生成
+// `FROM (...) SETTINGS ... WHERE ... GROUP BY ...`，SETTINGS 落在 WHERE 之前，
+// ClickHouse 直接语法错误（DryRun 验过）。其他方言没有这些参数，原样返回。
+func billingAggregateContext(ctx context.Context) context.Context {
+	if !common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return ctx
+	}
+	return clickhouse.Context(ctx, clickhouse.WithSettings(clickhouse.Settings{
+		"max_memory_usage":                   billingAggregateMemoryUsage,
+		"max_bytes_before_external_group_by": billingAggregateSpillBytes,
+		"max_threads":                        billingAggregateThreads,
+	}))
+}
 
 // billingJSONInt 返回从 logs.other 里取一个整数的方言表达式。
 //
@@ -178,7 +213,7 @@ func SummarizeUserLogsForBilling(ctx context.Context, userId int, start, end int
 			userId, start, end, billingConsumeTypes())
 
 	rows := make([]BillingSummaryRow, 0, 16)
-	err := LOG_DB.WithContext(ctx).Table("(?) AS billing_draft", inner).
+	err := LOG_DB.WithContext(billingAggregateContext(ctx)).Table("(?) AS billing_draft", inner).
 		Select(`model_name,
 			use_group,
 			SUM(CASE WHEN type = ` + consume + ` THEN 1 ELSE 0 END) AS requests,
@@ -209,10 +244,11 @@ type BillingUserTotal struct {
 
 // SummarizeUserLogsByUser 按用户汇总一个账期。当月没有出账快照，管理员要看到
 // 「谁用了多少」只能实时聚合；一次 GROUP BY 回几十到几百行，比逐用户查便宜得多。
+// 同样是 ClickHouse 上会撞内存的一组，聚合前先套上同一份内存策略。
 func SummarizeUserLogsByUser(ctx context.Context, start, end int64) ([]BillingUserTotal, error) {
 	consume, errorType, refund := strconv.Itoa(LogTypeConsume), strconv.Itoa(LogTypeError), strconv.Itoa(LogTypeRefund)
 	rows := make([]BillingUserTotal, 0, 64)
-	err := LOG_DB.WithContext(ctx).Table("logs").
+	err := LOG_DB.WithContext(billingAggregateContext(ctx)).Table("logs").
 		Select(`user_id AS user_id,
 			SUM(CASE WHEN type = `+consume+` THEN 1 ELSE 0 END) AS requests,
 			SUM(CASE WHEN type = `+errorType+` THEN 1 ELSE 0 END) AS errors,

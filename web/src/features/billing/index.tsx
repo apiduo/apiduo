@@ -423,9 +423,14 @@ export function Billing({ search, onSearchChange }: BillingProps) {
       const list = statementsQuery.data
       if (statementsQuery.isLoading) return <TableSkeleton />
       if (statementsQuery.isError) {
-        return <ErrorBlock message={(statementsQuery.error as Error).message} />
+        return (
+          <ErrorBlock
+            message={(statementsQuery.error as Error).message}
+            onRetry={() => void statementsQuery.refetch()}
+          />
+        )
       }
-      if (!list) return null
+      if (!list) return <ErrorBlock message={t('Failed to load')} />
       const hasKeyword = userFilter.trim() !== ''
       if (list.items.length === 0 && !hasKeyword) {
         return (
@@ -531,9 +536,19 @@ export function Billing({ search, onSearchChange }: BillingProps) {
       )
     }
     if (overviewQuery.isError) {
-      return <ErrorBlock message={(overviewQuery.error as Error).message} />
+      return (
+        <ErrorBlock
+          message={(overviewQuery.error as Error).message}
+          onRetry={() => void overviewQuery.refetch()}
+        />
+      )
     }
-    if (!overview) return null
+    // 没有 data 又不是 loading/error：查询被禁用或处于 idle（scope 与 enabled
+    // 不一致）。返回 null 会让整页只剩标题，看起来像渲染坏了 —— 生产上汇总接口
+    // 连续内存超限时就是这样，用户看不到任何原因。给一句可读的失败态。
+    if (!overview) {
+      return <ErrorBlock message={t('Failed to load')} />
+    }
 
     const totalTokens =
       overview.input_tokens +
@@ -634,7 +649,10 @@ export function Billing({ search, onSearchChange }: BillingProps) {
             ) : linesQuery.isLoading ? (
               <TableSkeleton />
             ) : linesQuery.isError ? (
-              <ErrorBlock message={(linesQuery.error as Error).message} />
+              <ErrorBlock
+                message={(linesQuery.error as Error).message}
+                onRetry={() => void linesQuery.refetch()}
+              />
             ) : (linesQuery.data?.items.length ?? 0) === 0 ? (
               <EmptyState title={t('No data')} className='min-h-[220px]' />
             ) : (
@@ -806,10 +824,16 @@ function TableSkeleton() {
   )
 }
 
-function ErrorBlock(props: { message: string }) {
+function ErrorBlock(props: { message: string; onRetry?: () => void }) {
+  const { t } = useTranslation()
   return (
-    <div className='border-destructive/40 bg-destructive/5 text-destructive rounded-lg border p-4 text-sm'>
-      {props.message}
+    <div className='border-destructive/40 bg-destructive/5 text-destructive flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm'>
+      <span>{props.message}</span>
+      {props.onRetry ? (
+        <Button variant='outline' size='sm' onClick={props.onRetry}>
+          {t('Retry')}
+        </Button>
+      ) : null}
     </div>
   )
 }

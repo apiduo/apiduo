@@ -27,11 +27,11 @@ const (
 //
 // 已出账返回冻结快照；当月实时聚合，`is_final=false`，页面要标注「预估」。
 func GetBillingStatement(c *gin.Context) {
-	target, ok := billingTargetUser(c)
+	period, ok := billingPeriodParam(c)
 	if !ok {
 		return
 	}
-	period, ok := billingPeriodParam(c)
+	target, ok := billingTargetUser(c, period)
 	if !ok {
 		return
 	}
@@ -51,11 +51,11 @@ func GetBillingStatement(c *gin.Context) {
 // 与页面排序相反：账单从月初读起。游标是 (created_at, id)，既不随行数变慢，
 // 也不会因为期间有新写入而错行。
 func ListBillingStatementLines(c *gin.Context) {
-	target, ok := billingTargetUser(c)
+	period, ok := billingPeriodParam(c)
 	if !ok {
 		return
 	}
-	period, ok := billingPeriodParam(c)
+	target, ok := billingTargetUser(c, period)
 	if !ok {
 		return
 	}
@@ -117,11 +117,11 @@ func ListBillingStatementLines(c *gin.Context) {
 // 已出账的账期在出账任务里已经生成好文件，这里只签名，不查库、不流式；
 // 当月没有终点，只能现场生成，并受行数上限约束。
 func ExportBillingStatement(c *gin.Context) {
-	target, ok := billingTargetUser(c)
+	period, ok := billingPeriodParam(c)
 	if !ok {
 		return
 	}
-	period, ok := billingPeriodParam(c)
+	target, ok := billingTargetUser(c, period)
 	if !ok {
 		return
 	}
@@ -268,7 +268,9 @@ type billingUser struct {
 
 // billingTargetUser 解析账单归属。普通用户传 user_id 时忽略并只看自己 ——
 // 报错会变成一个探测别人 id 是否存在的接口。
-func billingTargetUser(c *gin.Context) (billingUser, bool) {
+//
+// period 用来界定「有没有账单」的范围：已出账看快照表，当月看该月日志用量。
+func billingTargetUser(c *gin.Context, period string) (billingUser, bool) {
 	viewerId := c.GetInt("id")
 	targetId := viewerId
 	if raw := c.Query("user_id"); raw != "" && c.GetInt("role") >= common.RoleAdminUser {
@@ -284,7 +286,11 @@ func billingTargetUser(c *gin.Context) (billingUser, bool) {
 	// 变成一份 username 为空的空账单，运营会误读成「该用户当月没消费」。
 	// 但用户被删除时名字同样为空，而他的账单可能还在 —— 那种情况要继续。
 	if targetId != viewerId && (err != nil || username == "") {
-		exists, lookupErr := model.BillingStatementExistsForUser(targetId)
+		start, end, boundsErr := service.BillingPeriodBounds(period)
+		if boundsErr != nil {
+			start, end = 0, 0
+		}
+		exists, lookupErr := model.BillingStatementExistsForUser(targetId, start, end)
 		if lookupErr != nil || !exists {
 			common.ApiError(c, common.NewMessage("User not found."))
 			return billingUser{}, false
