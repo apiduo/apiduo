@@ -416,11 +416,6 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
-	// APIDUO:billing-statement:BEGIN AutoMigrate 不改 varchar 长度，旧库的 endpoint 停在 64
-	if err := MigrateBillingStatementEndpointWidth(); err != nil {
-		return err
-	}
-	// APIDUO:billing-statement:END
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}

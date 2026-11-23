@@ -46,6 +46,12 @@ func StartBillingTaskLoop() {
 		common.SysLog(common.LogText("billing task skipped on non-master node"))
 		return
 	}
+	// 列宽迁移放在这里而不是 model/migrateDB：出账文件是 apiduo 自有的，
+	// 不必为一行 ALTER 在上游 main.go 里新增一个标记块（markercheck 会记一笔账）。
+	// 与 migrateDB 同一语义：只有 master 迁移。
+	if err := model.MigrateBillingStatementEndpointWidth(); err != nil {
+		common.SysError(common.LogText("migrate billing endpoint width: %s", err.Error()))
+	}
 	go func() {
 		// 启动时先补一次：进程正好在出账窗口重启时，内存里的「今天跑过了」
 		// 已经丢了，靠这一次接上。没到 00:10 就不标记，让后续 tick 继续尝试。
