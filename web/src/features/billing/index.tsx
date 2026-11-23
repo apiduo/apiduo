@@ -84,8 +84,11 @@ export function Billing({ search, onSearchChange }: BillingProps) {
   const isAdmin = (auth?.user?.role ?? 0) >= ROLE.ADMIN
 
   const period = search.period || currentBillingPeriod()
-  const tab = search.tab ?? 'summary'
-  const scope = search.scope ?? 'self'
+  // 白名单兜底，不用 `??`：URL 缺失、空串、非法值都必须落到安全默认。
+  // 这里踩过一次 —— scope 落成空串后 `enabled: scope === 'self'` 为 false，
+  // 汇总查询根本没启用，页面只剩标题，看起来像渲染坏了。
+  const tab: BillingTab = search.tab === 'detail' ? 'detail' : 'summary'
+  const scope: BillingScope = search.scope === 'all' ? 'all' : 'self'
   const internal = isAdmin && search.internal === true
   const targetUserId = scope === 'self' ? search.user_id : undefined
 

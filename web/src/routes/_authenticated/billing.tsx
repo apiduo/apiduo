@@ -20,6 +20,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
 import { Billing } from '@/features/billing'
+import type { BillingSearch } from '@/features/billing/types'
 
 const billingSearchSchema = z.object({
   period: z.string().optional(),
@@ -37,6 +38,17 @@ export const Route = createFileRoute('/_authenticated/billing')({
   validateSearch: billingSearchSchema,
 })
 
+// undefined 与空串不写进 URL：它们会被读回来，再走一遍「缺失」的默认值分支，
+// 徒增一次不必要的渲染，也让分享出去的链接多出一串空参数。
+function cleanSearch(input: BillingSearch): BillingSearch {
+  const output: BillingSearch = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (value === undefined || value === '') continue
+    output[key as keyof BillingSearch] = value as never
+  }
+  return output
+}
+
 function RouteComponent() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
@@ -44,7 +56,10 @@ function RouteComponent() {
     <Billing
       search={search}
       onSearchChange={(next) =>
-        navigate({ search: (prev) => ({ ...prev, ...next }), replace: true })
+        navigate({
+          search: (prev) => cleanSearch({ ...prev, ...next }),
+          replace: true,
+        })
       }
     />
   )
