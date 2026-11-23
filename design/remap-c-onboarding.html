@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apiduo · 方案 C 接入向导（真实渠道 + 能力路由）</title>
+<style>
+  :root{
+    --paper:#fcfcfa; --paper2:#f4f4f1; --paper3:#eeeee9;
+    --rule:#e4e4de; --rule2:#cfcfc7;
+    --ink:#1a1c1e; --ink2:#45484b; --muted:#6b7076;
+    --accent:#9a3412; --accent-soft:#fdf0ea;
+    --ok:#3f6f4a; --ok-soft:#eef4ef;
+    --err:#a4161a; --err-soft:#fbeced;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;
+    -webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  code,pre{font-family:var(--mono)}
+
+  .app{display:grid;grid-template-columns:224px 1fr;min-height:100vh}
+  .rail{border-right:1px solid var(--rule);padding:22px 14px 18px;display:flex;flex-direction:column;gap:26px;
+    background:var(--paper);position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:baseline;gap:8px;padding:0 8px}
+  .brand b{font-size:15px}
+  .brand span{font-size:10.5px;color:var(--muted);font-family:var(--mono)}
+  .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+  .steps li{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;font-size:12.5px;
+    color:var(--muted);cursor:pointer}
+  .steps li:hover{background:var(--paper2)}
+  .steps li.on{background:var(--paper3);color:var(--ink);font-weight:600}
+  .steps li.done{color:var(--ink2)}
+  .steps b{width:19px;height:19px;border-radius:50%;border:1px solid var(--rule2);display:inline-flex;
+    align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:500;flex:none}
+  .steps li.on b{background:var(--accent);border-color:var(--accent);color:#fff}
+  .steps li.done b{border-color:#b9cfbf;background:var(--ok-soft);color:var(--ok)}
+  .rail-foot{margin-top:auto;padding:0 8px;font-size:11px;color:var(--muted);line-height:1.7}
+  .rail-foot code{font-size:10.5px;color:var(--ink2)}
+
+  .main{min-width:0;padding-bottom:60px}
+  .topbar{padding:16px 32px;border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:10;
+    background:rgba(252,252,250,.92);backdrop-filter:blur(8px)}
+  .topbar-in{display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:1040px}
+  .crumb{font-size:12px;color:var(--muted);display:flex;gap:7px;align-items:center}
+  .crumb b{color:var(--ink);font-size:13px}
+  .status{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;
+    border:1px solid #b9cfbf;border-radius:999px;padding:4px 10px;color:var(--ok);background:var(--ok-soft)}
+  .status i{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+
+  .page{padding:30px 32px 0;max-width:1040px}
+  .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:22px}
+  h1{font-size:24px;line-height:1.3;margin:0 0 6px;letter-spacing:-.01em;font-weight:650}
+  .sub{color:var(--muted);font-size:13px;max-width:660px;margin:0}
+  .meta{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap;padding-top:6px}
+
+  .card{border:1px solid var(--rule);border-radius:10px;background:var(--paper);margin-bottom:14px}
+  .card-h{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:16px 20px;
+    border-bottom:1px solid var(--rule)}
+  .card-h h2{font-size:14px;margin:0 0 3px;font-weight:620}
+  .card-h p{margin:0;font-size:12px;color:var(--muted);max-width:640px}
+  .card-b{padding:18px 20px}
+  .card-b.tight{padding:0}
+
+  .note{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--rule);
+    border-radius:8px;background:var(--paper2);font-size:12px;color:var(--ink2);margin-bottom:14px}
+  .note .mark{font-family:var(--mono);font-size:10px;color:var(--accent);border:1px solid #e8c9bd;
+    background:var(--accent-soft);border-radius:4px;padding:0 5px;flex:none;margin-top:1px}
+  .note b{font-weight:600}
+  .note.ok{border-color:#b9cfbf;background:var(--ok-soft)}
+  .note.ok .mark{color:var(--ok);border-color:#b9cfbf;background:#fff}
+
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:10px 18px;border-bottom:1px solid var(--rule);font-size:12.5px;vertical-align:middle}
+  th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;
+    background:var(--paper2)}
+  tr:last-child td{border-bottom:0}
+  td code{font-size:11.5px;color:var(--ink2)}
+  .mono{font-family:var(--mono);font-size:11.5px}
+  .muted{color:var(--muted)}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;
+    border-radius:5px;padding:1px 7px;border:1px solid var(--rule2);color:var(--ink2);background:var(--paper);
+    white-space:nowrap}
+  .chip.ok{color:var(--ok);border-color:#b9cfbf;background:var(--ok-soft)}
+  .chip.err{color:var(--err);border-color:#e7b9bb;background:var(--err-soft)}
+  .chip.acc{color:var(--accent);border-color:#e8c9bd;background:var(--accent-soft)}
+  .chip.gray{color:var(--muted);background:var(--paper2)}
+  .arrow{color:var(--muted);font-family:var(--mono);padding:0 5px}
+
+  .btn{border:1px solid var(--rule2);border-radius:7px;padding:7px 12px;font-size:12.5px;background:var(--paper)}
+  .btn:hover{background:var(--paper2)}
+  .btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn.primary:hover{background:#000}
+  .btn:disabled{opacity:.4;cursor:not-allowed;background:var(--paper2);color:var(--muted)}
+
+  .navbtns{display:flex;justify-content:space-between;align-items:center;margin:20px 0 0;
+    padding-top:16px;border-top:1px solid var(--rule)}
+  .navbtns .right{display:flex;gap:8px}
+
+  .sw{display:inline-flex;align-items:center;gap:9px;font-size:12px;color:var(--ink2)}
+  .sw .track{width:38px;height:21px;border-radius:999px;background:var(--rule2);position:relative;transition:.16s}
+  .sw .thumb{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.18);transition:.16s}
+  .sw.on .track{background:var(--ok)}
+  .sw.on .thumb{left:19px}
+  .sw em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+
+  .field{margin-bottom:16px}
+  .field > label{display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+    margin-bottom:6px;font-family:var(--mono)}
+  .field .desc{font-size:11.5px;color:var(--muted);margin-top:5px}
+  select{width:100%;border:1px solid var(--rule2);border-radius:7px;background:var(--paper);
+    padding:8px 10px;font:inherit;font-size:12.5px;outline:none}
+  select:focus{border-color:#b9a08f}
+  input{width:100%;border:1px solid var(--rule2);border-radius:7px;background:var(--paper);
+    padding:8px 10px;font:inherit;font-size:12.5px;outline:none}
+  input:focus{border-color:#b9a08f}
+
+  .preflight{display:flex;flex-direction:column;gap:0;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+  .pf{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--rule);font-size:12px}
+  .pf:last-child{border-bottom:0}
+  .pf .ic{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:10px;flex:none;background:var(--ok-soft);color:var(--ok);border:1px solid #b9cfbf}
+  .pf.bad .ic{background:var(--err-soft);color:var(--err);border-color:#e7b9bb}
+  .pf b{font-weight:550;flex:1;min-width:0}
+  .pf span{color:var(--muted);margin-left:auto;font-family:var(--mono);font-size:10.5px;text-align:right}
+
+  .flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:8px;align-items:center;
+    border:1px solid var(--rule);border-radius:9px;padding:14px;background:var(--paper2)}
+  .node{background:var(--paper);border:1px solid var(--rule);border-radius:7px;padding:10px 12px;min-width:0}
+  .node span{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--muted);
+    text-transform:uppercase;margin-bottom:4px}
+  .node b{display:block;font-family:var(--mono);font-size:11.5px;font-weight:550;word-break:break-all}
+  .node small{display:block;color:var(--muted);font-size:10.5px;margin-top:3px}
+  .fa{color:var(--muted);font-family:var(--mono);font-size:12px}
+
+  .result{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  .result.one{grid-template-columns:1fr}
+  .panel{border:1px solid var(--rule);border-radius:9px;overflow:hidden;background:var(--paper)}
+  .panel-h{padding:9px 13px;border-bottom:1px solid var(--rule);display:flex;align-items:center;
+    justify-content:space-between;gap:10px;background:var(--paper2)}
+  .panel-h b{font-size:11.5px;font-weight:600}
+  .panel-h span{font-size:10px;font-family:var(--mono);color:var(--muted)}
+  .panel-b{padding:12px}
+  .panel pre{margin:0;background:var(--paper2);border:1px solid var(--rule);border-radius:6px;padding:10px;
+    font-size:11px;line-height:1.65;overflow:auto;max-height:230px;color:var(--ink2)}
+  .kv{display:grid;grid-template-columns:96px 1fr;gap:5px 10px;font-size:11.5px;margin-bottom:10px}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;font-family:var(--mono);font-size:11px;word-break:break-all}
+  .errmsg{color:var(--err)}
+
+  .scrim{position:fixed;inset:0;background:rgba(26,28,30,.28);opacity:0;pointer-events:none;transition:.18s;z-index:40}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(480px,92vw);background:var(--paper);
+    border-left:1px solid var(--rule2);transform:translateX(100%);transition:.22s ease;z-index:50;
+    display:flex;flex-direction:column}
+  .drawer.on{transform:none}
+  .drawer-h{padding:20px 22px 14px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;
+    align-items:flex-start;gap:16px}
+  .drawer-h h3{margin:0 0 3px;font-size:15px}
+  .drawer-h p{margin:0;font-size:12px;color:var(--muted)}
+  .x{font-family:var(--mono);font-size:16px;color:var(--muted);padding:2px 6px;border-radius:5px}
+  .x:hover{background:var(--paper2);color:var(--ink)}
+  .drawer-b{padding:18px 22px;overflow:auto;flex:1}
+  .drawer-f{padding:14px 22px;border-top:1px solid var(--rule);display:flex;justify-content:flex-end;gap:8px}
+
+  .toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,10px);background:var(--ink);color:#fff;
+    font-size:12px;padding:8px 14px;border-radius:7px;opacity:0;pointer-events:none;transition:.2s;z-index:60}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr}
+    .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:14px;padding:12px 16px;
+      border-right:0;border-bottom:1px solid var(--rule);overflow:auto}
+    .rail-foot{display:none}
+    .steps{flex-direction:row;gap:4px}
+    .steps li{white-space:nowrap;padding:6px 8px}
+    .steps li span{display:none}
+    .page{padding:22px 18px 0}
+    .topbar{padding:14px 18px}
+    .result{grid-template-columns:1fr}
+    .flow{grid-template-columns:1fr;gap:6px}
+    .fa{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><b>apiduo</b><span>remap / C</span></div>
+    <ol class="steps" id="steps">
+      <li data-step="1" class="on"><b>1</b><span>建目标渠道</span></li>
+      <li data-step="2"><b>2</b><span>启用模型</span></li>
+      <li data-step="3"><b>3</b><span>配一行路由</span></li>
+      <li data-step="4"><b>4</b><span>验证</span></li>
+    </ol>
+    <div class="rail-foot">
+      方案 C · 真实渠道<br>
+      无新增渠道字段<br>
+      <code>prototype v0.1</code>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-in">
+        <div class="crumb"><span>模型重映射</span><span>/</span><b>接入向导</b></div>
+        <span class="status"><i></i>方案 C · 复用渠道体系</span>
+      </div>
+    </div>
+
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1 id="title"></h1>
+          <p class="sub" id="sub"></p>
+        </div>
+        <div class="meta" id="meta"></div>
+      </div>
+      <div id="content"></div>
+      <div class="navbtns">
+        <button class="btn" id="prev">上一步</button>
+        <div class="right">
+          <button class="btn" onclick="openChannel()">查看渠道配置</button>
+          <button class="btn primary" id="next">下一步</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="drawer" id="drawer" aria-hidden="true"></div>
+<div class="toast" id="toast">已保存</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const state = { step: 1, drawer: false, scenario: 'ok', result: null, resultMode: 'success' };
+
+const TITLES = {
+  1: ['建一个普通渠道', '目标模型走标准渠道：类型、Base URL、Key、模型、分组。没有 fallback 专用字段。'],
+  2: ['启用目标模型', '目标模型必须在目录里，但可以只给内部组；客户端的 /v1/models 不会列出它。'],
+  3: ['给 acme-pro 配一行路由', '只有这一行是新配置。保存前跑五项检查，失败就不让保存。'],
+  4: ['验证一次真实请求', '带 tools 的请求切到 deepseek-chat；响应 model 仍为 acme-pro；错误只出标准码。']
+};
+
+function render(){
+  $('title').textContent = TITLES[state.step][0];
+  $('sub').textContent = TITLES[state.step][1];
+  $('meta').textContent = `STEP ${state.step} / 4`;
+  document.querySelectorAll('#steps li').forEach(li => {
+    li.classList.toggle('on', +li.dataset.step === state.step);
+    li.classList.toggle('done', +li.dataset.step < state.step);
+  });
+  $('prev').disabled = state.step === 1;
+  $('next').textContent = state.step === 4 ? '完成' : (state.step === 3 ? '保存并验证' : '下一步');
+  $('next').disabled = state.step === 4;
+  if (state.step === 1) $('content').innerHTML = step1();
+  if (state.step === 2) $('content').innerHTML = step2();
+  if (state.step === 3) $('content').innerHTML = step3();
+  if (state.step === 4) { $('content').innerHTML = step4(); bindStep4(); }
+  bindCommon();
+}
+
+function step1(){
+  return `
+    <div class="note ok"><span class="mark">C</span><span>目标渠道就是普通渠道。你不需要在渠道里写 fallback 的 base/key —— 那些字段在这里不存在，也就不存在第二套密钥与第二套 SSRF 面。</span></div>
+    <div class="card">
+      <div class="card-h"><div><h2>渠道列表</h2><p>承载对外模型的渠道与承载目标模型的渠道并列，权限、余额、禁用规则一致。</p></div>
+        <div style="display:flex;align-items:center;gap:8px"><span class="chip">2 个渠道</span><button class="btn" onclick="openNewChannel()">新建渠道</button></div></div>
+      <div class="card-b tight">
+        <table>
+          <thead><tr><th style="width:18%">渠道</th><th style="width:11%">类型</th><th style="width:24%">Base URL</th><th style="width:16%">模型</th><th style="width:10%">分组</th><th style="width:10%">余额</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b class="mono">acme-main</b></td><td class="muted">OpenAI</td>
+              <td class="mono muted">https://api.acme.example/v1</td>
+              <td><code>acme-pro</code></td><td class="mono muted">default</td>
+              <td class="mono">$42.10</td><td><span class="chip ok">启用</span></td>
+            </tr>
+            <tr>
+              <td><b class="mono">deepseek-official</b></td><td class="muted">OpenAI</td>
+              <td class="mono muted">https://api.deepseek.com</td>
+              <td><code>deepseek-chat</code></td><td class="mono muted">default</td>
+              <td class="mono">$12.40</td><td><span class="chip ok">启用</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="note"><span class="mark">NO NEW</span><span>渠道表单没有新增字段。Key 沿用现有渠道的加密与 API 置空逻辑；余额、轮询、auto-ban 全部复用。</span></div>
+  `;
+}
+
+function step2(){
+  return `
+    <div class="note"><span class="mark">VISIBLE</span><span>目标模型要进目录，否则选不到渠道。但它可以只挂在 <code>internal</code> 组：客户端所在分组看不到，<code>/v1/models</code> 也不会返回它。</span></div>
+    <div class="card">
+      <div class="card-h"><div><h2>模型目录</h2><p>“内部”模型只对指定分组可见，不影响客户端目录。</p></div><span class="chip">2 个模型</span></div>
+      <div class="card-b tight">
+        <table>
+          <thead><tr><th style="width:26%">模型</th><th style="width:14%">类型</th><th style="width:22%">可用分组</th><th style="width:18%">路由</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td><b class="mono">acme-pro</b></td><td><span class="chip">对外</span></td><td class="mono muted">default · vip</td><td class="mono">tools → deepseek-chat</td><td><span class="chip ok">启用</span></td></tr>
+            <tr><td><b class="mono">deepseek-chat</b></td><td><span class="chip gray">内部</span></td><td class="mono muted">default</td><td class="muted">被 1 个模型引用</td><td><span class="chip ok">启用</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="note ok"><span class="mark">CHECK</span><span>这两个模型必须在同一分组有可用渠道，否则第 3 步的“同分组”检查会失败。这里都在 <code>default</code>。</span></div>
+  `;
+}
+
+function checks(){
+  const fail = state.scenario;
+  return [
+    ['目标模型存在', true, 'deepseek-chat'],
+    ['同分组有可用渠道', fail !== 'group', 'deepseek-official / default'],
+    ['渠道状态与余额', fail !== 'balance', '启用 · $12.40'],
+    ['支持入站协议与 tools', fail !== 'tools', 'chat/completions · tools'],
+    ['无环、非自身', true, '一跳']
+  ];
+}
+
+function step3(){
+  const rows = checks();
+  const ok = rows.every(r => r[1]);
+  return `
+    <div class="note"><span class="mark">ONLY NEW</span><span>整个方案只有这一行是新配置：<b>acme-pro 的 tools → deepseek-chat</b>。其余都是现有渠道/模型体系。</span></div>
+    <div class="card">
+      <div class="card-h">
+        <div><h2>acme-pro · 工具调用路由</h2><p>目标模型在另一个渠道，渠道级开关表达不了“换渠道”，所以配置挂在模型上。</p></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="chip ${ok ? 'ok' : 'err'}">${ok ? '可保存' : '不可保存'}</span>
+        </div>
+      </div>
+      <div class="card-b">
+        <div class="field">
+          <label>路由开关</label>
+          <div class="sw on"><span class="track"><span class="thumb"></span></span><em>ON</em></div>
+        </div>
+        <div class="field">
+          <label>工具调用改走</label>
+          <select id="targetSel">
+            <option>deepseek-chat · 内部模型 · 渠道 deepseek-official</option>
+            <option>deepseek-reasoner · 内部模型</option>
+          </select>
+          <div class="desc">只允许一跳：目标模型不能再配路由。保存时校验。</div>
+        </div>
+        <div class="field">
+          <label>模拟异常（原型用）</label>
+          <select id="scenarioSel">
+            <option value="ok" ${state.scenario==='ok'?'selected':''}>正常</option>
+            <option value="group" ${state.scenario==='group'?'selected':''}>目标模型不在同分组</option>
+            <option value="balance" ${state.scenario==='balance'?'selected':''}>目标渠道余额不足</option>
+            <option value="tools" ${state.scenario==='tools'?'selected':''}>目标渠道不支持 tools</option>
+          </select>
+        </div>
+        <label style="display:block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;font-family:var(--mono)">保存前检查</label>
+        <div class="preflight">
+          ${rows.map(([name, pass, detail]) => `
+            <div class="pf ${pass ? '' : 'bad'}">
+              <span class="ic">${pass ? '✓' : '!'}</span>
+              <b>${esc(name)}</b>
+              <span>${esc(pass ? detail : '失败：' + failText(state.scenario))}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+    ${ok ? '' : `<div class="note" style="border-color:#e7b9bb;background:var(--err-soft)"><span class="mark" style="color:var(--err);border-color:#e7b9bb;background:#fff">BLOCKED</span><span>检查不通过时不允许保存。否则运行期会变成 503 或 400，而且日志里只能看到“选不到渠道”，比保存期失败难查得多。</span></div>`}
+  `;
+}
+
+function failText(s){
+  if (s === 'group') return '目标模型与 acme-pro 没有共同分组';
+  if (s === 'balance') return '渠道余额不足';
+  if (s === 'tools') return '目标渠道未声明 tools 能力';
+  return '';
+}
+
+function step4(){
+  return `
+    <div class="note"><span class="mark">FLOW</span><span>请求只在中间换一次模型；客户端看到的 model 始终是 acme-pro。</span></div>
+    <div class="flow">
+      <div class="node"><span>客户端</span><b>acme-pro + tools</b><small>请求名不变</small></div>
+      <div class="fa">→</div>
+      <div class="node"><span>路由</span><b>tools → deepseek-chat</b><small>只一跳</small></div>
+      <div class="fa">→</div>
+      <div class="node"><span>渠道 / 上游</span><b>deepseek-official</b><small>deepseek-chat · 余额 $12.40</small></div>
+    </div>
+    <div style="display:flex;gap:8px;margin:14px 0 0">
+      <button class="btn primary" onclick="send('success')">发送成功请求</button>
+      <button class="btn" onclick="send('error')">发送失败请求</button>
+      <span class="mono muted" style="margin-left:auto;align-self:center;font-size:10.5px">原型模拟，不产生真实调用</span>
+    </div>
+    <div id="out"></div>
+    <div id="adminBlock"></div>
+  `;
+}
+
+function send(mode){
+  state.resultMode = mode;
+  const out = $('out');
+  if (mode === 'success'){
+    out.innerHTML = `
+      <div class="result one">
+        <div class="panel">
+          <div class="panel-h"><b>客户端收到</b><span>HTTP 200 · model 已回显</span></div>
+          <div class="panel-b">
+            <pre>{
+  <span style="color:var(--accent)">"id"</span>: "chatcmpl-ca_9f2b7c41",
+  <span style="color:var(--accent)">"model"</span>: <span style="color:var(--ok)">"acme-pro"</span>,
+  <span style="color:var(--accent)">"choices"</span>: [{
+    <span style="color:var(--accent)">"message"</span>: {
+      <span style="color:var(--accent)">"role"</span>: "assistant",
+      <span style="color:var(--accent)">"tool_calls"</span>: [{ "id": "call_a91", "function": { "name": "web_search" } }]
+    }
+  }]
+}</pre>
+            <div class="mono muted" style="font-size:10.5px;margin-top:8px">上游 deepseek-chat 的 model 字段已被覆盖；正文与 tool_calls 原样。</div>
+          </div>
+        </div>
+      </div>`;
+    $('adminBlock').innerHTML = '';
+    return;
+  }
+  out.innerHTML = `
+    <div class="result">
+      <div class="panel">
+        <div class="panel-h"><b>客户端收到</b><span>HTTP 400 · 标准码</span></div>
+        <div class="panel-b">
+          <pre class="errmsg">{
+  "error": {
+    "message": "The request could not be processed.",
+    "type": "invalid_request_error",
+    "param": "tool_choice",
+    "code": "invalid_request"
+  }
+}</pre>
+          <div class="mono muted" style="font-size:10.5px;margin-top:8px">不含 deepseek-chat、host、logid。</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><b>管理员日志</b><span>admin_info</span></div>
+        <div class="panel-b">
+          <dl class="kv">
+            <dt>对外 / 执行</dt><dd>acme-pro → deepseek-chat</dd>
+            <dt>上游状态</dt><dd class="errmsg">400 InvalidParameter</dd>
+            <dt>渠道</dt><dd>deepseek-official (#41)</dd>
+            <dt>request id</dt><dd>req_ca_5be027</dd>
+          </dl>
+          <pre class="errmsg">model deepseek-chat does not support tool_choice=required</pre>
+        </div>
+      </div>
+    </div>`;
+}
+
+function openChannel(){
+  const d = $('drawer');
+  d.innerHTML = `
+    <div class="drawer-h">
+      <div><h3>deepseek-official</h3><p>普通渠道 · OpenAI 兼容</p></div>
+      <button class="x" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-b">
+      <div class="field"><label>类型</label><input value="OpenAI" disabled></div>
+      <div class="field"><label>Base URL</label><input value="https://api.deepseek.com" disabled><div class="desc">标准渠道字段。没有 fallback 专用地址。</div></div>
+      <div class="field"><label>API Key</label><input value="sk-••••••••••••••••" disabled><div class="desc">与现有渠道同一套存储与置空逻辑。</div></div>
+      <div class="field"><label>模型</label><input value="deepseek-chat" disabled></div>
+      <div class="field"><label>分组</label><input value="default" disabled><div class="desc">必须与 acme-pro 有交集，否则第 3 步检查失败。</div></div>
+      <div class="note ok"><span class="mark">NO NEW</span><span>这里没有任何 fallback 专用配置。目标就是一个普通渠道，轮换 Key、查余额、禁用都走现有流程。</span></div>
+    </div>
+    <div class="drawer-f"><button class="btn primary" onclick="closeDrawer()">知道了</button></div>`;
+  d.classList.add('on'); $('scrim').classList.add('on');
+}
+
+function openNewChannel(){
+  const d = $('drawer');
+  d.innerHTML = `
+    <div class="drawer-h">
+      <div><h3>新建渠道</h3><p>普通渠道 · 没有 fallback 专用字段</p></div>
+      <button class="x" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-b">
+      <div class="field"><label>类型</label><select><option>OpenAI</option><option>Anthropic</option><option>Gemini</option></select></div>
+      <div class="field"><label>Base URL</label><input placeholder="https://api.deepseek.com"><div class="desc">只允许 https；保存时校验，不允许指向内网地址。</div></div>
+      <div class="field"><label>API Key</label><input placeholder="sk-..."><div class="desc">与现有渠道同一套存储与 API 置空逻辑。</div></div>
+      <div class="field"><label>模型</label><input placeholder="deepseek-chat"></div>
+      <div class="field"><label>分组</label><input value="default"><div class="desc">必须与 acme-pro 有交集。</div></div>
+      <div class="note ok"><span class="mark">NO NEW</span><span>这个表单和现有“新建渠道”完全一样。方案 C 不新增任何字段。</span></div>
+    </div>
+    <div class="drawer-f"><button class="btn" onclick="closeDrawer()">取消</button><button class="btn primary" onclick="mockSaveChannel()">保存（原型）</button></div>`;
+  d.classList.add('on'); $('scrim').classList.add('on');
+}
+function mockSaveChannel(){ closeDrawer(); toast('已保存（原型不会写入）'); }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),1600); }
+
+function closeDrawer(){ $('drawer').classList.remove('on'); $('scrim').classList.remove('on'); }
+
+function bindCommon(){
+  document.querySelectorAll('#steps li').forEach(li => li.onclick = () => { state.step = +li.dataset.step; render(); });
+  $('prev').onclick = () => { if (state.step > 1){ state.step--; render(); } };
+  $('next').onclick = () => {
+    if (state.step === 3 && !checks().every(r => r[1])){ toast('先修复保存前检查'); return; }
+    if (state.step < 4){ state.step++; render(); }
+  };
+  const ss = $('scenarioSel');
+  if (ss) ss.onchange = () => { state.scenario = ss.value; render(); };
+  const ts = $('targetSel');
+  if (ts) ts.onchange = () => {};
+}
+
+function bindStep4(){}
+
+$('scrim').onclick = closeDrawer;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+const qs = new URLSearchParams(location.search);
+if (qs.get('step')) state.step = Math.min(4, Math.max(1, +qs.get('step') || 1));
+if (qs.get('scenario')) state.scenario = qs.get('scenario');
+render();
+if (qs.get('drawer') === '1') openChannel();
+if (qs.get('new') === '1') openNewChannel();
+if (qs.get('result')) send(qs.get('result'));
+</script>
+</body>
+</html>

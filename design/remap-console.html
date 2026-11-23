@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apiduo · 模型重映射（Remap）控制台原型</title>
+<style>
+  :root{
+    --paper:#fcfcfa; --paper2:#f4f4f1; --paper3:#eeeee9;
+    --rule:#e4e4de; --rule2:#cfcfc7;
+    --ink:#1a1c1e; --ink2:#45484b; --muted:#6b7076;
+    --accent:#9a3412; --accent-soft:#fdf0ea;
+    --ok:#3f6f4a; --ok-soft:#eef4ef;
+    --err:#a4161a; --err-soft:#fbeced;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;
+    -webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  code,pre{font-family:var(--mono)}
+
+  .app{display:grid;grid-template-columns:208px 1fr;min-height:100vh}
+
+  /* rail */
+  .rail{border-right:1px solid var(--rule);padding:22px 14px 18px;display:flex;flex-direction:column;gap:26px;
+    background:var(--paper);position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:baseline;gap:8px;padding:0 8px}
+  .brand b{font-size:15px;letter-spacing:.01em}
+  .brand span{font-size:10.5px;color:var(--muted);font-family:var(--mono)}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
+    padding:8px 10px;border-radius:6px;font-size:13px;color:var(--ink2);text-align:left}
+  .nav button:hover{background:var(--paper2)}
+  .nav button.on{background:var(--paper3);color:var(--ink);font-weight:600}
+  .nav .dot{width:5px;height:5px;border-radius:50%;background:var(--rule2)}
+  .nav button.on .dot{background:var(--accent)}
+  .rail-foot{margin-top:auto;padding:0 8px;font-size:11px;color:var(--muted);line-height:1.7}
+  .rail-foot code{font-size:10.5px;color:var(--ink2)}
+
+  /* main */
+  .main{min-width:0;padding:0 0 64px}
+  .topbar{padding:16px 32px;border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:10;
+    background:rgba(252,252,250,.92);backdrop-filter:blur(8px)}
+  .topbar-in{display:flex;align-items:center;gap:16px;justify-content:space-between;max-width:1080px}
+  .crumb{font-size:12px;color:var(--muted);display:flex;gap:7px;align-items:center}
+  .crumb b{color:var(--ink);font-weight:600;font-size:13px}
+  .status{display:flex;align-items:center;gap:8px;font-size:11.5px;font-family:var(--mono);
+    border:1px solid var(--rule2);border-radius:999px;padding:4px 10px;color:var(--ink2);background:var(--paper)}
+  .status i{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+  .status.on{border-color:#b9cfbf;background:var(--ok-soft);color:var(--ok)}
+  .status.on i{background:var(--ok)}
+
+  .page{padding:30px 32px 0;max-width:1080px}
+  .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}
+  h1{font-size:24px;line-height:1.3;margin:0 0 6px;letter-spacing:-.01em;font-weight:650}
+  .sub{color:var(--muted);font-size:13px;max-width:620px;margin:0}
+  .meta{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap;padding-top:6px}
+
+  .card{border:1px solid var(--rule);border-radius:10px;background:var(--paper);margin-bottom:14px}
+  .card-h{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:18px 20px;
+    border-bottom:1px solid var(--rule)}
+  .card-h h2{font-size:14px;margin:0 0 3px;font-weight:620}
+  .card-h p{margin:0;font-size:12px;color:var(--muted);max-width:620px}
+  .card-b{padding:18px 20px}
+  .card-b.tight{padding:0}
+
+  /* switch */
+  .sw{display:inline-flex;align-items:center;gap:9px;font-size:12px;color:var(--ink2);user-select:none}
+  .sw .track{width:38px;height:21px;border-radius:999px;background:var(--rule2);position:relative;transition:.16s}
+  .sw .thumb{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.18);transition:.16s}
+  .sw.on .track{background:var(--ok)}
+  .sw.on .thumb{left:19px}
+  .sw.disabled{opacity:.45;pointer-events:none}
+  .sw em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+
+  .row{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:16px 20px;
+    border-bottom:1px solid var(--rule)}
+  .row:last-child{border-bottom:0}
+  .row .txt b{display:block;font-size:13px;font-weight:600;margin-bottom:2px}
+  .row .txt span{display:block;font-size:12px;color:var(--muted);max-width:640px}
+  .row .ctl{flex:none;padding-top:2px}
+
+  .hint{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid var(--rule);
+    border-radius:8px;background:var(--paper2);font-size:12px;color:var(--ink2)}
+  .hint .mark{font-family:var(--mono);font-size:10.5px;color:var(--accent);border:1px solid #e8c9bd;
+    background:var(--accent-soft);border-radius:4px;padding:0 5px;flex:none;margin-top:1px}
+  .hint b{font-weight:600}
+
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:10px 20px;border-bottom:1px solid var(--rule);font-size:12.5px;vertical-align:middle}
+  th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;
+    background:var(--paper2)}
+  tr:last-child td{border-bottom:0}
+  td code{font-size:11.5px;color:var(--ink2)}
+  .mono{font-family:var(--mono);font-size:11.5px}
+  .arrow{color:var(--muted);font-family:var(--mono);padding:0 6px}
+
+  .chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;
+    border-radius:5px;padding:1px 7px;border:1px solid var(--rule2);color:var(--ink2);background:var(--paper)}
+  .chip.ok{color:var(--ok);border-color:#b9cfbf;background:var(--ok-soft)}
+  .chip.err{color:var(--err);border-color:#e7b9bb;background:var(--err-soft)}
+  .chip.acc{color:var(--accent);border-color:#e8c9bd;background:var(--accent-soft)}
+
+  /* states table */
+  .states{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);
+    border-radius:8px;overflow:hidden}
+  .state{background:var(--paper);padding:14px 16px}
+  .state span{font-size:10.5px;font-family:var(--mono);color:var(--muted);display:block;margin-bottom:5px}
+  .state b{font-size:12.5px;display:block;margin-bottom:4px}
+  .state p{margin:0;font-size:11.5px;color:var(--muted)}
+
+  /* tabs */
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin:0 0 18px}
+  .tabs button{padding:9px 12px;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;
+    margin-bottom:-1px}
+  .tabs button.on{color:var(--ink);border-color:var(--accent);font-weight:600}
+
+  /* models */
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .search{flex:1;max-width:300px;display:flex;align-items:center;gap:7px;border:1px solid var(--rule2);
+    border-radius:7px;padding:7px 10px;background:var(--paper)}
+  .search input{border:0;outline:0;background:transparent;width:100%;font:inherit;font-size:12.5px}
+  .search span{color:var(--muted);font-family:var(--mono);font-size:11px}
+  .btn{border:1px solid var(--rule2);border-radius:7px;padding:7px 12px;font-size:12.5px;background:var(--paper)}
+  .btn:hover{background:var(--paper2)}
+  .btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn.primary:hover{background:#000}
+  .btn:disabled{opacity:.4;cursor:not-allowed;background:var(--paper2);color:var(--muted)}
+  .btn.primary:disabled{background:var(--paper2);color:var(--muted);border-color:var(--rule2)}
+
+  .route{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .route .to{font-family:var(--mono);font-size:11.5px;color:var(--ink2)}
+
+  /* drawer */
+  .scrim{position:fixed;inset:0;background:rgba(26,28,30,.28);opacity:0;pointer-events:none;transition:.18s;z-index:40}
+  .scrim.on{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,92vw);background:var(--paper);
+    border-left:1px solid var(--rule2);transform:translateX(100%);transition:.22s ease;z-index:50;
+    display:flex;flex-direction:column}
+  .drawer.on{transform:none}
+  .drawer-h{padding:20px 22px 14px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;
+    align-items:flex-start;gap:16px}
+  .drawer-h h3{margin:0 0 3px;font-size:15px}
+  .drawer-h p{margin:0;font-size:12px;color:var(--muted)}
+  .x{font-family:var(--mono);font-size:16px;color:var(--muted);padding:2px 6px;border-radius:5px}
+  .x:hover{background:var(--paper2);color:var(--ink)}
+  .drawer-b{padding:18px 22px;overflow:auto;flex:1}
+  .drawer-f{padding:14px 22px;border-top:1px solid var(--rule);display:flex;justify-content:flex-end;gap:8px}
+  .field{margin-bottom:18px}
+  .field > label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+    margin-bottom:7px;font-family:var(--mono)}
+  .field .desc{font-size:11.5px;color:var(--muted);margin-top:6px}
+  select{width:100%;border:1px solid var(--rule2);border-radius:7px;background:var(--paper);
+    padding:8px 10px;font:inherit;font-size:12.5px;outline:none}
+  select:disabled{opacity:.5;background:var(--paper2)}
+  .aliasbox{display:flex;flex-wrap:wrap;gap:6px;border:1px solid var(--rule2);border-radius:7px;padding:9px;
+    background:var(--paper);min-height:40px}
+  .aliasbox .chip{background:var(--paper2)}
+  .aliasbox input{border:0;outline:0;background:transparent;font:inherit;font-size:12px;flex:1;min-width:120px}
+
+  .preview{border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+  .preview .ph{padding:8px 12px;border-bottom:1px solid var(--rule);background:var(--paper2);
+    font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;
+    justify-content:space-between}
+  .preview pre{margin:0;padding:12px;font-size:11.5px;line-height:1.65;overflow:auto;color:var(--ink2);
+    background:var(--paper)}
+  .preview .k{color:var(--accent)}
+  .preview .g{color:var(--ok)}
+  .preview .m{color:var(--muted)}
+
+  /* logs */
+  .logrow{cursor:pointer}
+  .logrow:hover td{background:var(--paper2)}
+  .logrow.on td{background:var(--paper3)}
+  .logrow .t{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .detail{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .detail.one{grid-template-columns:1fr}
+  .panel{border:1px solid var(--rule);border-radius:9px;background:var(--paper);overflow:hidden}
+  .panel-h{padding:10px 14px;border-bottom:1px solid var(--rule);display:flex;align-items:center;
+    justify-content:space-between;gap:10px;background:var(--paper2)}
+  .panel-h b{font-size:12px;font-weight:600}
+  .panel-h span{font-size:10.5px;font-family:var(--mono);color:var(--muted)}
+  .panel-b{padding:14px}
+  .kv{display:grid;grid-template-columns:112px 1fr;gap:6px 12px;font-size:12px}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;font-family:var(--mono);font-size:11.5px;color:var(--ink2);word-break:break-all}
+  .panel pre{margin:8px 0 0;background:var(--paper2);border:1px solid var(--rule);border-radius:6px;
+    padding:10px;font-size:11.5px;line-height:1.65;overflow:auto;color:var(--ink2)}
+  .errmsg{color:var(--err)}
+  .annotation{font-size:11px;color:var(--muted);margin:8px 2px 0}
+  .annotation code{font-size:10.5px;color:var(--ink2)}
+
+  .empty{padding:26px;text-align:center;color:var(--muted);font-size:12px}
+
+  .guide-wrap{max-width:1080px;margin:18px 32px 0}
+  .guide{display:flex;align-items:center;flex-wrap:wrap;gap:8px;border:1px solid #e8c9bd;
+    background:var(--accent-soft);border-radius:9px;padding:9px 12px;font-size:12px;color:var(--ink2)}
+  .guide .gtitle{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--accent);
+    text-transform:uppercase;margin-right:4px}
+  .guide .step{display:inline-flex;align-items:center;gap:6px;border:1px solid #e0c3b6;background:var(--paper);
+    border-radius:6px;padding:4px 9px;font-size:12px;color:var(--ink)}
+  .guide .step:hover{border-color:var(--accent)}
+  .guide .step b{font-family:var(--mono);font-size:10.5px;color:#fff;background:var(--accent);
+    width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+  .guide .gtime{margin-left:auto;font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .guide .gx{color:var(--muted);font-family:var(--mono);padding:0 4px}
+  .guide .gx:hover{color:var(--ink)}
+  .pulse{animation:pulse 1.25s ease}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(154,52,18,.28)}55%{box-shadow:0 0 0 7px rgba(154,52,18,0)}
+    100%{box-shadow:0 0 0 0 rgba(154,52,18,0)}}
+  @media (max-width:900px){.guide-wrap{margin:14px 18px 0}.guide .gtime{display:none}}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,10px);background:var(--ink);color:#fff;
+    font-size:12px;padding:8px 14px;border-radius:7px;opacity:0;pointer-events:none;transition:.2s;z-index:60}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr}
+    .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:14px;padding:12px 16px;
+      border-right:0;border-bottom:1px solid var(--rule);overflow:auto}
+    .rail-foot{display:none}
+    .nav{flex-direction:row;gap:4px}
+    .nav button{white-space:nowrap;padding:6px 9px}
+    .page{padding:22px 18px 0}
+    .topbar{padding:14px 18px}
+    .detail{grid-template-columns:1fr}
+    .states{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><b>apiduo</b><span>console</span></div>
+    <nav class="nav" id="nav">
+      <button data-tab="settings" class="on"><span>系统设置</span><span class="dot"></span></button>
+      <button data-tab="models"><span>模型</span><span class="dot"></span></button>
+      <button data-tab="logs"><span>用量日志</span><span class="dot"></span></button>
+    </nav>
+    <div class="rail-foot">
+      原型 · 非实现<br>
+      Remap 开关 + 错误码映射<br>
+      <code>v0.1</code>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-in">
+        <div class="crumb"><span>控制台</span><span>/</span><b id="crumb">系统设置</b></div>
+        <div class="status" id="status"><i></i><span id="statusText">Remap 未开启</span></div>
+      </div>
+    </div>
+
+    <div class="guide-wrap" id="guideWrap"></div>
+    <div class="page" id="page"></div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="drawer" id="drawer" aria-hidden="true"></div>
+<div class="toast" id="toast">已保存</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const state = {
+  tab: 'settings',
+  remap: false,
+  role: 'admin',
+  drawer: false,
+  routeOn: true,
+  target: 'deepseek-chat',
+  selectedLog: 'err',
+  savedRoute: true,
+  guide: true
+};
+
+const LOGS = {
+  ok: {
+    time: '00:31:22', model: 'acme-pro', status: 200, ms: '1.8s', user: 'user_1024', stream: true,
+    usage: { in: 24, out: 37, total: 61, cost: '$0.00042' },
+    upstream: null
+  },
+  err: {
+    time: '00:30:57', model: 'acme-pro', status: 400, ms: '0.4s', user: 'user_1024', stream: false,
+    usage: null,
+    upstream: {
+      status: 400, code: 'InvalidParameter', channel: '#37',
+      message: 'model deepseek-chat does not support tool_choice=required',
+      requestId: 'req_ca_9f2b7c41'
+    },
+    client: { error: { message: 'The request could not be processed.', type: 'invalid_request_error', param: 'tool_choice', code: 'invalid_request' } }
+  },
+  ok2: {
+    time: '00:29:41', model: 'acme-pro', status: 200, ms: '2.4s', user: 'user_2048', stream: false,
+    usage: { in: 18, out: 52, total: 70, cost: '$0.00051' },
+    upstream: null
+  }
+};
+
+const CODE_MAP = [
+  ['context_length_exceeded', 'context_length_exceeded', '400'],
+  ['content_filter / content_policy_violation', 'content_filter', '400'],
+  ['invalid_parameter / invalid_request_error', 'invalid_request', '400'],
+  ['model_not_found', 'model_not_found', '404'],
+  ['rate_limit_exceeded', 'rate_limit_exceeded', '429'],
+  ['insufficient_quota', 'insufficient_quota', '429'],
+  ['authentication_error', 'invalid_api_key', '401'],
+  ['permission_denied', 'model_not_authorized', '403'],
+  ['server_error / internal', 'upstream_unavailable', '502'],
+  ['timeout / connection error', 'upstream_timeout', '504']
+];
+
+function statusChip(){
+  return state.remap
+    ? '<span class="status on"><i></i><span>Remap 已开启</span></span>'
+    : '<span class="status"><i></i><span>Remap 未开启</span></span>';
+}
+
+function renderTop(){
+  $('status').outerHTML = statusChip().replace('class="status"','id="status" class="status"')
+    .replace('class="status on"','id="status" class="status on"');
+  const names = {settings:'系统设置', models:'模型', logs:'用量日志'};
+  $('crumb').textContent = names[state.tab];
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
+}
+
+function pageSettings(){
+  return `
+    <div class="page-head">
+      <div>
+        <h1>模型重映射</h1>
+        <p class="sub">把工具调用请求换到另一个模型执行，响应仍回显客户端请求的模型名。关闭时所有相关能力不生效。</p>
+      </div>
+      <div class="meta">REMAP_ENABLED</div>
+    </div>
+
+    <div class="card">
+      <div class="row" id="switchRow">
+        <div class="txt">
+          <b>总开关</b>
+          <span>同时控制请求覆盖、响应回显、结构化错误、错误日志码表映射。默认关闭，发布后按环境打开。</span>
+        </div>
+        <div class="ctl">
+          ${sw(state.remap, 'toggleRemap')}
+        </div>
+      </div>
+      <div class="card-b">
+        <div class="states">
+          <div class="state"><span>STATE 0</span><b>全局关</b><p>完全保持现状；capability_routes 被忽略；错误与日志走旧路径。</p></div>
+          <div class="state"><span>STATE 1</span><b>开 + 模型无路由</b><p>该模型行为不变；错误与日志也走旧路径。</p></div>
+          <div class="state"><span>STATE 2</span><b>开 + 模型有路由</b><p>覆盖模型 → 回显对外名 → 结构化错误 → 日志记标准码。</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">
+        <div><h2>内置错误码映射</h2><p>不配置也能工作。上游未命中的码按 HTTP 状态兜底，绝不回落原文。</p></div>
+        <span class="chip">${CODE_MAP.length} 条 · 只读</span>
+      </div>
+      <div class="card-b tight">
+        <table>
+          <thead><tr><th style="width:44%">上游 code</th><th style="width:36%">对外 code</th><th>HTTP</th></tr></thead>
+          <tbody>
+            ${CODE_MAP.map(([u,p,s]) => `<tr><td><code>${esc(u)}</code></td><td><code>${esc(p)}</code></td><td class="mono" style="color:var(--muted)">${s}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><div><h2>不随开关关闭的安全修复</h2><p>这些是泄漏修复，不是功能开关。</p></div></div>
+      <div class="card-b">
+        <div class="hint"><span class="mark">ALWAYS</span><span>日志字段 <code>is_model_mapped</code> / <code>upstream_model_name</code> / <code>response_model</code> 一律降为 admin-only；历史日志走读取投影，关掉 Remap 也不会重新露出。</span></div>
+        <div class="hint" style="margin-top:10px"><span class="mark">NOTE</span><span>计费固定按<b>对外模型</b>结算。否则 token 单价会随实际模型变化，价格本身成为“换了模型”的侧信道。</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function pageModels(){
+  return `
+    <div class="page-head">
+      <div>
+        <h1>模型</h1>
+        <p class="sub">路由配置挂在模型上，不挂在渠道上——目标模型通常在另一个渠道，渠道级开关表达不了“换渠道”。</p>
+      </div>
+      <div class="meta">工具调用路由</div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search"><span>/</span><input placeholder="搜索模型名" value=""></div>
+      <button class="btn">新建模型</button>
+      <span class="chip ${state.remap ? 'ok' : ''}">${state.remap ? 'Remap 已开启' : 'Remap 未开启 · 路由不可配'}</span>
+    </div>
+
+    <div class="card">
+      <div class="card-b tight">
+        <table>
+          <thead><tr><th style="width:32%">模型</th><th style="width:16%">状态</th><th style="width:34%">工具调用路由</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b style="font-family:var(--mono);font-size:12px">acme-pro</b><div class="mono" style="color:var(--muted);font-size:10.5px">对外模型</div></td>
+              <td><span class="chip ok">启用</span></td>
+              <td>
+                ${state.remap && state.routeOn
+                  ? `<div class="route"><span class="chip acc">tools</span><span class="arrow">→</span><span class="to">${esc(state.target)}</span></div>`
+                  : `<span class="chip">${state.remap ? '未配置' : '—'}</span>`}
+              </td>
+              <td><button class="btn" ${state.remap ? `onclick="openDrawer()"` : 'disabled'}>配置</button></td>
+            </tr>
+            <tr>
+              <td><b style="font-family:var(--mono);font-size:12px">acme-lite</b><div class="mono" style="color:var(--muted);font-size:10.5px">对外模型</div></td>
+              <td><span class="chip ok">启用</span></td>
+              <td><span class="chip">未配置</span></td>
+              <td><button class="btn" disabled title="原型只演示 acme-pro 的配置">配置</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="annotation">原型只演示 acme-pro 的配置；实际产品里每个模型都可独立配置。</p>
+    ${!state.remap ? `<div class="hint"><span class="mark">BLOCKED</span><span>先在 <b>系统设置 → 模型重映射</b> 打开总开关，否则模型抽屉里的路由控件保持置灰，已保存的配置也不会生效。</span></div>` : ''}
+  `;
+}
+
+function pageLogs(){
+  const l = LOGS[state.selectedLog];
+  const admin = state.role === 'admin';
+  const error = !!l.upstream;
+
+  return `
+    <div class="page-head">
+      <div>
+        <h1>用量日志</h1>
+        <p class="sub">客户端只看到标准错误码；上游原文只进 admin_info。切换视角检查两侧差异。</p>
+      </div>
+      <div class="meta">LOG DETAIL</div>
+    </div>
+
+    <div class="tabs" id="roleTabs">
+      <button data-role="user" class="${admin ? '' : 'on'}">普通用户视角</button>
+      <button data-role="admin" class="${admin ? 'on' : ''}">管理员视角</button>
+    </div>
+
+    <div class="card">
+      <div class="card-b tight">
+        <table>
+          <thead><tr><th style="width:16%">时间</th><th style="width:24%">模型</th><th style="width:14%">状态</th><th style="width:14%">耗时</th><th>用户</th></tr></thead>
+          <tbody>
+            ${Object.entries(LOGS).map(([k,v]) => `
+              <tr class="logrow ${k === state.selectedLog ? 'on' : ''}" data-log="${k}">
+                <td class="t">${v.time}</td>
+                <td><code>${v.model}</code></td>
+                <td><span class="chip ${v.status === 200 ? 'ok' : 'err'}">${v.status}</span></td>
+                <td class="t">${v.ms}</td>
+                <td class="mono" style="color:var(--muted)">${v.user}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="annotation" style="margin:-4px 2px 10px">点任意一行查看详情；上方切换视角对比客户端与管理员看到的内容。</p>
+
+    <div class="detail ${admin ? '' : 'one'}">
+      <div class="panel">
+        <div class="panel-h"><b>客户端所见</b><span>${error ? 'HTTP 400' : 'HTTP 200'}</span></div>
+        <div class="panel-b">
+          ${error ? `
+            <pre class="errmsg">${esc(JSON.stringify(l.client, null, 2))}</pre>
+            <div class="annotation">只含标准 code / type / param；不含上游模型名、host、logid。</div>
+          ` : `
+            <dl class="kv">
+              <dt>model</dt><dd>${l.model}</dd>
+              <dt>tokens</dt><dd>${l.usage.in} in / ${l.usage.out} out / ${l.usage.total} total</dd>
+              <dt>计费</dt><dd>${l.usage.cost}</dd>
+              <dt>流式</dt><dd>${l.stream ? '是' : '否'}</dd>
+            </dl>
+            <div class="annotation">响应里的 model 恒为 <code>${l.model}</code>，不出现执行模型。</div>
+          `}
+        </div>
+      </div>
+
+      ${admin ? `
+      <div class="panel">
+        <div class="panel-h"><b>管理员附加</b><span>admin_info</span></div>
+        <div class="panel-b">
+          <dl class="kv">
+            <dt>对外模型</dt><dd>${l.model}</dd>
+            <dt>执行模型</dt><dd>${error ? 'deepseek-chat' : 'deepseek-chat（tools）'}</dd>
+            <dt>计费模型</dt><dd>${l.model}</dd>
+          </dl>
+          ${error ? `
+            <div style="height:1px;background:var(--rule);margin:12px 0"></div>
+            <dl class="kv">
+              <dt>上游状态</dt><dd class="errmsg">${l.upstream.status}</dd>
+              <dt>上游 code</dt><dd>${l.upstream.code}</dd>
+              <dt>渠道</dt><dd>${l.upstream.channel}</dd>
+              <dt>request id</dt><dd>${l.upstream.requestId}</dd>
+            </dl>
+            <pre class="errmsg">${esc(l.upstream.message)}</pre>
+            <div class="annotation">原文截断 2KB、URL 已脱敏；仅管理员可见。</div>
+          ` : `<div class="annotation">本次成功，无上游错误。映射信息保留在 admin_info 供对账。</div>`}
+        </div>
+      </div>` : ''}
+    </div>
+
+    ${!admin ? `<div class="annotation">普通用户视角：右侧 admin_info 区块整体不存在 —— 不是隐藏，是 API 不返回。</div>` : ''}
+    ${admin && !state.remap ? `<div class="annotation">Remap 当前关闭；这条是历史请求，管理员仍可查看。安全修复不随开关关闭。</div>` : ''}
+  `;
+}
+
+function sw(on, action){
+  return `<button class="sw ${on ? 'on' : ''}" onclick="${action}()" aria-pressed="${on}">
+    <span class="track"><span class="thumb"></span></span><em>${on ? 'ON' : 'OFF'}</em>
+  </button>`;
+}
+
+function renderGuide(){
+  const w = $('guideWrap');
+  if (!state.guide){ w.innerHTML = ''; return; }
+  w.innerHTML = `<div class="guide">
+    <span class="gtitle">演示引导</span>
+    <button class="step" data-step="1"><b>1</b> 打开总开关</button>
+    <button class="step" data-step="2"><b>2</b> 配置工具路由</button>
+    <button class="step" data-step="3"><b>3</b> 对比日志视角</button>
+    <span class="gtime">约 30 秒</span>
+    <button class="gx" onclick="closeGuide()" aria-label="关闭引导">✕</button>
+  </div>`;
+  w.querySelectorAll('[data-step]').forEach(b => b.onclick = () => runStep(+b.dataset.step));
+}
+
+function runStep(n){
+  if (n === 1){
+    state.tab = 'settings'; render();
+    pulse('switchRow');
+    return;
+  }
+  if (n === 2){
+    if (!state.remap){
+      state.tab = 'settings'; render();
+      pulse('switchRow');
+      toast('先打开总开关，模型页的路由才会解锁');
+      return;
+    }
+    state.tab = 'models'; render(); openDrawer();
+    return;
+  }
+  state.tab = 'logs'; state.role = 'admin'; state.selectedLog = 'err'; render();
+}
+
+function pulse(id){
+  const el = $(id); if (!el) return;
+  el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+  setTimeout(() => el.classList.remove('pulse'), 1300);
+}
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => t.classList.remove('on'), 2000);
+}
+
+function closeGuide(){ state.guide = false; renderGuide(); }
+
+function render(){
+  renderTop();
+  renderGuide();
+  if (state.tab === 'settings') $('page').innerHTML = pageSettings();
+  if (state.tab === 'models') $('page').innerHTML = pageModels();
+  if (state.tab === 'logs') $('page').innerHTML = pageLogs();
+  bind();
+}
+
+function bind(){
+  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
+    state.tab = b.dataset.tab;
+    render();
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+  const rt = $('roleTabs');
+  if (rt) rt.querySelectorAll('button').forEach(b => b.onclick = () => {
+    state.role = b.dataset.role;
+    render();
+  });
+  document.querySelectorAll('[data-log]').forEach(tr => tr.onclick = () => {
+    state.selectedLog = tr.dataset.log;
+    render();
+  });
+}
+
+function toggleRemap(){
+  state.remap = !state.remap;
+  if (!state.remap) state.drawer = false;
+  render();
+}
+
+function toggleRoute(){
+  state.routeOn = !state.routeOn;
+  renderDrawer();
+}
+
+function openDrawer(){ state.drawer = true; renderDrawer(); }
+function closeDrawer(){ state.drawer = false; $('drawer').classList.remove('on'); $('scrim').classList.remove('on'); }
+
+function renderDrawer(){
+  const d = $('drawer');
+  if (!state.drawer){ d.classList.remove('on'); $('scrim').classList.remove('on'); return; }
+  d.innerHTML = `
+    <div class="drawer-h">
+      <div><h3>acme-pro</h3><p>对外模型 · 工具调用路由</p></div>
+      <button class="x" onclick="closeDrawer()">✕</button>
+    </div>
+    <div class="drawer-b">
+      <div class="field">
+        <label>路由开关</label>
+        ${sw(state.routeOn, 'toggleRoute')}
+        <div class="desc">关闭后，带 tools 的请求仍由 acme-pro 自己处理。</div>
+      </div>
+
+      <div class="field">
+        <label>工具调用改走</label>
+        <select id="targetSel" ${state.routeOn ? '' : 'disabled'}>
+          <option value="deepseek-chat" ${state.target==='deepseek-chat'?'selected':''}>deepseek-chat · 官方 DeepSeek</option>
+          <option value="deepseek-reasoner" ${state.target==='deepseek-reasoner'?'selected':''}>deepseek-reasoner</option>
+          <option value="qwen-max" ${state.target==='qwen-max'?'selected':''}>qwen-max</option>
+        </select>
+        <div class="desc">目标模型必须已启用，且不能指向自己。保存时校验，不允许成环。</div>
+      </div>
+
+      <div class="field">
+        <label>对外回显</label>
+        <div class="aliasbox"><span class="chip">请求模型名 · 固定</span><span class="chip">acme-pro</span></div>
+        <div class="desc">客户端请求什么，响应就回显什么；不额外配置展示名。</div>
+      </div>
+
+      <div class="field">
+        <label>执行模型别名（错误文本脱敏用）</label>
+        <div class="aliasbox">
+          <span class="chip">deepseek-chat</span>
+          <span class="chip">deepseek-v4</span>
+          <span class="chip">DeepSeek-Chat-250101</span>
+          <input placeholder="回车添加">
+        </div>
+        <div class="desc">长串优先、ASCII 忽略大小写。structured 模式下原文不出口，别名仅用于管理员日志归类。</div>
+      </div>
+
+      <div class="field">
+        <label>计费模型</label>
+        <div class="aliasbox"><span class="chip ok">按对外模型 acme-pro 结算</span></div>
+        <div class="desc">实际执行 deepseek-chat 的成本差额由平台承担，避免价格成为侧信道。</div>
+      </div>
+
+      <div class="field">
+        <label>请求效果</label>
+        <div class="preview">
+          <div class="ph"><span>客户端</span><span>tools</span></div>
+          <pre>{ <span class="k">"model"</span>: <span class="g">"acme-pro"</span>, <span class="k">"tools"</span>: [ … ] }</pre>
+          <div class="ph"><span>上游收到</span><span>已覆盖</span></div>
+          <pre>{ <span class="k">"model"</span>: <span class="g">"${state.routeOn ? esc(state.target) : 'acme-pro'}</span>, <span class="k">"tools"</span>: [ … ] }</pre>
+          <div class="ph"><span>客户端看到</span><span>回显</span></div>
+          <pre>{ <span class="k">"model"</span>: <span class="g">"acme-pro"</span>, <span class="k">"choices"</span>: [ … ] }</pre>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-f">
+      <button class="btn" onclick="closeDrawer()">取消</button>
+      <button class="btn primary" onclick="saveRoute()">保存</button>
+    </div>
+  `;
+  d.classList.add('on');
+  $('scrim').classList.add('on');
+  const sel = $('targetSel');
+  if (sel) sel.onchange = () => { state.target = sel.value; renderDrawer(); };
+}
+
+function saveRoute(){
+  closeDrawer();
+  toast('已保存');
+  render();
+}
+
+$('scrim').onclick = closeDrawer;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+const qs = new URLSearchParams(location.search);
+if (qs.get('tab')) state.tab = qs.get('tab');
+if (qs.get('remap') === '1') state.remap = true;
+if (qs.get('role')) state.role = qs.get('role');
+if (qs.get('log')) state.selectedLog = qs.get('log');
+if (qs.get('guide') === '0') state.guide = false;
+
+render();
+if (qs.get('drawer') === '1') openDrawer();
+</script>
+</body>
+</html>

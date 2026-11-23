@@ -974,3 +974,59 @@ sed -i 's#proxy_pass http://\$jieapi_backend;#proxy_pass http://jieapi_upstream;
 sed -i 's#proxy_pass http://\$jieapi_backend;#proxy_pass http://127.0.0.1:3001;#' api.jieapi.com.conf
 /www/server/nginx/sbin/nginx -t && /www/server/nginx/sbin/nginx -s reload
 ```
+
+---
+
+## 12. 版本升级 0.0.121 → 0.0.195（2026-11-22 21:48）
+
+跨度 176 个提交 / 74 个版本。结论：**升级成功，无功能回归；代价是 master 重建窗口内 8 条 POST 502。**
+
+### 12.1 执行顺序与依据
+
+1. **备份**：`mysqldump` 60 MB gz（`/www/backup/jieapi-upgrade/pre-0195-20261122-214812/`），
+   同目录存 compose、app.env、行数快照（users 4756 / tokens 5392 / channels 212 /
+   tasks 7589 / quota_data 424758 / options 119）与旧镜像 sha。
+2. **先升 master（core-1）**：迁移在本地 MySQL 上做；nginx 把连接错误交给 core-3 备节点
+   （仍是 0.0.121，已知可用），比先升备节点、让主站 failover 到未验证的新版本安全。
+3. **再升 core-3 备节点**：`docker stop -t 5` 压短重建窗口。
+
+### 12.2 迁移实际发生的事
+
+| 项 | 结果 |
+|---|---|
+| MySQL 表 | 41 → **50**（新增 `change_events`、`channel_costs`、`ops_incidents`、`ops_shifts`、`user_growth_stats` 等） |
+| ClickHouse | `logs` 新增 `use_time_ms Int32 DEFAULT 0`（元数据级，秒级完成） |
+| `MigrateFileUploadPurposes` | 未触发（本站无 `file_relay.purposes`，无 `FixAbility` 全表重写） |
+| 启动耗时 | master 3 s 可用；core-3 27 s（跨 137 ms 回库） |
+
+### 12.3 重建窗口的真实代价：8 条 502
+
+21:48:47–21:48:56（9 秒）内 `jieapi.com` 8 条、`api.jieapi.com` 1 条 502，
+error log 均为 `connection reset by peer` / `upstream prematurely closed connection`。
+
+**根因不是配置错误**：nginx 默认 `proxy_next_upstream error timeout` 只重试**幂等**请求，
+POST 要重试必须显式加 `non_idempotent`；所以容器重建期间的 POST 不会切到 backup。
+以后要零 502，只有两条路：① 先在 upstream 摘掉目标节点再重建；② 加 `non_idempotent`
+（等于允许 POST 重放到另一个后端，对计费/任务端点有重复提交风险，不建议）。
+
+### 12.4 升级后行为变化（需运营知晓）
+
+- **公开异步图片入口 `/async/v1/images/generations` 在 0.0.121 上不存在**（返回 SPA HTML），
+  0.0.195 起真实路由（无凭证 401 JSON）。本站 618/619 两个 8001 渠道早就按这个别名配置，
+  升级前形同未接线，升级后**开始真的能接单计费**。历史 7 天这两个渠道合计 5 行日志。
+- 新增增长运营离线聚合（master 启动即算一次，之后每 30 分钟；只读 `quota_data`/`logs`，
+  写派生表 `user_growth_stats`）。可用 `GROWTH_TASKS_DISABLED=1` 关闭。
+- 任务轮询报失败改为**二次确认**才落终态并退款；进度 100% 但非终态仍继续轮询。
+- 计费表达式引入快照缓存（空 `ExprHash` 串味的 bug 已在 0.0.195 内修好）。
+
+### 12.5 升级暴露的两个配置缺口（未改，待决策）
+
+| 警告 | 影响 | 建议 |
+|---|---|---|
+| `SESSION_COOKIE_SECURE` 未设 | HTTPS 站点仍下发非 Secure 的 refresh cookie，且 refresh/logout 的 Origin 校验关闭 | 评估后设 `SESSION_COOKIE_SECURE=true`（站点全程 HTTPS，nginx 已设 `X-Forwarded-Proto`） |
+| `TRUSTED_PROXIES` 未设 + 1 个令牌限制来源 IP | 默认信任所有私网网段 ⇒ 同 docker 网络内可伪造 `X-Forwarded-For` 绕过该令牌的 IP 限制 | 若要收口，需按 docker 网关实际源地址配 `TRUSTED_PROXIES`，不能直接写 `127.0.0.1`（会丢真实 IP） |
+
+### 12.6 回滚
+
+镜像 `ghcr.io/apiduo/apiduo:0.0.121` 仍在两台机器本地；把 compose 的 tag 改回并
+`docker-compose up -d` 即可。库结构只增不减，旧版本可直接读；CH 多出的 `use_time_ms` 无影响。

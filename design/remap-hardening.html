@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>apiduo · 重定向加强（不回显上游模型与错误）</title>
+<style>
+  :root{
+    --paper:#fcfcfa; --paper2:#f4f4f1; --paper3:#eeeee9;
+    --rule:#e4e4de; --rule2:#cfcfc7;
+    --ink:#1a1c1e; --ink2:#45484b; --muted:#6b7076;
+    --accent:#9a3412; --accent-soft:#fdf0ea;
+    --ok:#3f6f4a; --ok-soft:#eef4ef;
+    --err:#a4161a; --err-soft:#fbeced;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;
+    -webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  code,pre{font-family:var(--mono)}
+
+  .top{padding:18px 32px;border-bottom:1px solid var(--rule);display:flex;align-items:center;
+    justify-content:space-between;gap:20px;position:sticky;top:0;z-index:10;
+    background:rgba(252,252,250,.92);backdrop-filter:blur(8px)}
+  .brand{display:flex;align-items:baseline;gap:9px}
+  .brand b{font-size:15px}
+  .brand span{font-size:10.5px;color:var(--muted);font-family:var(--mono)}
+  .status{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;
+    border:1px solid var(--rule2);border-radius:999px;padding:4px 10px;color:var(--muted);background:var(--paper)}
+  .status i{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+  .status.on{border-color:#b9cfbf;background:var(--ok-soft);color:var(--ok)}
+  .status.on i{background:var(--ok)}
+
+  .wrap{max-width:1080px;margin:0 auto;padding:34px 32px 80px}
+  .kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  h1{font-size:27px;line-height:1.3;margin:10px 0 8px;letter-spacing:-.015em;font-weight:650}
+  .lede{color:var(--muted);font-size:13.5px;max-width:720px;margin:0}
+  .lede b{color:var(--ink);font-weight:600}
+
+  .card{border:1px solid var(--rule);border-radius:10px;background:var(--paper);margin-top:16px}
+  .card-h{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:16px 20px;
+    border-bottom:1px solid var(--rule)}
+  .card-h h2{font-size:14px;margin:0 0 3px;font-weight:620}
+  .card-h p{margin:0;font-size:12px;color:var(--muted);max-width:640px}
+  .card-b{padding:18px 20px}
+  .card-b.tight{padding:0}
+
+  .sw{display:inline-flex;align-items:center;gap:9px;font-size:12px;color:var(--ink2);user-select:none}
+  .sw .track{width:40px;height:22px;border-radius:999px;background:var(--rule2);position:relative;transition:.16s}
+  .sw .thumb{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.18);transition:.16s}
+  .sw.on .track{background:var(--ok)}
+  .sw.on .thumb{left:20px}
+  .sw em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+
+  .hero{display:grid;grid-template-columns:1fr auto;gap:28px;align-items:center;padding:20px}
+  .hero h2{font-size:15px;margin:0 0 5px}
+  .hero p{margin:0;color:var(--muted);font-size:12.5px;max-width:640px}
+  .behaviors{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);border-top:1px solid var(--rule)}
+  .bh{background:var(--paper);padding:13px 20px}
+  .bh span{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--muted);
+    text-transform:uppercase;margin-bottom:4px}
+  .bh b{font-size:12.5px;font-weight:550;display:block}
+  .bh small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+
+  .maprow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 20px}
+  .maprow .from,.maprow .to{font-family:var(--mono);font-size:12px}
+  .maprow .arrow{color:var(--muted);font-family:var(--mono)}
+  .maprow .via{color:var(--muted);font-size:11px;font-family:var(--mono)}
+
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);padding:0 20px}
+  .tabs button{padding:10px 12px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent;
+    margin-bottom:-1px}
+  .tabs button.on{color:var(--ink);border-color:var(--accent);font-weight:600}
+
+  .flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:8px;align-items:stretch;padding:18px 20px}
+  .node{border:1px solid var(--rule);border-radius:8px;background:var(--paper2);padding:12px 13px;min-width:0}
+  .node > span{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--muted);
+    text-transform:uppercase;margin-bottom:5px}
+  .node b{display:block;font-family:var(--mono);font-size:11.5px;font-weight:550;word-break:break-all}
+  .node small{display:block;color:var(--muted);font-size:10.5px;margin-top:4px}
+  .node .leak{color:var(--err);background:var(--err-soft);border:1px solid #e7b9bb;border-radius:4px;
+    padding:0 4px;display:inline}
+  .node .good{color:var(--ok);background:var(--ok-soft);border:1px solid #b9cfbf;border-radius:4px;
+    padding:0 4px;display:inline}
+  .fa{display:flex;align-items:center;color:var(--muted);font-family:var(--mono);font-size:12px}
+
+  .errgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;border-top:1px solid var(--rule);min-width:0;overflow:hidden}
+  .errgrid .panel{padding:16px 20px;min-width:0}
+  .errgrid .panel + .panel{border-left:1px solid var(--rule)}
+  .panel h4{margin:0 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+    font-family:var(--mono);display:flex;justify-content:space-between;gap:8px}
+  .panel h4 span{font-family:var(--mono);letter-spacing:0;text-transform:none;color:var(--muted)}
+  pre{margin:0;background:var(--paper2);border:1px solid var(--rule);border-radius:6px;padding:11px 12px;width:100%;max-width:100%;
+    font-size:11px;line-height:1.7;overflow:auto;color:var(--ink2);white-space:pre;max-height:210px}
+  .k{color:var(--accent)}
+  .g{color:var(--ok)}
+  .msg-err{color:var(--err)}
+  .msg-ok{color:var(--ok)}
+  .note{margin-top:9px;font-size:11px;color:var(--muted)}
+  .note code{font-size:10.5px;color:var(--ink2)}
+
+  .admin{margin:0 20px 18px;border:1px solid var(--rule);border-radius:8px;background:var(--paper2);
+    padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+  .admin .tag{font-family:var(--mono);font-size:9.5px;color:var(--accent);border:1px solid #e8c9bd;
+    background:var(--accent-soft);border-radius:4px;padding:1px 5px;flex:none;margin-top:1px}
+  .admin b{font-size:11.5px;font-weight:600;display:block;margin-bottom:2px}
+  .admin p{margin:0;font-size:11px;color:var(--muted)}
+  .admin code{font-size:10.5px;color:var(--ink2)}
+
+  .log{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;border-top:1px solid var(--rule)}
+  .log .panel{padding:16px 20px;min-width:0}
+  .log .panel + .panel{border-left:1px solid var(--rule)}
+  .kv{display:grid;grid-template-columns:92px 1fr;gap:5px 10px;font-size:11.5px;margin:0 0 10px}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;font-family:var(--mono);font-size:11px;word-break:break-all}
+
+  .roles{display:flex;gap:2px;padding:0 20px;border-bottom:1px solid var(--rule)}
+  .roles button{padding:9px 12px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent;
+    margin-bottom:-1px}
+  .roles button.on{color:var(--ink);border-color:var(--accent);font-weight:600}
+  .hiddenbox{padding:20px;color:var(--muted);font-size:12px}
+  .hiddenbox code{font-size:11px;color:var(--ink2)}
+
+  footer{margin-top:22px;padding-top:14px;border-top:1px solid var(--rule);color:var(--muted);font-size:11px;
+    display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  footer code{font-size:10.5px}
+
+  @media (max-width:900px){
+    .wrap{padding:24px 18px 60px}
+    .top{padding:14px 18px}
+    .hero{grid-template-columns:1fr}
+    .behaviors{grid-template-columns:1fr}
+    .flow{grid-template-columns:1fr}
+    .fa{display:none}
+    .errgrid,.log{grid-template-columns:1fr}
+    .errgrid .panel + .panel,.log .panel + .panel{border-left:0;border-top:1px solid var(--rule)}
+    h1{font-size:23px}
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand"><b>apiduo</b><span>重定向加强 · prototype</span></div>
+  <div class="status" id="status"><i></i><span id="statusText">未开启</span></div>
+</div>
+
+<div class="wrap">
+  <div class="kicker">Response identity / redirect hardening</div>
+  <h1>重定向加强：不回显上游模型与错误</h1>
+  <p class="lede">
+    模型重定向现在只改请求。开启后，<b>响应里的 model 回显客户端请求名</b>，
+    <b>错误只出标准码</b>，上游原文仅管理员可见。路由本身不变。
+  </p>
+
+  <div class="card">
+    <div class="hero">
+      <div>
+        <h2>重定向加强</h2>
+        <p>只作用于发生了模型重定向的请求。未重定向的请求行为完全不变。关闭即恢复原样，不需要发版。</p>
+      </div>
+      <button class="sw on" id="sw" aria-pressed="true">
+        <span class="track"><span class="thumb"></span></span><em>ON</em>
+      </button>
+    </div>
+    <div class="behaviors">
+      <div class="bh"><span>Behavior 1</span><b>响应 model = 请求 model</b><small>覆盖上游返回的 model 字段，正文与 tool_calls 不动。</small></div>
+      <div class="bh"><span>Behavior 2</span><b>错误收敛为标准码</b><small>不透传上游 message / code / host；原文进 admin_info。</small></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><div><h2>当前重定向来源</h2><p>这是现有渠道功能，本开关不改路由，只改回显与错误。</p></div><span class="status"><i></i>渠道模型映射</span></div>
+    <div class="maprow">
+      <span class="from">acme-pro</span><span class="arrow">→</span><span class="to">deepseek-v3-250101</span>
+      <span class="via">via channel acme-main · model_mapping</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><div><h2>响应对照</h2><p>同一个请求，开关前后的客户端所见。</p></div><span class="status" id="respChip"><i></i>加强已开启</span></div>
+    <div class="tabs" id="tabs">
+      <button data-mode="success" class="on">成功响应</button>
+      <button data-mode="error">错误响应</button>
+    </div>
+    <div id="compare"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><div><h2>日志对照</h2><p>客户端只看标准错误；管理员仍能定位上游原文。日志字段降级不随开关关闭。</p></div></div>
+    <div class="roles" id="roles">
+      <button data-role="user">普通用户视角</button>
+      <button data-role="admin" class="on">管理员视角</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <footer>
+    <span>原型仅演示形态，不含实现。开关默认关闭；开启后只影响重定向请求。</span>
+    <span><code>design/remap-hardening.html</code></span>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const state = { on: true, mode: 'success', role: 'admin' };
+
+const CLIENT_REQ = `<span class="k">"model"</span>: <span class="g">"acme-pro"</span>`;
+const UP_MODEL = 'deepseek-v3-250101';
+
+function render(){
+  $('status').className = 'status' + (state.on ? ' on' : '');
+  $('statusText').textContent = state.on ? '加强已开启' : '加强未开启';
+  $('sw').className = 'sw' + (state.on ? ' on' : '');
+  $('sw').querySelector('em').textContent = state.on ? 'ON' : 'OFF';
+  $('respChip').className = 'status' + (state.on ? ' on' : '');
+  $('respChip').innerHTML = '<i></i>' + (state.on ? '加强已开启' : '加强未开启');
+  $('tabs').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.mode === state.mode));
+  $('roles').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.role === state.role));
+  $('compare').innerHTML = state.mode === 'success' ? successView() : errorView();
+  $('log').innerHTML = logView();
+}
+
+function successView(){
+  const clientModel = state.on
+    ? `<span class="good">"acme-pro"</span>`
+    : `<span class="leak">"${UP_MODEL}"</span>`;
+  return `
+    <div class="flow">
+      <div class="node">
+        <span>客户端请求</span>
+        <b>{ ${CLIENT_REQ} }</b>
+        <small>请求名不变</small>
+      </div>
+      <div class="fa">→</div>
+      <div class="node">
+        <span>上游响应</span>
+        <b>{ <span class="k">"model"</span>: <span class="leak">"${UP_MODEL}"</span> }</b>
+        <small>渠道映射后的真实模型</small>
+      </div>
+      <div class="fa">→</div>
+      <div class="node">
+        <span>客户端所见</span>
+        <b>{ <span class="k">"model"</span>: ${clientModel} }</b>
+        <small>${state.on ? '已回显请求名' : '原样透传，泄漏上游模型'}</small>
+      </div>
+    </div>
+    <div class="errgrid" style="border-top:1px solid var(--rule)">
+      <div class="panel">
+        <h4>客户端完整响应 <span>HTTP 200</span></h4>
+        <pre>{
+  <span class="k">"id"</span>: "chatcmpl-9f2b7c41",
+  <span class="k">"model"</span>: ${state.on ? '<span class="msg-ok">"acme-pro"</span>' : '<span class="msg-err">"'+UP_MODEL+'"</span>'},
+  <span class="k">"choices"</span>: [{ <span class="k">"message"</span>: { <span class="k">"role"</span>: "assistant", <span class="k">"content"</span>: "…" } }],
+  <span class="k">"usage"</span>: { <span class="k">"total_tokens"</span>: 61 }
+}</pre>
+        <div class="note">id / usage / 正文 / tool_calls 均不改写；只覆盖 model。</div>
+      </div>
+      <div class="panel">
+        <h4>判定 <span>${state.on ? 'PASS' : 'FAIL'}</span></h4>
+        <div class="kv" style="margin-bottom:8px">
+          <dt>请求 model</dt><dd>acme-pro</dd>
+          <dt>上游 model</dt><dd class="msg-err">${UP_MODEL}</dd>
+          <dt>客户端 model</dt><dd class="${state.on ? 'msg-ok' : 'msg-err'}">${state.on ? 'acme-pro' : UP_MODEL}</dd>
+        </div>
+        <div class="note">${state.on ? '客户端无法从这个响应判断上游是谁。' : '关闭后，客户端读一次响应就知道真实模型。'}</div>
+      </div>
+    </div>`;
+}
+
+function errorView(){
+  const upstream = `{
+  <span class="k">"error"</span>: {
+    <span class="k">"message"</span>: <span class="msg-err">"model ${UP_MODEL} does not support tool_choice=required"</span>,
+    <span class="k">"type"</span>: "invalid_request_error",
+    <span class="k">"param"</span>: "tool_choice",
+    <span class="k">"code"</span>: "InvalidParameter"
+  }
+}`;
+  const client = state.on ? `{
+  <span class="k">"error"</span>: {
+    <span class="k">"message"</span>: <span class="msg-ok">"The request could not be processed."</span>,
+    <span class="k">"type"</span>: "invalid_request_error",
+    <span class="k">"param"</span>: "tool_choice",
+    <span class="k">"code"</span>: "invalid_request"
+  }
+}` : upstream;
+  return `
+    <div class="errgrid">
+      <div class="panel">
+        <h4>上游原始 <span>HTTP 400</span></h4>
+        <pre>${upstream}</pre>
+        <div class="note">含真实模型名；host / logid 在响应头里，这里未展示。</div>
+      </div>
+      <div class="panel">
+        <h4>客户端所见 <span>HTTP 400</span></h4>
+        <pre>${client}</pre>
+        <div class="note">${state.on ? '标准 code；无模型名、无 host、无厂商私有码。' : '关闭后上游原文原样到客户端。'}</div>
+      </div>
+    </div>
+    <div class="admin">
+      <span class="tag">ADMIN</span>
+      <div>
+        <b>管理员仍能定位：admin_info.upstream_error</b>
+        <p><code>400 · InvalidParameter · channel #37 · req_ca_5be027</code> — 原文截断 2KB、URL 已脱敏；普通用户 API 不返回。</p>
+      </div>
+    </div>`;
+}
+
+function logView(){
+  const admin = state.role === 'admin';
+  return `
+    <div class="log">
+      <div class="panel">
+        <h4>客户端日志 <span>model_name</span></h4>
+        <dl class="kv">
+          <dt>时间</dt><dd>00:30:57</dd>
+          <dt>模型</dt><dd>acme-pro</dd>
+          <dt>状态</dt><dd class="msg-err">400</dd>
+          <dt>错误</dt><dd>invalid_request</dd>
+        </dl>
+        <div class="note">不含“实际模型”“上游错误”区块。</div>
+      </div>
+      <div class="panel">
+        <h4>管理员追加 <span>admin_info</span></h4>
+        ${admin ? `
+          <dl class="kv">
+            <dt>对外 / 执行</dt><dd>acme-pro → ${UP_MODEL}</dd>
+            <dt>上游状态</dt><dd class="msg-err">400 InvalidParameter</dd>
+            <dt>渠道</dt><dd>acme-main (#37)</dd>
+            <dt>request id</dt><dd>req_ca_5be027</dd>
+          </dl>
+          <pre class="msg-err">model ${UP_MODEL} does not support tool_choice=required</pre>
+        ` : `<div class="hiddenbox">普通用户视角：这个区块整体不存在。<br>不是前端隐藏，是 API 不返回 <code>admin_info</code>。</div>`}
+      </div>
+    </div>`;
+}
+
+$('sw').onclick = () => { state.on = !state.on; render(); };
+$('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { state.mode = b.dataset.mode; render(); });
+$('roles').querySelectorAll('button').forEach(b => b.onclick = () => { state.role = b.dataset.role; render(); });
+
+const qs = new URLSearchParams(location.search);
+if (qs.get('on') === '0') state.on = false;
+if (qs.get('mode')) state.mode = qs.get('mode');
+if (qs.get('role')) state.role = qs.get('role');
+render();
+if (qs.get('debug') === '1'){
+  setTimeout(() => {
+    const g = document.querySelector('.errgrid');
+    const c = g && g.closest('.card');
+    const ps = document.querySelectorAll('.errgrid .panel');
+    const r = (el) => el ? Math.round(el.getBoundingClientRect().width) : null;
+    document.title = JSON.stringify({
+      card: r(c), grid: r(g), p1: r(ps[0]), p2: r(ps[1]),
+      scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth
+    });
+  }, 120);
+}
+</script>
+</body>
+</html>
