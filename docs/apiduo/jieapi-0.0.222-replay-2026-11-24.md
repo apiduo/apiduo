@@ -318,3 +318,54 @@ download=200 size=12644993
 ```
 
 日志与下载都对上，文件重新出现在 `data223/data/exports/billing/2026-11/`。
+
+---
+
+# 保留 6 个月 + 手动补跑（07:45–08:00）
+
+## 保留期
+
+`BILLING_RETENTION_MONTHS`（**默认 6**，0 或负数 = 永久保留）。语义是「含当月往前数 N 个账期」：
+2026-11 留 6 个月 → 保留 2026-06..2026-11，`cutoff=2026-06`，早于它的整份删除。
+
+删除顺序：**明细 → 导出记录与磁盘文件 → 账单头**。先删最占空间的，中途失败时账单头还在，
+下一次接着删，不会留下「有头没明细」的半份账单被页面读到。
+
+触发点：master 启动时跑一次（异步，不挡服务），之后每次定时出账跑完再跑一次。
+失败只记日志，不影响出账。
+
+实测（造一条 2026-05 的账单 + 3 条明细 + 1 个归档文件）：
+
+```
+billing retention purged: cutoff=2026-06 statements=1 lines=3 exports=1 files=1 bytes=5 elapsed=7ms
+清理前 statements=35 lines=5,026,663 → 清理后 statements=34 lines=5,026,660，2026-05 文件 0 个
+2026-11 的账单与文件一个没动
+```
+
+按 11 月实测估算，稳态下明细稳定在 **6 × 2.1 GB ≈ 12.6 GB**、归档 **6 × 550 MB ≈ 3.3 GB**，
+合计约 16 GB 封顶，不再是单调增长。
+
+> 注意：删除是**整份删**——6 个月前的账单头、明细、归档文件都会消失，页面上也查不到。
+> 要留底就得把归档文件另存（或在 `BILLING_RETENTION_MONTHS` 调大）。
+
+## 手动补跑
+
+自动出账只在 00:10–06:00 窗口跑，窗口一过当天没有第二次机会。新增两个管理员接口：
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| `POST` | `/api/billing/issue?period=YYYY-MM` | 触发一次出账（幂等：已出账的用户跳过） |
+| `GET` | `/api/billing/issue` | 最近一次运行状态（running/issued/skipped/failed/exports/error） |
+
+```bash
+TOK=$(curl -s -H 'Content-Type: application/json' \
+  -d '{"username":"...","password":"..."}' https://jieapi.com/api/user/login | jq -r .data.access_token)
+curl -X POST -H "Authorization: Bearer $TOK" 'https://jieapi.com/api/billing/issue?period=2026-10'
+curl -H "Authorization: Bearer $TOK" https://jieapi.com/api/billing/issue
+```
+
+- 与定时出账共用同一把运行锁：手动在跑时定时那一轮跳过，反之亦然。已经在跑就返回
+  `{"started":false,"already_running":true}`，不算失败（与增长页的手动重算同一口径）。
+- 拒绝未来账期、非法账期；普通用户 403；非 master 节点拒绝。
+- 实测：先删掉 user 4767 的账单模拟失败，再 POST → `issued=1 skipped=33 exports=2`，
+  账单恢复；同一账期再点一次 → `issued=0 skipped=34`（幂等）。

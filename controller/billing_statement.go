@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -522,4 +524,54 @@ func billingLineViewFromLine(line *model.BillingStatementLine, projection servic
 		view.Quota = line.Quota
 	}
 	return view
+}
+
+// IssueBillingStatement 手动补跑一次出账（管理员）。
+//
+// 自动出账只在 00:10–06:00 窗口内跑，窗口一过当天就没有第二次机会；某个用户
+// 因数据异常失败、或者修完 bug 要立刻重算，都要靠这个入口。任务本身幂等：
+// 已出账的用户直接跳过，重复点不会产生第二份账单。
+func IssueBillingStatement(c *gin.Context) {
+	if c.GetInt("role") < common.RoleAdminUser {
+		common.ApiErrorStatus(c, http.StatusForbidden, errors.New("Administrator role required."))
+		return
+	}
+	if !common.IsMasterNode {
+		common.ApiErrorMsg(c, "Billing issue runs on the master node only.")
+		return
+	}
+	period := strings.TrimSpace(c.Query("period"))
+	if _, _, err := service.BillingPeriodBounds(period); err != nil {
+		common.ApiErrorMsg(c, "Invalid period, want YYYY-MM.")
+		return
+	}
+	if period > service.CurrentBillingPeriod(time.Now()) {
+		common.ApiErrorMsg(c, "Cannot issue a future period.")
+		return
+	}
+	if !service.TryStartBillingIssue(period) {
+		// 与增长页的手动重算同一个口径：已经在跑就不是失败，返回 200。
+		common.ApiSuccess(c, gin.H{"started": false, "already_running": true})
+		return
+	}
+	go func() {
+		result, err := service.RunBillingIssueForPeriod(context.Background(), period)
+		service.FinishBillingIssue(period, result, err)
+		if err != nil {
+			common.SysError(common.LogText("billing issue (manual) failed: period=%s error=%s", period, err.Error()))
+			return
+		}
+		common.SysLog(common.LogText("billing issue (manual) done: period=%s issued=%d skipped=%d failed=%d exports=%d",
+			result.Period, result.Issued, result.Skipped, result.Failed, result.Exports))
+	}()
+	common.ApiSuccess(c, gin.H{"started": true, "period": period})
+}
+
+// GetBillingIssueStatus 返回最近一次出账的运行状态，供补跑后轮询。
+func GetBillingIssueStatus(c *gin.Context) {
+	if c.GetInt("role") < common.RoleAdminUser {
+		common.ApiErrorStatus(c, http.StatusForbidden, errors.New("Administrator role required."))
+		return
+	}
+	common.ApiSuccess(c, service.BillingIssueStatusSnapshot())
 }

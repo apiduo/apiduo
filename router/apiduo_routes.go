@@ -223,5 +223,8 @@ func registerApiduoBillingStatement(g *gin.RouterGroup) {
 		group.GET("/statement/lines", controller.ListBillingStatementLines)
 		// 生成或取出归档文件，返回签名下载地址；文件本体走 /api/export/files。
 		group.GET("/statement/export", controller.ExportBillingStatement)
+		// 手动补跑出账与运行状态（管理员）：窗口外失败、或修完 bug 要立刻重算。
+		group.POST("/issue", controller.IssueBillingStatement)
+		group.GET("/issue", controller.GetBillingIssueStatus)
 	}
 }

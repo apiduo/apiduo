@@ -138,9 +138,18 @@ func ListBillingStatements(userId int, limit int) ([]*BillingStatement, error) {
 	return rows, err
 }
 
-// DeleteBillingStatementLines 在重跑出账前清掉旧明细。
-func DeleteBillingStatementLines(statementId int) error {
-	return DB.Where("statement_id = ?", statementId).Delete(&BillingStatementLine{}).Error
+// DeleteBillingStatementLines 在重跑出账前清掉旧明细，返回删掉的行数。
+func DeleteBillingStatementLines(statementId int) (int64, error) {
+	tx := DB.Where("statement_id = ?", statementId).Delete(&BillingStatementLine{})
+	return tx.RowsAffected, tx.Error
+}
+
+// ListBillingStatementExports 列出一份账单的所有归档文件（两个投影各一条）。
+// 清理时要顺着它把磁盘上的文件一起删掉，只删记录会留下永远没人取的孤儿文件。
+func ListBillingStatementExports(statementId int) ([]*BillingStatementExport, error) {
+	var exports []*BillingStatementExport
+	err := DB.Where("statement_id = ?", statementId).Find(&exports).Error
+	return exports, err
 }
 
 // InsertBillingStatementLines 批量写入明细。单批超过 500 行时由调用方切分。

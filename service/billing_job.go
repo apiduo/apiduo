@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -59,6 +60,9 @@ func StartBillingTaskLoop() {
 		if billingIssueIfDue() {
 			lastRunDay = billingIssueDayMark()
 		}
+		// 保留期清理与出账分开：进程可能整月都没在窗口内重启过，
+		// 也不能等到下一次出账才腾空间。清理本身幂等，空跑只有一次索引查询。
+		purgeBillingRetention()
 		ticker := time.NewTicker(billingIssueRetryInterval)
 		defer ticker.Stop()
 		for range ticker.C {
@@ -67,6 +71,8 @@ func StartBillingTaskLoop() {
 			}
 			if billingIssueIfDue() {
 				lastRunDay = billingIssueDayMark()
+				// 出账刚跑完顺手清一次：这时候已经知道没有正在写的账单。
+				purgeBillingRetention()
 			}
 		}
 	}()
@@ -83,7 +89,12 @@ func billingIssueIfDue() bool {
 		return false
 	}
 	period := previousBillingPeriod(now)
+	// 手动补跑正在跑时跳过这一轮：两份同时跑只会互相抢连接，结果一样。
+	if !TryStartBillingIssue(period) {
+		return false
+	}
 	result, err := RunBillingIssueForPeriod(context.Background(), period)
+	FinishBillingIssue(period, result, err)
 	if err != nil {
 		common.SysLog(common.LogText("billing issue failed: period=%s error=%s", period, err.Error()))
 		return false
@@ -177,4 +188,85 @@ func RunBillingIssueForPeriod(ctx context.Context, period string) (BillingIssueR
 		result.Exports++
 	}
 	return result, nil
+}
+
+// 手动补跑出账。
+//
+// 自动出账只在 00:10–06:00 的窗口内跑，窗口一过当天就没有第二次机会；
+// 某个用户因为数据异常失败、或者修完 bug 要立刻重算，都需要一个人工入口。
+// 复用同一把运行锁：手动与定时不会同时跑两份。
+
+// BillingIssueStatus 是一次出账的当前状态，供接口返回。
+type BillingIssueStatus struct {
+	Running    bool   `json:"running"`
+	Period     string `json:"period"`
+	StartedAt  int64  `json:"started_at"`
+	FinishedAt int64  `json:"finished_at"`
+	Issued     int    `json:"issued"`
+	Skipped    int    `json:"skipped"`
+	Failed     int    `json:"failed"`
+	Exports    int    `json:"exports"`
+	Error      string `json:"error,omitempty"`
+}
+
+var (
+	billingIssueRunning atomic.Bool
+	billingIssueState   atomic.Pointer[BillingIssueStatus]
+)
+
+// TryStartBillingIssue 抢占一次出账资格。已有出账在跑时返回 false。
+func TryStartBillingIssue(period string) bool {
+	if !billingIssueRunning.CompareAndSwap(false, true) {
+		return false
+	}
+	billingIssueState.Store(&BillingIssueStatus{
+		Running:   true,
+		Period:    period,
+		StartedAt: time.Now().Unix(),
+	})
+	return true
+}
+
+// FinishBillingIssue 释放资格并记录结果，必须与 TryStartBillingIssue 成对使用。
+func FinishBillingIssue(period string, result BillingIssueResult, runErr error) {
+	status := &BillingIssueStatus{
+		Period:     period,
+		FinishedAt: time.Now().Unix(),
+		Issued:     result.Issued,
+		Skipped:    result.Skipped,
+		Failed:     result.Failed,
+		Exports:    result.Exports,
+	}
+	if previous := billingIssueState.Load(); previous != nil {
+		status.StartedAt = previous.StartedAt
+	}
+	if runErr != nil {
+		status.Error = runErr.Error()
+	}
+	billingIssueState.Store(status)
+	billingIssueRunning.Store(false)
+}
+
+// BillingIssueStatusSnapshot 返回最近一次出账的状态；从没跑过时返回零值加 running=false。
+func BillingIssueStatusSnapshot() BillingIssueStatus {
+	if status := billingIssueState.Load(); status != nil {
+		return *status
+	}
+	return BillingIssueStatus{}
+}
+
+// purgeBillingRetention 按保留期清理历史账单。失败只记日志：清理不该影响出账。
+func purgeBillingRetention() {
+	started := time.Now()
+	result, err := PurgeBillingRetention(context.Background(), time.Now())
+	if err != nil {
+		common.SysError(common.LogText("billing retention failed: %s", err.Error()))
+		return
+	}
+	if result.Statements == 0 {
+		return
+	}
+	common.SysLog(common.LogText(
+		"billing retention purged: cutoff=%s statements=%d lines=%d exports=%d files=%d bytes=%d elapsed=%s",
+		result.Cutoff, result.Statements, result.Lines, result.Exports, result.Files, result.Bytes, time.Since(started)))
 }
