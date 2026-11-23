@@ -71,6 +71,19 @@ var billingAggregateSlots = make(chan struct{}, 2)
 // 下发 max_execution_time，服务端也会自己收手。
 const billingAggregateTimeout = 30 * time.Second
 
+// 服务端内存被打满时（Code: 241）重试一次的间隔。
+//
+// 这类失败是瞬时的：实测失败那一秒 RSS 顶在 5.00G，几十秒后自己回落到 3.3G。
+// 页面是只读的，重试一次比给用户看「加载失败」划算；但必须有界，否则压力大时
+// 会把重试放大成新的一轮压力。
+const billingAggregateRetryDelay = 500 * time.Millisecond
+
+// isClickHouseMemoryLimit 判断错误是不是服务端内存超限（Code: 241）。
+func isClickHouseMemoryLimit(err error) bool {
+	var exception *clickhouse.Exception
+	return errors.As(err, &exception) && exception.Code == 241
+}
+
 // beginBillingAggregate 取一个并发名额、压上超时、挂好内存策略。
 // 返回的 done 必须调用，否则名额永不释放。
 func beginBillingAggregate(ctx context.Context) (context.Context, func(), error) {
@@ -84,6 +97,30 @@ func beginBillingAggregate(ctx context.Context) (context.Context, func(), error)
 		cancel()
 		<-billingAggregateSlots
 	}, nil
+}
+
+// runBillingAggregate 执行一次账单聚合，只在 241 上重试一次。
+//
+// 重试前先释放名额：睡着的请求不该占着并发额度，否则重试本身会加剧排队。
+// 其他错误（语法、字段、超时）原样返回，不掩盖真问题。
+func runBillingAggregate(ctx context.Context, query func(context.Context) error) error {
+	const attempts = 2
+	for attempt := 1; ; attempt++ {
+		aggCtx, done, err := beginBillingAggregate(ctx)
+		if err != nil {
+			return err
+		}
+		err = query(aggCtx)
+		done()
+		if err == nil || attempt >= attempts || !isClickHouseMemoryLimit(err) {
+			return err
+		}
+		select {
+		case <-time.After(billingAggregateRetryDelay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 // billingJSONInt 返回从 logs.other 里取一个整数的方言表达式。
@@ -253,44 +290,40 @@ func streamBillingLogs(tx *gorm.DB, order string, fn func(*Log) error) error {
 // 输入 token 逐行 clamp 到 0 再求和，与明细的展示口径一致；先 SUM 再 clamp
 // 会让个别异常行抵消其他行的用量，对不上账。
 func SummarizeUserLogsForBilling(ctx context.Context, userId int, start, end int64) ([]BillingSummaryRow, error) {
-	aggCtx, done, err := beginBillingAggregate(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer done()
-
 	read := billingJSONInt("cache_tokens")
 	write := billingJSONInt("cache_write_tokens")
 	group := billingGroupColumn()
 	consume, errorType, refund := strconv.Itoa(LogTypeConsume), strconv.Itoa(LogTypeError), strconv.Itoa(LogTypeRefund)
 
-	inner := LOG_DB.WithContext(aggCtx).Table("logs").
-		Select(`model_name AS model_name,
-			`+group+` AS use_group,
-			type AS type,
-			quota AS quota,
-			completion_tokens AS output_tokens,
-			`+read+` AS cache_read_tokens,
-			`+write+` AS cache_write_tokens,
-			CASE WHEN prompt_tokens - `+read+` - `+write+` < 0 THEN 0
-				ELSE prompt_tokens - `+read+` - `+write+` END AS input_tokens`).
-		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
-			userId, start, end, billingConsumeTypes())
-
 	rows := make([]BillingSummaryRow, 0, 16)
-	err = LOG_DB.WithContext(aggCtx).Table("(?) AS billing_draft", inner).
-		Select(`model_name,
-			use_group,
-			SUM(CASE WHEN type = ` + consume + ` THEN 1 ELSE 0 END) AS requests,
-			SUM(CASE WHEN type = ` + errorType + ` THEN 1 ELSE 0 END) AS errors,
-			SUM(CASE WHEN type = ` + refund + ` THEN 1 ELSE 0 END) AS refunds,
-			SUM(input_tokens) AS input_tokens,
-			SUM(cache_read_tokens) AS cache_read_tokens,
-			SUM(cache_write_tokens) AS cache_write_tokens,
-			SUM(output_tokens) AS output_tokens,
-			SUM(CASE WHEN type = ` + refund + ` THEN -quota ELSE quota END) AS quota`).
-		Group("model_name, use_group").
-		Scan(&rows).Error
+	err := runBillingAggregate(ctx, func(aggCtx context.Context) error {
+		rows = rows[:0]
+		inner := LOG_DB.WithContext(aggCtx).Table("logs").
+			Select(`model_name AS model_name,
+				`+group+` AS use_group,
+				type AS type,
+				quota AS quota,
+				completion_tokens AS output_tokens,
+				`+read+` AS cache_read_tokens,
+				`+write+` AS cache_write_tokens,
+				CASE WHEN prompt_tokens - `+read+` - `+write+` < 0 THEN 0
+					ELSE prompt_tokens - `+read+` - `+write+` END AS input_tokens`).
+			Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
+				userId, start, end, billingConsumeTypes())
+		return LOG_DB.WithContext(aggCtx).Table("(?) AS billing_draft", inner).
+			Select(`model_name,
+				use_group,
+				SUM(CASE WHEN type = ` + consume + ` THEN 1 ELSE 0 END) AS requests,
+				SUM(CASE WHEN type = ` + errorType + ` THEN 1 ELSE 0 END) AS errors,
+				SUM(CASE WHEN type = ` + refund + ` THEN 1 ELSE 0 END) AS refunds,
+				SUM(input_tokens) AS input_tokens,
+				SUM(cache_read_tokens) AS cache_read_tokens,
+				SUM(cache_write_tokens) AS cache_write_tokens,
+				SUM(output_tokens) AS output_tokens,
+				SUM(CASE WHEN type = ` + refund + ` THEN -quota ELSE quota END) AS quota`).
+			Group("model_name, use_group").
+			Scan(&rows).Error
+	})
 	// 排序放在 Go 里：ClickHouse 不接受 ORDER BY 里再写一遍 SUM(CASE ...)
 	// —— 它把 SELECT 的聚合别名当成中间结果，报「aggregate inside aggregate」。
 	// 汇总行数是模型 × 分组，几十行，Go 排序比为了方言一致再拼一段 SQL 便宜。
@@ -311,23 +344,20 @@ type BillingUserTotal struct {
 // 「谁用了多少」只能实时聚合；一次 GROUP BY 回几十到几百行，比逐用户查便宜得多。
 // 同样是 ClickHouse 上会撞内存的一组，聚合前先套上同一份内存策略。
 func SummarizeUserLogsByUser(ctx context.Context, start, end int64) ([]BillingUserTotal, error) {
-	aggCtx, done, err := beginBillingAggregate(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer done()
-
 	consume, errorType, refund := strconv.Itoa(LogTypeConsume), strconv.Itoa(LogTypeError), strconv.Itoa(LogTypeRefund)
 	rows := make([]BillingUserTotal, 0, 64)
-	err = LOG_DB.WithContext(aggCtx).Table("logs").
-		Select(`user_id AS user_id,
-			SUM(CASE WHEN type = `+consume+` THEN 1 ELSE 0 END) AS requests,
-			SUM(CASE WHEN type = `+errorType+` THEN 1 ELSE 0 END) AS errors,
-			SUM(CASE WHEN type = `+refund+` THEN 1 ELSE 0 END) AS refunds,
-			SUM(CASE WHEN type = `+refund+` THEN -quota ELSE quota END) AS quota`).
-		Where("created_at >= ? AND created_at < ? AND type IN ?", start, end, billingConsumeTypes()).
-		Group("user_id").
-		Scan(&rows).Error
+	err := runBillingAggregate(ctx, func(aggCtx context.Context) error {
+		rows = rows[:0]
+		return LOG_DB.WithContext(aggCtx).Table("logs").
+			Select(`user_id AS user_id,
+				SUM(CASE WHEN type = `+consume+` THEN 1 ELSE 0 END) AS requests,
+				SUM(CASE WHEN type = `+errorType+` THEN 1 ELSE 0 END) AS errors,
+				SUM(CASE WHEN type = `+refund+` THEN 1 ELSE 0 END) AS refunds,
+				SUM(CASE WHEN type = `+refund+` THEN -quota ELSE quota END) AS quota`).
+			Where("created_at >= ? AND created_at < ? AND type IN ?", start, end, billingConsumeTypes()).
+			Group("user_id").
+			Scan(&rows).Error
+	})
 	return rows, err
 }
 

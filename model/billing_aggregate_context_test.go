@@ -120,3 +120,45 @@ func TestBeginBillingAggregateBoundsConcurrency(t *testing.T) {
 	releaseHeld()
 	require.Equal(t, 0, len(billingAggregateSlots), "清理后名额必须全部归还")
 }
+
+// 241 只重试一次，别的错误不重试。
+//
+// 服务端内存打满是瞬时的（失败那一秒 RSS 顶在上限，几十秒后自己回落），
+// 重试一次能把「加载失败」变成「慢一秒」；但重试必须有界，否则压力大时
+// 重试本身会变成新一轮压力。语法错误、字段错误这类不该被重试掩盖。
+func TestRunBillingAggregateRetriesOnlyOnMemoryLimit(t *testing.T) {
+	t.Run("241 一次后成功", func(t *testing.T) {
+		attempts := 0
+		err := runBillingAggregate(context.Background(), func(context.Context) error {
+			attempts++
+			if attempts == 1 {
+				return &clickhouse.Exception{Code: 241}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		assert.Equal(t, 2, attempts)
+	})
+
+	t.Run("非 241 不重试", func(t *testing.T) {
+		attempts := 0
+		err := runBillingAggregate(context.Background(), func(context.Context) error {
+			attempts++
+			return &clickhouse.Exception{Code: 62, Message: "syntax error"}
+		})
+		require.Error(t, err)
+		assert.Equal(t, 1, attempts, "语法错误重试没有意义，只会掩盖问题")
+	})
+
+	t.Run("一直 241 也只试两次", func(t *testing.T) {
+		attempts := 0
+		err := runBillingAggregate(context.Background(), func(context.Context) error {
+			attempts++
+			return &clickhouse.Exception{Code: 241}
+		})
+		require.Error(t, err)
+		assert.Equal(t, 2, attempts)
+	})
+
+	require.Equal(t, 0, len(billingAggregateSlots), "重试等待期间必须已释放名额")
+}
