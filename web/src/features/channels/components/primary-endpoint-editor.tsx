@@ -716,7 +716,7 @@ export function PrimaryEndpointEditor(props: {
                       {incomingPath}
                     </p>
                     <p className='text-muted-foreground truncate text-[11px]'>
-                      {t(entryRouteKey(incomingPath, true))}
+                      {t(entryRouteKey(incomingPath))}
                     </p>
                   </div>
                   <div className='flex min-w-0 items-center gap-1.5'>
@@ -790,14 +790,13 @@ function isChatEntry(incomingPath: string): boolean {
 }
 
 /**
- * 每个入口被图片协议怎么处理。判据与后端 `prepareImageProtocol` 的 switch
- * 一一对应：generations / edits / chat / responses / generateContent 五个分支接管，
- * 其余走 default 原样转发。协议关闭时全部原样转发——那时 switch 根本不会进入。
+ * 协议接管但路由表里没有的入口，被图片协议怎么处理。判据与后端
+ * `prepareImageProtocol` 的 switch 一一对应：generations / edits / chat /
+ * responses / generateContent 五个分支接管，其余走 default 原样转发。
+ *
+ * 只在这些行里用：它们的存在前提就是协议开着，所以没有「协议关闭」分支。
  */
-function entryRouteKey(incomingPath: string, protocolOn: boolean): string {
-  if (!protocolOn) {
-    return 'Not intercepted; forwarded as-is'
-  }
+function entryRouteKey(incomingPath: string): string {
   const path = incomingPath.replace(/\/+$/, '')
   if (
     path.endsWith('/v1/images/generations') ||
