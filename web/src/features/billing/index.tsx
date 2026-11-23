@@ -109,7 +109,7 @@ export function Billing({ search, onSearchChange }: BillingProps) {
     setCursor('')
     setCursorStack([])
     setLastExport(null)
-  }, [filterKey])
+  }, [filterKey, tab])
 
   const overviewQuery = useQuery({
     queryKey: ['billing', 'overview', period, targetUserId ?? null, internal],
@@ -613,12 +613,18 @@ export function Billing({ search, onSearchChange }: BillingProps) {
               </TabsList>
             </Tabs>
           </div>
-          <CardContent className='space-y-3'>
+          {/*
+            key={tab}：汇总与明细是两张列数不同的表，切换时必须整体重建。
+            实测（0.0.213）点「详情」后出现过表头已是 13 列、行还是汇总数据
+            的错位 —— 同位置同组件被 React 复用，旧的列配置残留在 DOM 上。
+          */}
+          <CardContent className='space-y-3' key={tab}>
             {tab === 'summary' ? (
               overview.items.length === 0 ? (
                 <EmptyState title={t('No data')} className='min-h-[220px]' />
               ) : (
                 <StaticDataTable
+                  key='billing-summary'
                   data={overview.items}
                   getRowKey={(row) => `${row.model}|${row.group ?? ''}`}
                   tableClassName={internal ? 'min-w-[900px]' : 'min-w-[760px]'}
@@ -634,6 +640,7 @@ export function Billing({ search, onSearchChange }: BillingProps) {
             ) : (
               <>
                 <StaticDataTable
+                  key='billing-detail'
                   data={linesQuery.data?.items ?? []}
                   getRowKey={(row) =>
                     `${row.request_id}-${row.created_at}-${row.type}`
