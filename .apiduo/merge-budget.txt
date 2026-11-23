@@ -171,7 +171,12 @@
 # 5) 主端点页签（web/src/features/channels/*、i18n 覆盖层）：块数不变，added 的增长来自
 #    默认值按渠道性质分流、入口列表补只读行与列宽固定。
 # 6) files +1 是 controller/log_export_test.go 首次出现 apiduo 标记。
+# 2026-11-23 added 6926->6931：Gemini 错误信封按渠道收窄（a59cc6bac）。
+# controller/relay.go 的 gemini-image-error 块内多 5 行（if/else 两个渲染分支）：
+# 信封只给开了图片协议的渠道，判据与两个 c.JSON 必须在同一个 defer 里，挪出去就是
+# 第二套渲染路径。判据函数 ImageProtocolEnabled 写在 relay/helper/remap_hardening.go，
+# 不进合并面。
 files	204
 blocks	666
-added	6926
+added	6931
 deleted	491
