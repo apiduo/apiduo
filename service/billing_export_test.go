@@ -1,0 +1,276 @@
+package service
+
+import (
+	"archive/zip"
+	"bytes"
+	"context"
+	"encoding/xml"
+	"io"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/QuantumNous/new-api/model"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// 解析出来的工作表：只取本测试需要的字段。
+type parsedSheet struct {
+	Rows [][]string
+}
+
+// readSheet 解开一份 xlsx 里的一张表，按行返回单元格文本。
+func readSheet(t *testing.T, archive *zip.Reader, name string) parsedSheet {
+	t.Helper()
+	for _, file := range archive.File {
+		if file.Name != name {
+			continue
+		}
+		reader, err := file.Open()
+		require.NoError(t, err)
+		defer reader.Close()
+		body, err := io.ReadAll(reader)
+		require.NoError(t, err)
+
+		var document struct {
+			Rows []struct {
+				Cells []struct {
+					Type string `xml:"t,attr"`
+					Is   struct {
+						T string `xml:"t"`
+					} `xml:"is"`
+					Value string `xml:"v"`
+				} `xml:"c"`
+			} `xml:"sheetData>row"`
+		}
+		require.NoError(t, xml.Unmarshal(body, &document))
+
+		sheet := parsedSheet{}
+		for _, row := range document.Rows {
+			cells := make([]string, 0, len(row.Cells))
+			for _, cell := range row.Cells {
+				if cell.Is.T != "" {
+					cells = append(cells, cell.Is.T)
+					continue
+				}
+				cells = append(cells, cell.Value)
+			}
+			sheet.Rows = append(sheet.Rows, cells)
+		}
+		return sheet
+	}
+	t.Fatalf("sheet %s not found", name)
+	return parsedSheet{}
+}
+
+func openXLSX(t *testing.T, path string) *zip.Reader {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	archive, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	require.NoError(t, err)
+	return archive
+}
+
+// seedExportFixture 造一份最小的月度账单：一条消费、一条退款、一条失败。
+func seedExportFixture(t *testing.T) (*model.BillingStatement, BillingSnapshot) {
+	t.Helper()
+	db := setupBillingTestDB(t)
+	start, _, err := BillingPeriodBounds("2026-10")
+	require.NoError(t, err)
+
+	seedBillingLog(t, db, model.Log{
+		UserId: 7, Username: "bob", CreatedAt: start + 60,
+		Type: model.LogTypeConsume, ModelName: "claude-sonnet-4.5", Group: "vip",
+		TokenName: "sk-bob", RequestId: "req-1", Quota: 100000,
+		PromptTokens: 1000, CompletionTokens: 500, UseTimeMs: 321,
+		Other: `{"cache_tokens":200,"cache_write_tokens":100,"request_path":"/v1/messages"}`,
+	})
+	seedBillingLog(t, db, model.Log{
+		UserId: 7, Username: "bob", CreatedAt: start + 120,
+		Type: model.LogTypeRefund, ModelName: "seedance-1.0-pro", Group: "vip",
+		TokenName: "sk-bob", RequestId: "req-2", Quota: 20000,
+		Other: `{"task_id":"task-9","request_path":"/v1/videos"}`,
+	})
+	seedBillingLog(t, db, model.Log{
+		UserId: 7, Username: "bob", CreatedAt: start + 180,
+		Type: model.LogTypeError, ModelName: "gpt-5.1", Group: "vip",
+		TokenName: "sk-bob", RequestId: "req-3", Quota: 0,
+		Other: `{"request_path":"/v1/chat/completions"}`,
+	})
+
+	snapshot := BillingSnapshot{QuotaPerUnit: 500000, SettleRate: 7.3, Currency: "CNY"}
+	statement, created, err := BuildBillingStatement(context.Background(), "2026-10", 7, "bob", snapshot)
+	require.NoError(t, err)
+	require.True(t, created)
+	return statement, snapshot
+}
+
+// 两份投影都必须是三张表、明细不含失败行、金额与账单头同源。
+func TestBillingExportMatchesStatementTotals(t *testing.T) {
+	t.Setenv(ExportFileDirEnv, t.TempDir())
+	statement, _ := seedExportFixture(t)
+
+	adminReport, err := LoadIssuedBillingReport(context.Background(), statement, BillingProjectionAdmin)
+	require.NoError(t, err)
+	adminExport, err := GenerateBillingExport(context.Background(), adminReport)
+	require.NoError(t, err)
+
+	adminPath, err := ExportFilePath(adminExport.ObjectKey)
+	require.NoError(t, err)
+	adminArchive := openXLSX(t, adminPath)
+
+	info := readSheet(t, adminArchive, "xl/worksheets/sheet1.xml")
+	summary := readSheet(t, adminArchive, "xl/worksheets/sheet2.xml")
+	detail := readSheet(t, adminArchive, "xl/worksheets/sheet3.xml")
+
+	// 账单信息：表头 + 若干行 KV，净费用那一行必须等于账单头。
+	assert.Equal(t, []string{"项目", "值"}, info.Rows[0])
+	assert.Contains(t, info.Rows, []string{"净费用", statement.TotalAmount})
+	assert.Contains(t, info.Rows, []string{"内部 quota 合计", "80000"})
+
+	// 汇总：表头 + 两行模型 + 合计行。金额按快照折算。
+	assert.Equal(t, "模型", summary.Rows[0][0])
+	total := summary.Rows[len(summary.Rows)-1]
+	assert.Equal(t, "合计", total[0])
+	assert.Equal(t, statement.TotalAmount, total[len(total)-1], "合计金额必须与账单头一致")
+
+	// 明细：失败行不进导出，剩下消费 + 退款。
+	assert.Len(t, detail.Rows, 3, "header + consume + refund, error row is excluded")
+	assert.Equal(t, []string{"时间", "请求 ID", "类型", "令牌", "模型", "分组", "请求类型", "输入 token",
+		"缓存读", "缓存写", "输出 token", "总 token", "Quota", "金额", "任务 ID", "耗时(ms)"}, detail.Rows[0])
+	assert.Equal(t, "消费", detail.Rows[1][2])
+	assert.Equal(t, "700", detail.Rows[1][7], "输入 token 要扣掉缓存读与缓存写")
+	assert.Equal(t, "1500", detail.Rows[1][11], "总 token 为四项之和：700 + 200 + 100 + 500")
+	assert.Equal(t, "/v1/messages", detail.Rows[1][6])
+	assert.Equal(t, "退款", detail.Rows[2][2])
+	assert.Equal(t, "-0.292000", detail.Rows[2][13], "退款金额为负，6 位小数")
+
+	// 客户投影：少 quota、分组、内部折算率。
+	customer := *adminReport
+	customer.Projection = BillingProjectionCustomer
+	customerExport, err := GenerateBillingExport(context.Background(), &customer)
+	require.NoError(t, err)
+	customerPath, err := ExportFilePath(customerExport.ObjectKey)
+	require.NoError(t, err)
+	customerArchive := openXLSX(t, customerPath)
+
+	customerInfo := readSheet(t, customerArchive, "xl/worksheets/sheet1.xml")
+	for _, row := range customerInfo.Rows {
+		require.NotEqual(t, "内部 quota 合计", row[0], "customer projection must not expose internal quota")
+	}
+	customerDetail := readSheet(t, customerArchive, "xl/worksheets/sheet3.xml")
+	assert.Equal(t, []string{"时间", "请求 ID", "类型", "令牌", "模型", "输入 token",
+		"缓存读", "缓存写", "输出 token", "总 token", "金额", "任务 ID", "耗时(ms)"}, customerDetail.Rows[0])
+	assert.Equal(t, customerExport.Rows, int64(len(customerDetail.Rows)-1))
+
+	// 行数登记与实际内容一致：页头要能给客户看「这份文件有几行」。
+	assert.EqualValues(t, 2, adminExport.Rows)
+	assert.NotEmpty(t, adminExport.Sha256)
+	assert.NotEmpty(t, adminExport.Bytes)
+	assert.Contains(t, adminExport.ObjectKey, "BILL-2026-10-u7-admin.xlsx")
+}
+
+// 当月没有快照，也要能给出与出账同一口径的读数。
+func TestBillingDraftReadsLogsInRealTime(t *testing.T) {
+	setupBillingTestDB(t)
+	start, _, err := BillingPeriodBounds("2026-10")
+	require.NoError(t, err)
+
+	seedBillingLog(t, model.DB, model.Log{
+		UserId: 9, Username: "carol", CreatedAt: start + 10,
+		Type: model.LogTypeConsume, ModelName: "claude-sonnet-4.5", Group: "default",
+		Quota: 50000, PromptTokens: 300, CompletionTokens: 100,
+		Other: `{"cache_tokens":50}`,
+	})
+	seedBillingLog(t, model.DB, model.Log{
+		UserId: 9, Username: "carol", CreatedAt: start + 20,
+		Type: model.LogTypeRefund, ModelName: "claude-sonnet-4.5", Group: "default",
+		Quota: 10000,
+	})
+
+	snapshot := BillingSnapshot{QuotaPerUnit: 500000, SettleRate: 7.3, Currency: "CNY"}
+	report, err := LoadDraftBillingReport(context.Background(), "2026-10", 9, "carol", snapshot, BillingProjectionAdmin)
+	require.NoError(t, err)
+
+	assert.True(t, report.IsDraft)
+	assert.Equal(t, model.BillingStatusDraft, report.Statement.Status)
+	assert.EqualValues(t, 40000, report.Statement.TotalQuota)
+	assert.Equal(t, snapshot.AmountOf(40000), report.Statement.TotalAmount)
+	require.Len(t, report.Summary, 1)
+	// 请求数只数消费与失败；退款是独立一笔，不并进请求数，否则退款率会被稀释。
+	assert.EqualValues(t, 1, report.Summary[0].Requests)
+	assert.EqualValues(t, 0, report.Summary[0].Errors)
+	assert.EqualValues(t, 250, report.Summary[0].InputTokens, "300 - 50 cache read")
+	assert.EqualValues(t, 1, report.Summary[0].Refunds)
+}
+
+// 翻页必须走完所有行，且同 created_at 的多行不能跳或重。
+func TestBillingLinesPageWalksAllRowsWithCursor(t *testing.T) {
+	setupBillingTestDB(t)
+	start, _, err := BillingPeriodBounds("2026-10")
+	require.NoError(t, err)
+
+	// 三行同一秒：cursor 只用 created_at 会漏行，必须带上 id。
+	for i := range 3 {
+		seedBillingLog(t, model.DB, model.Log{
+			UserId: 11, CreatedAt: start + 100, Type: model.LogTypeConsume,
+			ModelName: "m", Quota: 100, RequestId: "same-second-" + string(rune('a'+i)),
+		})
+	}
+	seedBillingLog(t, model.DB, model.Log{
+		UserId: 11, CreatedAt: start + 200, Type: model.LogTypeConsume,
+		ModelName: "m", Quota: 100, RequestId: "later",
+	})
+
+	snapshot := BillingSnapshot{QuotaPerUnit: 500000, SettleRate: 7.3, Currency: "CNY"}
+	report, err := LoadDraftBillingReport(context.Background(), "2026-10", 11, "dave", snapshot, BillingProjectionAdmin)
+	require.NoError(t, err)
+
+	var seen []string
+	cursor := model.BillingLineCursor{}
+	for range 10 {
+		rows, next, err := LoadBillingLinesPage(context.Background(), report, model.BillingLineFilter{}, cursor, 2)
+		require.NoError(t, err)
+		for _, row := range rows {
+			seen = append(seen, row.RequestId)
+		}
+		if !next.Valid {
+			break
+		}
+		cursor = next
+	}
+	assert.Equal(t, []string{"same-second-a", "same-second-b", "same-second-c", "later"}, seen)
+	assert.Equal(t, 4, len(seen))
+}
+
+func TestParseBillingLineCursorRejectsGarbage(t *testing.T) {
+	assert.False(t, ParseBillingLineCursor("").Valid)
+	assert.False(t, ParseBillingLineCursor("garbage").Valid)
+	assert.False(t, ParseBillingLineCursor("0_0").Valid)
+	assert.False(t, ParseBillingLineCursor("100_").Valid)
+	assert.False(t, ParseBillingLineCursor("100_abc").Valid)
+
+	parsed := ParseBillingLineCursor("1700000000_42")
+	assert.True(t, parsed.Valid)
+	assert.EqualValues(t, 1700000000, parsed.CreatedAt)
+	assert.Equal(t, 42, parsed.Id)
+	assert.Equal(t, "1700000000_42", FormatBillingLineCursor(parsed))
+}
+
+// 下载链路按段白名单校验 key，账单文件名必须落在三段以内。
+func TestBillingExportKeyStaysWithinThreeSegments(t *testing.T) {
+	key := BillingExportKey("2026-10", 88, 7, BillingProjectionCustomer)
+	assert.Equal(t, "billing/2026-10/BILL-2026-10-u7-customer.xlsx", key)
+	assert.Equal(t, 3, strings.Count(key, "/")+1)
+
+	draft := BillingExportKey("2026-11", 0, 7, BillingProjectionAdmin)
+	assert.Equal(t, "billing/2026-11/BILL-2026-11-u7-draft-admin.xlsx", draft)
+
+	_, err := normalizeExportKey(key)
+	assert.NoError(t, err, "归档 key 必须能通过下载端点的路径校验")
+	_, err = normalizeExportKey(draft)
+	assert.NoError(t, err)
+}

@@ -300,6 +300,25 @@
     "Failed to create the batch": "创建批次失败",
     "Failed to stop the batch": "停止批次失败",
     "Failed to save the rules": "保存规则失败",
-    "customers": "客户"
+    "customers": "客户",
+    "Billing statement": "账单",
+    "Errors": "失败数",
+    "Cache read tokens": "缓存读 token",
+    "Cache write tokens": "缓存写 token",
+    "Summary": "汇总",
+    "Issued": "已出账",
+    "Net amount": "净费用",
+    "In progress (estimated)": "进行中（预估）",
+    "Quota per unit": "quota 折算率",
+    "Settle rate": "结算汇率",
+    "Internal quota": "内部 quota",
+    "Internal view": "内部视图",
+    "My statement": "我的账单",
+    "Statement not issued yet": "本期账单尚未出账",
+    "Statements are issued on the 1st of each month.": "账单于每月 1 日出账。",
+    "Draft: the amount changes with usage until it is issued.": "当月为预估值，出账后金额冻结。",
+    "Preparing the file...": "正在生成文件…",
+    "Rows": "行数",
+    "Duration (ms)": "耗时（毫秒）"
   }
 }

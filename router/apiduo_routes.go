@@ -41,6 +41,8 @@ var apiduoModules = []apiduoModule{
 	{"ops", registerApiduoOps},
 	{"trace", registerApiduoTrace},
 	{"export-file", registerApiduoExportFile},
+	// 账单：这个文件本身是 apiduo 自有文件，不需要额外的合并标记。
+	{"billing-statement", registerApiduoBillingStatement},
 }
 
 // registerApiduoRoutes 是 `api-router.go` 里的唯一挂接点。
@@ -204,4 +206,22 @@ func registerApiduoTrace(g *gin.RouterGroup) {
 	// 图片外置后的唯一公开入口：URL 写在 span 正文里，Langfuse 是从另一个
 	// 源、没有 apiduo 会话去加载它的。id 由 Langfuse 按内容生成、不可枚举。
 	g.GET("/apiduo/trace/media/:media_id", controller.GetApiduoTraceMedia)
+}
+
+// 月度账单：一个账期一件事，只读自己；管理员可用 user_id 代客查看。
+//
+// 投影由服务端判定（默认客户投影，管理员 internal=1 才给内部字段），
+// 所以这里不需要额外的 scope：能不能看别人的账单由角色决定，能看到哪些列
+// 由服务端的投影规则决定，前端两个参数都改不了。
+func registerApiduoBillingStatement(g *gin.RouterGroup) {
+	group := g.Group("/billing")
+	group.Use(middleware.DisableCache(), middleware.UserAuth())
+	{
+		// 管理员全站视图。当月未出账时返回空列表，页面据此说明原因。
+		group.GET("/statements", controller.ListBillingStatements)
+		group.GET("/statement", controller.GetBillingStatement)
+		group.GET("/statement/lines", controller.ListBillingStatementLines)
+		// 生成或取出归档文件，返回签名下载地址；文件本体走 /api/export/files。
+		group.GET("/statement/export", controller.ExportBillingStatement)
+	}
 }

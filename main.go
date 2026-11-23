@@ -186,6 +186,11 @@ func main() {
 	service.StartGrowthTaskLoop()
 	/* APIDUO:growth:END */
 
+	/* APIDUO:billing-statement:BEGIN */
+	// 月度出账：冻结上月明细并生成两份归档文件；只在主节点跑，幂等。
+	service.StartBillingTaskLoop()
+	/* APIDUO:billing-statement:END */
+
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()

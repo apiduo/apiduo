@@ -372,6 +372,15 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/agent/keys":       accessTokenSessionRule,
 	"DELETE /api/agent/keys/:id": accessTokenSessionRule,
 	// APIDUO:agent-key:END
+	// APIDUO:billing-statement:BEGIN
+	// 账单只读。能不能看别人的账由角色 + 目标用户决定，scope 只回答「这个令牌
+	// 能不能读账单」；沿用 billing:read 而不是新造 scope，因为它与充值、套餐
+	// 账单是同一类权限，运维不必记第二套名字。
+	"GET /api/billing/statements":       accessTokenScopeRule("billing:read"),
+	"GET /api/billing/statement":        accessTokenScopeRule("billing:read"),
+	"GET /api/billing/statement/lines":  accessTokenScopeRule("billing:read"),
+	"GET /api/billing/statement/export": accessTokenScopeRule("billing:read"),
+	// APIDUO:billing-statement:END
 }
 
 var (

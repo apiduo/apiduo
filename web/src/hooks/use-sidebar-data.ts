@@ -39,6 +39,9 @@ import {
   /* APIDUO:growth-entry:BEGIN */
   TrendingUp,
   /* APIDUO:growth-entry:END */
+  /* APIDUO:billing-entry:BEGIN */
+  Receipt,
+  /* APIDUO:billing-entry:END */
   User,
   Users,
   Wallet,
@@ -126,6 +129,15 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
             icon: ListTodo,
           },
+          /* APIDUO:billing-entry:BEGIN */
+          // 月度账单是独立账期视图，不放进「数据看板」：看板答「用量怎么变」，
+          // 账单答「这个月该付多少」。
+          {
+            title: t('Billing statement'),
+            url: '/billing',
+            icon: Receipt,
+          },
+          /* APIDUO:billing-entry:END */
         ],
       },
       {

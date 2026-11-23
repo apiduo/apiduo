@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"gorm.io/gorm"
 )
@@ -14,6 +15,9 @@ import (
 
 // 账单状态。issued 之后金额冻结；void 表示作废重开，不原地改数。
 const (
+	// BillingStatusDraft 只出现在实时视图里，不落库：当月账单没有快照可言，
+	// 落一份会立刻过期的明细既贵又没有凭证价值。
+	BillingStatusDraft  = "draft"
 	BillingStatusIssued = "issued"
 	BillingStatusPaid   = "paid"
 	BillingStatusVoid   = "void"
@@ -73,6 +77,8 @@ type BillingStatementLine struct {
 	Quota  int64  `json:"quota" gorm:"bigint;default:0"`
 	Amount string `json:"amount" gorm:"type:varchar(32);default:'0'"`
 	TaskId string `json:"task_id" gorm:"type:varchar(64);default:''"`
+	// 单请求耗时。客户核对「这一行为什么慢」只需要它，不涉及渠道与上游。
+	UseTimeMs int `json:"use_time_ms" gorm:"default:0"`
 }
 
 func (BillingStatementLine) TableName() string { return "billing_statement_lines" }
@@ -179,6 +185,43 @@ func ListBillingStatementLines(statementId int, filter BillingLineFilter, offset
 	return rows, err
 }
 
+// ListBillingStatementLinesAfter 按 (created_at, id) 取一页明细，与导出用同一套
+// keyset 语义。页面翻页因此不会随行数变慢，也不会因为期间有新写入而错行。
+func ListBillingStatementLinesAfter(statementId int, filter BillingLineFilter, cursor BillingLineCursor, limit int) ([]*BillingStatementLine, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	query := DB.Where("statement_id = ?", statementId)
+	if filter.ModelName != "" {
+		query = query.Where("model_name = ?", filter.ModelName)
+	}
+	if filter.UseGroup != "" {
+		query = query.Where("use_group = ?", filter.UseGroup)
+	}
+	if filter.Type != 0 {
+		query = query.Where("type = ?", filter.Type)
+	}
+	if filter.RequestId != "" {
+		query = query.Where("request_id = ?", filter.RequestId)
+	}
+	if cursor.Valid {
+		query = query.Where("(created_at > ? OR (created_at = ? AND id > ?))", cursor.CreatedAt, cursor.CreatedAt, cursor.Id)
+	}
+	rows := make([]*BillingStatementLine, 0, limit)
+	err := query.Order("created_at ASC, id ASC").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+// ListBillingStatementsByPeriod 返回一个账期下所有用户的账单，供管理员全站视图。
+// 按金额倒序：运营先看谁贡献最多。
+func ListBillingStatementsByPeriod(period string) ([]*BillingStatement, error) {
+	rows := make([]*BillingStatement, 0, 32)
+	err := DB.Where("period = ? AND status <> ?", period, BillingStatusVoid).
+		Order("total_quota DESC, user_id ASC").
+		Find(&rows).Error
+	return rows, err
+}
+
 // GetBillingStatementExport 取某个投影的归档文件记录。
 func GetBillingStatementExport(statementId int, projection string) (*BillingStatementExport, error) {
 	var export BillingStatementExport
@@ -189,11 +232,125 @@ func GetBillingStatementExport(statementId int, projection string) (*BillingStat
 	return &export, nil
 }
 
-// StreamUserLogsForBilling 按时间正序把一段账期内的消费、错误、退款日志交给 fn。
-// 与导出的流式读取分开：这里要的是原始 other（含缓存 token），不做可见性裁剪。
-func StreamUserLogsForBilling(ctx context.Context, userId int, start, end int64, fn func(*Log) error) error {
-	tx := LOG_DB.WithContext(ctx).
-		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
-			userId, start, end, []int{LogTypeConsume, LogTypeError, LogTypeRefund})
-	return streamLogs(tx, "logs.created_at ASC, logs.id ASC", fn)
+// BillingSummaryRow 是 (model, group) 的聚合，一次 GROUP BY 得出。
+//
+// 金额不在这里算：它由 quota 合计按账单快照折算，与 statements.total_amount
+// 同源。逐行 decimal 相加会引入 1e-6 级累计差，验收要求「Σ明细 == 总额」时
+// 反而说不清。
+type BillingSummaryRow struct {
+	ModelName        string
+	UseGroup         string
+	Requests         int64
+	Errors           int64
+	Refunds          int64
+	InputTokens      int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	OutputTokens     int64
+	Quota            int64
+}
+
+// SummarizeBillingStatementLines 按 (model, group) 汇总一份账单的明细。
+func SummarizeBillingStatementLines(statementId int) ([]BillingSummaryRow, error) {
+	return summarizeBillingLines(DB.Model(&BillingStatementLine{}).
+		Where("statement_id = ?", statementId))
+}
+
+// summarizeBillingLines 是已出账账单与当月实时视图共用的聚合语句。
+// 入参是已经带好 where 的查询，避免两条路径各写一份 CASE WHEN。
+func summarizeBillingLines(query *gorm.DB) ([]BillingSummaryRow, error) {
+	consume, errorType, refund := strconv.Itoa(LogTypeConsume), strconv.Itoa(LogTypeError), strconv.Itoa(LogTypeRefund)
+	rows := make([]BillingSummaryRow, 0, 16)
+	err := query.
+		Select(`model_name,
+			use_group,
+			SUM(CASE WHEN type = ` + consume + ` THEN 1 ELSE 0 END) AS requests,
+			SUM(CASE WHEN type = ` + errorType + ` THEN 1 ELSE 0 END) AS errors,
+			SUM(CASE WHEN type = ` + refund + ` THEN 1 ELSE 0 END) AS refunds,
+			SUM(input_tokens) AS input_tokens,
+			SUM(cache_read_tokens) AS cache_read_tokens,
+			SUM(cache_write_tokens) AS cache_write_tokens,
+			SUM(output_tokens) AS output_tokens,
+			SUM(quota) AS quota`).
+		Group("model_name, use_group").
+		Order("SUM(quota) DESC, model_name ASC").
+		Scan(&rows).Error
+	return rows, err
+}
+
+// BillingLineCursor 是明细的 keyset 游标，(created_at, id) 唯一确定一行的位置。
+// Valid 为 false 表示从第一页开始；解析失败时调用方也应回落到第一页，
+// 而不是把游标当成 0 时刻去扫全表。
+type BillingLineCursor struct {
+	Valid     bool
+	CreatedAt int64
+	Id        int
+}
+
+// StreamBillingStatementLines 按时间正序把全部明细分批交给 fn，供导出使用。
+//
+// 用 (created_at, id) keyset 而不是 offset：单账期几十万行时，offset 越翻
+// 越慢，而 keyset 每页都走 idx_billing_line_statement 的前缀。
+func StreamBillingStatementLines(ctx context.Context, statementId int, batch int, fn func([]*BillingStatementLine) error) error {
+	if batch <= 0 || batch > 5000 {
+		batch = 2000
+	}
+	var lastCreatedAt int64
+	lastId := 0
+	started := false
+	for {
+		rows := make([]*BillingStatementLine, 0, batch)
+		tx := DB.WithContext(ctx).Where("statement_id = ?", statementId)
+		if started {
+			tx = tx.Where("(created_at > ? OR (created_at = ? AND id > ?))", lastCreatedAt, lastCreatedAt, lastId)
+		}
+		if err := tx.Order("created_at ASC, id ASC").Limit(batch).Find(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		if err := fn(rows); err != nil {
+			return err
+		}
+		last := rows[len(rows)-1]
+		lastCreatedAt, lastId = last.CreatedAt, last.Id
+		started = true
+		if len(rows) < batch {
+			return nil
+		}
+	}
+}
+
+// UpsertBillingStatementExport 登记归档文件。重跑出账会覆盖同名文件，
+// 因此这里也是覆盖而不是报唯一键冲突。
+func UpsertBillingStatementExport(row *BillingStatementExport) error {
+	values := map[string]any{
+		"object_key": row.ObjectKey,
+		"bytes":      row.Bytes,
+		"rows":       row.Rows,
+		"sha256":     row.Sha256,
+		"created_at": row.CreatedAt,
+	}
+	result := DB.Model(&BillingStatementExport{}).
+		Where("statement_id = ? AND projection = ?", row.StatementId, row.Projection).
+		Updates(values)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		return nil
+	}
+	return DB.Create(row).Error
+}
+
+// ListBillingCandidateUsers 返回账期内产生过消费或退款的用户，供出账任务遍历。
+// 只有错误行的用户不出账：没有金额的账单没有对账价值。
+func ListBillingCandidateUsers(ctx context.Context, start, end int64) ([]int, error) {
+	rows := make([]int, 0, 64)
+	err := LOG_DB.WithContext(ctx).Model(&Log{}).
+		Where("created_at >= ? AND created_at < ? AND type IN ?", start, end, []int{LogTypeConsume, LogTypeRefund}).
+		Distinct().
+		Pluck("user_id", &rows).Error
+	return rows, err
 }

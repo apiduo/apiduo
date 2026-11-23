@@ -217,6 +217,25 @@
     "Failed to create the batch": "Không tạo được lô",
     "Failed to stop the batch": "Không dừng được lô",
     "Failed to save the rules": "Không lưu được quy tắc",
-    "customers": "khách hàng"
+    "customers": "khách hàng",
+    "Billing statement": "Billing statement",
+    "Errors": "Errors",
+    "Cache read tokens": "Cache read tokens",
+    "Cache write tokens": "Cache write tokens",
+    "Summary": "Summary",
+    "Issued": "Issued",
+    "Net amount": "Net amount",
+    "In progress (estimated)": "In progress (estimated)",
+    "Quota per unit": "Quota per unit",
+    "Settle rate": "Settle rate",
+    "Internal quota": "Internal quota",
+    "Internal view": "Internal view",
+    "My statement": "My statement",
+    "Statement not issued yet": "Statement not issued yet",
+    "Statements are issued on the 1st of each month.": "Statements are issued on the 1st of each month.",
+    "Draft: the amount changes with usage until it is issued.": "Draft: the amount changes with usage until it is issued.",
+    "Preparing the file...": "Preparing the file...",
+    "Rows": "Rows",
+    "Duration (ms)": "Duration (ms)"
   }
 }

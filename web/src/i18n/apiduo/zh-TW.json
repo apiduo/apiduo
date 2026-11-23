@@ -302,6 +302,25 @@
     "Failed to create the batch": "建立批次失敗",
     "Failed to stop the batch": "停止批次失敗",
     "Failed to save the rules": "儲存規則失敗",
-    "customers": "客戶"
+    "customers": "客戶",
+    "Billing statement": "帳單",
+    "Errors": "失敗數",
+    "Cache read tokens": "快取讀 token",
+    "Cache write tokens": "快取寫 token",
+    "Summary": "彙總",
+    "Issued": "已出帳",
+    "Net amount": "淨費用",
+    "In progress (estimated)": "進行中（預估）",
+    "Quota per unit": "quota 折算率",
+    "Settle rate": "結算匯率",
+    "Internal quota": "內部 quota",
+    "Internal view": "內部視圖",
+    "My statement": "我的帳單",
+    "Statement not issued yet": "本期帳單尚未出帳",
+    "Statements are issued on the 1st of each month.": "帳單於每月 1 日出帳。",
+    "Draft: the amount changes with usage until it is issued.": "當月為預估值，出帳後金額凍結。",
+    "Preparing the file...": "正在產生檔案…",
+    "Rows": "列數",
+    "Duration (ms)": "耗時（毫秒）"
   }
 }

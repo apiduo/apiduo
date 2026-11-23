@@ -197,7 +197,23 @@
 # marker coverage 因此判「新增未标记代码」并拦住发版。import 必须与用法同块，
 # 块的两行注释是覆盖检查的必要成本（blocks 按 BEGIN/END 对计数，同名块另起一对也算一个）；
 # 不用字面量 400 换掉常量。
+# 2026-11-23 blocks 669->672 / added 6965->6982：月度账单整条链路（出账任务、xlsx 导出、
+# API 与页面）。后端逻辑全部落在新文件里（model/billing_draft_query.go、
+# service/billing_export.go / billing_job.go / billing_query.go / billing_xlsx.go、
+# controller/billing_statement.go），router/apiduo_routes.go 是 apiduo 自有文件，注册函数
+# 不计合并面。上游文件只有 2 处挂接，且都不可替代：
+# 1) main.go：出账任务必须与 growth 任务并列、在分发器与连接池就绪之后启动，挪不进新文件。
+# 2) web/src/hooks/use-sidebar-data.ts：图标记号与菜单项各 1 块，位置由 import 与菜单树固定。
+# 关键取舍：没有引入任何新依赖。xlsx 用 archive/zip 手写 OOXML 流式写出，go.mod 与 go.sum
+# 零改动 —— 这是「降低合并成本」最贵也最值的一处，代价是自维护约 400 行 XML 生成与结构测试。
+# i18n 的 20 条文案进 apiduo 覆盖层七语言文件，locales/*.json 零改动。
+# 6) middleware/access_token_routes.go：4 条账单路由各声明一次 billing:read。
+#    PAT 覆盖检查要求每条面板路由恰好一条规则，挪不进新文件；复用已有 scope，不新增权限名。
+# 判据：service/billing_export_test.go（三工作表、客户投影无 quota、金额与账单头同源、
+# 退款为负且逐行 clamp）与 billing_job_test.go（重跑幂等、只有错误行的用户不出账）、
+# controller/billing_statement_test.go（默认客户投影，internal=1 且管理员才给内部字段）。
+
 files	205
-blocks	669
-added	6965
+blocks	673
+added	6991
 deleted	492

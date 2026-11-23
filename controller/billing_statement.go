@@ -1,0 +1,470 @@
+package controller
+
+import (
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+
+	"github.com/gin-gonic/gin"
+)
+
+// 账单读取接口。
+//
+// 投影一律由服务端判定，不接受 `as=customer` 这类前端参数：一次误发就是把
+// 内部计价结构发到客户手里。规则只有一条 —— 默认给客户投影，只有管理员显式
+// 请求内部视图（`internal=1`）才多给 quota、分组与计价快照。
+
+const (
+	billingAccessTTL = time.Hour
+)
+
+// GetBillingStatement 返回一个账期的账单头与 (模型 × 分组) 汇总。
+//
+// 已出账返回冻结快照；当月实时聚合，`is_final=false`，页面要标注「预估」。
+func GetBillingStatement(c *gin.Context) {
+	target, ok := billingTargetUser(c)
+	if !ok {
+		return
+	}
+	period, ok := billingPeriodParam(c)
+	if !ok {
+		return
+	}
+	projection := billingProjectionFor(c)
+
+	report, err := service.LoadBillingReport(c.Request.Context(), period, target.id, target.username,
+		service.CurrentBillingSnapshot(), projection)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, newBillingOverviewView(report))
+}
+
+// ListBillingStatementLines 返回一页明细。
+//
+// 与页面排序相反：账单从月初读起。游标是 (created_at, id)，既不随行数变慢，
+// 也不会因为期间有新写入而错行。
+func ListBillingStatementLines(c *gin.Context) {
+	target, ok := billingTargetUser(c)
+	if !ok {
+		return
+	}
+	period, ok := billingPeriodParam(c)
+	if !ok {
+		return
+	}
+	projection := billingProjectionFor(c)
+
+	statement, found, err := model.FindBillingStatement(period, target.id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !found || statement.Status == model.BillingStatusVoid {
+		statement, err = service.NewDraftBillingStatement(period, target.id, target.username,
+			service.CurrentBillingSnapshot())
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+
+	// 分页只需要账期与计价快照，不跑汇总：翻页不该每次都做一次 GROUP BY。
+	report := &service.BillingReport{
+		Statement:  statement,
+		Projection: projection,
+		IsDraft:    statement.Status == model.BillingStatusDraft,
+	}
+	limit, _ := strconv.Atoi(c.Query("page_size"))
+	filter := model.BillingLineFilter{
+		ModelName: c.Query("model"),
+		UseGroup:  c.Query("group"),
+		RequestId: c.Query("request_id"),
+	}
+	if rawType, err := strconv.Atoi(c.Query("type")); err == nil {
+		filter.Type = rawType
+	}
+
+	rows, next, err := service.LoadBillingLinesPage(c.Request.Context(), report, filter,
+		service.ParseBillingLineCursor(c.Query("cursor")), limit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	items := make([]billingLineView, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, billingLineViewFromLine(row, projection))
+	}
+	common.ApiSuccess(c, gin.H{
+		"items":       items,
+		"next_cursor": service.FormatBillingLineCursor(next),
+		"is_final":    !report.IsDraft,
+		"projection":  projection,
+	})
+}
+
+// ExportBillingStatement 生成或取出归档文件，返回一个带签名的下载地址。
+//
+// 已出账的账期在出账任务里已经生成好文件，这里只签名，不查库、不流式；
+// 当月没有终点，只能现场生成，并受行数上限约束。
+func ExportBillingStatement(c *gin.Context) {
+	target, ok := billingTargetUser(c)
+	if !ok {
+		return
+	}
+	period, ok := billingPeriodParam(c)
+	if !ok {
+		return
+	}
+	projection := billingProjectionFor(c)
+
+	statement, found, err := model.FindBillingStatement(period, target.id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	if found && statement.Status != model.BillingStatusVoid {
+		if export, err := model.GetBillingStatementExport(statement.Id, string(projection)); err == nil {
+			billingReplyDownload(c, export, period, false)
+			return
+		}
+	}
+
+	// 当月（或历史缺档）：现场生成。同一时刻只允许有限个导出在跑，
+	// 与日志导出共用一个闸门，避免月末几十个人同时点导出把连接池占满。
+	select {
+	case logExportSlots <- struct{}{}:
+		defer func() { <-logExportSlots }()
+	default:
+		common.ApiErrorMsg(c, "Too many exports are running. Try again in a minute.")
+		return
+	}
+
+	if !found || statement.Status == model.BillingStatusVoid {
+		// 先数再写：写到一半停下会给出一个看起来完整、实际截断的文件。
+		bounds, err := service.NewDraftBillingStatement(period, target.id, target.username, service.CurrentBillingSnapshot())
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		total, err := model.CountUserLogsForBilling(target.id, bounds.PeriodStart, bounds.PeriodEnd)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if total > int64(logExportMaxRows()) {
+			common.ApiErrorMsg(c, "This statement has too many rows to export before it is issued. The full file is available after the 1st of next month.")
+			return
+		}
+	}
+
+	report, err := service.LoadBillingReport(c.Request.Context(), period, target.id, target.username,
+		service.CurrentBillingSnapshot(), projection)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	export, err := service.GenerateBillingExport(c.Request.Context(), report)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	billingReplyDownload(c, export, period, report.IsDraft)
+}
+
+// ListBillingStatements 是管理员的全站月度视图：一个账期下所有用户的账单。
+//
+// 当月没有出账，列表是空的；页面上要说清「1 号出账后可见」，而不是显示 0 元。
+func ListBillingStatements(c *gin.Context) {
+	if c.GetInt("role") < common.RoleAdminUser {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	period, ok := billingPeriodParam(c)
+	if !ok {
+		return
+	}
+	rows, err := model.ListBillingStatementsByPeriod(period)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	type item struct {
+		UserId   int    `json:"user_id"`
+		Username string `json:"username"`
+		Status   string `json:"status"`
+		Amount   string `json:"amount"`
+		Quota    int64  `json:"quota"`
+		Requests int    `json:"requests"`
+		Errors   int    `json:"errors"`
+		Refunds  int    `json:"refunds"`
+		IssuedAt int64  `json:"issued_at"`
+		DueAt    int64  `json:"due_at"`
+		Currency string `json:"currency"`
+		IsIssued bool   `json:"is_issued"`
+	}
+	items := make([]item, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, item{
+			UserId:   row.UserId,
+			Username: row.Username,
+			Status:   row.Status,
+			Amount:   row.TotalAmount,
+			Quota:    row.TotalQuota,
+			Requests: row.Requests,
+			Errors:   row.Errors,
+			Refunds:  row.Refunds,
+			IssuedAt: row.IssuedAt,
+			DueAt:    row.DueAt,
+			Currency: row.Currency,
+			IsIssued: row.Status != model.BillingStatusDraft,
+		})
+	}
+	common.ApiSuccess(c, gin.H{
+		"period":  period,
+		"items":   items,
+		"pending": len(items) == 0,
+	})
+}
+
+// billingUser 是本次请求的账单归属。
+type billingUser struct {
+	id       int
+	username string
+}
+
+// billingTargetUser 解析账单归属。普通用户传 user_id 时忽略并只看自己 ——
+// 报错会变成一个探测别人 id 是否存在的接口。
+func billingTargetUser(c *gin.Context) (billingUser, bool) {
+	viewerId := c.GetInt("id")
+	targetId := viewerId
+	if raw := c.Query("user_id"); raw != "" && c.GetInt("role") >= common.RoleAdminUser {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			common.ApiErrorMsg(c, "Invalid user_id.")
+			return billingUser{}, false
+		}
+		targetId = parsed
+	}
+	username, err := model.GetUsernameById(targetId, false)
+	if err != nil && targetId != viewerId {
+		common.ApiErrorMsg(c, "User not found.")
+		return billingUser{}, false
+	}
+	return billingUser{id: targetId, username: username}, true
+}
+
+// billingPeriodParam 校验账期格式。缺省不补当月：页面必须显式带上 period，
+// 这样服务端日志与审计能看出查的是哪个月。
+func billingPeriodParam(c *gin.Context) (string, bool) {
+	period := c.Query("period")
+	if period == "" {
+		common.ApiErrorMsg(c, "period is required, format YYYY-MM.")
+		return "", false
+	}
+	if _, _, err := service.BillingPeriodBounds(period); err != nil {
+		common.ApiErrorMsg(c, "Invalid period, want YYYY-MM.")
+		return "", false
+	}
+	return period, true
+}
+
+// billingProjectionFor 是服务端唯一的投影判定。
+//
+// 默认客户投影：即使管理员看自己的账单，少给几列也不会出错，多给几列却可能
+// 被转发出去。管理员要内部数据必须显式 internal=1，多一步换掉一次误发。
+func billingProjectionFor(c *gin.Context) service.BillingProjection {
+	if c.GetInt("role") >= common.RoleAdminUser && c.Query("internal") == "1" {
+		return service.BillingProjectionAdmin
+	}
+	return service.BillingProjectionCustomer
+}
+
+// billingReplyDownload 签发下载地址。文件本体走已有的导出下载端点，
+// 那里已经处理了 Range、ETag 与过期校验。
+func billingReplyDownload(c *gin.Context, export *model.BillingStatementExport, period string, isDraft bool) {
+	access, err := service.IssueExportFileAccess(export.ObjectKey, billingAccessTTL)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"download_url": "/api/export/files/" + export.ObjectKey + "?access=" + access,
+		"filename":     service.BillingExportFileName(period, isDraft),
+		"rows":         export.Rows,
+		"bytes":        export.Bytes,
+		"sha256":       export.Sha256,
+		"is_draft":     isDraft,
+		"expires_at":   time.Now().Add(billingAccessTTL).Unix(),
+	})
+}
+
+// billingOverviewView 是概览响应。客户投影里 quota 与 pricing 一律不出现，
+// 不是置 0 —— omitempty 让字段本身消失，前端想误用也没有东西可用。
+type billingOverviewView struct {
+	Period      string `json:"period"`
+	Status      string `json:"status"`
+	IsFinal     bool   `json:"is_final"`
+	Projection  string `json:"projection"`
+	UserId      int    `json:"user_id"`
+	Username    string `json:"username"`
+	PeriodStart int64  `json:"period_start"`
+	PeriodEnd   int64  `json:"period_end"`
+	IssuedAt    int64  `json:"issued_at,omitempty"`
+	DueAt       int64  `json:"due_at,omitempty"`
+	Currency    string `json:"currency"`
+	Amount      string `json:"amount"`
+	Quota       int64  `json:"quota,omitempty"`
+	Requests    int    `json:"requests"`
+	Errors      int    `json:"errors"`
+	Refunds     int    `json:"refunds"`
+
+	InputTokens      int64 `json:"input_tokens"`
+	CacheReadTokens  int64 `json:"cache_read_tokens"`
+	CacheWriteTokens int64 `json:"cache_write_tokens"`
+	OutputTokens     int64 `json:"output_tokens"`
+
+	Items   []billingSummaryView `json:"items"`
+	Pricing *billingPricingView  `json:"pricing,omitempty"`
+}
+
+type billingSummaryView struct {
+	ModelName        string `json:"model"`
+	UseGroup         string `json:"group,omitempty"`
+	Requests         int64  `json:"requests"`
+	Errors           int64  `json:"errors"`
+	Refunds          int64  `json:"refunds"`
+	InputTokens      int64  `json:"input_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`
+	CacheWriteTokens int64  `json:"cache_write_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	Quota            int64  `json:"quota,omitempty"`
+	Amount           string `json:"amount"`
+}
+
+type billingPricingView struct {
+	QuotaPerUnit float64 `json:"quota_per_unit"`
+	SettleRate   float64 `json:"settle_rate"`
+	Currency     string  `json:"currency"`
+}
+
+func newBillingOverviewView(report *service.BillingReport) billingOverviewView {
+	statement := report.Statement
+	isAdmin := report.Projection == service.BillingProjectionAdmin
+	snapshot := service.BillingSnapshot{
+		QuotaPerUnit: statement.QuotaPerUnit,
+		SettleRate:   statement.SettleRate,
+		Currency:     statement.Currency,
+	}
+
+	var input, cacheRead, cacheWrite, output int64
+	items := make([]billingSummaryView, 0, len(report.Summary))
+	for _, row := range report.Summary {
+		input += row.InputTokens
+		cacheRead += row.CacheReadTokens
+		cacheWrite += row.CacheWriteTokens
+		output += row.OutputTokens
+
+		view := billingSummaryView{
+			ModelName:        row.ModelName,
+			Requests:         row.Requests + row.Errors,
+			Errors:           row.Errors,
+			Refunds:          row.Refunds,
+			InputTokens:      row.InputTokens,
+			CacheReadTokens:  row.CacheReadTokens,
+			CacheWriteTokens: row.CacheWriteTokens,
+			OutputTokens:     row.OutputTokens,
+			Amount:           snapshot.AmountOf(row.Quota),
+		}
+		if isAdmin {
+			view.UseGroup = row.UseGroup
+			view.Quota = row.Quota
+		}
+		items = append(items, view)
+	}
+
+	response := billingOverviewView{
+		Period:           statement.Period,
+		Status:           statement.Status,
+		IsFinal:          !report.IsDraft,
+		Projection:       string(report.Projection),
+		UserId:           statement.UserId,
+		Username:         statement.Username,
+		PeriodStart:      statement.PeriodStart,
+		PeriodEnd:        statement.PeriodEnd,
+		IssuedAt:         statement.IssuedAt,
+		DueAt:            statement.DueAt,
+		Currency:         statement.Currency,
+		Amount:           statement.TotalAmount,
+		Requests:         statement.Requests,
+		Errors:           statement.Errors,
+		Refunds:          statement.Refunds,
+		InputTokens:      input,
+		CacheReadTokens:  cacheRead,
+		CacheWriteTokens: cacheWrite,
+		OutputTokens:     output,
+		Items:            items,
+	}
+	if isAdmin {
+		response.Quota = statement.TotalQuota
+		response.Pricing = &billingPricingView{
+			QuotaPerUnit: statement.QuotaPerUnit,
+			SettleRate:   statement.SettleRate,
+			Currency:     statement.Currency,
+		}
+	}
+	return response
+}
+
+// billingLineView 是明细行。客户投影不出现 quota 与分组；endpoint 是公开路由名，
+// 客户排障需要它，保留。
+type billingLineView struct {
+	RequestId        string `json:"request_id"`
+	CreatedAt        int64  `json:"created_at"`
+	Type             int    `json:"type"`
+	TokenName        string `json:"token_name"`
+	ModelName        string `json:"model"`
+	UseGroup         string `json:"group,omitempty"`
+	Endpoint         string `json:"endpoint,omitempty"`
+	InputTokens      int    `json:"input_tokens"`
+	CacheReadTokens  int    `json:"cache_read_tokens"`
+	CacheWriteTokens int    `json:"cache_write_tokens"`
+	OutputTokens     int    `json:"output_tokens"`
+	TotalTokens      int    `json:"total_tokens"`
+	Quota            int64  `json:"quota,omitempty"`
+	Amount           string `json:"amount"`
+	TaskId           string `json:"task_id,omitempty"`
+	UseTimeMs        int    `json:"use_time_ms,omitempty"`
+}
+
+func billingLineViewFromLine(line *model.BillingStatementLine, projection service.BillingProjection) billingLineView {
+	view := billingLineView{
+		RequestId:        line.RequestId,
+		CreatedAt:        line.CreatedAt,
+		Type:             line.Type,
+		TokenName:        line.TokenName,
+		ModelName:        line.ModelName,
+		Endpoint:         line.Endpoint,
+		InputTokens:      line.InputTokens,
+		CacheReadTokens:  line.CacheReadTokens,
+		CacheWriteTokens: line.CacheWriteTokens,
+		OutputTokens:     line.OutputTokens,
+		TotalTokens:      line.InputTokens + line.CacheReadTokens + line.CacheWriteTokens + line.OutputTokens,
+		Amount:           line.Amount,
+		TaskId:           line.TaskId,
+		UseTimeMs:        line.UseTimeMs,
+	}
+	if projection == service.BillingProjectionAdmin {
+		view.UseGroup = line.UseGroup
+		view.Quota = line.Quota
+	}
+	return view
+}

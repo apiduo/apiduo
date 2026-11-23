@@ -1,0 +1,155 @@
+package model
+
+import (
+	"context"
+	"strconv"
+
+	"github.com/QuantumNous/new-api/common"
+
+	"gorm.io/gorm"
+)
+
+// 当月账单的实时视图。
+//
+// 已出账的账期读 billing_statement_lines，当月没有终点、也不能为它落一份
+// 会立刻过期的明细，所以这里直接读 logs。两条路径共用同一个 BillingLineFilter
+// 与同一个输出结构，页面与导出不必知道数据来自哪边。
+//
+// 聚合下推到数据库：一个月几十万行，搬进 Go 再 GROUP BY 会同时占满连接与内存，
+// 而这些请求还要和转发抢同一个连接池。
+
+// billingJSONInt 返回从 logs.other 里取一个整数的方言表达式。
+//
+// key 只接受本文件里的两个常量，不来自请求。日志库四种形态都要能跑：
+// 生产是 ClickHouse，开发与小型部署常见 SQLite / MySQL / PostgreSQL。
+// 空 other 必须返回 0 而不是报错——历史行里确实有空串，一条坏数据不该
+// 让整页 500；非法 JSON 属于写入侧 bug，让它报出来更好排查。
+func billingJSONInt(key string) string {
+	switch common.LogDatabaseType() {
+	case common.DatabaseTypeClickHouse:
+		return "JSONExtractInt(other, '" + key + "')"
+	case common.DatabaseTypePostgreSQL:
+		return "CASE WHEN other IS NULL OR other = '' THEN 0 ELSE COALESCE((other::json->>'" + key + "')::bigint, 0) END"
+	case common.DatabaseTypeMySQL:
+		return "CASE WHEN other IS NULL OR other = '' THEN 0 ELSE COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(other, '$." + key + "')) AS SIGNED), 0) END"
+	default:
+		return "CASE WHEN other IS NULL OR other = '' THEN 0 ELSE COALESCE(json_extract(other, '$." + key + "'), 0) END"
+	}
+}
+
+// billingGroupColumn 返回引用 logs.group 的写法。
+// group 在 ClickHouse、MySQL、PostgreSQL 里都是保留字，不转义直接语法错误；
+// SQLite 同时接受反引号与双引号。
+func billingGroupColumn() string {
+	if common.UsingLogDatabase(common.DatabaseTypePostgreSQL) {
+		return `"group"`
+	}
+	return "`group`"
+}
+
+// CountUserLogsForBilling 统计一个账期内要进账单的行数，用于导出前拒绝超限，
+// 而不是写到一半停下。错误行计入统计，导出时再按规则排除。
+func CountUserLogsForBilling(userId int, start, end int64) (int64, error) {
+	var total int64
+	err := LOG_DB.Model(&Log{}).
+		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
+			userId, start, end, billingConsumeTypes()).
+		Count(&total).Error
+	return total, err
+}
+
+// billingConsumeTypes 是账单明细的来源类型：消费、错误、退款。
+// 充值与管理日志与用量无关，不进来。
+func billingConsumeTypes() []int {
+	return []int{LogTypeConsume, LogTypeError, LogTypeRefund}
+}
+
+// applyBillingLineFilter 把明细筛选条件落到 logs 查询上。
+// 空值表示不限；type = 0 同样表示不限，与 BillingLineFilter 的约定一致。
+func applyBillingLineFilter(tx *gorm.DB, filter BillingLineFilter) *gorm.DB {
+	if filter.ModelName != "" {
+		tx = tx.Where("model_name = ?", filter.ModelName)
+	}
+	if filter.UseGroup != "" {
+		tx = tx.Where(billingGroupColumn()+" = ?", filter.UseGroup)
+	}
+	if filter.Type != 0 {
+		tx = tx.Where("type = ?", filter.Type)
+	}
+	if filter.RequestId != "" {
+		tx = tx.Where("request_id = ?", filter.RequestId)
+	}
+	return tx
+}
+
+// ListUserLogsForBilling 取当月明细的一页，按时间正序。
+//
+// 正序与页面相反：页面最近在前，账单从月初读起。游标用 (created_at, id)，
+// 与已出账账期的 StreamBillingStatementLines 同一套语义，前端不必分情况处理。
+func ListUserLogsForBilling(ctx context.Context, userId int, start, end int64, filter BillingLineFilter, cursor BillingLineCursor, limit int) ([]*Log, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	tx := LOG_DB.WithContext(ctx).Model(&Log{}).
+		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
+			userId, start, end, billingConsumeTypes())
+	tx = applyBillingLineFilter(tx, filter)
+	if cursor.Valid {
+		tx = tx.Where("(created_at > ? OR (created_at = ? AND id > ?))", cursor.CreatedAt, cursor.CreatedAt, cursor.Id)
+	}
+	rows := make([]*Log, 0, limit)
+	err := tx.Omit("content").Order("created_at ASC, id ASC").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+// StreamUserLogsForBilling 按时间正序把整月日志交给 fn，供当月导出使用。
+func StreamUserLogsForBilling(ctx context.Context, userId int, start, end int64, filter BillingLineFilter, fn func(*Log) error) error {
+	tx := LOG_DB.WithContext(ctx).Model(&Log{}).
+		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
+			userId, start, end, billingConsumeTypes())
+	tx = applyBillingLineFilter(tx, filter)
+	// 与 StreamUserLogs 不同，这里不改写 id：账单明细的游标就是真实 (created_at, id)，
+	// 重排成行号会让翻页错行。
+	return streamLogs(tx, "logs.created_at ASC, logs.id ASC", fn)
+}
+
+// SummarizeUserLogsForBilling 按 (model, group) 汇总当月用量。
+//
+// 输入 token 逐行 clamp 到 0 再求和，与明细的展示口径一致；先 SUM 再 clamp
+// 会让个别异常行抵消其他行的用量，对不上账。
+func SummarizeUserLogsForBilling(ctx context.Context, userId int, start, end int64) ([]BillingSummaryRow, error) {
+	read := billingJSONInt("cache_tokens")
+	write := billingJSONInt("cache_write_tokens")
+	group := billingGroupColumn()
+	consume, errorType, refund := strconv.Itoa(LogTypeConsume), strconv.Itoa(LogTypeError), strconv.Itoa(LogTypeRefund)
+
+	inner := LOG_DB.WithContext(ctx).Table("logs").
+		Select(`model_name AS model_name,
+			`+group+` AS use_group,
+			type AS type,
+			quota AS quota,
+			completion_tokens AS output_tokens,
+			`+read+` AS cache_read_tokens,
+			`+write+` AS cache_write_tokens,
+			CASE WHEN prompt_tokens - `+read+` - `+write+` < 0 THEN 0
+				ELSE prompt_tokens - `+read+` - `+write+` END AS input_tokens`).
+		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
+			userId, start, end, billingConsumeTypes())
+
+	rows := make([]BillingSummaryRow, 0, 16)
+	err := LOG_DB.WithContext(ctx).Table("(?) AS billing_draft", inner).
+		Select(`model_name,
+			use_group,
+			SUM(CASE WHEN type = ` + consume + ` THEN 1 ELSE 0 END) AS requests,
+			SUM(CASE WHEN type = ` + errorType + ` THEN 1 ELSE 0 END) AS errors,
+			SUM(CASE WHEN type = ` + refund + ` THEN 1 ELSE 0 END) AS refunds,
+			SUM(input_tokens) AS input_tokens,
+			SUM(cache_read_tokens) AS cache_read_tokens,
+			SUM(cache_write_tokens) AS cache_write_tokens,
+			SUM(output_tokens) AS output_tokens,
+			SUM(CASE WHEN type = ` + refund + ` THEN -quota ELSE quota END) AS quota`).
+		Group("model_name, use_group").
+		Order("SUM(CASE WHEN type = " + refund + " THEN -quota ELSE quota END) DESC, model_name ASC").
+		Scan(&rows).Error
+	return rows, err
+}

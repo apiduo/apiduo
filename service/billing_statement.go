@@ -54,8 +54,9 @@ func CurrentBillingSnapshot() BillingSnapshot {
 	}
 }
 
-// amountOf 把带符号的 quota 折成金额，保留 6 位小数。用字符串落库，避免浮点误差累积。
-func (s BillingSnapshot) amountOf(quota int64) string {
+// AmountOf 把带符号的 quota 折成金额，保留 6 位小数。用字符串落库，避免浮点误差累积。
+// 导出给 controller：账单页展示的金额必须与文件里的算法是同一个函数。
+func (s BillingSnapshot) AmountOf(quota int64) string {
 	if s.QuotaPerUnit == 0 {
 		return "0.000000"
 	}
@@ -63,11 +64,13 @@ func (s BillingSnapshot) amountOf(quota int64) string {
 	return strconv.FormatFloat(amount, 'f', 6, 64)
 }
 
-// 日志里 other 的公开字段，账单只取缓存与任务两类。
+// 日志里 other 的公开字段，账单只取缓存、任务与公开路由名。
+// 不取 admin_info：那是运营侧视角，账单两个投影都不该带着它。
 type billingLogOther struct {
 	CacheTokens      int    `json:"cache_tokens"`
 	CacheWriteTokens int    `json:"cache_write_tokens"`
 	TaskId           string `json:"task_id"`
+	RequestPath      string `json:"request_path"`
 }
 
 type billingTotals struct {
@@ -138,53 +141,23 @@ func BuildBillingStatement(ctx context.Context, period string, userId int, usern
 		return nil
 	}
 
-	err = model.StreamUserLogsForBilling(ctx, userId, start, end, func(log *model.Log) error {
-		var other billingLogOther
-		if log.Other != "" {
-			_ = common.UnmarshalJsonStr(log.Other, &other)
-		}
-
-		// 账单里统一用带符号的数：退款是负数。日志里退款存正数，
-		// 下游不必再判断 type，加总即可。
-		signedQuota := int64(log.Quota)
-		if log.Type == model.LogTypeRefund {
-			signedQuota = -signedQuota
-		}
-
-		inputTokens := log.PromptTokens - other.CacheTokens - other.CacheWriteTokens
-		if inputTokens < 0 {
-			inputTokens = 0
-		}
-
-		batch = append(batch, &model.BillingStatementLine{
-			StatementId:      statement.Id,
-			UserId:           userId,
-			RequestId:        log.RequestId,
-			CreatedAt:        log.CreatedAt,
-			Type:             log.Type,
-			TokenName:        log.TokenName,
-			ModelName:        log.ModelName,
-			UseGroup:         log.Group,
-			InputTokens:      inputTokens,
-			CacheReadTokens:  other.CacheTokens,
-			CacheWriteTokens: other.CacheWriteTokens,
-			OutputTokens:     log.CompletionTokens,
-			Quota:            signedQuota,
-			Amount:           snapshot.amountOf(signedQuota),
-			TaskId:           other.TaskId,
-		})
+	err = model.StreamUserLogsForBilling(ctx, userId, start, end, model.BillingLineFilter{}, func(log *model.Log) error {
+		line := billingLineFromLog(log, snapshot)
+		line.StatementId = statement.Id
+		line.UserId = userId
+		batch = append(batch, line)
 
 		switch log.Type {
 		case model.LogTypeConsume:
 			totals.requests++
-			totals.quota += signedQuota
+			totals.quota += line.Quota
 			totals.hasConsume = true
 		case model.LogTypeError:
 			totals.requests++
 			totals.errors++
 		case model.LogTypeRefund:
 			totals.refunds++
-			totals.quota += signedQuota
+			totals.quota += line.Quota
 		}
 
 		if len(batch) >= billingLineBatch {
@@ -203,7 +176,7 @@ func BuildBillingStatement(ctx context.Context, period string, userId int, usern
 	statement.Errors = totals.errors
 	statement.Refunds = totals.refunds
 	statement.TotalQuota = totals.quota
-	statement.TotalAmount = snapshot.amountOf(totals.quota)
+	statement.TotalAmount = snapshot.AmountOf(totals.quota)
 	if err := model.DB.Model(statement).
 		Select("requests", "errors", "refunds", "total_quota", "total_amount", "updated_at").
 		Updates(statement).Error; err != nil {
@@ -212,4 +185,48 @@ func BuildBillingStatement(ctx context.Context, period string, userId int, usern
 
 	committed = true
 	return statement, true, nil
+}
+
+// billingLineFromLog 把一个日志折成账单行。金额在这一步定死并跟着行落库，
+// 之后改汇率、改倍率都不再影响它。
+//
+// 出账（写入 statement_lines）与当月实时视图（直接读 logs）共用这一个转换，
+// 两条路径的字段口径因此不可能漂移 —— 页面看到的当月数和下月出账后的数，
+// 差别只在时间范围，不在算法。
+func billingLineFromLog(log *model.Log, snapshot BillingSnapshot) *model.BillingStatementLine {
+	var other billingLogOther
+	if log.Other != "" {
+		_ = common.UnmarshalJsonStr(log.Other, &other)
+	}
+
+	// 账单里统一用带符号的数：退款是负数。日志里退款存正数，
+	// 下游不必再判断 type，加总即可。
+	signedQuota := int64(log.Quota)
+	if log.Type == model.LogTypeRefund {
+		signedQuota = -signedQuota
+	}
+
+	// 输入 token 只算未命中缓存的部分，否则缓存读会被算两次钱。
+	inputTokens := log.PromptTokens - other.CacheTokens - other.CacheWriteTokens
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
+
+	return &model.BillingStatementLine{
+		RequestId:        log.RequestId,
+		CreatedAt:        log.CreatedAt,
+		Type:             log.Type,
+		TokenName:        log.TokenName,
+		ModelName:        log.ModelName,
+		UseGroup:         log.Group,
+		InputTokens:      inputTokens,
+		CacheReadTokens:  other.CacheTokens,
+		CacheWriteTokens: other.CacheWriteTokens,
+		OutputTokens:     log.CompletionTokens,
+		Endpoint:         other.RequestPath,
+		Quota:            signedQuota,
+		Amount:           snapshot.AmountOf(signedQuota),
+		TaskId:           other.TaskId,
+		UseTimeMs:        log.UseTimeMs,
+	}
 }
