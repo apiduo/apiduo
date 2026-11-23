@@ -220,6 +220,18 @@ def suite_errors():
         record(f'{model}: code {want_code}', err.get('code') == want_code, err.get('code'))
         record(f'{model}: type {want_type}', err.get('type') == want_type, err.get('type'))
         record(f'{model}: leak-free body', leak_free(body), body[:100])
+        if model == 'acme-err400':
+            # A request-shaped 400 must keep its explanation so the caller can
+            # fix the request; only the executed model name is substituted.
+            message = err.get('message') or ''
+            record('acme-err400: actionable detail kept',
+                   'does not exist' in message, message)
+            record('acme-err400: detail names the requested model',
+                   'acme-err400' in message, message)
+        if model == 'acme-ctx':
+            record('acme-ctx: context limit kept',
+                   'maximum context length' in (err.get('message') or ''),
+                   err.get('message'))
         if model == 'acme-err429':
             record('acme-err429: Retry-After kept', headers.get('Retry-After') == '12',
                    headers.get('Retry-After'))

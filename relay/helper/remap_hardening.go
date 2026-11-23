@@ -43,6 +43,20 @@ func RemapResponseRewrite(c *gin.Context, info *relaycommon.RelayInfo) bool {
 	return info.ChannelMeta.ChannelOtherSettings.RemapHardening
 }
 
+// RemapModelIdentity returns the executed model name and the name the client
+// asked for, in that order. Both are empty when this request was not remapped,
+// which is the signal that an upstream message needs no substitution.
+//
+// ChannelMeta is embedded as a pointer and is nil until InitChannelMeta runs, so
+// it must be checked before IsModelMapped: an error raised before the handler
+// reaches the channel (an unpriced model, an exhausted balance) never builds it.
+func RemapModelIdentity(info *relaycommon.RelayInfo) (upstream, public string) {
+	if info == nil || info.ChannelMeta == nil || !info.IsModelMapped {
+		return "", ""
+	}
+	return info.UpstreamModelName, info.OriginModelName
+}
+
 // ImageProtocolEnabled reports whether the serving channel has the image protocol
 // on. It reads the same two sources as RemapHardeningEnabled: the relay info once
 // InitChannelMeta has run, and the distributor's context settings before that.

@@ -3,6 +3,7 @@ package helper
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -33,7 +34,17 @@ func modelPriceNotConfiguredError(c *gin.Context, modelName string, userId int) 
 	if model.IsAdmin(userId) {
 		key = i18n.MsgRelayModelPriceNotConfiguredAdmin
 	}
-	return errors.New(i18n.T(c, key, map[string]any{"Model": modelName}))
+	/* APIDUO:remap-hardening:BEGIN */
+	// The dedicated code survives the NewError wrapper at the billing call
+	// sites, so the catalog renders a missing price as "model unavailable"
+	// instead of an internal 500 that reads like a gateway outage.
+	return types.NewErrorWithStatusCode(
+		errors.New(i18n.T(c, key, map[string]any{"Model": modelName})),
+		types.ErrorCodeModelPriceNotConfigured,
+		http.StatusBadRequest,
+		types.ErrOptionWithSkipRetry(),
+	)
+	/* APIDUO:remap-hardening:END */
 }
 
 // HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present

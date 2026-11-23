@@ -139,7 +139,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			imageProtocolGemini := relayFormat == types.RelayFormatGemini &&
 				helper.ImageProtocolEnabled(c, relayInfo)
 			if helper.RemapHardeningEnabled(c, relayInfo) || imageProtocolGemini {
-				newAPIError.SetClientFacing(requestId)
+				if imageProtocolGemini {
+					// The Gemini image envelope freezes the message outright: its
+					// upstream text names models and vendor error codes.
+					newAPIError.SetClientFacing(requestId)
+				} else {
+					// Text endpoints standardise the identity fields either way, but
+					// only a remapped model has an upstream name to substitute, so
+					// request-shaped errors keep their explanation.
+					upstreamModel, publicModel := helper.RemapModelIdentity(relayInfo)
+					newAPIError.SetClientFacingActionable(requestId, upstreamModel, publicModel)
+				}
 				// Backoff hint survives the rewrite: it names no upstream.
 				if retryAfter := helper.RetryAfterHint(newAPIError); retryAfter != "" {
 					c.Header("Retry-After", retryAfter)

@@ -258,7 +258,7 @@ func (e *NewAPIError) ToOpenAIError(upstreamURLs ...string) OpenAIError {
 		}
 	}
 	/* APIDUO:remap-hardening:BEGIN */
-	e.applyClientFacing(&result)
+	e.applyClientFacing(&result, upstreamURLs)
 	/* APIDUO:remap-hardening:END */
 	return result
 }
@@ -291,7 +291,7 @@ func (e *NewAPIError) ToClaudeError(upstreamURLs ...string) ClaudeError {
 		result.Message = string(e.errorType)
 	}
 	/* APIDUO:remap-hardening:BEGIN */
-	e.applyClientFacingClaude(&result)
+	e.applyClientFacingClaude(&result, upstreamURLs)
 	/* APIDUO:remap-hardening:END */
 	return result
 }

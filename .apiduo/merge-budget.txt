@@ -182,7 +182,17 @@
 # files / blocks / added 的增长全部来自上游文件 SectionPageLayout 的一处文档：
 # fixedContent 是 10 个列表页共用的高度契约，「传错就静默裁剪」必须写在属性上，
 # 挪进新文件没人会读到。
+# 2026-11-23 blocks 667->668 / added 6941->6963 / deleted 491->492：
+# 文本端点错误标准化。controller/relay.go 的 remap-hardening 块内把 SetClientFacing
+# 拆成两条路：Gemini 图片渠道仍然冻结文案；文本端点先标准化 code/type/status，
+# 只在渠道真的重映射过模型时才替换上游文案，且 invalid_request / context_length /
+# request_too_large 保留可操作文本（上游模型名替换成请求名）。判据、Retry-After
+# 与 StatusCode 覆盖必须在同一个 defer 里，挪出去就是第二套渲染路径。
+# relay/helper/price.go 的 modelPriceNotConfiguredError 改为返回带
+# model_price_not_configured 的 NewAPIError（1 行变 3 行 + 标记块）：只有这个码在
+# error_catalog.go 映射成 404，QuotaClamp 等真实内部错误仍是 500。
+# deleted +1 即 relay.go 里被替换掉的那行 SetClientFacing。
 files	205
-blocks	667
-added	6941
-deleted	491
+blocks	668
+added	6963
+deleted	492

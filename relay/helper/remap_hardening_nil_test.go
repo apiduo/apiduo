@@ -76,6 +76,33 @@ func TestRemapHardeningEnabledFallsBackToContext(t *testing.T) {
 	}
 }
 
+func TestRemapModelIdentityGuardOrder(t *testing.T) {
+	// Same embedded-pointer trap as RemapHardeningEnabled: a request rejected
+	// before channel selection (unpriced model, exhausted balance) has a nil
+	// ChannelMeta, and reading IsModelMapped then dereferences it.
+	if upstream, public := RemapModelIdentity(nil); upstream != "" || public != "" {
+		t.Fatalf("nil info must be empty, got %q/%q", upstream, public)
+	}
+	if upstream, public := RemapModelIdentity(&relaycommon.RelayInfo{}); upstream != "" || public != "" {
+		t.Fatalf("missing ChannelMeta must be empty, got %q/%q", upstream, public)
+	}
+	if upstream, public := RemapModelIdentity(&relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{IsModelMapped: false},
+	}); upstream != "" || public != "" {
+		t.Fatalf("unmapped request must be empty, got %q/%q", upstream, public)
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			IsModelMapped:     true,
+			UpstreamModelName: "gpt-5.4-mini",
+		},
+	}
+	info.OriginModelName = "gpt-5.4"
+	if upstream, public := RemapModelIdentity(info); upstream != "gpt-5.4-mini" || public != "gpt-5.4" {
+		t.Fatalf("identity = %q/%q", upstream, public)
+	}
+}
+
 func TestImageProtocolEnabledSources(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	if ImageProtocolEnabled(nil, nil) {
