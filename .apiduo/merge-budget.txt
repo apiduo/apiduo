@@ -209,11 +209,14 @@
 # i18n 的 20 条文案进 apiduo 覆盖层七语言文件，locales/*.json 零改动。
 # 6) middleware/access_token_routes.go：4 条账单路由各声明一次 billing:read。
 #    PAT 覆盖检查要求每条面板路由恰好一条规则，挪不进新文件；复用已有 scope，不新增权限名。
+# 7) model/log.go 的日志导出块 +4 行注释：Omit 会触发逐列枚举，必须同时排除
+#    gorm:"->" 的 channel_name，否则 ClickHouse 报列不存在（生产实测 0.0.208 坏）。
+#    判据 model/log_omit_columns_test.go 走真实查询入口断言列清单。
 # 判据：service/billing_export_test.go（三工作表、客户投影无 quota、金额与账单头同源、
 # 退款为负且逐行 clamp）与 billing_job_test.go（重跑幂等、只有错误行的用户不出账）、
 # controller/billing_statement_test.go（默认客户投影，internal=1 且管理员才给内部字段）。
 
 files	205
 blocks	673
-added	6991
+added	6996
 deleted	492

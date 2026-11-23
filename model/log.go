@@ -725,7 +725,12 @@ func streamLogs(tx *gorm.DB, order string, fn func(*Log) error) error {
 	// content holds a request/response body. Neither the log list nor a
 	// statement shows it, and skipping the column keeps both the scan and the
 	// transfer proportional to the fields anyone actually reads.
-	tx = tx.Omit("content")
+	//
+	// channel_name 必须一起排除：它是 gorm:"->" 的只读字段，而 Omit 会让
+	// GORM 从「SELECT *」切换成逐列枚举，把只读字段也写进列清单。ClickHouse
+	// 的 logs 表没有这一列，导出与出账都会直接报
+	// 「Identifier 'logs.channel_name' cannot be resolved」。
+	tx = tx.Omit("content", "channel_name")
 	// APIDUO:log-export:END
 	rows, err := tx.Model(&Log{}).Order(order).Rows()
 	if err != nil {

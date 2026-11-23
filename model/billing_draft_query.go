@@ -98,7 +98,9 @@ func ListUserLogsForBilling(ctx context.Context, userId int, start, end int64, f
 		tx = tx.Where("(created_at > ? OR (created_at = ? AND id > ?))", cursor.CreatedAt, cursor.CreatedAt, cursor.Id)
 	}
 	rows := make([]*Log, 0, limit)
-	err := tx.Omit("content").Order("created_at ASC, id ASC").Limit(limit).Find(&rows).Error
+	// 与 streamLogs 同理：Omit 会触发逐列枚举，只读的 channel_name 必须一起排除，
+	// 否则 ClickHouse 直接报列不存在。
+	err := tx.Omit("content", "channel_name").Order("created_at ASC, id ASC").Limit(limit).Find(&rows).Error
 	return rows, err
 }
 
