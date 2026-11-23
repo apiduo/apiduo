@@ -157,7 +157,21 @@
 #    与 advanced-custom.ts 签名重排，属于移动/替换，不是删功能。
 # 4) 判据：本地零路由渠道跑满 41 项矩阵；model / advancedcustom / relaykit 的路径测试
 #    改为「零路由也接管」，另加「协议关闭时仍按路由表」的反向用例。
-files	203
-blocks	657
-added	6782
-deleted	488
+# 2026-11-23 files 203->204 / blocks 657->666 / added 6782->6926 / deleted 488->491：
+# 1) 日志导出加并发闸门与行数上限：controller/log.go 4 块（fmt 的 import 块、常量与
+#    闸门变量、exportLogs 内的准入与计数、函数注释），model/log.go 3 块
+#    （CountLogsForExport、streamLogs 的 Omit("content")、StreamAllLogs 注释），
+#    测试 1 块。准入必须早于任何字节写出，计数必须复用同一份 filter，挪不进新文件。
+# 2) 账单快照：model/main.go 的 AutoMigrate 只加 1 块；三张表与出账逻辑在
+#    model/billing_statement.go 与 service/billing_statement.go（不计合并面）。
+# 3) 导出文件下载：router/apiduo_routes.go 加 1 块模块注册（带签名的能力链接要能匿名
+#    进，不能用 UserAuth），handler、测试与 scope 例外都在新文件或既有块内。
+# 4) relay/image_handler.go：n>1 的拒绝改为「n 只计费不上行」，删掉 RejectsImageCount
+#    调用；其余图片改动都在 apiduo_image_* 自有文件里。deleted +3 即此。
+# 5) 主端点页签（web/src/features/channels/*、i18n 覆盖层）：块数不变，added 的增长来自
+#    默认值按渠道性质分流、入口列表补只读行与列宽固定。
+# 6) files +1 是 controller/log_export_test.go 首次出现 apiduo 标记。
+files	204
+blocks	666
+added	6926
+deleted	491

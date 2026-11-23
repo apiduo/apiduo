@@ -1,6 +1,9 @@
 package controller
 
 import (
+	// APIDUO:log-export:BEGIN
+	"fmt"
+	// APIDUO:log-export:END
 	"net/http"
 	"strconv"
 
@@ -118,10 +121,31 @@ func ExportUserLogs(c *gin.Context) {
 	exportLogs(c, false)
 }
 
+// APIDUO:log-export:BEGIN
+// logExportMaxConcurrent bounds exports across all users of this instance, so a
+// handful of large exports cannot starve the request pool.
+const logExportMaxConcurrent = 2
+
+// logExportMaxRows caps one synchronous export. It is a safety valve, not a
+// target: a busy account's month is far past it, and the answer there is a
+// snapshot file generated at billing time, not a longer stream. Raise it with
+// LOG_EXPORT_MAX_ROWS when a deployment's rows are short.
+func logExportMaxRows() int {
+	return common.GetEnvOrDefault("LOG_EXPORT_MAX_ROWS", 500_000)
+}
+
+// logExportSlots is the process-wide export gate. It is per instance: behind a
+// load balancer the cluster ceiling is logExportMaxConcurrent x instances.
+var logExportSlots = make(chan struct{}, logExportMaxConcurrent)
+
+// APIDUO:log-export:END
+
+// APIDUO:log-export:BEGIN
 // exportLogs writes one JSON log per line, newest first, and ends with an API
 // response object: success with the log count, or the failure. Each user runs
-// one export at a time, and every export stays within the longest log time
-// range.
+// one export at a time, every export stays within the longest log time range
+// and above the row ceiling is refused before any bytes are written.
+// APIDUO:log-export:END
 func exportLogs(c *gin.Context, all bool) {
 	filter := logFilterFromQuery(c, all)
 	startTimestamp, err := limitLogTimeRange(filter.StartTimestamp, filter.EndTimestamp)
@@ -143,6 +167,36 @@ func exportLogs(c *gin.Context, all bool) {
 		return
 	}
 	defer release()
+
+	// APIDUO:log-export:BEGIN
+	select {
+	case logExportSlots <- struct{}{}:
+		defer func() { <-logExportSlots }()
+	default:
+		common.ApiErrorT(c, "Too many log exports are running. Try again in a minute.")
+		return
+	}
+
+	// Count before streaming: refusing up front is honest, while stopping
+	// halfway would hand out a file that looks complete but is not. The answer
+	// for a large range is a narrower query, and the message says which.
+	countUser := 0
+	if !all {
+		countUser = userId
+	}
+	total, err := model.CountLogsForExport(c.Request.Context(), filter, countUser)
+	if err != nil {
+		common.SysError(common.LogText("failed to count logs for export: %s", err.Error()))
+		common.ApiErrorT(c, "Failed to export logs")
+		return
+	}
+	if limit := logExportMaxRows(); total > int64(limit) {
+		common.ApiError(c, fmt.Errorf(
+			"log export matches %d rows, above the %d row limit; add a model or group filter, narrow the time range, or raise LOG_EXPORT_MAX_ROWS",
+			total, limit))
+		return
+	}
+	// APIDUO:log-export:END
 
 	c.Header("Content-Type", "application/x-ndjson; charset=utf-8")
 	c.Header("Cache-Control", "no-store")

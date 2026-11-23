@@ -214,6 +214,60 @@ func TestLogExportRules(t *testing.T) {
 	})
 }
 
+// APIDUO:log-export:BEGIN
+// An export is a transfer, not a dump: the request/response body dominates the
+// row size and is never part of it.
+func TestLogExportOmitsContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, _ := newAuditTestDatabase(t, "sqlite", "")
+	useLogExportDatabases(t, db, db, common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+
+	now := time.Now().Unix()
+	require.NoError(t, db.Create(&model.Log{
+		UserId: 1, Username: "alice", CreatedAt: now - 60,
+		Type: model.LogTypeConsume, ModelName: "gpt-a",
+		RequestId: "a-1", Content: "full prompt and response body",
+	}).Error)
+	query := fmt.Sprintf("start_timestamp=%d&end_timestamp=%d", now-3600, now+3600)
+
+	plain := callLogHandler(t, ExportUserLogs, 1, common.RoleCommonUser, query)
+	require.Len(t, plain, 2)
+	assert.Equal(t, "", plain[0]["content"], "logs never carry the request body")
+}
+
+// A range that is too large is refused before anything is written, and the
+// message says how to make it smaller instead of just failing.
+func TestLogExportRowLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, _ := newAuditTestDatabase(t, "sqlite", "")
+	useLogExportDatabases(t, db, db, common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+
+	now := time.Now().Unix()
+	for i := 0; i < 3; i++ {
+		require.NoError(t, db.Create(&model.Log{
+			UserId: 1, Username: "alice", CreatedAt: now - int64(60*i),
+			Type: model.LogTypeConsume, ModelName: "gpt-a",
+			RequestId: fmt.Sprintf("a-%d", i),
+		}).Error)
+	}
+	query := fmt.Sprintf("start_timestamp=%d&end_timestamp=%d", now-3600, now+3600)
+
+	t.Setenv("LOG_EXPORT_MAX_ROWS", "2")
+	rejected := callLogHandler(t, ExportUserLogs, 1, common.RoleCommonUser, query)
+	require.Len(t, rejected, 1, "nothing is streamed when the range is too large")
+	assert.Equal(t, false, rejected[0]["success"])
+	assert.Contains(t, fmt.Sprint(rejected[0]["message"]), "above the 2 row limit")
+
+	t.Setenv("LOG_EXPORT_MAX_ROWS", "3")
+	allowed := callLogHandler(t, ExportUserLogs, 1, common.RoleCommonUser, query)
+	require.Len(t, allowed, 4)
+	assert.Equal(t, true, allowed[3]["success"])
+}
+
+// APIDUO:log-export:END
+
 func TestAcquireLogExportLock(t *testing.T) {
 	for _, useRedis := range []bool{false, true} {
 		t.Run(fmt.Sprintf("redis=%v", useRedis), func(t *testing.T) {

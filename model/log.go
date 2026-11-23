@@ -647,9 +647,33 @@ func GetUserLogs(userId int, filter LogFilter, startIdx int, num int) (logs []*L
 	return logs, total, err
 }
 
+// APIDUO:log-export:BEGIN
+// CountLogsForExport returns how many rows filter matches, so an export can be
+// refused before a single byte is written. userId 0 counts every user, which is
+// the administrator view.
+func CountLogsForExport(ctx context.Context, filter LogFilter, userId int) (int64, error) {
+	tx, err := filter.apply(LOG_DB.WithContext(ctx))
+	if err != nil {
+		return 0, err
+	}
+	if userId > 0 {
+		tx = tx.Where("logs.user_id = ?", userId)
+	}
+	var total int64
+	if err := tx.Model(&Log{}).Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// APIDUO:log-export:END
+
+// APIDUO:log-export:BEGIN
 // StreamAllLogs calls fn with each log matching filter, newest first, as an
 // administrator with role sees it. Rows are read one at a time, so an export
-// never holds the whole result in memory.
+// never holds the whole result in memory. The request/response body is never
+// streamed: logs and statements do not carry it, and it dominates row size.
+// APIDUO:log-export:END
 func StreamAllLogs(ctx context.Context, filter LogFilter, role int, fn func(*Log) error) error {
 	tx, err := filter.apply(LOG_DB.WithContext(ctx))
 	if err != nil {
@@ -697,6 +721,12 @@ func streamLogs(tx *gorm.DB, order string, fn func(*Log) error) error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("logs.")
 	}
+	// APIDUO:log-export:BEGIN
+	// content holds a request/response body. Neither the log list nor a
+	// statement shows it, and skipping the column keeps both the scan and the
+	// transfer proportional to the fields anyone actually reads.
+	tx = tx.Omit("content")
+	// APIDUO:log-export:END
 	rows, err := tx.Model(&Log{}).Order(order).Rows()
 	if err != nil {
 		return err
