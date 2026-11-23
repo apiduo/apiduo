@@ -135,7 +135,29 @@
 #    但被本次全量回归暴露。
 # 4) 其余 +9 行为 controller/relay.go 与 service/error.go 的挂接点微调（判据换签名、
 #    Retry-After 落 Metadata）。
-files	202
-blocks	646
-added	6692
-deleted	483
+# 2026-11-23 files 202->203 / blocks 646->657 / added 6692->6782 / deleted 483->488：
+# 图片主端点接入 Gemini 上游，并把五个入口改成「默认接管」。
+# 1) 协议本体都在 apiduo 自有文件里（relay/channel/advancedcustom/apiduo_image_*.go、
+#    relaykit/dto/apiduo_image_protocol.go、relaykit/types/gemini_error.go），不计合并面。
+#    Gemini 错误信封本来写在 relaykit/types/error.go，已整体移到新文件：同包方法不依赖
+#    该文件任何私有符号，留在上游文件里只是白增一块（added -51 / blocks -1）。
+# 2) 只有 6 个上游文件需要挂接点，且都不可替代：
+#    - relay/image_handler.go：n>1 的拒绝必须早于 PrepareImageBillingForRequest，
+#      否则预扣后回退会在账单里留一对 0 元行。落进既有 image-protocol 块。
+#    - relay/channel/advancedcustom/adaptor.go：resolveRoute 的校验要按渠道类型分流，
+#      判据来自 info，挪不进新文件（1 块）。
+#    - model/channel.go：保存校验的同一处要放行空路由表并补空配置，三处各自成块——
+#      校验入口、nil 分支、以及 nil 安全读开关的判据函数。
+#    - relaykit/dto/channel_settings.go：ValidateForImageChannel 必须与 Validate 同文件
+#      紧邻，才能复用它的全部规则（1 块）；matchCustomIncomingPath 的注释说明
+#      「{model} 不许放宽」的理由，与那行判据同生共死（1 块）。
+#    - controller/relay.go：Gemini 错误信封的两个渲染分支，四种协议各自出包（2 块）。
+#    - web/.../lib/advanced-custom.ts：保存校验按协议开关放行空路由（2 块）。
+# 3) files +1 即 advanced-custom.ts 首次出现 apiduo 行；deleted +5 是 Validate 前置空行
+#    与 advanced-custom.ts 签名重排，属于移动/替换，不是删功能。
+# 4) 判据：本地零路由渠道跑满 41 项矩阵；model / advancedcustom / relaykit 的路径测试
+#    改为「零路由也接管」，另加「协议关闭时仍按路由表」的反向用例。
+files	203
+blocks	657
+added	6782
+deleted	488
