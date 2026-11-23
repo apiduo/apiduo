@@ -228,3 +228,42 @@ billing build failed: user=4479 error=Error 1406 (22001): Data too long for colu
   幂等（第二次只补失败的两个）。
 - ❌ **0.0.222 不能直接上线**：它的 `endpoint` 是 64，`billing_statements` 会在升级时被建成
   varchar(64)，凌晨第一次出账就会重演上面那两个失败。**必须先把列宽修复发版**。
+
+---
+
+# 发版：0.0.223
+
+| 项 | 结果 |
+|---|---|
+| 提交 | `5a3d4cd7c` 列宽修复 + `6a5b77746` 把迁移挪到出账入口 |
+| 标签 | `apiduo-v0.0.223` |
+| 镜像 | `ghcr.io/apiduo/apiduo:0.0.223`（manifest 200） |
+| Release | `apiduo-v0.0.223` 已创建 |
+
+第一次发版被 CI 拦下：`Marker coverage` 报 `blocks 673→674 / added 6996→7001`。
+原因是把迁移调用挂在 `model/migrateDB()`（上游文件，需要新标记块）。
+改为挂在 `service/billing_job.go` 的 `StartBillingTaskLoop()`（apiduo 自有文件，不占合并预算），
+`go run ./tools/markercheck` 本地通过（遗留欠账 48 文件 / 428 行不变）。
+
+另有一处流水线噪声：推 `main` 的 workflow 会在 **Tag and push** 步骤自动打 tag，
+而本地已手工推过同名 `0.0.223`，那次 main 运行的 tag 步骤失败（镜像由 tag 那次运行产出）。
+下次推 main 会自动打 `0.0.224`。
+
+## 0.0.223 在预演实例上的最终冒烟
+
+```
+version 0.0.223        endpoint column = varchar(191)        RSS 82 MiB
+单用户已出账账单   0.37 s   ¥2,827.053801  requests=202,722
+全站 34 条        0.01 s   is_draft=false（读 MySQL 快照，不再扫 CH）
+归档文件          127,692 行 / 12.64 MB / is_draft=false
+空账期导出        No billable usage in this period.
+```
+
+## 升级口径（最终）
+
+- 目标版本 **0.0.223**（不是 0.0.222：后者 endpoint 仍是 64，凌晨首次出账会对
+  调用过长 Gemini 路径的用户整份失败）。
+- 窗口避开 00:10–06:00；core-1 先升（迁移），core-3 后升。
+- 升级后第一个凌晨会自动对 **2026-10** 出账（约 550 万行 / 47 用户）。
+  依据本轮 11 月实测（34 用户 / 503 万行 / 4m16s + 549 MB 归档），预计 4–6 分钟、归档约 500 MB 量级。
+  建议当晚 `docker logs | grep 'billing issued'` 复核一次。
