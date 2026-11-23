@@ -387,3 +387,58 @@ tail -n 200 /www/wwwlogs/jieapi.com.error.log | grep -E 'upstream|no live'
   这是有意选择的：快速失败优于全机 swap 抖动。
 - **两个 `NODE_TYPE` 不能都是 master**：`IsMasterNode` 只看这个值，没有选举没有锁，
   双 master 会重复跑任务轮询、渠道定时检测、订阅重置。
+
+## 日志库内存配置（2026-11-24，按物理机量级）
+
+服务器 `core-1` 是 249 GiB 物理机、8 核，日志库 `clickhouse` 原来用镜像默认值：
+`max_server_memory_usage=0`（自动按 0.9 × cgroup 32G 算成 28.8 GiB）、单查询
+`max_memory_usage=0`（不限）、聚合/排序永不落盘。等于没有上限。
+
+现在按物理机给足，同时保留「一条查询不能吃满整机」的边界：
+
+| 项 | 值 | 位置 |
+|---|---|---|
+| 容器内存限额 | 128G（原 32G） | compose `deploy.resources.limits.memory` |
+| `max_server_memory_usage` | 112 GiB（容器的 87.5%） | `clickhouse/zz-memory.xml` |
+| `max_concurrent_queries` | 200（原 1000） | 同上 |
+| 单查询 `max_memory_usage` | 48 GiB | `clickhouse/zz-profile.xml` |
+| `max_bytes_before_external_group_by/sort` | 16 GiB | 同上 |
+
+定这个数的依据（`system.asynchronous_metric_log`，4 天 32.4 万个 1 秒采样）：
+
+- RSS 中位数 1.07 GiB、p99 1.21 GiB、**峰值 5.63 GiB**；
+- 峰值只出现 1 秒，来源是一条人工排障查询（`select type, length(content) ...`，单条 4.70 GiB），
+  不是业务流量；>4 GiB 的采样点总共 1 个，>6 GiB 为 0；
+- 所以 112 GiB 是峰值的 20 倍——它不会成为日常约束，只在「有人跑飞」时兜底。
+- 两条极限查询 96 GiB 仍在 112 GiB 内；即使打满，物理机还剩约 137 GiB。
+
+**必须文件级挂载，不能挂目录**：
+
+```yaml
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/zz-memory.xml:/etc/clickhouse-server/config.d/zz-memory.xml:ro
+      - ./clickhouse/zz-profile.xml:/etc/clickhouse-server/users.d/zz-profile.xml:ro
+```
+
+挂目录会盖掉镜像自带的 `config.d/docker_related_config.xml`（`listen_host`，挂掉就
+监听不到 9000）和 entrypoint 生成的 `users.d/default-user.xml`（密码）。
+
+生效方式：
+
+```bash
+cd /www/server/panel/data/compose/jieapi-master
+docker-compose -p jieapi-master -f docker-compose.yaml up -d clickhouse   # 只重建 clickhouse
+docker exec clickhouse clickhouse-client -q "SELECT name,value FROM system.server_settings WHERE name='max_server_memory_usage'"
+```
+
+`max_server_memory_usage` / `max_concurrent_queries` 标了 `changeable_without_restart=Yes`，
+只改数值时用 `SYSTEM RELOAD CONFIG` 即可；profile 项对**新连接**生效，老连接要重连。
+
+两个坑：
+
+- **宝塔面板若重写 compose，memory 会回到 32G**。此时 112 GiB 的服务端上限高于容器限额，
+  一条大查询会先撞 cgroup 被 OOM kill（`restart: always` 自动拉起，丢在途写入）。
+  改完务必回面板核对 `memory: 128G` 还在。
+- 不要对该工程执行不带服务名的 `docker-compose up`——会按 `container_name: jieapi-master`
+  重建已下线的旧容器。只 `up -d clickhouse` 是安全的。
