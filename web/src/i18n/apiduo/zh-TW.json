@@ -321,6 +321,7 @@
     "Draft: the amount changes with usage until it is issued.": "當月為預估值，出帳後金額凍結。",
     "Preparing the file...": "正在產生檔案…",
     "Rows": "列數",
-    "Duration (ms)": "耗時（毫秒）"
+    "Duration (ms)": "耗時（毫秒）",
+    "This period has not been issued; figures are a live aggregate.": "本期尚未出帳，以下為即時彙總資料。"
   }
 }

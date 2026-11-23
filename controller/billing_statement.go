@@ -159,7 +159,7 @@ func ExportBillingStatement(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		if total > int64(logExportMaxRows()) {
+		if total > int64(billingDraftExportMaxRows()) {
 			common.ApiErrorMsg(c, "This statement has too many rows to export before it is issued. The full file is available after the 1st of next month.")
 			return
 		}
@@ -233,6 +233,15 @@ func ListBillingStatements(c *gin.Context) {
 		"items":   items,
 		"pending": len(items) == 0,
 	})
+}
+
+// billingDraftExportMaxRows 是当月账单导出的行数上限。
+//
+// 与日志导出分开配置：日志导出随时可能被点，闸门要收紧；账单是月度主动操作，
+// 而且写入是流式、内存与行数无关。按日志的 50 万会被真实客户（单月 60 万+）
+// 天天撞上，等于当月导出不可用。
+func billingDraftExportMaxRows() int {
+	return common.GetEnvOrDefault("BILLING_DRAFT_EXPORT_MAX_ROWS", 2_000_000)
 }
 
 // billingUser 是本次请求的账单归属。

@@ -271,6 +271,7 @@
     "Draft: the amount changes with usage until it is issued.": "Draft: the amount changes with usage until it is issued.",
     "Preparing the file...": "Preparing the file...",
     "Rows": "Rows",
-    "Duration (ms)": "Duration (ms)"
+    "Duration (ms)": "Duration (ms)",
+    "This period has not been issued; figures are a live aggregate.": "This period has not been issued; figures are a live aggregate."
   }
 }

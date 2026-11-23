@@ -167,6 +167,12 @@ export function Billing({ search, onSearchChange }: BillingProps) {
 
   const overview = overviewQuery.data
   const isFinal = overview?.is_final ?? false
+  // 未出账有两种：当月（金额随用量变化）与历史漏跑（等出账任务补）。
+  // 同一句「当月为预估值」放在 10 月的账单上会让人以为看错了月份。
+  const isCurrentPeriod = period === currentBillingPeriod()
+  const draftHint = isCurrentPeriod
+    ? t('Draft: the amount changes with usage until it is issued.')
+    : t('This period has not been issued; figures are a live aggregate.')
 
   const summaryColumns = useMemo<StaticDataTableColumn<BillingSummaryItem>[]>(
     () => [
@@ -509,11 +515,7 @@ export function Billing({ search, onSearchChange }: BillingProps) {
           <MetricCard
             label={t('Net amount')}
             value={formatMoney(overview.amount, overview.currency)}
-            hint={
-              isFinal
-                ? t('Issued')
-                : t('Draft: the amount changes with usage until it is issued.')
-            }
+            hint={isFinal ? t('Issued') : draftHint}
             emphasis
           />
           <MetricCard
