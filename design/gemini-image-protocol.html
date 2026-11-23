@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>图片主端点 · Gemini 兼容 · 产品原型</title>
+<meta name="description" content="在图片协议里增加第三种上游形状 gemini（Nano Banana）：主端点模板、三段报文、拒绝边界与计费口径。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#fcfcfa; --paper-2:#f4f4f1; --card:#fff;
+  --rule:#e4e4de; --rule-2:#cfcfc7;
+  --ink:#1a1c1e; --ink-2:#45484b; --muted:#6b7076;
+  --accent:#9a3412; --accent-soft:#fdf0ea;
+  --ok:#3f6f4a; --ok-soft:#eef4ee;
+  --err:#a4161a; --err-soft:#fbeeee;
+  --warn:#8a5a12; --warn-soft:#fbf3e4;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"PingFang SC",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;scrollbar-color:var(--rule-2) var(--paper)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.015em;line-height:1.2;text-wrap:balance}
+p{margin:0;text-wrap:pretty}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1180px;margin-inline:auto;padding:0 var(--s5)}
+
+/* header */
+.bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:var(--s4);padding:10px var(--s5);border-bottom:1px solid var(--rule);background:color-mix(in srgb,var(--paper) 92%,transparent);backdrop-filter:blur(8px)}
+.mark{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted);text-decoration:none;padding-right:var(--s3);border-right:1px solid var(--rule)}
+.bar .crumb{font-size:12px;color:var(--ink-2)}
+.bar .crumb b{font-weight:500;color:var(--ink)}
+.bar .spacer{flex:1}
+.tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--rule);border-radius:2px;padding:3px 7px}
+.tag.live{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,var(--rule));background:var(--accent-soft)}
+
+/* hero */
+.hero{padding:var(--s6) 0 var(--s5)}
+.hero .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.hero h1{font-size:26px;max-width:24ch}
+.hero .lede{margin-top:var(--s3);max-width:70ch;color:var(--ink-2);font-size:14.5px}
+.facts{display:flex;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s5)}
+.fact{flex:1 1 200px;border:1px solid var(--rule);background:var(--card);padding:12px 14px}
+.fact .k{font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.fact .v{margin-top:4px;font-size:13px;color:var(--ink)}
+.fact .v b{font-weight:600}
+
+/* section */
+.sec{margin-top:var(--s7);scroll-margin-top:70px}
+.sec-head{display:flex;align-items:baseline;gap:var(--s3);border-top:1px solid var(--rule);padding-top:var(--s4);margin-bottom:var(--s4)}
+.sec-head h2{font-size:18px}
+.sec-head .n{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.sec-head .note{margin-left:auto;font-size:12px;color:var(--muted)}
+
+/* editor */
+.editor-grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:var(--s4);align-items:start}
+.panel{background:var(--card);border:1px solid var(--rule)}
+.panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s3);padding:var(--s4) var(--s4) var(--s3)}
+.panel-head h3{font-size:14px;font-weight:500}
+.panel-head .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.panel-body{padding:0 var(--s4) var(--s4)}
+
+.switch{position:relative;width:34px;height:19px;border-radius:999px;background:var(--accent);border:1px solid var(--accent);flex:0 0 auto;transition:background .18s var(--ease)}
+.switch::after{content:"";position:absolute;top:2px;left:16px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .18s var(--ease)}
+.switch[aria-checked="false"]{background:var(--paper-2);border-color:var(--rule-2)}
+.switch[aria-checked="false"]::after{left:2px;background:var(--muted)}
+
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2);margin-top:var(--s3);align-items:stretch}
+.layout{display:flex;flex-direction:column;text-align:left;border:1px solid var(--rule);background:var(--card);padding:11px;border-radius:4px;transition:border-color .16s var(--ease),background .16s var(--ease)}
+.layout:hover{border-color:var(--rule-2)}
+.layout[aria-checked="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.layout .radio{width:12px;height:12px;border-radius:50%;border:1px solid var(--rule-2);display:inline-flex;align-items:center;justify-content:center;margin-top:2px;flex:0 0 auto}
+.layout[aria-checked="true"] .radio{border-color:var(--accent)}
+.layout[aria-checked="true"] .radio::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.layout .top{display:flex;gap:7px;align-items:flex-start}
+.layout .top>span:last-child{flex:1;min-width:0}
+.layout .t{display:block;font-size:12px;font-weight:500;line-height:1.3}
+.layout .s{display:block;font-size:10.5px;color:var(--muted);margin-top:3px;font-family:var(--mono);letter-spacing:0;line-height:1.35}
+.layout ul{list-style:none;margin:9px 0 0;padding:0;display:grid;gap:4px}
+.layout li{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink-2)}
+.layout li .lbl{color:var(--muted);width:70px;flex:0 0 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.layout li code{font-family:var(--mono);font-size:10px;background:color-mix(in srgb,var(--ink) 5%,transparent);padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.layout .foot{margin-top:auto;padding-top:9px;border-top:1px dashed var(--rule);font-size:10.5px;color:var(--muted);line-height:1.4}
+
+.field{margin-top:var(--s4)}
+.field label{display:block;font-size:11px;letter-spacing:.03em;color:var(--ink-2);margin-bottom:6px}
+.field .row{display:flex;align-items:stretch;border:1px solid var(--rule-2);border-radius:4px;background:var(--paper);overflow:hidden}
+.field .row.bad{border-color:var(--err);background:var(--err-soft)}
+.field .row.good{border-color:color-mix(in srgb,var(--ok) 45%,var(--rule))}
+.field input{flex:1;min-width:0;border:0;background:transparent;padding:9px 11px;font-family:var(--mono);font-size:12.5px}
+.field input:focus{outline:none}
+.field .method{display:flex;align-items:center;padding:0 9px;border-right:1px solid var(--rule);font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--muted);background:var(--paper-2)}
+.hint{display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:11px;line-height:1.45;color:var(--muted)}
+.hint.err{color:var(--err)}
+.hint.ok{color:var(--ok)}
+.hint .g{font-family:var(--mono);flex:0 0 auto}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.chip{font-family:var(--mono);font-size:10.5px;border:1px solid var(--rule);border-radius:2px;padding:2px 6px;color:var(--ink-2);background:var(--paper)}
+.chip.ghost{color:var(--muted);border-style:dashed}
+
+.notice{margin-top:var(--s4);border-left:2px solid var(--accent);background:var(--accent-soft);padding:9px 11px;font-size:11.5px;color:var(--ink-2);line-height:1.5}
+.notice b{font-weight:600;color:var(--ink)}
+.notice ul{margin:4px 0 0;padding-left:16px}
+.notice li{margin-top:2px}
+
+/* flow */
+.flow{background:var(--card);border:1px solid var(--rule);padding:var(--s4)}
+.flow h3{font-size:13px;font-weight:500;margin-bottom:2px}
+.flow .sub{font-size:11px;color:var(--muted)}
+.node{border:1px solid var(--rule);background:var(--paper);padding:9px 10px;border-radius:3px;margin-top:10px}
+.node .nh{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.node .nk{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.node .nv{font-size:11.5px;font-weight:500}
+.node code{display:block;margin-top:4px;font-family:var(--mono);font-size:10.5px;color:var(--ink-2);word-break:break-all}
+.node.center{border-color:color-mix(in srgb,var(--accent) 40%,var(--rule));background:var(--accent-soft)}
+.node.center .nv{color:var(--accent)}
+.link{display:flex;justify-content:center;padding:4px 0;color:var(--rule-2);font-family:var(--mono);font-size:11px;line-height:1}
+.entries{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px}
+.entries li{display:flex;justify-content:space-between;gap:8px;font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
+.entries li span{color:var(--muted);font-family:var(--sans);font-size:10px}
+.billing{margin-top:var(--s4);border-top:1px solid var(--rule);padding-top:11px}
+.billing .line{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:3px 0}
+.billing .line span:first-child{color:var(--muted)}
+.billing .line b{font-weight:500}
+.billing .dev{margin-top:8px;font-size:10.5px;color:var(--warn);background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 22%,var(--rule));padding:6px 8px;line-height:1.45}
+
+/* trace */
+.tabs{display:flex;gap:var(--s1);border-bottom:1px solid var(--rule);margin-bottom:var(--s4);flex-wrap:wrap}
+.tab{padding:7px 11px;font-size:12px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab .k{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:5px}
+.trip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s3)}
+.col{min-width:0}
+.col .ch{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.col .ch .idx{width:16px;height:16px;border-radius:50%;border:1px solid var(--rule-2);display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px;color:var(--muted);flex:0 0 auto}
+.col .ch .ct{font-size:11.5px;font-weight:500}
+.col .ch .cs{font-size:9.5px;color:var(--muted);margin-left:auto;padding-left:8px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+pre{margin:0;background:var(--paper-2);border:1px solid var(--rule);padding:10px 11px;overflow:auto;font-family:var(--mono);font-size:11px;line-height:1.55;color:var(--ink-2);max-height:330px;tab-size:2;white-space:pre-wrap;overflow-wrap:anywhere}
+pre .k{color:var(--accent)}
+pre .s{color:var(--ok)}
+pre .c{color:var(--muted)}
+pre .del{color:var(--err);text-decoration:line-through;text-decoration-thickness:1px;opacity:.75}
+.resp{margin-top:var(--s3);border:1px solid var(--rule);background:var(--card)}
+.resp .rh{display:flex;gap:8px;align-items:center;padding:7px 11px;border-bottom:1px solid var(--rule);font-size:11px;color:var(--muted)}
+.resp .rh b{font-weight:500;color:var(--ink)}
+.resp .rh .code{font-family:var(--mono);font-size:10px;margin-left:auto}
+.resp pre{border:0;background:transparent;max-height:210px}
+.resp.pre-err pre{background:var(--err-soft)}
+.badge{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;padding:2px 5px;border:1px solid var(--rule);border-radius:2px;color:var(--muted)}
+.badge.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 35%,var(--rule));background:var(--ok-soft)}
+.badge.err{color:var(--err);border-color:color-mix(in srgb,var(--err) 35%,var(--rule));background:var(--err-soft)}
+.badge.no{color:var(--err);border-color:color-mix(in srgb,var(--err) 30%,var(--rule))}
+
+/* table */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th,.tbl td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+.tbl th{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:400;background:var(--paper-2)}
+.tbl td code{font-family:var(--mono);font-size:11px;background:color-mix(in srgb,var(--ink) 5%,transparent);padding:1px 4px}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .why{color:var(--muted);font-size:11.5px}
+
+/* footer */
+.foot{margin-top:var(--s7);border-top:1px solid var(--rule);padding:var(--s4) 0 var(--s7);display:flex;gap:var(--s4);flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.foot .spacer{flex:1}
+.foot code{font-family:var(--mono);font-size:11px}
+
+@media (max-width:960px){
+  .editor-grid{grid-template-columns:1fr}
+  .cards{grid-template-columns:1fr}
+  .trip{grid-template-columns:1fr}
+  .hero h1{font-size:22px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a class="mark" href="#">apiduo</a>
+  <div class="crumb">渠道编辑 · <b>高级路由</b> · 主端点</div>
+  <div class="spacer"></div>
+  <span class="tag live">v1 · 方案原型</span>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <div class="kicker">image protocol · third upstream</div>
+    <h1>图片主端点增加 Gemini：五个前门，三种上游</h1>
+    <p class="lede">
+      五个前门共用一份 canonical，三种上游共用一份编码。客户端说的是什么协议，就回什么形状：
+      <code style="font-family:var(--mono);font-size:12.5px">data[]</code>、markdown，或
+      <code style="font-family:var(--mono);font-size:12.5px">candidates[].inlineData</code>。
+      配置面没有新增：主端点仍是
+      <code style="font-family:var(--mono);font-size:12.5px">/v1/images/generations</code>。
+    </p>
+    <div class="facts">
+      <div class="fact"><div class="k">新增上游形状</div><div class="v"><b>1 种</b> · gemini / generateContent</div></div>
+      <div class="fact"><div class="k">入口 / 上游</div><div class="v"><b>5 × 3</b> · 入口靠判据，上游靠脚本</div></div>
+      <div class="fact"><div class="k">新增配置项</div><div class="v"><b>0 个</b> · 主端点仍是唯一地址</div></div>
+    </div>
+  </section>
+
+  <section class="sec" id="config">
+    <div class="sec-head">
+      <span class="n">01</span>
+      <h2>配置面：第三张卡，一个模板</h2>
+      <span class="note">点卡片与输入框都可交互</span>
+    </div>
+
+    <div class="editor-grid">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h3>Image protocol</h3>
+            <div class="sub">Fold image entries into one canonical request before sending.</div>
+          </div>
+          <button class="switch" aria-checked="true" aria-label="图片协议开关" id="protocolSwitch"></button>
+        </div>
+        <div class="panel-body">
+          <div style="font-size:11px;color:var(--ink-2);margin-bottom:2px">How does the primary endpoint land upstream?</div>
+          <div class="cards" role="radiogroup" aria-label="上游布局" id="layoutCards"></div>
+
+          <div class="field">
+            <label for="primary">Primary endpoint</label>
+            <div class="row" id="primaryRow">
+              <div class="method">POST</div>
+              <input id="primary" spellcheck="false" autocomplete="off" value="/v1/images/generations">
+            </div>
+            <div class="hint" id="primaryHint"></div>
+            <div class="chips" id="modelChips"></div>
+          </div>
+
+          <div class="notice" id="notice">
+            <b>选择 Gemini 后自动填入模板</b>，只改前缀即可。
+            <ul>
+              <li><code style="font-family:var(--mono)">{model}</code> 由渠道模型名填充；一个渠道可服务 flash / pro / 2.1。</li>
+              <li>香蕉只回 base64。客户端要 <code style="font-family:var(--mono)">url</code> 时，渠道必须配对象存储，否则照实回 <code style="font-family:var(--mono)">b64_json</code>。</li>
+              <li>chat / responses 与图片入口不同：要在路由里显式声明，否则纯文本请求不会被当成出图。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <aside class="flow">
+        <h3>数据流</h3>
+        <div class="sub" id="flowSub">上游 1 条路径收口到主端点</div>
+
+        <div class="node" id="upstreamNode">
+          <div class="nh"><span class="nk">upstream</span><span class="nv" id="upCount">1 path</span></div>
+          <code id="upPath">/v1beta/models/{model}:generateContent</code>
+        </div>
+        <div class="link">▼</div>
+        <div class="node center">
+          <div class="nh"><span class="nk">primary endpoint</span><span class="nv">唯一契约</span></div>
+          <code id="primaryEcho">/v1beta/models/{model}:generateContent</code>
+        </div>
+        <div class="link">▼</div>
+        <div class="node">
+          <div class="nh"><span class="nk">downstream</span><span class="nv">4 entries</span></div>
+          <ul class="entries">
+            <li>/v1/images/generations <span>JSON</span></li>
+            <li>/v1/images/edits <span>multipart</span></li>
+            <li>/v1/chat/completions <span>→ markdown</span></li>
+            <li>/v1/responses <span>→ markdown · 本次</span></li>
+            <li>:generateContent <span>渠道声明 · 新增</span></li>
+          </ul>
+          <div style="margin-top:8px;font-size:10.5px;color:var(--muted);line-height:1.45">第 5 条与上游同地址时是直连；折叠后同样可发往另外两个脚本。</div>
+        </div>
+
+        <div class="billing">
+          <div class="line"><span>计费</span><b>按张 × 1</b></div>
+          <div class="line"><span>n &gt; 1</span><b>拒绝</b></div>
+          <div class="line"><span>4K / 2K</span><b>同价</b></div>
+          <div class="dev">已知偏差：Pro 的 4K 是 2K 的 1.79 倍，v1 不区分。触发条件与做法见方案 §6.2。</div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="sec" id="trace">
+    <div class="sec-head">
+      <span class="n">02</span>
+      <h2>一次请求的三段：折叠 → 编码 → 回包</h2>
+      <span class="note">切换场景看边界</span>
+    </div>
+
+    <div class="tabs" role="tablist" id="scenarioTabs"></div>
+    <div class="trip" id="trip"></div>
+    <div id="responses"></div>
+  </section>
+
+  <section class="sec" id="bounds">
+    <div class="sec-head">
+      <span class="n">03</span>
+      <h2>能力边界：拒绝、降级、丢弃</h2>
+      <span class="note">每条都有「为什么」</span>
+    </div>
+    <div class="panel">
+      <table class="tbl">
+        <thead>
+          <tr><th style="width:31%">输入 / 情况</th><th style="width:20%">结果</th><th>为什么</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>n = 2</code> 及以上</td><td><span class="badge err">400</span> param: n</td><td class="why">一次 <code>:generateContent</code> 只产出一张最终图。扇出 N 次要回答「部分成功怎么计费、怎么退、怎么拼 data[]」，同步入口没有承载者。</td></tr>
+          <tr><td><code>stream: true</code></td><td><span class="badge">忽略</span> 同步返回</td><td class="why">图片主端点的回包形态是完整 JSON。要流式就得接 <code>:streamGenerateContent</code>，那是另一种传输，不在本次范围。</td></tr>
+          <tr><td><code>/v1/responses</code> 入口</td><td><span class="badge ok">接管</span> 本次补</td><td class="why">折叠复用 <code>ResponsesRequestToChatCompletionsRequest</code>，回包复用 <code>ConvertResponse</code>。不手写 SSE，否则下一次协议变更必漂移。</td></tr>
+          <tr><td><code>:generateContent</code> 未声明路由</td><td><span class="badge err">503</span></td><td class="why">渠道选择器只认已声明的路由；图片协议不替运维放行 Gemini 的通用入口。</td></tr>
+          <tr><td><code>:generateContent</code> 已声明，但模型不在 imagine 名单</td><td><span class="badge">不接管</span> 原生链路</td><td class="why">防止同渠道混挂文本模型时把一次对话折叠成出图。</td></tr>
+          <tr><td><code>mask</code></td><td><span class="badge">丢弃</span> 记日志</td><td class="why">Gemini 没有 mask 参数。透传会 400；静默转发会让用户以为蒙版生效。</td></tr>
+          <tr><td><code>seed</code> / <code>style</code> / <code>quality</code> / <code>negative_prompt</code></td><td><span class="badge">丢弃</span> 记日志</td><td class="why">上游无对应字段。写入 <code>other.dropped_params</code>，排查时能看到「用户传了但没生效」。</td></tr>
+          <tr><td><code>image_size = 8K</code></td><td><span class="badge err">400</span></td><td class="why">只接受 1K / 2K / 4K。不把未知值静默降成 2K，否则用户按 8K 付费买 2K。</td></tr>
+          <tr><td><code>size = 999x999</code></td><td><span class="badge">上游默认</span></td><td class="why">像素无法唯一映射宽高比。只映射五个确定档，其余不猜。</td></tr>
+          <tr><td><code>finishReason = SAFETY</code></td><td><span class="badge err">400</span> content_policy_violation</td><td class="why">上游拒画，不是网关故障。不能落 500，也不能重试——重试只会再被拒一次。</td></tr>
+          <tr><td>要 <code>url</code> 但渠道没配存储</td><td><span class="badge ok">200</span> b64_json</td><td class="why">契约 §2.2 已允许：上游给 b64 就照实回 b64。网关不替上游兜底转存，没有存储时那只会变成 502。</td></tr>
+          <tr><td>4K 图的 base64 超过 16 MiB</td><td><span class="badge err">502</span></td><td class="why">旧上限对 4K 不够。gemini 分支单独给 64 MiB，超限明确失败，不截断。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="egress">
+    <div class="sec-head">
+      <span class="n">04</span>
+      <h2>出口净化：不暴露上游</h2>
+      <span class="note">五条规则，按客户端能看到的东西排列</span>
+    </div>
+    <div class="panel">
+      <table class="tbl">
+        <thead>
+          <tr><th style="width:20%">面</th><th style="width:30%">处理</th><th>为什么</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>响应体</td><td>按入口白名单重建</td><td class="why">解析失败返回 502，不原样透传——否则 <code>candidates[]</code> 会直接给 OpenAI 客户端。</td></tr>
+          <tr><td>模型名</td><td>回包写请求名</td><td class="why">写上游名会在模型重定向后暴露真实模型。</td></tr>
+          <tr><td>错误</td><td>码表 + 固定英文</td><td class="why">上游 message 常带 <code>models/xxx</code> 与域名；真实原因只进管理端日志。</td></tr>
+          <tr><td>响应头</td><td>白名单</td><td class="why"><code>Server</code>、<code>X-Goog-*</code>、<code>Set-Cookie</code> 全是身份。</td></tr>
+          <tr><td>图片 URL</td><td>非本域必须转存，否则降级 b64</td><td class="why">链接 host 就是上游（<code>*.volces.com</code>、<code>storage.googleapis.com</code>）。</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel" style="margin-top:12px;padding:16px">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">T3 · 不可区分性</div>
+      <p style="margin-top:6px;font-size:12.5px;line-height:1.6">同一个请求分别打 ark / openai / gemini，响应的字段集合、响应头集合、错误码必须完全相同；差异只允许出现在 <code style="font-family:var(--mono)">b64_json</code> 与耗时。字段集合用反射比较，不做字符串包含。</p>
+    </div>
+  </section>
+
+  <section class="sec" id="contract">
+    <div class="sec-head">
+      <span class="n">05</span>
+      <h2>不变量：五入口、三上游、一个 canonical</h2>
+    </div>
+    <div class="panel" style="padding:var(--s4)">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--s4)">
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">I1</div>
+          <p style="margin-top:5px;font-size:12.5px">入口只决定「怎么读请求、怎么回包」。Gemini 的差别在上游报文，不在客户端契约，所以不加前门。</p>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">I2</div>
+          <p style="margin-top:5px;font-size:12.5px">主端点仍是唯一地址。模板里只有一个变量 <code style="font-family:var(--mono)">{model}</code>，它来自请求，不是第二个配置。</p>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">I3</div>
+          <p style="margin-top:5px;font-size:12.5px">生图与编辑是同一端点、同一脚本。图生图只是多传一个 <code style="font-family:var(--mono)">inlineData</code> part，没有第二遍改写。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>原型对应 <code>docs/apiduo/gemini-image-protocol.md</code></span>
+    <span class="spacer"></span>
+    <span>代码落点：<code>apiduo_image_script.go</code> · <code>apiduo_image_response.go</code> · <code>primary-endpoint-editor.tsx</code></span>
+  </footer>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  var UPSTREAMS = {
+    ark: {
+      title: "One upstream path",
+      sub: "ARK protocol · JSON",
+      rows: [["All","primary","JSON"]],
+      foot: "Image references stay in the JSON body; mask is not forwarded.",
+      count: "1 path",
+      path: "/v1/images/generations",
+      primary: "/v1/images/generations",
+      sub2: "上游 1 条路径收口到主端点"
+    },
+    openai: {
+      title: "Two upstream paths",
+      sub: "OpenAI protocol · JSON + multipart",
+      rows: [["No image","primary","JSON"],["With image","edits","multipart"]],
+      foot: "Image and mask are uploaded as files.",
+      count: "2 paths",
+      path: "/v1/images/generations · /v1/images/edits",
+      primary: "/v1/images/generations",
+      sub2: "上游 2 条路径收口到主端点"
+    },
+    gemini: {
+      title: "One upstream path",
+      sub: "Gemini protocol · generateContent",
+      rows: [["Text + refs","upstream","JSON"]],
+      foot: "References become inlineData parts; base URL + version + model build the path.",
+      count: "1 path",
+      path: "base + /{version}/models/{model}:generateContent",
+      primary: "/v1/images/generations",
+      sub2: "主端点不变；Gemini 路径按 base_url 构造"
+    }
+  };
+  var LAYOUTS = ["ark","openai","gemini"];
+  var state = { layout: "gemini", scenario: "text" };
+
+  var el = {
+    cards: document.getElementById("layoutCards"),
+    primary: document.getElementById("primary"),
+    row: document.getElementById("primaryRow"),
+    hint: document.getElementById("primaryHint"),
+    chips: document.getElementById("modelChips"),
+    notice: document.getElementById("notice"),
+    upCount: document.getElementById("upCount"),
+    upPath: document.getElementById("upPath"),
+    primaryEcho: document.getElementById("primaryEcho"),
+    flowSub: document.getElementById("flowSub"),
+    tabs: document.getElementById("scenarioTabs"),
+    trip: document.getElementById("trip"),
+    responses: document.getElementById("responses")
+  };
+
+  function esc(s){
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  /* 轻量高亮：只标 key 与字符串，够读即可，不引第三方 */
+  function hl(obj){
+    var json = JSON.stringify(obj, null, 2);
+    return esc(json)
+      .replace(/(&quot;|")([^"\n]+?)\1(\s*:)/g, function(_,q,k,rest){
+        return '<span class="k">' + k + '</span>' + rest;
+      })
+      .replace(/:\s"([^"]*)"/g, function(_,v){
+        return ': <span class="s">"' + v + '"</span>';
+      });
+  }
+
+  function renderCards(){
+    el.cards.innerHTML = LAYOUTS.map(function(key){
+      var u = UPSTREAMS[key];
+      var on = state.layout === key;
+      var rows = u.rows.map(function(r){
+        return '<li><span class="lbl">' + esc(r[0]) + '</span><span>→</span><code>' + esc(r[1]) + '</code><span style="color:var(--muted);font-size:9.5px">' + esc(r[2]) + '</span></li>';
+      }).join("");
+      return '<button type="button" class="layout" role="radio" aria-checked="' + on + '" data-layout="' + key + '">' +
+        '<span class="top"><span class="radio" aria-hidden="true"></span><span><span class="t">' + esc(u.title) + '</span><span class="s">' + esc(u.sub) + '</span></span></span>' +
+        '<ul>' + rows + '</ul>' +
+        '<span class="foot">' + esc(u.foot) + '</span>' +
+      '</button>';
+    }).join("");
+  }
+
+  function renderPrimary(){
+    var u = UPSTREAMS[state.layout];
+    el.upCount.textContent = u.count;
+    el.upPath.textContent = u.path;
+    el.primaryEcho.textContent = el.primary.value.trim() || u.primary;
+    el.flowSub.textContent = u.sub2;
+
+    el.row.classList.remove("bad","good");
+    el.hint.className = "hint";
+
+    if (state.layout !== "gemini"){
+      el.chips.innerHTML = '';
+      el.hint.innerHTML = '<span class="g">·</span><span>协议 ' + esc(u.sub) + '：主端点即上游路径。</span>';
+      return;
+    }
+
+    el.row.classList.add("good");
+    el.hint.className = "hint ok";
+    el.hint.innerHTML = '<span class="g">✓</span><span>主端点保持 /v1/images/generations；Gemini 的实际路径由 base_url + 版本设置 + 模型名构造。</span>';
+
+    el.chips.innerHTML =
+      '<span class="chip">gemini-2.5-flash-image</span>' +
+      '<span class="chip">gemini-3-pro-image-preview</span>' +
+      '<span class="chip ghost">渠道模型名 → {model}</span>';
+
+    el.notice.innerHTML =
+      '<b>主端点保持不变</b>，不再使用模板。' +
+      '<ul>' +
+      '<li>Gemini 路径 = <code style="font-family:var(--mono)">base_url</code> + 版本设置（默认 v1beta）+ 模型名；主端点的路径不参与。</li>' +
+      '<li>香蕉只回 base64。客户端要 <code style="font-family:var(--mono)">url</code> 时，渠道必须配对象存储；非本域链接一律转存或降级 b64。</li>' +
+      '<li>chat / responses / Gemini 原生入口与图片入口不同：要在路由里显式声明。</li>' +
+      '</ul>';
+  }
+
+  el.cards.addEventListener("click", function(e){
+    var card = e.target.closest("[data-layout]");
+    if (!card) return;
+    var next = card.getAttribute("data-layout");
+    if (next === state.layout) return;
+    state.layout = next;
+    // 切换协议只填该协议的默认落点；真实页面里主端点是独立字段，不会被协议改写。
+    // 原型这么做是为了让「卡片 → 地址」的对应关系一眼可见。
+    el.primary.value = UPSTREAMS[next].primary;
+    renderCards();
+    renderPrimary();
+  });
+
+  el.primary.addEventListener("input", renderPrimary);
+
+  var SCENARIOS = [
+    { id:"text", label:"文生图", k:"1 张" },
+    { id:"edit", label:"图生图", k:"垫图" },
+    { id:"n2", label:"n = 2", k:"拒绝" },
+    { id:"4k", label:"4K", k:"档位" },
+    { id:"resp", label:"responses", k:"第 4 入口" },
+    { id:"native", label:"Gemini 原生", k:"第 5 入口" }
+  ];
+
+  var TRACES = {
+    text: {
+      client: { title:"客户端", sub:"/v1/images/generations", code:{
+        model:"gemini-2.5-flash-image",
+        prompt:"一只戴墨镜的柴犬，摄影棚灯光",
+        size:"1024x1024"
+      }},
+      canonical: { title:"canonical", sub:"折叠后", code:{
+        model:"gemini-2.5-flash-image",
+        prompt:"一只戴墨镜的柴犬，摄影棚灯光",
+        size:"1024x1024"
+      }, note:"入口差异已被抹平：只剩 prompt，没有 image。" },
+      upstream: { title:"上游", sub:"POST :generateContent", code:{
+        contents:[{ role:"user", parts:[{ text:"一只戴墨镜的柴犬，摄影棚灯光" }] }],
+        generationConfig:{ responseModalities:["TEXT","IMAGE"], imageConfig:{ aspectRatio:"1:1" } }
+      }, note:"size 1024x1024 → aspectRatio 1:1；模型名进路径，不进 body。" },
+      resp: {
+        status:"200", badge:"ok", title:"回包", code:{
+          created:1732410000,
+          data:[{ b64_json:"iVBORw0KGgoAAAANSUhEUg…（截断）" }],
+          usage:{ gemini_image_tokens:1290 }
+        }, note:"candidates[].inlineData 被还原成 data[].b64_json；没有 URL 可给。"
+      }
+    },
+    edit: {
+      client: { title:"客户端", sub:"/v1/images/generations", code:{
+        model:"gemini-3-pro-image-preview",
+        prompt:"把这张图改成水彩风格，保留构图",
+        image:"https://cdn.example.com/cat.png",
+        aspect_ratio:"16:9",
+        image_size:"2K"
+      }},
+      canonical: { title:"canonical", sub:"折叠后", code:{
+        model:"gemini-3-pro-image-preview",
+        prompt:"把这张图改成水彩风格，保留构图",
+        image:["https://cdn.example.com/cat.png"],
+        aspect_ratio:"16:9",
+        image_size:"2K"
+      }, note:"图生图不换端点：edits 入口的 multipart 也折成同一条 canonical。" },
+      upstream: { title:"上游", sub:"POST :generateContent", code:{
+        contents:[{ role:"user", parts:[
+          { text:"把这张图改成水彩风格，保留构图" },
+          { inlineData:{ mimeType:"image/png", data:"iVBORw0KGgo…（下载后内联）" } }
+        ]}],
+        generationConfig:{ responseModalities:["TEXT","IMAGE"], imageConfig:{ aspectRatio:"16:9", imageSize:"2K" } }
+      }, note:"URL 先下载、嗅探 MIME、再内联。SSRF 校验在下载层，不靠开关。" },
+      resp: {
+        status:"200", badge:"ok", title:"回包", code:{
+          created:1732410184,
+          data:[{ b64_json:"iVBORw0KGgoAAAANSUhEUg…（2K，约 6–12 MB）" }],
+          usage:{ gemini_image_tokens:1120 }
+        }, note:"2K 图 base64 可能接近 16 MiB 旧上限，所以 gemini 分支放宽到 64 MiB。"
+      }
+    },
+    n2: {
+      client: { title:"客户端", sub:"/v1/images/generations", code:{
+        model:"gemini-2.5-flash-image",
+        prompt:"四张不同风格的猫",
+        n:2
+      }},
+      canonical: { title:"canonical", sub:"折叠后：在计费之前就停", code:{
+        model:"gemini-2.5-flash-image",
+        prompt:"四张不同风格的猫",
+        n:2
+      }, note:"canonical 保留 n=2；在计费之前拒绝：不产生预消费、不发上游请求。" },
+      upstream: { title:"上游", sub:"未发出", code:{ note:"no request" }, note:"不扇出。扇出会引入部分成功、退款、拼包三类语义。" },
+      resp: {
+        status:"400", badge:"err", title:"回包", code:{
+          error:{
+            message:"gemini image models generate one image per request; send n separate requests",
+            type:"invalid_request_error",
+            param:"n",
+            code:"unsupported_parameter"
+          }
+        }, note:"明确告诉客户端怎么改，而不是悄悄只画一张却按 n 收费。"
+      }
+    },
+    "4k": {
+      client: { title:"客户端", sub:"/v1/images/generations", code:{
+        model:"gemini-3-pro-image-preview",
+        prompt:"城市夜景，长曝光",
+        image_size:"4K",
+        response_format:"url"
+      }},
+      canonical: { title:"canonical", sub:"折叠后", code:{
+        model:"gemini-3-pro-image-preview",
+        prompt:"城市夜景，长曝光",
+        image_size:"4K",
+        response_format:"url"
+      }, note:"response_format 不影响上游，只决定回包载体。" },
+      upstream: { title:"上游", sub:"POST :generateContent", code:{
+        contents:[{ role:"user", parts:[{ text:"城市夜景，长曝光" }] }],
+        generationConfig:{ responseModalities:["TEXT","IMAGE"], imageConfig:{ imageSize:"4K" } }
+      }, note:"不传 aspect_ratio 时让上游自己决定比例。" },
+      resp: {
+        status:"200", badge:"ok", title:"回包（渠道已配对象存储）", code:{
+          created:1732410402,
+          data:[{ url:"https://files.example.com/img/8f3c…png" }],
+          usage:{ gemini_image_tokens:2000 }
+        }, note:"要 url 且有存储 → 转存换链接。没存储就回 b64_json，并在渠道页提示。"
+      }
+    },
+    resp: {
+      client: { title:"客户端", sub:"/v1/responses", code:{
+        model:"gemini-3-pro-image-preview",
+        input:[{ role:"user", content:[
+          { type:"input_text", text:"把这张图改成水彩风格，保留构图" },
+          { type:"input_image", image_url:"https://cdn.example.com/cat.png" }
+        ]}]
+      }},
+      canonical: { title:"canonical", sub:"折成 chat 再复用同一份折叠", code:{
+        model:"gemini-3-pro-image-preview",
+        prompt:"把这张图改成水彩风格，保留构图",
+        image:["https://cdn.example.com/cat.png"]
+      }, note:"input → chat 由 ResponsesRequestToChatCompletionsRequest 完成，取末轮与 instructions 前拼不重写。" },
+      upstream: { title:"上游", sub:"POST :generateContent", code:{
+        contents:[{ role:"user", parts:[
+          { text:"把这张图改成水彩风格，保留构图" },
+          { inlineData:{ mimeType:"image/png", data:"iVBORw0KGgo…（下载后内联）" } }
+        ]}],
+        generationConfig:{ responseModalities:["TEXT","IMAGE"] }
+      }, note:"与图生图场景完全同一个 planGemini，入口不影响上游报文。" },
+      resp: {
+        status:"200", badge:"ok", title:"回包", code:{
+          object:"response",
+          status:"completed",
+          output:[{ type:"message", role:"assistant", content:[
+            { type:"output_text", text:"![image](data:image/png;base64,…)" }
+          ]}],
+          usage:{ input_tokens:1, output_tokens:0, total_tokens:1 }
+        }, note:"先造 chat.completion，再 ConvertResponse(...OpenAIResponses)；SSE 事件由转换器生成，不手写。"
+      }
+    },
+    native: {
+      client: { title:"客户端", sub:"/v1beta/…:generateContent", code:{
+        contents:[{ role:"user", parts:[{ text:"赛博朋克风格的猫，霓虹雨夜" }] }],
+        generationConfig:{ responseModalities:["IMAGE"], imageConfig:{ aspectRatio:"16:9" } }
+      }},
+      canonical: { title:"canonical", sub:"判据：渠道声明 + 图片模型", code:{
+        model:"gemini-2.5-flash-image",
+        prompt:"赛博朋克风格的猫，霓虹雨夜",
+        aspect_ratio:"16:9"
+      }, note:"没声明这条路由就选不中；声明了但模型是文本模型，handled=false，走原生链路。" },
+      upstream: { title:"上游", sub:"POST :generateContent", code:{
+        contents:[{ role:"user", parts:[{ text:"赛博朋克风格的猫，霓虹雨夜" }] }],
+        generationConfig:{ responseModalities:["TEXT","IMAGE"], imageConfig:{ aspectRatio:"16:9" } }
+      }, note:"入口与上游同地址是直连；换成 ark 主端点也能发，这才是 5 × 3 的意义。" },
+      resp: {
+        status:"200", badge:"ok", title:"回包", code:{
+          candidates:[{
+            content:{ role:"model", parts:[{ inlineData:{ mimeType:"image/png", data:"iVBORw0KGgo…" } }] },
+            finishReason:"STOP",
+            index:0
+          }],
+          modelVersion:"gemini-2.5-flash-image",
+          usageMetadata:{ promptTokenCount:12, candidatesTokenCount:1290, totalTokenCount:1302 }
+        }, note:"usageMetadata 是展示用真实 token；账本仍按张，与 images 入口 quota 相等。"
+      }
+    }
+  };
+
+  function renderTabs(){
+    el.tabs.innerHTML = SCENARIOS.map(function(s){
+      var on = state.scenario === s.id;
+      return '<button type="button" class="tab" role="tab" aria-selected="' + on + '" data-scenario="' + s.id + '">' +
+        esc(s.label) + '<span class="k">' + esc(s.k) + '</span></button>';
+    }).join("");
+  }
+
+  function colHtml(c, index){
+    var body = c.code && c.code.note && Object.keys(c.code).length === 1
+      ? '<pre><span class="c">// ' + esc(c.code.note) + '</span></pre>'
+      : '<pre>' + hl(c.code) + '</pre>';
+    var note = c.note ? '<div style="margin-top:6px;font-size:10.5px;color:var(--muted);line-height:1.45">' + esc(c.note) + '</div>' : "";
+    return '<div class="col">' +
+      '<div class="ch"><span class="idx">' + index + '</span><span class="ct">' + esc(c.title) + '</span><span class="cs">' + esc(c.sub) + '</span></div>' +
+      body + note +
+    '</div>';
+  }
+
+  function renderTrace(){
+    var t = TRACES[state.scenario];
+    el.trip.innerHTML =
+      colHtml(t.client, 1) +
+      colHtml(t.canonical, 2) +
+      colHtml(t.upstream, 3);
+
+    var r = t.resp;
+    el.responses.innerHTML =
+      '<div class="resp ' + (r.badge === "err" ? "pre-err" : "") + '">' +
+        '<div class="rh"><b>' + esc(r.title) + '</b>' +
+          '<span class="badge ' + esc(r.badge) + '">' + esc(r.status) + '</span>' +
+          '<span class="code">' + esc(t.client.sub) + '</span></div>' +
+        '<pre>' + hl(r.code) + '</pre>' +
+        '<div style="padding:7px 11px;border-top:1px solid var(--rule);font-size:10.5px;color:var(--muted)">' + esc(r.note) + '</div>' +
+      '</div>';
+  }
+
+  el.tabs.addEventListener("click", function(e){
+    var tab = e.target.closest("[data-scenario]");
+    if (!tab) return;
+    var next = tab.getAttribute("data-scenario");
+    if (next === state.scenario) return;
+    state.scenario = next;
+    renderTabs();
+    renderTrace();
+  });
+
+  document.getElementById("protocolSwitch").addEventListener("click", function(){
+    var on = this.getAttribute("aria-checked") === "true";
+    this.setAttribute("aria-checked", String(!on));
+  });
+
+  // 便于分享某个具体场景：?s=edit&l=gemini
+  var query = new URLSearchParams(location.search);
+  var qs = query.get("s");
+  if (qs && TRACES[qs]) state.scenario = qs;
+  var ql = query.get("l");
+  if (ql && UPSTREAMS[ql]) {
+    state.layout = ql;
+    el.primary.value = UPSTREAMS[ql].primary;
+  }
+
+  renderCards();
+  renderPrimary();
+  renderTabs();
+  renderTrace();
+})();
+</script>
+</body>
+</html>

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 )
 
 /*
@@ -126,6 +127,12 @@ type imagePlan struct {
 }
 
 func planImageRequest(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, error) {
+	return planImageRequestWithModel(c, cfg, "")
+}
+
+// planImageRequestWithModel 多一个上游模型名：Gemini 的模型与动词都在路径里，
+// 且必须是重定向后的名字。其它上游忽略它。
+func planImageRequestWithModel(c *imageCanonical, cfg *dto.ImageProtocolConfig, upstreamModel string) (*imagePlan, error) {
 	if cfg == nil || !cfg.Enabled {
 		return nil, errors.New("image protocol is not enabled")
 	}
@@ -138,6 +145,8 @@ func planImageRequest(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePl
 		return planSeedream(c, cfg)
 	case dto.ImageUpstreamOpenAI:
 		return planGPTImage2(c, cfg)
+	case dto.ImageUpstreamGemini:
+		return planGemini(c, upstreamModel)
 	default:
 		return nil, fmt.Errorf("unknown image upstream %q", cfg.Upstream)
 	}
@@ -230,6 +239,124 @@ func planGPTImage2(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan,
 		Body:         body,
 		ImageCount:   len(images),
 	}, nil
+}
+
+// planGemini：单端点，模型与动词都在路径里。路径不读主端点——
+// 主端点前缀是 /v1，Gemini 的版本前缀是 /v1beta，从前者推导只能靠猜。
+// 版本取 model_setting，与 Gemini 原生渠道同一份配置。
+func planGemini(c *imageCanonical, upstreamModel string) (*imagePlan, error) {
+	model := strings.TrimSpace(upstreamModel)
+	if model == "" {
+		model = strings.TrimSpace(c.model())
+	}
+	if model == "" {
+		return nil, errors.New("gemini upstream requires a model name")
+	}
+
+	prompt, _ := c.fields["prompt"].(string)
+	refs := c.imageRefs()
+	if strings.TrimSpace(prompt) == "" && len(refs) == 0 {
+		return nil, errors.New("prompt is required when no image is provided")
+	}
+
+	parts := make([]any, 0, 1+len(refs))
+	if strings.TrimSpace(prompt) != "" {
+		parts = append(parts, map[string]any{"text": prompt})
+	}
+	if len(refs) > 0 {
+		blobs, err := resolveImageRefs(context.Background(), refs)
+		if err != nil {
+			return nil, err
+		}
+		for _, blob := range blobs {
+			parts = append(parts, map[string]any{
+				"inlineData": map[string]any{
+					"mimeType": blob.MimeType,
+					"data":     base64.StdEncoding.EncodeToString(blob.Data),
+				},
+			})
+		}
+	}
+
+	imageConfig := make(map[string]any, 2)
+	if ratio := geminiAspectRatio(c); ratio != "" {
+		imageConfig["aspectRatio"] = ratio
+	}
+	if raw, exists := c.fields["image_size"]; exists {
+		size, _ := raw.(string)
+		size = strings.ToUpper(strings.TrimSpace(size))
+		switch size {
+		case "":
+		case "1K", "2K", "4K":
+			imageConfig["imageSize"] = size
+		default:
+			return nil, fmt.Errorf("image_size must be 1K, 2K or 4K, got %q", raw)
+		}
+	}
+
+	// 只声明 IMAGE：实测 google/gemini-nano-banana-2.1 在 ["TEXT","IMAGE"] 下会
+	// 走「草稿图 + 成品图」两遍，一次调用回两个 inlineData；只写 ["IMAGE"] 就只回
+	// 一张（详见 docs/apiduo/gemini-image-protocol.md §3.5）。candidateCount 与
+	// thinkingBudget 都不影响张数，模态是唯一有效的手段。
+	generationConfig := map[string]any{"responseModalities": []string{"IMAGE"}}
+	if len(imageConfig) > 0 {
+		generationConfig["imageConfig"] = imageConfig
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"contents":         []any{map[string]any{"role": "user", "parts": parts}},
+		"generationConfig": generationConfig,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	version := strings.Trim(model_setting.GetGeminiVersionSetting(model), "/")
+	if version == "" {
+		version = "v1beta"
+	}
+	return &imagePlan{
+		UpstreamPath: "/" + version + "/models/" + escapeGeminiModelPath(model) + ":generateContent",
+		ContentType:  "application/json",
+		Body:         body,
+		ImageCount:   len(refs),
+	}, nil
+}
+
+// escapeGeminiModelPath 按段转义，保留 `/`。聚合商的模型 ID 是
+// `google/gemini-nano-banana-2.1`，整串 PathEscape 会把斜杠变成 %2F，
+// 上游按单段解析后 404。每段单独转义才能既保留路径分隔，又转义段内字符。
+func escapeGeminiModelPath(model string) string {
+	segments := strings.Split(model, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/")
+}
+
+// geminiAspectRatio：显式 aspect_ratio 优先；size 只映射能唯一确定比例的五个档，
+// 其余交给上游默认——像素换比例是有损的，不做猜测。
+func geminiAspectRatio(c *imageCanonical) string {
+	if raw, ok := c.fields["aspect_ratio"].(string); ok {
+		if ratio := strings.TrimSpace(raw); ratio != "" {
+			return ratio
+		}
+	}
+	size, _ := c.fields["size"].(string)
+	switch strings.TrimSpace(size) {
+	case "1024x1024":
+		return "1:1"
+	case "1536x1024":
+		return "3:2"
+	case "1024x1536":
+		return "2:3"
+	case "1792x1024":
+		return "16:9"
+	case "1024x1792":
+		return "9:16"
+	default:
+		return ""
+	}
 }
 
 // deriveEditPath 末段替换 /generations → /edits，query 原样保留。

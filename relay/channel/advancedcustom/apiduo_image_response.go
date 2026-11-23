@@ -18,7 +18,9 @@ import (
 
 	"github.com/QuantumNous/new-api/pkg/apiduo/trace"
 	"github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -31,8 +33,6 @@ import (
  * 拆开写就没人对「请求与响应对称」负责。
  */
 
-const imageResponseMaxBytes = 16 << 20
-
 type imageResponseItem struct {
 	URL     string
 	B64JSON string
@@ -43,10 +43,23 @@ type imageResponse struct {
 	Created int64
 	Data    []imageResponseItem
 	Extras  map[string]any
+	// Usage 只有 Gemini 上游提供：上游的 token 计量是展示用事实，
+	// 账本仍按张（见 §6 展示与计费分离）。
+	Usage *imageUsageSummary
+}
+
+// imageUsageSummary 是 Gemini usageMetadata 里允许出网关的字段。
+// trafficType（ON_DEMAND / PROVISIONED）是上游的调度信息，不进回包。
+type imageUsageSummary struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	ThoughtsTokens   int
 }
 
 // decodeImageResponse 解析上游 {created, data:[{url|b64_json, …}]}。
-// 附加字段（revised_prompt / usage / size …）一律保留，usage 是计费依据不许丢。
+// 附加字段只留两类：envelope 的 usage（计费依据）与 item 的 revised_prompt。
+// 上游的 model / system_fingerprint / service_tier 进入回包就是身份泄漏。
 func decodeImageResponse(raw []byte) (*imageResponse, error) {
 	var envelope map[string]any
 	if err := json.Unmarshal(raw, &envelope); err != nil || envelope == nil {
@@ -61,10 +74,11 @@ func decodeImageResponse(raw []byte) (*imageResponse, error) {
 		result.Created = time.Now().Unix()
 	}
 	for key, value := range envelope {
-		if key == "created" || key == "data" {
-			continue
+		// 只保留通用用量字段。上游的 model / system_fingerprint / service_tier
+		// 一旦进入回包就是身份。
+		if key == "usage" {
+			result.Extras[key] = value
 		}
-		result.Extras[key] = value
 	}
 
 	items, exists := envelope["data"]
@@ -83,10 +97,8 @@ func decodeImageResponse(raw []byte) (*imageResponse, error) {
 		item := imageResponseItem{Extras: make(map[string]any)}
 		item.URL, _ = object["url"].(string)
 		item.B64JSON, _ = object["b64_json"].(string)
-		for key, value := range object {
-			if key != "url" && key != "b64_json" {
-				item.Extras[key] = value
-			}
+		if revised, ok := object["revised_prompt"]; ok {
+			item.Extras["revised_prompt"] = revised
 		}
 		result.Data = append(result.Data, item)
 	}
@@ -123,28 +135,64 @@ func finishImageNativeResponse(
 	info *common.RelayInfo,
 	a *Adaptor,
 ) (any, *types.NewAPIError) {
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, imageLargeResponseMaxBytes+1))
 	_ = resp.Body.Close()
 	if err != nil {
-		service.IOCopyBytesGracefully(c, resp, raw)
-		return &dto.Usage{}, nil
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
-	decoded, err := decodeImageResponse(raw)
+	if len(raw) > imageLargeResponseMaxBytes {
+		return nil, types.NewOpenAIError(errors.New("upstream image response is too large"), types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	upstream := ""
+	if info != nil {
+		upstream = info.ChannelOtherSettings.ImageProtocol.Upstream
+	}
+	decoded, err := decodeImageForUpstream(raw, upstream, time.Now().Unix())
 	if err != nil {
-		service.IOCopyBytesGracefully(c, resp, raw)
-		return &dto.Usage{}, nil
+		var blocked *geminiImageBlockedError
+		if errors.As(err, &blocked) {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
-	if !alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL) {
-		service.IOCopyBytesGracefully(c, resp, raw)
-		return &dto.Usage{}, nil
-	}
+	decoded = deliverableImages(decoded, upstream)
+	alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL)
 	out, err := encodeImageResponse(decoded)
 	if err != nil {
-		service.IOCopyBytesGracefully(c, resp, raw)
-		return &dto.Usage{}, nil
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
-	service.IOCopyBytesGracefully(c, resp, out)
-	return &dto.Usage{}, nil
+	writeImageJSON(c, out)
+	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+}
+
+// deliverableImages 只保留「本次交付」的图。
+//
+// Gemini 的图片模型会先出一张草稿再出成品——实测
+// google/gemini-nano-banana-2.1 一次调用回两个 inlineData（中间那张是
+// “refining the concept”，最后那张才是成品），加 candidateCount=1 也拦不住。
+// OpenAI 形状的入口里 n 就是交付张数：多给会与 n、与账本（按 n 预扣）对不上，
+// 所以只取最后一张。其它上游原样返回——ark / openai 的 n 是真扇出，不能裁。
+//
+// Gemini 原生入口不经过这里：那个入口按 Gemini 语义回包，两个 part 都保留。
+func deliverableImages(response *imageResponse, upstream string) *imageResponse {
+	if response == nil || len(response.Data) <= 1 {
+		return response
+	}
+	if dto.NormalizeImageUpstream(upstream) != dto.ImageUpstreamGemini {
+		return response
+	}
+	response.Data = response.Data[len(response.Data)-1:]
+	return response
+}
+
+// decodeImageForUpstream 按上游形状选解码器：ark / openai 回 data[]，
+// gemini 回 candidates[].inlineData。这是 5×3 矩阵里唯一按上游分叉的地方，
+// 放错位置的后果是 images 入口 × gemini 上游全部 502。
+func decodeImageForUpstream(raw []byte, upstream string, fallbackCreated int64) (*imageResponse, error) {
+	if dto.NormalizeImageUpstream(upstream) == dto.ImageUpstreamGemini {
+		return decodeGeminiImageResponse(raw, fallbackCreated)
+	}
+	return decodeImageResponse(raw)
 }
 
 // encodeImageResponse 把 canonical 还原成 images 形状。Extras 原样带回，
@@ -369,12 +417,12 @@ func finishImageChatResponse(
 			types.ErrOptionWithSkipRetry(),
 		)
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, imageResponseMaxBytes+1))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, imageLargeResponseMaxBytes+1))
 	_ = resp.Body.Close()
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 	}
-	if len(raw) > imageResponseMaxBytes {
+	if len(raw) > imageLargeResponseMaxBytes {
 		return nil, types.NewOpenAIError(
 			errors.New("upstream image response is too large"),
 			types.ErrorCodeInvalidRequest,
@@ -388,14 +436,28 @@ func finishImageChatResponse(
 	// 所以这里实际上收不到 4xx/5xx。错误信封重铸（含 401→502、
 	// 429 保留 Retry-After）属破坏性变更，skill §3.9 标为待定，这一期不做。
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		service.IOCopyBytesGracefully(c, resp, raw)
-		return &dto.Usage{}, nil
+		// 不把上游错误页透给客户端：错误信封按入口重建，原文只进管理端日志。
+		return nil, types.NewOpenAIError(
+			fmt.Errorf("upstream returned status %d", resp.StatusCode),
+			types.ErrorCodeBadResponseStatusCode,
+			http.StatusBadGateway,
+			types.ErrOptionWithSkipRetry(),
+		)
 	}
 
-	decoded, err := decodeImageResponse(raw)
+	upstream := ""
+	if info != nil {
+		upstream = info.ChannelOtherSettings.ImageProtocol.Upstream
+	}
+	decoded, err := decodeImageForUpstream(raw, upstream, time.Now().Unix())
 	if err != nil {
+		var blocked *geminiImageBlockedError
+		if errors.As(err, &blocked) {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 	}
+	decoded = deliverableImages(decoded, upstream)
 	// 客户端要链接、上游只给 base64：先落存储换成地址，再走折形。
 	// 失败就保留 base64 —— 那正是「没配存储就透传」的行为。
 	if info != nil {
@@ -416,21 +478,21 @@ func finishImageChatResponse(
 		return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 	}
 	if isStream {
-		// 不能用 IOCopyBytesGracefully：它会把上游的 application/json
-		// 覆盖回来，SSE 客户端会按 JSON 解析而拿不到事件流。
+		// 不能用 writeImageJSON：它会写 application/json，SSE 客户端会按
+		// JSON 解析而拿不到事件流。
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Content-Length", strconv.Itoa(len(output)))
 		c.Writer.WriteHeader(http.StatusOK)
 		_, _ = c.Writer.Write(output)
 		c.Writer.Flush()
-		// Bytes written straight to the ResponseWriter never pass through
-		// IOCopyBytesGracefully, which is where the trace collector hooks in.
-		// Without this the drawer showed an empty body for every streamed
-		// chat image — the request looked like it produced nothing.
+		// 直写 ResponseWriter 不会经过 writeImageJSON，trace 采集器也就看不到
+		// 响应体；不显式挂一次，抽屉里每条流式 chat 出图都是空 body。
 		trace.CaptureResponseBody(c, output)
 	} else {
-		service.IOCopyBytesGracefully(c, resp, output)
+		// 与其它入口共用同一个出口：不复制上游响应头（Server / X-Goog-* /
+		// Set-Cookie 都是身份），并统一挂 trace。
+		writeImageJSON(c, output)
 	}
 
 	// 计费口径必须与 ImageHelper 完全一致，否则同一个模型从不同入口调用
@@ -450,4 +512,411 @@ func finishImageChatResponse(
 		info.UpdateImageCount(int64(count))
 	}
 	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+}
+
+const imageLargeResponseMaxBytes = 64 << 20
+
+// geminiImageBlockedError 区分「上游拒画」与「网关读不懂」：前者 400 且不重试，
+// 后者 502。两者都不允许把上游原文透给客户端。
+type geminiImageBlockedError struct{ reason string }
+
+func (e *geminiImageBlockedError) Error() string {
+	return "upstream blocked this image: " + e.reason
+}
+
+// decodeGeminiImageResponse 只认 candidates[].content.parts[].inlineData。
+// 不填 Extras：上游的 modelVersion / promptFeedback / safetyRatings 一旦进入
+// canonical，回包就会带出去。
+func decodeGeminiImageResponse(raw []byte, fallbackCreated int64) (*imageResponse, error) {
+	var envelope struct {
+		Candidates []struct {
+			Content struct {
+				Parts []dto.GeminiPart `json:"parts"`
+			} `json:"content"`
+			FinishReason string `json:"finishReason"`
+		} `json:"candidates"`
+		PromptFeedback *struct {
+			BlockReason string `json:"blockReason"`
+		} `json:"promptFeedback"`
+		UsageMetadata *struct {
+			PromptTokenCount     int `json:"promptTokenCount"`
+			CandidatesTokenCount int `json:"candidatesTokenCount"`
+			TotalTokenCount      int `json:"totalTokenCount"`
+			ThoughtsTokenCount   int `json:"thoughtsTokenCount"`
+		} `json:"usageMetadata"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, fmt.Errorf("upstream image response is not JSON: %w", err)
+	}
+	if envelope.PromptFeedback != nil && strings.TrimSpace(envelope.PromptFeedback.BlockReason) != "" {
+		return nil, &geminiImageBlockedError{reason: envelope.PromptFeedback.BlockReason}
+	}
+
+	items := make([]imageResponseItem, 0, 1)
+	for _, candidate := range envelope.Candidates {
+		switch strings.ToUpper(strings.TrimSpace(candidate.FinishReason)) {
+		case "SAFETY", "IMAGE_SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST":
+			return nil, &geminiImageBlockedError{reason: candidate.FinishReason}
+		}
+		for _, part := range candidate.Content.Parts {
+			if part.InlineData == nil || part.InlineData.Data == "" {
+				continue
+			}
+			if !strings.HasPrefix(strings.ToLower(part.InlineData.MimeType), "image/") {
+				continue
+			}
+			items = append(items, imageResponseItem{B64JSON: part.InlineData.Data})
+		}
+	}
+	if len(items) == 0 {
+		return nil, errors.New("upstream returned no image")
+	}
+	created := fallbackCreated
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+	result := &imageResponse{Created: created, Data: items}
+	if usage := envelope.UsageMetadata; usage != nil && usage.TotalTokenCount > 0 {
+		result.Usage = &imageUsageSummary{
+			PromptTokens:     usage.PromptTokenCount,
+			CompletionTokens: usage.CandidatesTokenCount,
+			TotalTokens:      usage.TotalTokenCount,
+			ThoughtsTokens:   usage.ThoughtsTokenCount,
+		}
+	}
+	return result, nil
+}
+
+// wrapGeminiResponse 构造 Gemini 形状的最小完整回包。finishReason 与 index
+// 缺一不可：官方 SDK 会用它们判断是否完成。
+func wrapGeminiResponse(response *imageResponse, model string) ([]byte, error) {
+	parts := make([]any, 0, len(response.Data))
+	for _, item := range response.Data {
+		if item.B64JSON == "" {
+			continue
+		}
+		mimeType := sniffBase64ImageMimeType(item.B64JSON)
+		parts = append(parts, map[string]any{
+			"inlineData": map[string]any{"mimeType": mimeType, "data": item.B64JSON},
+		})
+	}
+	if len(parts) == 0 {
+		return nil, errors.New("no inline image to return")
+	}
+	// usageMetadata 是给客户端看的用量：上游给了真实 token 就用真实的，
+	// 没给（部分代理会省略）才退回与账本同口径的 1/0/1。
+	usageMetadata := map[string]any{
+		"promptTokenCount":     1,
+		"candidatesTokenCount": 0,
+		"totalTokenCount":      1,
+	}
+	if usage := response.Usage; usage != nil && usage.TotalTokens > 0 {
+		usageMetadata["promptTokenCount"] = usage.PromptTokens
+		usageMetadata["candidatesTokenCount"] = usage.CompletionTokens
+		usageMetadata["totalTokenCount"] = usage.TotalTokens
+		if usage.ThoughtsTokens > 0 {
+			usageMetadata["thoughtsTokenCount"] = usage.ThoughtsTokens
+		}
+	}
+	return json.Marshal(map[string]any{
+		"candidates": []any{map[string]any{
+			"content":      map[string]any{"role": "model", "parts": parts},
+			"finishReason": "STOP",
+			"index":        0,
+		}},
+		"modelVersion":  model,
+		"usageMetadata": usageMetadata,
+	})
+}
+
+// sniffBase64ImageMimeType 只解前 512 字节判定格式。整串 Decode 会为一张
+// 4K 图多分配 20 MB 以上，而这里只需要魔数。
+func sniffBase64ImageMimeType(encoded string) string {
+	const sniffBytes = 512
+	prefixLen := min(len(encoded), (sniffBytes+2)/3*4)
+	prefixLen -= prefixLen % 4
+	if prefixLen <= 0 {
+		return "image/png"
+	}
+	head := make([]byte, base64.StdEncoding.DecodedLen(prefixLen))
+	n, err := base64.StdEncoding.Decode(head, []byte(encoded[:prefixLen]))
+	if n == 0 || (err != nil && n < 12) {
+		return "image/png"
+	}
+	if sniffed, sniffErr := detectImageMimeType(head[:n], ""); sniffErr == nil {
+		return sniffed
+	}
+	return "image/png"
+}
+
+// wrapResponsesResponse 构造 Responses 形状的回包。图片写成 output_text 的
+// markdown，与 chat 入口同一口径。
+func wrapResponsesResponse(response *imageResponse, model string) ([]byte, error) {
+	markdown, err := chatImageMarkdown(response)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	return json.Marshal(map[string]any{
+		"id":         fmt.Sprintf("resp_apiduo_%d", now.UnixNano()),
+		"object":     "response",
+		"created_at": now.Unix(),
+		"status":     "completed",
+		"model":      model,
+		"output": []any{map[string]any{
+			"type":   "message",
+			"id":     fmt.Sprintf("msg_apiduo_%d", now.UnixNano()),
+			"status": "completed",
+			"role":   "assistant",
+			"content": []any{map[string]any{
+				"type":        "output_text",
+				"text":        markdown,
+				"annotations": []any{},
+			}},
+		}},
+		"usage": map[string]any{
+			"input_tokens":  1,
+			"output_tokens": 0,
+			"total_tokens":  1,
+		},
+	})
+}
+
+// finishImageGeminiResponse 是 Gemini 原生入口的回包：只产出 candidates 形状，
+// 失败时显式报错，绝不把上游报文透传。
+func finishImageGeminiResponse(c *gin.Context, resp *http.Response, info *common.RelayInfo, a *Adaptor) (any, *types.NewAPIError) {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, imageLargeResponseMaxBytes+1))
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	if len(raw) > imageLargeResponseMaxBytes {
+		return nil, types.NewOpenAIError(errors.New("upstream image response is too large"), types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+
+	model := ""
+	if info != nil {
+		model = info.OriginModelName
+	}
+	// 入口是 Gemini，上游不一定是：回包形状由入口决定，解码器由上游决定。
+	// 写死 decodeGeminiImageResponse 会让「非 Gemini 上游 × Gemini 入口」
+	// 这一整行全部 502（上游回 data[]，解码器找 candidates[]）。
+	upstream := ""
+	if info != nil {
+		upstream = info.ChannelOtherSettings.ImageProtocol.Upstream
+	}
+	decoded, decodeErr := decodeImageForUpstream(raw, upstream, time.Now().Unix())
+	if decodeErr != nil {
+		var blocked *geminiImageBlockedError
+		if errors.As(decodeErr, &blocked) {
+			return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	if info != nil {
+		// Gemini 只认 inlineData：这里强制 b64，不换链接。
+		alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, false)
+	}
+	out, err := wrapGeminiResponse(decoded, model)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	// 上游始终走非流式：图片是完整产物，分片 base64 对客户端没有价值。
+	// 客户端若请求 :streamGenerateContent，就把完整响应包成一帧 SSE——
+	// Google SDK 的流式解析只认 data: 行，一帧完整 GenerateContentResponse 可读。
+	if geminiStreamRequest(c) {
+		writeGeminiStreamResponse(c, out)
+	} else {
+		writeImageJSON(c, out)
+	}
+	markImageRequest(info, 1)
+	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+}
+
+// markImageRequest 让 BillingSession 把这条请求当图片请求处理。不设时，
+// 授信额度用户可以绕过可用额度检查（billing_session.reserve 的
+// requireAvailableQuota 依赖 *dto.ImageRequest 或 ImageRequestCount）。
+func markImageRequest(info *common.RelayInfo, count int) {
+	if info == nil || count < 1 {
+		return
+	}
+	info.ImageRequestCount = count
+	info.UpdateImageCount(int64(count))
+}
+
+func geminiStreamRequest(c *gin.Context) bool {
+	return c != nil && c.Request != nil && strings.Contains(c.Request.URL.Path, ":streamGenerateContent")
+}
+
+// writeGeminiStreamResponse 按 alt 选载体。官方约定是：带 ?alt=sse 回 SSE，
+// 不带回 JSON 数组流。Google SDK 默认带 alt=sse，但 curl 与自研客户端不一定，
+// 一刀切回 SSE 会让后者按 JSON 数组解析失败。
+// 两种载体都只有一帧：上游是非流式的，这里不伪造渐进输出。
+func writeGeminiStreamResponse(c *gin.Context, body []byte) {
+	if strings.EqualFold(strings.TrimSpace(c.Query("alt")), "sse") {
+		writeGeminiSSE(c, body)
+		return
+	}
+	payload := make([]byte, 0, len(body)+2)
+	payload = append(payload, '[')
+	payload = append(payload, body...)
+	payload = append(payload, ']')
+
+	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	c.Writer.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	c.Writer.WriteHeader(http.StatusOK)
+	_, _ = c.Writer.Write(payload)
+	trace.CaptureResponseBody(c, payload)
+}
+
+// writeGeminiSSE 写一帧完整响应，供 alt=sse 使用。
+func writeGeminiSSE(c *gin.Context, body []byte) {
+	payload := make([]byte, 0, len(body)+8)
+	payload = append(payload, "data: "...)
+	payload = append(payload, body...)
+	payload = append(payload, '\n', '\n')
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	c.Writer.WriteHeader(http.StatusOK)
+	_, _ = c.Writer.Write(payload)
+	c.Writer.Flush()
+	trace.CaptureResponseBody(c, payload)
+}
+
+// finishImageResponsesResponse 是 responses 入口的回包。流式暂不支持：
+// 图片是一次性产出的，硬拼 SSE 事件只会给客户端半份数据，不如明确拒绝。
+func finishImageResponsesResponse(c *gin.Context, resp *http.Response, info *common.RelayInfo, a *Adaptor) (any, *types.NewAPIError) {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, imageLargeResponseMaxBytes+1))
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	if len(raw) > imageLargeResponseMaxBytes {
+		return nil, types.NewOpenAIError(errors.New("upstream image response is too large"), types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	upstream := ""
+	if info != nil {
+		upstream = info.ChannelOtherSettings.ImageProtocol.Upstream
+	}
+	decoded, decodeErr := decodeImageForUpstream(raw, upstream, time.Now().Unix())
+	if decodeErr != nil {
+		var blocked *geminiImageBlockedError
+		if errors.As(decodeErr, &blocked) {
+			return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	model := ""
+	decoded = deliverableImages(decoded, upstream)
+	if info != nil {
+		model = info.OriginModelName
+		alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL)
+	}
+	if a.imageStream {
+		markdown, markdownErr := chatImageMarkdown(decoded)
+		if markdownErr != nil {
+			return nil, types.NewOpenAIError(markdownErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+		}
+		if streamErr := writeResponsesImageStream(c, info, model, markdown); streamErr != nil {
+			return nil, streamErr
+		}
+		markImageRequest(info, 1)
+		return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+	}
+	out, err := wrapResponsesResponse(decoded, model)
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+	writeImageJSON(c, out)
+	markImageRequest(info, 1)
+	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+}
+
+// writeResponsesImageStream 把完整 markdown 包成 Responses 的 SSE 事件序列。
+// 上游本来是非流式，所以这不是渐进输出，只是让 stream=true 的客户端拿到
+// 合法事件流。事件由 relaykit 的 chat→responses 转换器生成：手写九个事件
+// 会在协议变更时漂移，而 chat 的两帧格式不能直接冒充 responses。
+func writeResponsesImageStream(c *gin.Context, info *common.RelayInfo, model string, markdown string) *types.NewAPIError {
+	state, err := relayconvert.NewResponseStreamState(
+		types.RelayFormatOpenAI,
+		types.RelayFormatOpenAIResponses,
+		relayconvert.ResponseStreamOptions{
+			ID:                 helper.GetResponseID(c),
+			Model:              model,
+			EmitSequenceNumber: true,
+		},
+	)
+	if err != nil {
+		return types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+
+	content := markdown
+	chunk := &dto.ChatCompletionsStreamResponse{
+		Id:      fmt.Sprintf("chatcmpl-apiduo-%d", time.Now().UnixNano()),
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   model,
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{
+			Index: 0,
+			Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+				Role:    "assistant",
+				Content: &content,
+			},
+		}},
+	}
+	results, err := service.ConvertStreamResponseChunk(c, info, state, chunk)
+	if err != nil {
+		return types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+
+	// 头要在第一个事件之前设：ResponseChunkData 只写 event/data。
+	helper.SetEventStreamHeaders(c)
+	if streamErr := writeResponsesStreamResults(c, results); streamErr != nil {
+		return streamErr
+	}
+
+	// completed 事件的 usage 与非流式同口径：一张图 = 1 个 input token。
+	state.SetUsage(&dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1})
+	finalResults, err := service.FinalizeStreamResponse(c, info, state)
+	if err != nil {
+		return types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+	return writeResponsesStreamResults(c, finalResults)
+}
+
+func writeResponsesStreamResults(c *gin.Context, results []relayconvert.ResponseResult) *types.NewAPIError {
+	for _, result := range results {
+		event, ok := result.Value.(relayconvert.ChatToResponsesStreamEvent)
+		if !ok {
+			return types.NewOpenAIError(
+				fmt.Errorf("expected responses stream event, got %T", result.Value),
+				types.ErrorCodeBadResponse,
+				http.StatusInternalServerError,
+			)
+		}
+		data, err := json.Marshal(event.Payload)
+		if err != nil {
+			return types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+		}
+		if err := helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: event.Type}, string(data)); err != nil {
+			if c.Request.Context().Err() != nil {
+				// 客户端断开：图已生成，按正常结算，不算服务端失败。
+				return nil
+			}
+			return types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+		}
+	}
+	return nil
+}
+
+// writeImageJSON 是图片回包的唯一出口。它不复制上游响应头：Server /
+// X-Goog-* / Set-Cookie 都是上游身份，而回包本身已经是按入口重建的。
+func writeImageJSON(c *gin.Context, body []byte) {
+	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	c.Writer.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	c.Writer.WriteHeader(http.StatusOK)
+	_, _ = c.Writer.Write(body)
+	trace.CaptureResponseBody(c, body)
 }

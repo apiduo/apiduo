@@ -368,3 +368,183 @@ func (c *imageCanonical) drop(keys ...string) {
 		delete(c.fields, key)
 	}
 }
+
+// canonicalFromGemini 折叠 Gemini 原生入口。
+//
+// 只取最后一条 user 轮：更早的轮次丢弃，与 chat 入口同一条损失。role 为空
+// 按 user 处理——generateContent 允许省略 role，省略时它就是 user。
+func canonicalFromGemini(request *dto.GeminiChatRequest, model string) (*imageCanonical, error) {
+	if request == nil {
+		return nil, errors.New("gemini request is empty")
+	}
+
+	var chosen *dto.GeminiChatContent
+	for i := range request.Contents {
+		role := strings.TrimSpace(request.Contents[i].Role)
+		if role == "" || strings.EqualFold(role, "user") {
+			chosen = &request.Contents[i]
+		}
+	}
+	if chosen == nil {
+		return nil, errors.New("gemini request has no user content")
+	}
+
+	texts := make([]string, 0, len(chosen.Parts))
+	refs := make([]string, 0, len(chosen.Parts))
+	for _, part := range chosen.Parts {
+		if text := strings.TrimSpace(part.Text); text != "" {
+			texts = append(texts, text)
+		}
+		if part.InlineData == nil {
+			continue
+		}
+		mimeType := strings.TrimSpace(part.InlineData.MimeType)
+		if !strings.HasPrefix(strings.ToLower(mimeType), "image/") || part.InlineData.Data == "" {
+			continue
+		}
+		refs = append(refs, "data:"+mimeType+";base64,"+part.InlineData.Data)
+	}
+
+	canonical := newImageCanonical()
+	canonical.fields["model"] = strings.TrimSpace(model)
+	canonical.fields["prompt"] = strings.Join(texts, "\n")
+	switch len(refs) {
+	case 0:
+	case 1:
+		canonical.fields["image"] = refs[0]
+	default:
+		canonical.fields["image"] = refs
+	}
+
+	if len(request.GenerationConfig.ImageConfig) > 0 {
+		var imageConfig struct {
+			AspectRatio string `json:"aspectRatio"`
+			ImageSize   string `json:"imageSize"`
+		}
+		if err := json.Unmarshal(request.GenerationConfig.ImageConfig, &imageConfig); err == nil {
+			if ratio := strings.TrimSpace(imageConfig.AspectRatio); ratio != "" {
+				canonical.fields["aspect_ratio"] = ratio
+			}
+			if size := strings.TrimSpace(imageConfig.ImageSize); size != "" {
+				canonical.fields["image_size"] = size
+			}
+		}
+	}
+	return canonical, nil
+}
+
+// canonicalFromResponses 直接折成 canonical，不经过 chat。
+//
+// 绕一层 chat 会把 input_image 的 data URI 全量序列化一遍（图片动辄几 MB），
+// 也会把与图片无关的工具调用、previous_response_id 语义带进来。这里只做
+// 图片入口真正需要的一件事：取最后一条 user 输入，instructions 前拼。
+func canonicalFromResponses(request *dto.OpenAIResponsesRequest, model string) (*imageCanonical, error) {
+	if request == nil {
+		return nil, errors.New("responses request is empty")
+	}
+
+	instructions := ""
+	if len(request.Instructions) > 0 {
+		var text string
+		if err := json.Unmarshal(request.Instructions, &text); err == nil {
+			instructions = strings.TrimSpace(text)
+		}
+	}
+
+	prompt := ""
+	var refs []string
+	seenUser := false
+
+	if len(request.Input) > 0 {
+		var single string
+		if err := json.Unmarshal(request.Input, &single); err == nil {
+			prompt = strings.TrimSpace(single)
+			seenUser = prompt != ""
+		} else {
+			var items []dto.Input
+			if err := json.Unmarshal(request.Input, &items); err != nil {
+				return nil, errors.New("responses input must be a string or an array")
+			}
+			for _, item := range items {
+				role := strings.ToLower(strings.TrimSpace(item.Role))
+				if role != "" && role != "user" {
+					continue
+				}
+				if role == "" && item.Type != "" && item.Type != "message" {
+					continue
+				}
+				text, images, err := readResponsesContent(item.Content)
+				if err != nil {
+					return nil, err
+				}
+				if text == "" && len(images) == 0 {
+					continue
+				}
+				prompt, refs = text, images
+				seenUser = true
+			}
+		}
+	}
+	if !seenUser {
+		return nil, errors.New("responses request has no user input")
+	}
+	if instructions != "" {
+		if prompt != "" {
+			prompt = instructions + "\n\n" + prompt
+		} else {
+			prompt = instructions
+		}
+	}
+
+	canonical := newImageCanonical()
+	canonical.fields["model"] = strings.TrimSpace(model)
+	canonical.fields["prompt"] = prompt
+	switch len(refs) {
+	case 0:
+	case 1:
+		canonical.fields["image"] = refs[0]
+	default:
+		canonical.fields["image"] = refs
+	}
+	return canonical, nil
+}
+
+// readResponsesContent 读一条 responses input 的 content：input_text 拼成
+// 提示词，input_image 收成引用。只认标准 part，其余（input_file / audio）
+// 忽略——它们不在图片入口的语义里。
+func readResponsesContent(raw json.RawMessage) (string, []string, error) {
+	if len(raw) == 0 {
+		return "", nil, nil
+	}
+	var parts []map[string]any
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		var text string
+		if textErr := json.Unmarshal(raw, &text); textErr == nil {
+			return text, nil, nil
+		}
+		return "", nil, errors.New("responses content must be a string or an array")
+	}
+
+	texts := make([]string, 0, len(parts))
+	refs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		switch part["type"] {
+		case "input_text", "output_text", "text":
+			if text, ok := part["text"].(string); ok && strings.TrimSpace(text) != "" {
+				texts = append(texts, text)
+			}
+		case "input_image":
+			switch value := part["image_url"].(type) {
+			case string:
+				if ref := strings.TrimSpace(value); ref != "" {
+					refs = append(refs, ref)
+				}
+			case map[string]any:
+				if url, ok := value["url"].(string); ok && strings.TrimSpace(url) != "" {
+					refs = append(refs, url)
+				}
+			}
+		}
+	}
+	return strings.Join(texts, "\n"), refs, nil
+}

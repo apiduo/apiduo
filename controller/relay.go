@@ -132,7 +132,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			upstreamURLs := common.UpstreamAddresses(c)
 /* APIDUO:remap-hardening:BEGIN */
 			// The catalog message carries its own request id, so order is free.
-			if helper.RemapHardeningEnabled(c, relayInfo) {
+			// Gemini image channels opt in unconditionally: their errors are
+			// rendered as the Gemini envelope, whose message must not carry the
+			// upstream's own text (it names models/…). Text channels keep the
+			// hardening switch so their existing diagnostics do not change.
+			imageProtocolGemini := relayFormat == types.RelayFormatGemini &&
+				relayInfo != nil &&
+				relayInfo.ChannelOtherSettings.ImageProtocol != nil &&
+				relayInfo.ChannelOtherSettings.ImageProtocol.Enabled
+			if helper.RemapHardeningEnabled(c, relayInfo) || imageProtocolGemini {
 				newAPIError.SetClientFacing(requestId)
 				// Backoff hint survives the rewrite: it names no upstream.
 				if retryAfter := helper.RetryAfterHint(newAPIError); retryAfter != "" {
@@ -160,6 +168,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					"type":  "error",
 					"error": newAPIError.ToClaudeError(upstreamURLs...),
 				})
+			case types.RelayFormatGemini:
+				c.JSON(newAPIError.StatusCode, newAPIError.ToGeminiError())
 			default:
 				c.JSON(newAPIError.StatusCode, gin.H{
 					"error": newAPIError.ToOpenAIError(upstreamURLs...),
@@ -323,6 +333,11 @@ func writeRelayStreamError(c *gin.Context, format types.RelayFormat, apiError *t
 	upstreamURLs := common.UpstreamAddresses(c)
 	if format == types.RelayFormatClaude {
 		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: apiError.ToClaudeError(upstreamURLs...)})
+		return
+	}
+	if format == types.RelayFormatGemini {
+		// Gemini 没有 [DONE] 约定：写完这一帧流就结束。
+		_ = helper.ObjectData(c, apiError.ToGeminiError())
 		return
 	}
 	_ = helper.ObjectData(c, gin.H{"error": apiError.ToOpenAIError(upstreamURLs...)})

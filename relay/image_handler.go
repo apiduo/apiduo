@@ -189,6 +189,14 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		requestBody = body
 	}
 
+	// APIDUO:image-protocol:BEGIN
+	// n>1 的拒绝必须早于预消费：ImageCount 会被乘进价格，先扣再退会在账单里
+	// 留一对 0 元行。Gemini 一次调用只产出一张最终图，不能按 n 扇出。
+	if protocolErr := info.ChannelOtherSettings.ImageProtocol.RejectsImageCount(imageCount); protocolErr != nil {
+		return types.NewErrorWithStatusCode(protocolErr, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
+	// APIDUO:image-protocol:END
+
 	if billingErr := service.PrepareImageBillingForRequest(c, info, imageCount); billingErr != nil {
 		return billingErr
 	}

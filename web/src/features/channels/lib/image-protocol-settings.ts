@@ -24,6 +24,7 @@ export type ImageProtocolSettings = {
 export const IMAGE_PROTOCOL_UPSTREAMS = [
   { value: 'ark', label: 'ARK protocol (single endpoint)' },
   { value: 'openai', label: 'OpenAI protocol (dual endpoint)' },
+  { value: 'gemini', label: 'Gemini protocol (generateContent)' },
 ] as const
 
 const DEFAULT_UPSTREAM = IMAGE_PROTOCOL_UPSTREAMS[0].value

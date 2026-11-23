@@ -10,6 +10,7 @@ Covers the surfaces the gateway relays in local regression:
   GET  /v1/files/{id}/content original bytes
   DELETE /v1/files/{id}
 """
+import base64
 import json
 import threading
 import os
@@ -33,6 +34,18 @@ TASK_POLLS = {}
 # 任务型上游回报的 token 数。按 duration 折算（每秒 24000），这样「按 token
 # 结算」读到的是只有完成回包才有的数字，客户端无法在提交时自己算出来。
 TASK_TOKENS = {}
+# 最后一次 Gemini 出图请求。e2e 用它断言「图生图把 inlineData 传上去了」
+# 与「responseModalities 含 IMAGE」，而不是只看回包。
+LAST_GEMINI_IMAGE = {}
+# 1x1 PNG：足以让嗅探认出 image/png，又不至于让日志难读。
+MOCK_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=="
+)
+MOCK_PNG_BYTES = base64.b64decode(MOCK_PNG_B64)
+# 第二张图的字节不同：客户端与测试要能区分「裁掉了哪一张」。
+MOCK_PNG_B64_ALT = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
 
 
 def log(line: str) -> None:
@@ -111,6 +124,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         log(f"GET {self.path}")
         path = self.path.split("?")[0]
+        if path.startswith("/mock/out/"):
+            # 图片 URL 的真实字节：Gemini 入口要把非本域 URL 转成 inlineData，
+            # 下载失败会正确地 502，所以 mock 必须真的能提供这张图。
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(MOCK_PNG_BYTES)))
+            self.end_headers()
+            self.wfile.write(MOCK_PNG_BYTES)
+            return
+        if path.rstrip("/") == "/mock/last-gemini-image":
+            self._json(LAST_GEMINI_IMAGE)
+            return
         if path.rstrip("/") == "/mock/stats":
             with SLOW_LOCK:
                 self._json({"active": SLOW_ACTIVE[0], "max_concurrency": SLOW_MAX[0]})
@@ -239,6 +264,78 @@ class Handler(BaseHTTPRequestHandler):
         raw = self._read_body()
         path = self.path.split("?")[0]
         log(f"POST {path} auth={self.headers.get('Authorization', '')[:14]} bytes={len(raw)}")
+
+        if ":generateContent" in path:
+            try:
+                request = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                request = {}
+            model = path.split("/models/")[-1].split(":")[0]
+            LAST_GEMINI_IMAGE.clear()
+            LAST_GEMINI_IMAGE.update({"path": path, "body": request})
+            log(f"gemini image generation model={model} streaming={':streamGenerateContent' in path}")
+            # 实测 nano-banana-2.1：responseModalities 含 TEXT 时走「草稿 + 成品」
+            # 两遍（一次回两个 inlineData），只写 IMAGE 时只回一张。candidateCount
+            # 与 thinkingBudget 都不影响张数。这里照抄这个行为。
+            modalities = [
+                str(m).upper()
+                for m in ((request.get("generationConfig") or {}).get("responseModalities") or [])
+            ]
+            interleaved = "TEXT" in modalities
+            # -two 模拟「即使只要图也回两张」的上游，用来验证网关侧裁剪。
+            if model.endswith("-two") or interleaved:
+                parts = [
+                    {"text": "refining the concept", "thought": True},
+                    {"inlineData": {"mimeType": "image/png", "data": MOCK_PNG_B64_ALT}},
+                    {"text": "completed", "thought": True},
+                    {"inlineData": {"mimeType": "image/png", "data": MOCK_PNG_B64}},
+                ]
+            else:
+                parts = [{"inlineData": {"mimeType": "image/png", "data": MOCK_PNG_B64}}]
+            payload = {
+                "candidates": [{
+                    "content": {
+                        "role": "model",
+                        "parts": parts,
+                    },
+                    "finishReason": "STOP",
+                    "index": 0,
+                }],
+                "modelVersion": model,
+                "usageMetadata": {
+                    "promptTokenCount": 7,
+                    "candidatesTokenCount": 1290,
+                    "totalTokenCount": 1297,
+                },
+            }
+            if ":streamGenerateContent" in path and "alt=sse" in self.path:
+                body = ("data: " + json.dumps(payload) + "\n\n").encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if ":streamGenerateContent" in path:
+                self._json([payload])
+                return
+            self._json(payload)
+            return
+
+        if path.rstrip("/") == "/mock-b64/v1/images/generations":
+            # 与 /v1/images/generations 同一形状，只把 url 换成 b64_json。
+            # 本地 mock 在内网，Gemini 入口把 URL 转 inlineData 时要走公网下载，
+            # 会被 SSRF 防护拒绝；这条路由用来验证「上游给 b64」的那一半。
+            try:
+                request = json.loads(raw or b"{}")
+            except json.JSONDecodeError:
+                request = {}
+            log(f"b64 image generation model={request.get('model')}")
+            self._json({
+                "created": int(time.time()),
+                "data": [{"b64_json": MOCK_PNG_B64}],
+            })
+            return
 
         if path.rstrip("/") == "/v1/images/generations":
             try:

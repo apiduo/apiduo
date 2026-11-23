@@ -21,6 +21,10 @@ const (
 	// 存储值就是协议名，不保留历史值（旧配置需迁移，见渠道编辑页）。
 	ImageUpstreamARK    = "ark"
 	ImageUpstreamOpenAI = "openai"
+	// ImageUpstreamGemini 是 Google 的 generateContent 形状：模型与动词都在
+	// 路径里，图片走 parts[].inlineData。它不读主端点——主端点前缀是 /v1，
+	// Gemini 的版本前缀是 /v1beta，两者不是同一维度。
+	ImageUpstreamGemini = "gemini"
 
 	// DefaultImagePrimaryPath 渠道没有声明图片主端点时的兜底落点。
 	DefaultImagePrimaryPath = "/v1/images/generations"
@@ -70,12 +74,13 @@ func (c *ImageProtocolConfig) Validate() error {
 		return nil
 	}
 	switch NormalizeImageUpstream(c.Upstream) {
-	case ImageUpstreamARK, ImageUpstreamOpenAI:
+	case ImageUpstreamARK, ImageUpstreamOpenAI, ImageUpstreamGemini:
 	default:
 		return fmt.Errorf(
-			"image_protocol.upstream must be %q or %q, got %q",
+			"image_protocol.upstream must be %q, %q or %q, got %q",
 			ImageUpstreamARK,
 			ImageUpstreamOpenAI,
+			ImageUpstreamGemini,
 			c.Upstream,
 		)
 	}
@@ -93,6 +98,24 @@ func (c *ImageProtocolConfig) Validate() error {
 		}
 	}
 	return nil
+}
+
+// RejectsImageCount reports whether this upstream can honour an OpenAI-style
+// n. Gemini's single generateContent call returns one final image; multiple
+// candidates are samples of the same prompt, not independent copies, so the two
+// n meanings cannot be mapped onto each other.
+//
+// The caller must invoke this before PrepareImageBillingForRequest: ImageCount
+// is multiplied into the price, and a reject-then-refund leaves a zero-quota
+// pair in the ledger.
+func (c *ImageProtocolConfig) RejectsImageCount(n int) error {
+	if c == nil || !c.Enabled || n <= 1 {
+		return nil
+	}
+	if NormalizeImageUpstream(c.Upstream) != ImageUpstreamGemini {
+		return nil
+	}
+	return fmt.Errorf("gemini image models generate one image per request; send n separate requests")
 }
 
 // ServesPath 说明图片协议自己接管的入站入口。

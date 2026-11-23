@@ -58,7 +58,8 @@ import { cn } from '@/lib/utils'
 
 // 顺序与 IMAGE_PROTOCOL_UPSTREAMS 一一对应（解构命名即文档）。
 // 每张卡只说两件事：图生图走哪、用什么编码——这正是两种布局的全部差别。
-const [IMAGE_SHAPE_SINGLE, IMAGE_SHAPE_DUAL] = IMAGE_PROTOCOL_UPSTREAMS
+const [IMAGE_SHAPE_SINGLE, IMAGE_SHAPE_DUAL, IMAGE_SHAPE_GEMINI] =
+  IMAGE_PROTOCOL_UPSTREAMS
 
 // 每张卡只回答一个问题：主端点在上游落成几条路径。
 // 不复述下游请求类型——下游只认主端点，那是另一层的事（见入口卡的「入口去向」）。
@@ -81,6 +82,14 @@ const IMAGE_SHAPE_CARDS = [
     ],
     note: 'Image and mask are uploaded as files.',
     dual: true,
+  },
+  {
+    value: IMAGE_SHAPE_GEMINI.value,
+    title: 'One upstream path',
+    subtitle: IMAGE_SHAPE_GEMINI.label,
+    rows: [{ label: 'Every request', target: 'primary', encoding: 'JSON' }],
+    note: 'References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.',
+    dual: false,
   },
 ] as const
 
@@ -452,7 +461,7 @@ export function PrimaryEndpointEditor(props: {
                       <div
                         role='radiogroup'
                         aria-label={t('Upstream layout')}
-                        className='grid grid-cols-1 gap-2 sm:grid-cols-2'
+                        className='grid grid-cols-1 gap-2 sm:grid-cols-3'
                       >
                         {IMAGE_SHAPE_CARDS.map((card) => {
                           const checked = upstreamLayout === card.value
@@ -667,7 +676,7 @@ export function PrimaryEndpointEditor(props: {
                       className='text-muted-foreground/50 size-2.5 shrink-0 self-center'
                       aria-hidden='true'
                     />
-                    <span className='min-w-0'>{t(entryRouteKey(row.incomingPath))}</span>
+                    <span className='min-w-0'>{t(entryRouteKey(row.incomingPath, protocolOn))}</span>
                   </li>
                 ))}
               </ul>
@@ -718,15 +727,22 @@ function isChatEntry(incomingPath: string): boolean {
 
 /**
  * 每个入口被图片协议怎么处理。判据与后端 `prepareImageProtocol` 的 switch
- * 一一对应：generations / edits / chat 三个分支接管，其余走 default 原样转发。
+ * 一一对应：generations / edits / chat / responses / generateContent 五个分支接管，
+ * 其余走 default 原样转发。协议关闭时全部原样转发——那时 switch 根本不会进入。
  */
-function entryRouteKey(incomingPath: string): string {
+function entryRouteKey(incomingPath: string, protocolOn: boolean): string {
+  if (!protocolOn) {
+    return 'Not intercepted; forwarded as-is'
+  }
   const path = incomingPath.replace(/\/+$/, '')
   if (path.endsWith('/v1/images/generations') || path.endsWith('/v1/images/edits')) {
     return 'Converted from the primary endpoint'
   }
-  if (isChatEntry(incomingPath)) {
+  if (isChatEntry(incomingPath) || path.endsWith('/v1/responses')) {
     return 'Turned into an image task, then converted from the primary endpoint'
+  }
+  if (path.includes(':generateContent')) {
+    return 'Converted from the primary endpoint'
   }
   return 'Not intercepted; keeps its own landing'
 }

@@ -503,6 +503,10 @@ func matchAdvancedCustomIncomingPathTemplate(configuredPath string, requestPath 
 	}
 
 	model := strings.TrimSuffix(strings.TrimPrefix(requestPath, parts[0]), parts[1])
+	// `{model}` 的语义是「一个路径段」。带命名空间的模型名（google/gemini-…）
+	// 不走模板：配置路径写成字面量，由上面的精确相等分支匹配。
+	// 共享匹配器不能放宽——异步提交路径同样用 `{model}`，放宽会把
+	// `/v1beta/models/a/b:generateContent` 误当成模型 `a/b`。
 	return model != "" && !strings.Contains(model, "/")
 }
 

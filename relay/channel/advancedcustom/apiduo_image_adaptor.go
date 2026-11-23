@@ -15,7 +15,6 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -86,6 +85,27 @@ func (a *Adaptor) prepareImageProtocol(
 			canonical, err = canonicalFromJSON(raw)
 		}
 
+	case relayconstant.RelayModeResponses:
+		// 直接折成 canonical，不经过 chat：绕一层会把 input_image 的 data URI
+		// 全量复制一遍，也会带上与图片无关的工具调用语义。
+		request, ok := info.Request.(*dto.OpenAIResponsesRequest)
+		if !ok {
+			return nil, true, errors.New("responses image protocol requires a responses request")
+		}
+		a.imageStream = request.Stream != nil && *request.Stream
+		canonical, err = canonicalFromResponses(request, info.UpstreamModelName)
+
+	case relayconstant.RelayModeGemini:
+		// 判据只有运营配置的两层：渠道声明了这条入站路径，且开着图片协议。
+		// 声明即出图，与 chat 入口同一套语义，不看 body，也不查全局模型名单。
+		// 名单是 chat 转换用来决定 responseModalities 的，不是渠道能力判据；
+		// 放这里会让「渠道配好、名单漏加」变成静默不出图。
+		request, ok := info.Request.(*dto.GeminiChatRequest)
+		if !ok {
+			return nil, true, errors.New("gemini image protocol requires a generateContent request")
+		}
+		canonical, err = canonicalFromGemini(request, info.UpstreamModelName)
+
 	default:
 		// 其它入口（embeddings / rerank / audio …）不受图像协议影响。
 		return nil, false, nil
@@ -97,7 +117,7 @@ func (a *Adaptor) prepareImageProtocol(
 		return nil, true, err
 	}
 
-	plan, err := planImageRequest(canonical, cfg)
+	plan, err := planImageRequestWithModel(canonical, cfg, info.UpstreamModelName)
 	if err != nil {
 		return nil, true, err
 	}
@@ -109,6 +129,10 @@ func (a *Adaptor) prepareImageProtocol(
 	a.imageClientModel = canonical.model()
 	// 归一化之后只剩两个值，所以这里等价于「客户端要的不是 b64」。
 	a.imageWantURL = canonical.fields["response_format"] != "b64_json"
+	// Gemini 入口只认 inlineData：这个入口的载体不能换成链接。
+	if info.RelayMode == relayconstant.RelayModeGemini {
+		a.imageWantURL = false
+	}
 	a.imageUpstreamPath = plan.UpstreamPath
 	a.imageRequestCount = 1
 	// canonical 的字段来自 JSON 解码，number 一律是 float64；只有直接读表单的
@@ -289,19 +313,18 @@ func (a *Adaptor) doImageProtocolResponse(
 		)
 		return usage, apiErr, true
 	}
-	// images / edits 平时是零解析透传，只有真有可能改写时才接管：
-	//   要 b64 —— 一定接管。上游可能给的是链接，不解析就发现不了，
-	//              而「点了 b64 却拿到 url」不算兑现 response_format。
-	//   要 url —— 只有存储配好了才接管，没存储就没有可以把 b64 换成的东西。
-	if a.imageWantURL && service.ResolveArtifactStorageChainForChannelID(info.GetChannelID()).Empty() {
-		return nil, nil, false
+	if info.RelayMode == relayconstant.RelayModeGemini {
+		usage, apiErr := finishImageGeminiResponse(c, resp, info, a)
+		return usage, apiErr, true
 	}
-	// 只在能整份读完的情况下接管：读到一半发现超上限，就没有干净的退路了
-	// —— 已经吐出的字节收不回来，硬写会把响应截断。分块长度的响应
-	// （Content-Length = -1）同样不碰。
-	if resp.ContentLength <= 0 || resp.ContentLength > imageResponseMaxBytes {
-		return nil, nil, false
+	if info.RelayMode == relayconstant.RelayModeResponses {
+		usage, apiErr := finishImageResponsesResponse(c, resp, info, a)
+		return usage, apiErr, true
 	}
+	// 不再因「没配存储」放行上游原样透传：那会把上游附加字段与错误页直接
+	// 交给客户端。没有存储时把 b64 原样重建回去，仍然经过白名单。
+	// 体积上限在读取处按 64 MiB 截断：Content-Length 可能是 -1（chunked），
+	// 用长度预判会把合法响应判成失败。
 	usage, apiErr := finishImageNativeResponse(c, resp, info, a)
 	return usage, apiErr, true
 }

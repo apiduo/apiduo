@@ -59,6 +59,12 @@ fi
 cp -f "$ROOT/deploy/clickhouse/logs.xml" data/clickhouse-config/config.d/logs.xml
 
 # ---------------------------------------------------------------- 构建
+# 前端是 go:embed 进二进制的，本地 Dockerfile.app 不构建它：改过 web/ 之后
+# 必须先 `cd web && bun run build`，否则镜像里跑的是旧界面，后端改了也看不到。
+if [[ -f "$ROOT/web/dist/index.html" ]] && [[ -n "$(find "$ROOT/web/src" -newer "$ROOT/web/dist/index.html" -print -quit 2>/dev/null)" ]]; then
+  echo "WARN web/src 比 web/dist 新：先 cd web && bun run build，否则本地镜像里是旧前端" >&2
+fi
+
 BUILD_ID="local-$(date +%m%d%H%M)"
 echo "==> 编译 linux/arm64 二进制（${BUILD_ID}）"
 (cd "$ROOT" && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath \

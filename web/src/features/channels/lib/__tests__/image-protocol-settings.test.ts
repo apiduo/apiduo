@@ -90,4 +90,11 @@ describe('writeImageProtocol', () => {
     const next = JSON.parse(writeImageProtocol('{}', { enabled: true }))
     expect(next.image_protocol.upstream).toBe('ark')
   })
+
+  // Gemini 是第三种协议形状：模型与动词在路径里，主端点仍然只有一个。
+  it('gemini 上游往返保留协议名', () => {
+    const raw = writeImageProtocol('{}', { enabled: true, upstream: 'gemini' })
+    expect(readImageProtocol(raw)?.upstream).toBe('gemini')
+    expect(JSON.parse(raw).primary_endpoint).toBeUndefined()
+  })
 })
