@@ -43,6 +43,24 @@ func RemapResponseRewrite(c *gin.Context, info *relaycommon.RelayInfo) bool {
 	return info.ChannelMeta.ChannelOtherSettings.RemapHardening
 }
 
+// ImageProtocolEnabled reports whether the serving channel has the image protocol
+// on. It reads the same two sources as RemapHardeningEnabled: the relay info once
+// InitChannelMeta has run, and the distributor's context settings before that.
+func ImageProtocolEnabled(c *gin.Context, info *relaycommon.RelayInfo) bool {
+	if info != nil && info.ChannelMeta != nil {
+		protocol := info.ChannelMeta.ChannelOtherSettings.ImageProtocol
+		return protocol != nil && protocol.Enabled
+	}
+	if c == nil {
+		return false
+	}
+	settings, ok := common.GetContextKeyType[dto.ChannelOtherSettings](c, constant.ContextKeyChannelOtherSetting)
+	if !ok {
+		return false
+	}
+	return settings.ImageProtocol != nil && settings.ImageProtocol.Enabled
+}
+
 // RetryAfterHint returns the upstream Retry-After value retained on the error,
 // or an empty string when the upstream did not send one.
 func RetryAfterHint(err *types.NewAPIError) string {

@@ -75,3 +75,37 @@ func TestRemapHardeningEnabledFallsBackToContext(t *testing.T) {
 		t.Fatal("context fallback alone must not rewrite a response body")
 	}
 }
+
+func TestImageProtocolEnabledSources(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	if ImageProtocolEnabled(nil, nil) {
+		t.Fatal("nil info and nil context must not be enabled")
+	}
+	if ImageProtocolEnabled(nil, &relaycommon.RelayInfo{}) {
+		t.Fatal("missing ChannelMeta without context must not be enabled")
+	}
+	on := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamGemini}
+	off := &dto.ImageProtocolConfig{Enabled: false, Upstream: dto.ImageUpstreamGemini}
+	if !ImageProtocolEnabled(nil, &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelOtherSettings: dto.ChannelOtherSettings{ImageProtocol: on},
+		},
+	}) {
+		t.Fatal("channel image protocol must be visible on the relay info")
+	}
+	if ImageProtocolEnabled(nil, &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelOtherSettings: dto.ChannelOtherSettings{ImageProtocol: off},
+		},
+	}) {
+		t.Fatal("a disabled protocol must not enable the envelope")
+	}
+
+	// Before InitChannelMeta the distributor's context settings are the only source.
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	common.SetContextKey(c, constant.ContextKeyChannelOtherSetting, dto.ChannelOtherSettings{ImageProtocol: on})
+	if !ImageProtocolEnabled(c, nil) {
+		t.Fatal("context settings must be read when the relay info is missing")
+	}
+}

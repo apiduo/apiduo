@@ -137,9 +137,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			// upstream's own text (it names models/…). Text channels keep the
 			// hardening switch so their existing diagnostics do not change.
 			imageProtocolGemini := relayFormat == types.RelayFormatGemini &&
-				relayInfo != nil &&
-				relayInfo.ChannelOtherSettings.ImageProtocol != nil &&
-				relayInfo.ChannelOtherSettings.ImageProtocol.Enabled
+				helper.ImageProtocolEnabled(c, relayInfo)
 			if helper.RemapHardeningEnabled(c, relayInfo) || imageProtocolGemini {
 				newAPIError.SetClientFacing(requestId)
 				// Backoff hint survives the rewrite: it names no upstream.
@@ -170,7 +168,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				})
 			// APIDUO:gemini-image-error:BEGIN
 			case types.RelayFormatGemini:
-				c.JSON(newAPIError.StatusCode, newAPIError.ToGeminiError())
+				// 只有图片渠道用 Gemini 信封：它的 message 被冻结成码表文本，
+				// 厂商错误码（code:"1302"）不进信封。普通 Gemini 渠道沿用上游的
+				// OpenAI 形状，客户端要靠厂商码定位问题。
+				if imageProtocolGemini {
+					c.JSON(newAPIError.StatusCode, newAPIError.ToGeminiError())
+				} else {
+					c.JSON(newAPIError.StatusCode, gin.H{"error": newAPIError.ToOpenAIError(upstreamURLs...)})
+				}
 			// APIDUO:gemini-image-error:END
 			default:
 				c.JSON(newAPIError.StatusCode, gin.H{
@@ -338,7 +343,7 @@ func writeRelayStreamError(c *gin.Context, format types.RelayFormat, apiError *t
 		return
 	}
 	// APIDUO:gemini-image-error:BEGIN
-	if format == types.RelayFormatGemini {
+	if format == types.RelayFormatGemini && helper.ImageProtocolEnabled(c, nil) {
 		// Gemini 没有 [DONE] 约定：写完这一帧流就结束。
 		_ = helper.ObjectData(c, apiError.ToGeminiError())
 		return
