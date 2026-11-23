@@ -3,7 +3,9 @@ package model
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -250,6 +252,20 @@ type BillingSummaryRow struct {
 	Quota            int64
 }
 
+// sortBillingSummary 按金额倒序、模型名正序排。金额为负的组（只有退款的）
+// 排在最后，与运营的直觉一致：先看谁贡献最多。
+func sortBillingSummary(rows []BillingSummaryRow) {
+	slices.SortStableFunc(rows, func(a, b BillingSummaryRow) int {
+		if a.Quota != b.Quota {
+			if a.Quota > b.Quota {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.ModelName, b.ModelName)
+	})
+}
+
 // SummarizeBillingStatementLines 按 (model, group) 汇总一份账单的明细。
 func SummarizeBillingStatementLines(statementId int) ([]BillingSummaryRow, error) {
 	return summarizeBillingLines(DB.Model(&BillingStatementLine{}).
@@ -273,8 +289,8 @@ func summarizeBillingLines(query *gorm.DB) ([]BillingSummaryRow, error) {
 			SUM(output_tokens) AS output_tokens,
 			SUM(quota) AS quota`).
 		Group("model_name, use_group").
-		Order("SUM(quota) DESC, model_name ASC").
 		Scan(&rows).Error
+	sortBillingSummary(rows)
 	return rows, err
 }
 

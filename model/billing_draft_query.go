@@ -149,7 +149,10 @@ func SummarizeUserLogsForBilling(ctx context.Context, userId int, start, end int
 			SUM(output_tokens) AS output_tokens,
 			SUM(CASE WHEN type = ` + refund + ` THEN -quota ELSE quota END) AS quota`).
 		Group("model_name, use_group").
-		Order("SUM(CASE WHEN type = " + refund + " THEN -quota ELSE quota END) DESC, model_name ASC").
 		Scan(&rows).Error
+	// 排序放在 Go 里：ClickHouse 不接受 ORDER BY 里再写一遍 SUM(CASE ...)
+	// —— 它把 SELECT 的聚合别名当成中间结果，报「aggregate inside aggregate」。
+	// 汇总行数是模型 × 分组，几十行，Go 排序比为了方言一致再拼一段 SQL 便宜。
+	sortBillingSummary(rows)
 	return rows, err
 }
