@@ -267,3 +267,54 @@ version 0.0.223        endpoint column = varchar(191)        RSS 82 MiB
 - 升级后第一个凌晨会自动对 **2026-10** 出账（约 550 万行 / 47 用户）。
   依据本轮 11 月实测（34 用户 / 503 万行 / 4m16s + 549 MB 归档），预计 4–6 分钟、归档约 500 MB 量级。
   建议当晚 `docker logs | grep 'billing issued'` 复核一次。
+
+---
+
+# 补充：导出文件的位置、压缩与自愈（07:30–07:45）
+
+## 文件在哪
+
+| 场景 | 生成时机 | 路径（容器内 / jieapi 宿主） |
+|---|---|---|
+| 已出账（归档） | **出账那一刻生成一次**，之后下载只是签名 + 静态文件 | `/data/data/exports/billing/<账期>/BILL-<账期>-u<id>-<admin\|customer>.xlsx`<br>`/www/docker/apiduo/data/data/exports/billing/<账期>/…` |
+| 当月（草稿） | **每点一次导出就现算一次**，覆盖同名文件 | 同目录，文件名带 `-draft-` 前缀 |
+
+多出来的那层 `data` 是 `EXPORT_FILE_DIR` 默认值（相对 `data/exports`）叠加 WORKDIR `/data` 的结果，
+要扁平化就显式设 `EXPORT_FILE_DIR=/data/exports`。写入是「临时文件 + fsync + rename」，不会留半截文件。
+
+实测体量（11 月 / 34 用户 / 503 万行）：归档 68 个文件 **549 MB**，最大 user 1 113 MB、user 4164 106 MB。
+`billing_statement_lines` 一个月 **2.1 GB**（1.16 GB 数据 + 0.93 GB 索引）。合计约 2.6 GB/月。
+
+## 压缩能省多少：省不了多少
+
+xlsx 本身就是 zip，写入口用的是 `zip.Deflate`：
+
+| 度量 | 数值 |
+|---|---|
+| 117.6 MB 的 admin 账单，内部 XML 解压后 | **1,203 MB** |
+| 压缩比 | **10.2×** |
+| 同样数据用 zlib level 9 重压 | 107 MB（−8%） |
+| 把整个 xlsx 再 gzip -9 | 98.5 MB（−16%，但下载下来不是能直接打开的文件） |
+
+结论：**已经压到 10 倍，再优化只有 8%（换 level 9）或 16%（外套 gzip），代价是出账时间翻倍或
+下载要用户自己解压，不划算。** 真正该做的是保留策略（明细表 + 导出按月归档/清理），
+这条仍未做。
+
+## 修复 #2：归档文件丢失后自动重建
+
+原来 `ExportBillingStatement` 只要 DB 里有导出记录就直接签名返回，不校验磁盘；
+文件被清理、换挂载卷、从旧机器搬过来，用户点下载就是一个 404，而且永远不会重建。
+
+现在先 `ExportFileStat` 探一下：文件在就签名直出；不在就落下去重新生成
+（已出账的数据来自 MySQL 快照，不碰 ClickHouse，2 秒级），并记一行
+`billing export file missing, regenerating`。
+
+**实测**：在一个**没有任何归档文件**的卷（data223，0 个文件）上请求 user 34 的已出账导出：
+
+```
+billing export file missing, regenerating: statement=9 projection=admin key=billing/2026-11/BILL-2026-11-u34-admin.xlsx
+自愈导出: 2.2s rows=127692 bytes=12.64MB is_draft=False
+download=200 size=12644993
+```
+
+日志与下载都对上，文件重新出现在 `data223/data/exports/billing/2026-11/`。

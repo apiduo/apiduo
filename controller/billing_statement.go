@@ -135,8 +135,16 @@ func ExportBillingStatement(c *gin.Context) {
 
 	if found && statement.Status != model.BillingStatusVoid {
 		if export, err := model.GetBillingStatementExport(statement.Id, string(projection)); err == nil {
-			billingReplyDownload(c, export, period, false)
-			return
+			// 记录在库里不等于文件在盘上：导出目录被清理、换挂载卷、从旧机器搬过来，
+			// 都会让这里签出一个必然 404 的地址，而客户只看到「下载失败」。
+			// 文件没了就往下走重新生成 —— 已出账的数据来自 MySQL 快照，不碰 ClickHouse。
+			if _, _, statErr := service.ExportFileStat(export.ObjectKey); statErr == nil {
+				billingReplyDownload(c, export, period, false)
+				return
+			} else {
+				common.SysLog(common.LogText("billing export file missing, regenerating: statement=%d projection=%s key=%s error=%v",
+					statement.Id, projection, export.ObjectKey, statErr))
+			}
 		}
 	}
 
