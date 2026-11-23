@@ -18,7 +18,7 @@ name: jieapi
 # 两个节点 90% 的配置相同，用 anchor 保证不会漂移；
 # 差异项（ports / volumes / environment / 资源限额）在各服务里显式覆盖。
 x-apiduo-common: &apiduo-common
-  image: ghcr.io/apiduo/apiduo:0.0.121
+  image: ghcr.io/apiduo/apiduo:0.0.196
   restart: unless-stopped
   command: ["--log-dir", "/app/logs"]
   extra_hosts:

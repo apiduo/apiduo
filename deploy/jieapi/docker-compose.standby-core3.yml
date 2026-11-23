@@ -26,7 +26,7 @@ name: jieapi-core3
 
 services:
   apiduo-standby:
-    image: ghcr.io/apiduo/apiduo:0.0.121
+    image: ghcr.io/apiduo/apiduo:0.0.196
     container_name: jieapi-apiduo-standby
     restart: unless-stopped
     command: ["--log-dir", "/app/logs"]

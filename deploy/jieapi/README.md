@@ -7,7 +7,7 @@
 
 | 项 | 值 |
 |---|---|
-| 对外版本 | `0.0.121`，`system_name=接JieAPI` |
+| 对外版本 | `0.0.196`，`system_name=接JieAPI`（2026-11-23 09:10 升级，原 `0.0.121`） |
 | master | `jieapi-apiduo` @ core-1，`127.0.0.1:3002`，`NODE_TYPE=master`，**12C/12G**，healthy |
 | 备节点 | `jieapi-apiduo-standby` @ **core-3**，`61.111.253.243:3003`，`NODE_TYPE=slave`，8C/8G，healthy |
 | 同机 standby | `jieapi-apiduo-standby` @ core-1，**已停**（容器保留，`--profile local-standby` 可恢复） |
@@ -128,9 +128,9 @@ apiduo 的 `model/log.go:createLog` 会先调 `enqueueLog`，但 `enqueueLog` �
 
 | 域名 | 解析 | 服务方 | 状态 |
 |---|---|---|---|
-| `jieapi.com` / `api.jieapi.com` | core-1 | nginx → apiduo master 3002 | 200 / 0.0.121 |
-| `cn.jieapi.com` | core-3 | core-3 nginx → apiduo 备节点 3003 | 200 / 0.0.121（跨 137 ms 回库，约 +300 ms） |
-| `aapi.cn` | core-3 | 同上（与 cn 共用 upstream） | 200 / 0.0.121 |
+| `jieapi.com` / `api.jieapi.com` | core-1 | nginx → apiduo master 3002 | 200 / 0.0.196 |
+| `cn.jieapi.com` | core-3 | core-3 nginx → apiduo 备节点 3003 | 200 / 0.0.196（跨 137 ms 回库，约 +300 ms） |
+| `aapi.cn` | core-3 | 同上（与 cn 共用 upstream） | 200 / 0.0.196 |
 | `apicn.jieapi.cn` | **110.42.51.129**（非本集群） | 该机只配了 `all.jieapi.cn` | **HTTPS 证书不匹配 + HTTP 404** |
 
 `apicn.jieapi.cn` 需要单独确认归属：那台机器的证书是 `CN=all.jieapi.cn`，
@@ -336,7 +336,7 @@ docker update --restart=no jieapi-master jieapi-master-rc40
 ```bash
 curl -s -H 'Host: jieapi.com' http://127.0.0.1/api/status \
   | python3 -c "import sys,json;d=json.load(sys.stdin)['data'];print(d['version'],d['system_name'])"
-# 期望：0.0.121 接JieAPI
+# 期望：0.0.196 接JieAPI
 
 # 两个节点的角色
 for c in jieapi-apiduo jieapi-apiduo-standby; do
