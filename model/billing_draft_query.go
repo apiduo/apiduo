@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/QuantumNous/new-api/common"
@@ -52,6 +53,37 @@ func billingAggregateContext(ctx context.Context) context.Context {
 		"max_bytes_before_external_group_by": billingAggregateSpillBytes,
 		"max_threads":                        billingAggregateThreads,
 	}))
+}
+
+// 账单聚合的并发闸门与超时。
+//
+// 单条聚合实测需要 400~600MB（63.7 万行账期，other 列 185MB），而服务端总预算
+// 只有 4G、空闲基线已占 1.3G。三条以上并发就会把预算吃光，随后连一次几十毫秒的
+// count 都会被拒成 Code: 241 —— 0.0.217 之前 user_id=64 的详情间歇 404 就是这么来的。
+// 给单条查询限内存只能防住「一条查询吃太多」，防不住「很多条一起吃」，所以这里
+// 再限一个并发数：4 - 1.3G 基线 ≈ 2.7G，按 600MB 算最多四条，取 3 留余量。
+//
+// 名额是进程内的：多副本部署时实际上是「每副本 3 条」，要按副本数再核一次总预算。
+var billingAggregateSlots = make(chan struct{}, 3)
+
+// billingAggregateTimeout 是单条聚合的上限。没有它，一条被 ClickHouse 拖住的
+// 查询会一直占着名额，把后面所有账单请求一起堵死；带上 deadline 后驱动还会顺带
+// 下发 max_execution_time，服务端也会自己收手。
+const billingAggregateTimeout = 30 * time.Second
+
+// beginBillingAggregate 取一个并发名额、压上超时、挂好内存策略。
+// 返回的 done 必须调用，否则名额永不释放。
+func beginBillingAggregate(ctx context.Context) (context.Context, func(), error) {
+	select {
+	case billingAggregateSlots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	}
+	capped, cancel := context.WithTimeout(ctx, billingAggregateTimeout)
+	return billingAggregateContext(capped), func() {
+		cancel()
+		<-billingAggregateSlots
+	}, nil
 }
 
 // billingJSONInt 返回从 logs.other 里取一个整数的方言表达式。
@@ -221,12 +253,18 @@ func streamBillingLogs(tx *gorm.DB, order string, fn func(*Log) error) error {
 // 输入 token 逐行 clamp 到 0 再求和，与明细的展示口径一致；先 SUM 再 clamp
 // 会让个别异常行抵消其他行的用量，对不上账。
 func SummarizeUserLogsForBilling(ctx context.Context, userId int, start, end int64) ([]BillingSummaryRow, error) {
+	aggCtx, done, err := beginBillingAggregate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+
 	read := billingJSONInt("cache_tokens")
 	write := billingJSONInt("cache_write_tokens")
 	group := billingGroupColumn()
 	consume, errorType, refund := strconv.Itoa(LogTypeConsume), strconv.Itoa(LogTypeError), strconv.Itoa(LogTypeRefund)
 
-	inner := LOG_DB.WithContext(ctx).Table("logs").
+	inner := LOG_DB.WithContext(aggCtx).Table("logs").
 		Select(`model_name AS model_name,
 			`+group+` AS use_group,
 			type AS type,
@@ -240,7 +278,7 @@ func SummarizeUserLogsForBilling(ctx context.Context, userId int, start, end int
 			userId, start, end, billingConsumeTypes())
 
 	rows := make([]BillingSummaryRow, 0, 16)
-	err := LOG_DB.WithContext(billingAggregateContext(ctx)).Table("(?) AS billing_draft", inner).
+	err = LOG_DB.WithContext(aggCtx).Table("(?) AS billing_draft", inner).
 		Select(`model_name,
 			use_group,
 			SUM(CASE WHEN type = ` + consume + ` THEN 1 ELSE 0 END) AS requests,
@@ -273,9 +311,15 @@ type BillingUserTotal struct {
 // 「谁用了多少」只能实时聚合；一次 GROUP BY 回几十到几百行，比逐用户查便宜得多。
 // 同样是 ClickHouse 上会撞内存的一组，聚合前先套上同一份内存策略。
 func SummarizeUserLogsByUser(ctx context.Context, start, end int64) ([]BillingUserTotal, error) {
+	aggCtx, done, err := beginBillingAggregate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+
 	consume, errorType, refund := strconv.Itoa(LogTypeConsume), strconv.Itoa(LogTypeError), strconv.Itoa(LogTypeRefund)
 	rows := make([]BillingUserTotal, 0, 64)
-	err := LOG_DB.WithContext(billingAggregateContext(ctx)).Table("logs").
+	err = LOG_DB.WithContext(aggCtx).Table("logs").
 		Select(`user_id AS user_id,
 			SUM(CASE WHEN type = `+consume+` THEN 1 ELSE 0 END) AS requests,
 			SUM(CASE WHEN type = `+errorType+` THEN 1 ELSE 0 END) AS errors,

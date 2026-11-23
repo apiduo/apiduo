@@ -76,3 +76,47 @@ func TestBillingAggregateContextReachesClickHouse(t *testing.T) {
 	require.Error(t, err, "max_memory_usage=1 应当让查询失败")
 	assert.Contains(t, err.Error(), "memory limit")
 }
+
+// 并发闸门必须有确定上限，且排队时能被 ctx 打断。
+//
+// 单条聚合实测 400~600MB，服务端总预算 4G、基线已占 1.3G：不限并发就会重演
+// 「聚合吃满预算 → 无关查询被拒成 241」。同时要保证一条卡住的查询不会把
+// 后面所有账单请求永远堵死 —— 靠 ctx 的 deadline 兜底。
+func TestBeginBillingAggregateBoundsConcurrency(t *testing.T) {
+	require.Equal(t, 0, len(billingAggregateSlots), "前置条件：测试开始时名额必须全空")
+
+	var held []func()
+	releaseHeld := func() {
+		for _, done := range held {
+			done()
+		}
+		held = nil
+	}
+	t.Cleanup(releaseHeld)
+
+	for i := range cap(billingAggregateSlots) {
+		aggCtx, done, err := beginBillingAggregate(context.Background())
+		require.NoError(t, err)
+		held = append(held, done)
+		// 每条查询都带 deadline，卡住时能自己退出。
+		_, hasDeadline := aggCtx.Deadline()
+		assert.True(t, hasDeadline, "第 %d 个名额没有 deadline", i)
+	}
+
+	// 名额用尽后再申请：ctx 一到期就必须返回错误，而不是无限等下去。
+	waited, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	_, _, err := beginBillingAggregate(waited)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+
+	// 释放一个之后立刻可以再拿到，说明名额是循环使用的。
+	held[0]()
+	held = held[1:]
+	_, done, err := beginBillingAggregate(context.Background())
+	require.NoError(t, err)
+	done()
+
+	releaseHeld()
+	require.Equal(t, 0, len(billingAggregateSlots), "清理后名额必须全部归还")
+}
