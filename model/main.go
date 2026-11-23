@@ -407,6 +407,11 @@ func migrateDB() error {
 		// APIDUO:file-relay:BEGIN
 		&FileObject{},
 		// APIDUO:file-relay:END
+		// APIDUO:billing-statement:BEGIN
+		&BillingStatement{},
+		&BillingStatementLine{},
+		&BillingStatementExport{},
+		// APIDUO:billing-statement:END
 	)
 	if err != nil {
 		return err

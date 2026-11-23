@@ -40,6 +40,7 @@ var apiduoModules = []apiduoModule{
 	{"growth", registerApiduoGrowth},
 	{"ops", registerApiduoOps},
 	{"trace", registerApiduoTrace},
+	{"export-file", registerApiduoExportFile},
 }
 
 // registerApiduoRoutes 是 `api-router.go` 里的唯一挂接点。
@@ -49,6 +50,18 @@ var apiduoModules = []apiduoModule{
 func registerApiduoRoutes(g *gin.RouterGroup) {
 	for _, module := range apiduoModules {
 		module.register(g)
+	}
+}
+
+// 导出文件下载：账单、报表这类产物落在 data/exports 下，靠签名或管理员会话取走。
+//
+// 用 TryUserAuth 而不是 UserAuth：带签名的链接是发给客户的，他们可能没登录，
+// 甚至没有账号；有会话时才有 role 可判管理员。
+func registerApiduoExportFile(g *gin.RouterGroup) {
+	exportRoute := g.Group("/export")
+	exportRoute.Use(middleware.DisableCache())
+	{
+		exportRoute.GET("/files/*key", middleware.TryUserAuth(), controller.DownloadExportFile)
 	}
 }
 

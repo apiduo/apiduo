@@ -52,6 +52,12 @@ var accessTokenExemptRoutes = []string{
 	// 加载它，没有 apiduo 会话；id 由内容生成、不可枚举。
 	"GET /api/apiduo/trace/media/:media_id",
 	// APIDUO:trace:END
+	// APIDUO:export-file:BEGIN
+	// Capability URL：凭据绑定 key 与过期时间，除此之外只认管理员会话。
+	// 不给 PAT 开口子 —— key 里没有 user_id 可对账，声明 scope 等于让任意
+	// 持有该 scope 的 token 去猜别人的账单文件名。
+	"GET /api/export/files/*key",
+	// APIDUO:export-file:END
 
 	// Anonymous account entry points.
 	"GET /api/verification",
