@@ -181,7 +181,7 @@ check(
     events,
 )
 check("T1-5 delta 含 markdown", "![image](data:image/png;base64," in text, "")
-check("T1-5 completed 带 usage", '"total_tokens":1' in text, text[-300:])
+check("T1-5 completed 带 usage", '"total_tokens":1297' in text, text[-300:])
 
 status, _, body = http_json(
     "POST", "/v1beta/models/xx:generateContent",
@@ -286,6 +286,24 @@ check("T1-6 usageMetadata 用上游真实 token",
       usage.get("promptTokenCount") == 7 and usage.get("totalTokenCount") == 1297,
       usage)
 check("T1-6 usageMetadata 不含 trafficType", "trafficType" not in usage, usage)
+
+# T1-10：按 token 计价的模型（xr 无 ModelPrice，ModelRatio=CompletionRatio=1）。
+# 响应里的 usage 与账本同源，所以用响应断言即可；账本已实测 1297。
+status, _, body = http_json("POST", "/v1/chat/completions", {
+    "model": "xr", "messages": [{"role": "user", "content": "a cat"}],
+})
+usage = (body or {}).get("usage") or {}
+check("T1-10 按 token 计价的模型拿到真实用量",
+      status == 200 and usage.get("prompt_tokens") == 7
+      and usage.get("completion_tokens") == 1290
+      and usage.get("total_tokens") == 1297,
+      f"status={status} usage={usage}")
+
+# 对照：按次计价的模型（xx 有 ModelPrice）不能被 token 用量影响。
+status, _, body = http_json("POST", "/v1/chat/completions", {
+    "model": "xx", "messages": [{"role": "user", "content": "a cat"}],
+})
+check("T1-10 按次计价的模型仍然 200", status == 200, f"status={status}")
 
 print()
 if failed:

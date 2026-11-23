@@ -162,7 +162,74 @@ func finishImageNativeResponse(
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
 	writeImageJSON(c, out)
-	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+	return decoded.billedUsage(), nil
+}
+
+// usageFromUpstream 取上游声明的 token 用量。两种形状：
+//   - Gemini：usageMetadata（解码时已折进 imageResponse.Usage）
+//   - OpenAI 形状：envelope 的 usage（ark 回 output_tokens/total_tokens；
+//     多数 b64 类接口不回，此时 ok=false）
+// 拿不到就是拿不到——不要用图片张数去猜 token。
+func (r *imageResponse) usageFromUpstream() (*dto.Usage, bool) {
+	if r == nil {
+		return nil, false
+	}
+	if u := r.Usage; u != nil && u.TotalTokens > 0 {
+		prompt := max(u.PromptTokens, 0)
+		// 上游的 total 含 thoughts（Gemini 按输出计费思考），所以 completion 取
+		// total-prompt，而不是 candidatesTokenCount：后者不含 thoughts，用它
+		// 会让每个请求少收一截。
+		completion := max(u.TotalTokens-prompt, 0)
+		return &dto.Usage{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: u.TotalTokens}, true
+	}
+	raw, ok := r.Extras["usage"].(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	prompt := intField(raw, "prompt_tokens", "input_tokens")
+	completion := intField(raw, "completion_tokens", "output_tokens")
+	total := intField(raw, "total_tokens")
+	if total == 0 {
+		total = prompt + completion
+	}
+	if total == 0 {
+		return nil, false
+	}
+	return &dto.Usage{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: total}, true
+}
+
+// billedUsage 是账本口径：上游给了真实 token 就按 token，没给退回 {1,0,1}。
+// {1,0,1} 是按次计价的口径（UsePrice 时 token 不参与价格），也是
+// hasBillableUsage 的下限。按 token 计价的模型必须拿到真实用量，否则结算 0。
+func (r *imageResponse) billedUsage() *dto.Usage {
+	if usage, ok := r.usageFromUpstream(); ok {
+		return usage
+	}
+	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}
+}
+
+// displayUsage 是回包里给客户端看的三个数，与账本同源。
+func (r *imageResponse) displayUsage() (prompt, completion, total int) {
+	usage := r.billedUsage()
+	return usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens
+}
+
+// intField 读 map 里的整数字段。JSON 解码后数字是 float64，个别上游给字符串。
+func intField(raw map[string]any, keys ...string) int {
+	for _, key := range keys {
+		switch value := raw[key].(type) {
+		case float64:
+			return int(value)
+		case int:
+			return value
+		case string:
+			var parsed int
+			if _, err := fmt.Sscanf(value, "%d", &parsed); err == nil {
+				return parsed
+			}
+		}
+	}
+	return 0
 }
 
 // deliverableImages 只保留「本次交付」的图。
@@ -302,15 +369,16 @@ func chatImageMarkdown(response *imageResponse) (string, error) {
 }
 
 func chatEnvelopeBase(response *imageResponse, model string, object string) map[string]any {
+	promptTokens, completionTokens, totalTokens := response.displayUsage()
 	return map[string]any{
 		"id":      fmt.Sprintf("chatcmpl-apiduo-%d", time.Now().UnixNano()),
 		"object":  object,
 		"created": response.Created,
 		"model":   model,
 		"usage": map[string]any{
-			"prompt_tokens":     1,
-			"completion_tokens": 0,
-			"total_tokens":      1,
+			"prompt_tokens":     promptTokens,
+			"completion_tokens": completionTokens,
+			"total_tokens":      totalTokens,
 		},
 	}
 }
@@ -511,7 +579,7 @@ func finishImageChatResponse(
 		info.ImageRequestCount = count
 		info.UpdateImageCount(int64(count))
 	}
-	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+	return decoded.billedUsage(), nil
 }
 
 const imageLargeResponseMaxBytes = 64 << 20
@@ -652,6 +720,7 @@ func sniffBase64ImageMimeType(encoded string) string {
 // wrapResponsesResponse 构造 Responses 形状的回包。图片写成 output_text 的
 // markdown，与 chat 入口同一口径。
 func wrapResponsesResponse(response *imageResponse, model string) ([]byte, error) {
+	promptTokens, completionTokens, totalTokens := response.displayUsage()
 	markdown, err := chatImageMarkdown(response)
 	if err != nil {
 		return nil, err
@@ -675,9 +744,9 @@ func wrapResponsesResponse(response *imageResponse, model string) ([]byte, error
 			}},
 		}},
 		"usage": map[string]any{
-			"input_tokens":  1,
-			"output_tokens": 0,
-			"total_tokens":  1,
+			"input_tokens":  promptTokens,
+			"output_tokens": completionTokens,
+			"total_tokens":  totalTokens,
 		},
 	})
 }
@@ -730,7 +799,7 @@ func finishImageGeminiResponse(c *gin.Context, resp *http.Response, info *common
 		writeImageJSON(c, out)
 	}
 	markImageRequest(info, 1)
-	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+	return decoded.billedUsage(), nil
 }
 
 // markImageRequest 让 BillingSession 把这条请求当图片请求处理。不设时，
@@ -819,11 +888,11 @@ func finishImageResponsesResponse(c *gin.Context, resp *http.Response, info *com
 		if markdownErr != nil {
 			return nil, types.NewOpenAIError(markdownErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 		}
-		if streamErr := writeResponsesImageStream(c, info, model, markdown); streamErr != nil {
+		if streamErr := writeResponsesImageStream(c, info, model, markdown, decoded.billedUsage()); streamErr != nil {
 			return nil, streamErr
 		}
 		markImageRequest(info, 1)
-		return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+		return decoded.billedUsage(), nil
 	}
 	out, err := wrapResponsesResponse(decoded, model)
 	if err != nil {
@@ -831,14 +900,14 @@ func finishImageResponsesResponse(c *gin.Context, resp *http.Response, info *com
 	}
 	writeImageJSON(c, out)
 	markImageRequest(info, 1)
-	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}, nil
+	return decoded.billedUsage(), nil
 }
 
 // writeResponsesImageStream 把完整 markdown 包成 Responses 的 SSE 事件序列。
 // 上游本来是非流式，所以这不是渐进输出，只是让 stream=true 的客户端拿到
 // 合法事件流。事件由 relaykit 的 chat→responses 转换器生成：手写九个事件
 // 会在协议变更时漂移，而 chat 的两帧格式不能直接冒充 responses。
-func writeResponsesImageStream(c *gin.Context, info *common.RelayInfo, model string, markdown string) *types.NewAPIError {
+func writeResponsesImageStream(c *gin.Context, info *common.RelayInfo, model string, markdown string, usage *dto.Usage) *types.NewAPIError {
 	state, err := relayconvert.NewResponseStreamState(
 		types.RelayFormatOpenAI,
 		types.RelayFormatOpenAIResponses,
@@ -878,7 +947,7 @@ func writeResponsesImageStream(c *gin.Context, info *common.RelayInfo, model str
 	}
 
 	// completed 事件的 usage 与非流式同口径：一张图 = 1 个 input token。
-	state.SetUsage(&dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1})
+	state.SetUsage(usage)
 	finalResults, err := service.FinalizeStreamResponse(c, info, state)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)

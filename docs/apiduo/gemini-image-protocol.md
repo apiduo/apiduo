@@ -422,16 +422,60 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 
 ## 6. 计费
 
-五个入口、三个上游，同一口径：`quota = 模型价 × 1 × 分组倍率`。
+五个入口、三个上游共用两个计费口径，由模型**怎么配价**决定，不由入口决定：
+
+| 模型配置 | `UsePrice` | 口径 | 公式 |
+|---|---|---|---|
+| `ModelPrice` 有值 | true | 按次 | `模型价 × n × 分组倍率` |
+| 只有 `ModelRatio` | false | 按 token | `(prompt + completion × CompletionRatio) × ModelRatio × 分组倍率` |
+
+**按 token 计费不需要改计费引擎**——`calculateTextQuotaSummary` 的非 `UsePrice` 分支
+本来就是按 token 算的。缺的是「图片入口上报真实用量」：之前四个入口一律返回写死的
+`{1,0,1}`，所以按 token 计价的图片模型每个请求只收 1 个 token，等于免费。
+
+现在 `imageResponse.billedUsage()` 从上游取真实用量：
+
+| 上游形状 | 来源 | 折算 |
+|---|---|---|
+| Gemini | `usageMetadata` | `prompt = promptTokenCount`，`completion = totalTokenCount - promptTokenCount` |
+| ark / OpenAI 形状 | envelope 的 `usage` | `prompt = prompt_tokens/input_tokens`，`completion = completion_tokens/output_tokens` |
+| 都没有 | — | 退回 `{1,0,1}`（按次口径的下限，也是 `hasBillableUsage` 的下限） |
+
+**`completion` 取 `total - prompt`，不取 `candidatesTokenCount`。** Gemini 的
+`totalTokenCount` 含 `thoughtsTokenCount`（思考按输出计费），用 candidates 会漏掉思考
+token。实测 `nano-banana-2.1`：prompt 3 / candidates 1120 / thoughts 526 / total 1649，
+按 token 计费要收 3 + 1646。
+
+配置示例（把 zenmux 的 `image $30/1M`、`completion $7.5/1M` 折成倍率）：
+
+```json
+{
+  "ModelRatio": {"google/gemini-nano-banana-2.1": 7.5},
+  "CompletionRatio": {"google/gemini-nano-banana-2.1": 4}
+}
+```
+
+`CompletionRatio = 30 / 7.5 = 4`；`ModelRatio` 按「1 单位 = $0.002/1M token」折算
+（`QuotaPerUnit=500000` 时 7.5 → $7.5/1M）。
+
+两条口径都遵守的约束：
 
 - `n` 恒 1（`n>1` 在计费前拒绝）。
-- 账本用 `Usage{Prompt:1, Completion:0, Total:1}` 或 `UpdateImageCount`，与入口无关。
 - **每个图片入口都要标记 `ImageRequestCount`**（`markImageRequest`）。它影响
   `BillingSession.reserve` 的 `requireAvailableQuota`：不设时 `relayInfo.Request` 不是
   `*dto.ImageRequest`，授信额度用户可以跳过可用额度检查，把余额打成负数。
-- 展示与账本分离：Gemini 入口的 `usageMetadata` 填上游真实 token（`trafficType` 除外），
-  账本仍按张。上游没给 `usageMetadata` 时才退回 `{1,0,1}`。
+- 展示与账本同源：回包的 `usage` / `usageMetadata` 与账本用同一组数字，避免
+  「响应说 1 个 token、账单按 1100 收」。
 - 4K 与 2K 同价是已知偏差（Pro 差 1.79 倍），v2 用 `BillingRatios["image_size"]` 解决。
+  按 token 计费的模型天然没这个问题（4K 的输出 token 更多）。
+
+实测（本地，`xr` 走 ModelRatio=1 / CompletionRatio=1，`xx` 走 ModelPrice=0.02）：
+
+```text
+model  prompt  completion  quota
+xr     7       1290        1297      ← 7 + 1290，按 token
+xx     1       0           10000     ← 0.02 × 500000，按次，未受 token 影响
+```
 
 ## 7. 测试方案：两类 + 一条不可区分性
 

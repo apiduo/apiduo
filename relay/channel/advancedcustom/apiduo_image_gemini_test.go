@@ -287,7 +287,8 @@ func TestWriteResponsesImageStream(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 
 	markdown := "![image](data:image/png;base64,aGVsbG8=)"
-	if apiErr := writeResponsesImageStream(c, &common.RelayInfo{}, "banana", markdown); apiErr != nil {
+	usage := &dto.Usage{PromptTokens: 7, CompletionTokens: 1290, TotalTokens: 1297}
+	if apiErr := writeResponsesImageStream(c, &common.RelayInfo{}, "banana", markdown, usage); apiErr != nil {
 		t.Fatalf("writeResponsesImageStream: %v", apiErr)
 	}
 
@@ -301,7 +302,7 @@ func TestWriteResponsesImageStream(t *testing.T) {
 		"event: response.output_text.done",
 		"event: response.completed",
 		"aGVsbG8=",
-		`"total_tokens":1`,
+		`"total_tokens":1297`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in stream:\n%s", want, body)
