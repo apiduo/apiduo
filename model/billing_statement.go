@@ -71,7 +71,11 @@ type BillingStatementLine struct {
 	TokenName string `json:"token_name" gorm:"type:varchar(128);default:''"`
 	ModelName string `json:"model_name" gorm:"type:varchar(128);index;default:''"`
 	UseGroup  string `json:"use_group" gorm:"type:varchar(64);index;default:''"`
-	Endpoint  string `json:"endpoint" gorm:"type:varchar(64);default:''"`
+	// 端点必须放得下 Gemini 的流式路径：
+	// /v1beta/models/<model>:streamGenerateContent 实测最长 71 字符，varchar(64)
+	// 会让该用户的整份账单在插入时回滚（Error 1406），出账任务每 30 分钟重试一次、
+	// 每次都失败。全站历史最大 71，这里给到 191 留余量。
+	Endpoint string `json:"endpoint" gorm:"type:varchar(191);default:''"`
 
 	InputTokens      int `json:"input_tokens" gorm:"default:0"`
 	CacheReadTokens  int `json:"cache_read_tokens" gorm:"default:0"`
@@ -332,6 +336,32 @@ func BillingLineCursorFromLog(log *Log) BillingLineCursor {
 		cursor.Id = log.Id
 	}
 	return cursor
+}
+
+// MigrateBillingStatementEndpointWidth 把 endpoint 从旧版的 varchar(64) 加宽到 191。
+//
+// 只靠 AutoMigrate 不够：类型同为 varchar，GORM 不会去比对长度，旧库就一直停在 64。
+// 而 64 装不下 Gemini 的 `/v1beta/models/<model>:streamGenerateContent`（实测 71），
+// 该用户的整份账单会在插入明细时以 Error 1406 回滚，出账任务每 30 分钟重试、每次必失败。
+// 只在 MySQL 上做：其余方言由 AutoMigrate 直接建成长度够用的列。
+func MigrateBillingStatementEndpointWidth() error {
+	if !common.UsingMainDatabase(common.DatabaseTypeMySQL) {
+		return nil
+	}
+	if !DB.Migrator().HasTable(&BillingStatementLine{}) {
+		return nil
+	}
+	var length int64
+	table := BillingStatementLine{}.TableName()
+	if err := DB.Raw(`SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns
+		WHERE table_schema = DATABASE() AND table_name = ? AND column_name = 'endpoint'`, table).
+		Scan(&length).Error; err != nil {
+		return err
+	}
+	if length == 0 || length >= 191 {
+		return nil
+	}
+	return DB.Exec("ALTER TABLE " + table + " MODIFY COLUMN endpoint varchar(191) NOT NULL DEFAULT ''").Error
 }
 
 // BillingStatementExistsForUser 回答「这个 user_id 有没有账单」。
