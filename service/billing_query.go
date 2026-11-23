@@ -32,10 +32,9 @@ func LoadBillingReport(ctx context.Context, period string, userId int, username 
 // 多取一行只为了判断有没有下一页：这样前端拿到 next_cursor 为空就是真的到底，
 // 不必再多发一次必然为空的请求。
 func LoadBillingLinesPage(ctx context.Context, report *BillingReport, filter model.BillingLineFilter, cursor model.BillingLineCursor, limit int) ([]*model.BillingStatementLine, model.BillingLineCursor, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
-	}
+	limit = NormalizeBillingLinePageSize(limit)
 	var rows []*model.BillingStatementLine
+	next := model.BillingLineCursor{}
 	if report.IsDraft {
 		statement := report.Statement
 		start, end := statement.PeriodStart, statement.PeriodEnd
@@ -51,9 +50,16 @@ func LoadBillingLinesPage(ctx context.Context, report *BillingReport, filter mod
 		rows = make([]*model.BillingStatementLine, 0, len(logs))
 		for _, log := range logs {
 			line := billingLineFromLog(log, snapshot)
-			// 当月视图没有行 id，用 (created_at, 日志 id) 继续翻页。
+			// 当月视图没有行 id（ClickHouse 那边恒为 0），游标取自原始日志：
+			// ClickHouse 用 request_id，其他库用自增 id。
 			line.Id = log.Id
 			rows = append(rows, line)
+		}
+		if len(rows) > limit {
+			// 游标取「本页最后一行」，不是多取的那一行：从它之后继续读，
+			// 多取的那一行正好是下一页的第一行。
+			next = model.BillingLineCursorFromLog(logs[limit-1])
+			rows = rows[:limit]
 		}
 	} else {
 		var err error
@@ -61,20 +67,47 @@ func LoadBillingLinesPage(ctx context.Context, report *BillingReport, filter mod
 		if err != nil {
 			return nil, model.BillingLineCursor{}, err
 		}
-	}
-
-	next := model.BillingLineCursor{}
-	if len(rows) > limit {
-		rows = rows[:limit]
-		last := rows[len(rows)-1]
-		next = model.BillingLineCursor{Valid: true, CreatedAt: last.CreatedAt, Id: last.Id}
+		if len(rows) > limit {
+			rows = rows[:limit]
+			last := rows[len(rows)-1]
+			next = model.BillingLineCursor{Valid: true, CreatedAt: last.CreatedAt, Id: last.Id}
+		}
 	}
 	return rows, next, nil
 }
 
+// NormalizeBillingLinePageSize 把请求的页大小夹到合法区间。
+//
+// 不能写成「越界就回落到默认 50」：传 200 会被服务层多取一行变成 201，
+// 一旦下游再按 <=200 判一次，用户拿到 50 行且 next_cursor 为空，
+// 等于静默截断了整份明细。
+func NormalizeBillingLinePageSize(limit int) int {
+	if limit <= 0 {
+		return 50
+	}
+	if limit > model.BillingLinePageSizeMax {
+		return model.BillingLinePageSizeMax
+	}
+	return limit
+}
+
 // ParseBillingLineCursor 解析前端回传的游标。格式不合法时回落到第一页，
 // 而不是把它当成 0 时刻去扫全表。
+//
+// 两种格式并存：`r.<ts>.<request_id>` 是 ClickHouse 日志库的游标，
+// `<ts>_<id>` 是普通日志库（以及历史链接）的游标。
 func ParseBillingLineCursor(value string) model.BillingLineCursor {
+	if rest, ok := strings.CutPrefix(value, "r."); ok {
+		createdAtPart, requestId, ok := strings.Cut(rest, ".")
+		if !ok || requestId == "" {
+			return model.BillingLineCursor{}
+		}
+		createdAt, err := strconv.ParseInt(createdAtPart, 10, 64)
+		if err != nil || createdAt <= 0 {
+			return model.BillingLineCursor{}
+		}
+		return model.BillingLineCursor{Valid: true, CreatedAt: createdAt, RequestId: requestId}
+	}
 	createdAtPart, idPart, ok := strings.Cut(value, "_")
 	if !ok {
 		return model.BillingLineCursor{}
@@ -94,6 +127,9 @@ func ParseBillingLineCursor(value string) model.BillingLineCursor {
 func FormatBillingLineCursor(cursor model.BillingLineCursor) string {
 	if !cursor.Valid {
 		return ""
+	}
+	if cursor.RequestId != "" {
+		return "r." + strconv.FormatInt(cursor.CreatedAt, 10) + "." + cursor.RequestId
 	}
 	return strconv.FormatInt(cursor.CreatedAt, 10) + "_" + strconv.Itoa(cursor.Id)
 }

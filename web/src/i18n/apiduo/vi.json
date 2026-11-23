@@ -239,6 +239,9 @@
     "Duration (ms)": "Duration (ms)",
     "This period has not been issued; figures are a live aggregate.": "This period has not been issued; figures are a live aggregate.",
     "Filter by username or user ID": "Filter by username or user ID",
-    "Live": "Live"
+    "Live": "Live",
+    "User not found.": "Không tìm thấy người dùng.",
+    "No billable usage in this period.": "Không có mức sử dụng nào có thể tính phí trong kỳ này.",
+    "Administrator role required for the all-users view.": "Cần quyền quản trị viên để xem toàn bộ người dùng."
   }
 }

@@ -17,20 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute } from '@tanstack/react-router'
-import { z } from 'zod'
 
 import { Billing } from '@/features/billing'
+import { billingSearchSchema } from '@/features/billing/search'
 import type { BillingSearch } from '@/features/billing/types'
-
-const billingSearchSchema = z.object({
-  period: z.string().optional(),
-  tab: z.enum(['summary', 'detail']).optional(),
-  scope: z.enum(['self', 'all']).optional(),
-  model: z.string().optional(),
-  group: z.string().optional(),
-  user_id: z.coerce.number().optional(),
-  internal: z.boolean().optional(),
-})
 
 // 账期与页签都进 URL：刷新、分享、从邮件点回来都落在同一视图。
 export const Route = createFileRoute('/_authenticated/billing')({

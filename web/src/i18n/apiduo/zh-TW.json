@@ -324,6 +324,9 @@
     "Duration (ms)": "耗時（毫秒）",
     "This period has not been issued; figures are a live aggregate.": "本期尚未出帳，以下為即時彙總資料。",
     "Filter by username or user ID": "按使用者名稱或使用者 ID 篩選",
-    "Live": "即時"
+    "Live": "即時",
+    "User not found.": "使用者不存在。",
+    "No billable usage in this period.": "該帳期沒有可計費用量。",
+    "Administrator role required for the all-users view.": "全站檢視需要管理員權限。"
   }
 }

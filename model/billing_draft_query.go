@@ -84,23 +84,37 @@ func applyBillingLineFilter(tx *gorm.DB, filter BillingLineFilter) *gorm.DB {
 
 // ListUserLogsForBilling 取当月明细的一页，按时间正序。
 //
-// 正序与页面相反：页面最近在前，账单从月初读起。游标用 (created_at, id)，
-// 与已出账账期的 StreamBillingStatementLines 同一套语义，前端不必分情况处理。
+// 正序与页面相反：页面最近在前，账单从月初读起。tie-break 有两种：
+// 普通日志库用 (created_at, id)，ClickHouse 用 (created_at, request_id)，
+// 因为那边 logs.id 恒为 0，拿它做游标会让「下一页」永远停在第一页。
+// 模式由游标自己带着走（RequestId 非空即 request_id 模式），翻页中途换库也不会错行。
 func ListUserLogsForBilling(ctx context.Context, userId int, start, end int64, filter BillingLineFilter, cursor BillingLineCursor, limit int) ([]*Log, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
+	if limit <= 0 || limit > BillingLinePageSizeMax+1 {
+		limit = BillingLinePageSizeMax + 1
 	}
 	tx := LOG_DB.WithContext(ctx).Model(&Log{}).
 		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
 			userId, start, end, billingConsumeTypes())
 	tx = applyBillingLineFilter(tx, filter)
+	byRequestId := cursor.RequestId != "" ||
+		(!cursor.Valid && common.UsingLogDatabase(common.DatabaseTypeClickHouse))
 	if cursor.Valid {
-		tx = tx.Where("(created_at > ? OR (created_at = ? AND id > ?))", cursor.CreatedAt, cursor.CreatedAt, cursor.Id)
+		if byRequestId {
+			tx = tx.Where("(created_at > ? OR (created_at = ? AND request_id > ?))",
+				cursor.CreatedAt, cursor.CreatedAt, cursor.RequestId)
+		} else {
+			tx = tx.Where("(created_at > ? OR (created_at = ? AND id > ?))",
+				cursor.CreatedAt, cursor.CreatedAt, cursor.Id)
+		}
+	}
+	order := "created_at ASC, id ASC"
+	if byRequestId {
+		order = "created_at ASC, request_id ASC"
 	}
 	rows := make([]*Log, 0, limit)
 	// 与 streamLogs 同理：Omit 会触发逐列枚举，只读的 channel_name 必须一起排除，
 	// 否则 ClickHouse 直接报列不存在。
-	err := tx.Omit("content", "channel_name").Order("created_at ASC, id ASC").Limit(limit).Find(&rows).Error
+	err := tx.Omit("content", "channel_name").Order(order).Limit(limit).Find(&rows).Error
 	return rows, err
 }
 
@@ -110,9 +124,34 @@ func StreamUserLogsForBilling(ctx context.Context, userId int, start, end int64,
 		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
 			userId, start, end, billingConsumeTypes())
 	tx = applyBillingLineFilter(tx, filter)
-	// 与 StreamUserLogs 不同，这里不改写 id：账单明细的游标就是真实 (created_at, id)，
-	// 重排成行号会让翻页错行。
-	return streamLogs(tx, "logs.created_at ASC, logs.id ASC", fn)
+	// 与 StreamUserLogs 不同，这里不改写 id、也不接受「最新在前」的改写：
+	// 账单从月初读起，游标就是真实 (created_at, request_id)。
+	return streamBillingLogs(tx, "logs.created_at ASC, logs.request_id ASC", fn)
+}
+
+// streamBillingLogs 严格按调用方给的 order 逐行读日志，不做「最新在前」的改写。
+//
+// 不能复用 model/log.go 的 streamLogs：它在 ClickHouse 下无条件把 order 换成
+// 「最新在前」，而账单明细要的是月初到月末，倒序会让明细表和汇总表读起来是两个
+// 方向（生产 0.0.214 就是这样）。把遍历放在这里，上游那个函数一行都不用动。
+func streamBillingLogs(tx *gorm.DB, order string, fn func(*Log) error) error {
+	// 与 streamLogs 同理：Omit 会让 GORM 从「SELECT *」切换成逐列枚举，只读字段
+	// channel_name 也会进列清单，而 ClickHouse 的 logs 表没有这一列。
+	rows, err := tx.Omit("content", "channel_name").Model(&Log{}).Order(order).Rows()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var log Log
+		if err := LOG_DB.ScanRows(rows, &log); err != nil {
+			return err
+		}
+		if err := fn(&log); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 // SummarizeUserLogsForBilling 按 (model, group) 汇总当月用量。

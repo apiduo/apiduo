@@ -239,6 +239,9 @@
     "Duration (ms)": "Duration (ms)",
     "This period has not been issued; figures are a live aggregate.": "This period has not been issued; figures are a live aggregate.",
     "Filter by username or user ID": "Filter by username or user ID",
-    "Live": "Live"
+    "Live": "Live",
+    "User not found.": "Пользователь не найден.",
+    "No billable usage in this period.": "За этот период нет оплачиваемого использования.",
+    "Administrator role required for the all-users view.": "Для общего представления требуется роль администратора."
   }
 }

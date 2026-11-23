@@ -82,6 +82,7 @@ func ListBillingStatementLines(c *gin.Context) {
 		IsDraft:    statement.Status == model.BillingStatusDraft,
 	}
 	limit, _ := strconv.Atoi(c.Query("page_size"))
+	pageSize := service.NormalizeBillingLinePageSize(limit)
 	filter := model.BillingLineFilter{
 		ModelName: c.Query("model"),
 		UseGroup:  c.Query("group"),
@@ -92,7 +93,7 @@ func ListBillingStatementLines(c *gin.Context) {
 	}
 
 	rows, next, err := service.LoadBillingLinesPage(c.Request.Context(), report, filter,
-		service.ParseBillingLineCursor(c.Query("cursor")), limit)
+		service.ParseBillingLineCursor(c.Query("cursor")), pageSize)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -105,6 +106,7 @@ func ListBillingStatementLines(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"items":       items,
 		"next_cursor": service.FormatBillingLineCursor(next),
+		"page_size":   pageSize,
 		"is_final":    !report.IsDraft,
 		"projection":  projection,
 	})
@@ -160,6 +162,11 @@ func ExportBillingStatement(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
+		if total == 0 {
+			// 空文件看起来像一份正式账单，客户只会拿来问「为什么是 0」。
+			common.ApiError(c, common.NewMessage("No billable usage in this period."))
+			return
+		}
 		if total > int64(billingDraftExportMaxRows()) {
 			common.ApiErrorMsg(c, "This statement has too many rows to export before it is issued. The full file is available after the 1st of next month.")
 			return
@@ -185,7 +192,9 @@ func ExportBillingStatement(c *gin.Context) {
 // 当月没有出账，列表是空的；页面上要说清「1 号出账后可见」，而不是显示 0 元。
 func ListBillingStatements(c *gin.Context) {
 	if c.GetInt("role") < common.RoleAdminUser {
-		c.AbortWithStatus(http.StatusForbidden)
+		// 空 body 会让前端只能显示通用错误；给一条可读的原因。
+		common.ApiErrorStatus(c, http.StatusForbidden,
+			common.NewMessage("Administrator role required for the all-users view."))
 		return
 	}
 	period, ok := billingPeriodParam(c)
@@ -271,9 +280,16 @@ func billingTargetUser(c *gin.Context) (billingUser, bool) {
 		targetId = parsed
 	}
 	username, err := model.GetUsernameById(targetId, false)
-	if err != nil && targetId != viewerId {
-		common.ApiErrorMsg(c, "User not found.")
-		return billingUser{}, false
+	// GetUsernameById 对不存在的行返回 ("", nil)，只判 err 会把「查无此人」
+	// 变成一份 username 为空的空账单，运营会误读成「该用户当月没消费」。
+	// 但用户被删除时名字同样为空，而他的账单可能还在 —— 那种情况要继续。
+	if targetId != viewerId && (err != nil || username == "") {
+		exists, lookupErr := model.BillingStatementExistsForUser(targetId)
+		if lookupErr != nil || !exists {
+			common.ApiError(c, common.NewMessage("User not found."))
+			return billingUser{}, false
+		}
+		username = "user#" + strconv.Itoa(targetId)
 	}
 	return billingUser{id: targetId, username: username}, true
 }

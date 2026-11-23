@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
+
 	"gorm.io/gorm"
 )
 
@@ -163,8 +165,8 @@ type BillingLineFilter struct {
 // ListBillingStatementLines 按时间正序取一页明细。offset 分页对本场景足够：
 // 单账期行数有界，且翻页不频繁。
 func ListBillingStatementLines(statementId int, filter BillingLineFilter, offset, limit int) ([]*BillingStatementLine, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
+	if limit <= 0 || limit > BillingLinePageSizeMax {
+		limit = BillingLinePageSizeMax
 	}
 	if offset < 0 {
 		offset = 0
@@ -190,8 +192,10 @@ func ListBillingStatementLines(statementId int, filter BillingLineFilter, offset
 // ListBillingStatementLinesAfter 按 (created_at, id) 取一页明细，与导出用同一套
 // keyset 语义。页面翻页因此不会随行数变慢，也不会因为期间有新写入而错行。
 func ListBillingStatementLinesAfter(statementId int, filter BillingLineFilter, cursor BillingLineCursor, limit int) ([]*BillingStatementLine, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
+	// 与当月明细同一个上界：调用方会多取一行判断有没有下一页，
+	// 所以这里必须允许 BillingLinePageSizeMax+1，否则 page_size=200 会被打回 50。
+	if limit <= 0 || limit > BillingLinePageSizeMax+1 {
+		limit = BillingLinePageSizeMax + 1
 	}
 	query := DB.Where("statement_id = ?", statementId)
 	if filter.ModelName != "" {
@@ -301,6 +305,43 @@ type BillingLineCursor struct {
 	Valid     bool
 	CreatedAt int64
 	Id        int
+	// RequestId 是 ClickHouse 日志表上的 tie-break。那边没有可用的自增 id
+	// （logs.id 恒为 0），同一秒的多行只能靠 request_id 定序。
+	RequestId string
+}
+
+// BillingLinePageSizeMax 是当月明细一页的上限，内部多取的那一行不算在内。
+const BillingLinePageSizeMax = 200
+
+// BillingLineCursorFromLog 按日志库形态造游标：ClickHouse 落在 request_id 上，
+// 其他库落在自增 id 上。查询条件与排序必须跟着同一个选择走，否则翻页会错行。
+func BillingLineCursorFromLog(log *Log) BillingLineCursor {
+	if log == nil {
+		return BillingLineCursor{}
+	}
+	cursor := BillingLineCursor{Valid: true, CreatedAt: log.CreatedAt}
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		// 没有 request_id 的行在这套游标下无法定位「下一行」。宁可让翻页停在
+		// 这里，也不要给出一个解析不了、会把读者送回第一页再循环的游标。
+		// 实测 10,456,643 行里空 request_id 为 0，走到这里说明写入侧异常。
+		if log.RequestId == "" {
+			return BillingLineCursor{}
+		}
+		cursor.RequestId = log.RequestId
+	} else {
+		cursor.Id = log.Id
+	}
+	return cursor
+}
+
+// BillingStatementExistsForUser 回答「这个 user_id 有没有账单」。
+//
+// 代客查看时用它兜底：用户被删除后 users 表查不到名字，但已出账的账单还在，
+// 不能因为查不到人就 404 —— 那会让运营没法核对历史账单。
+func BillingStatementExistsForUser(userId int) (bool, error) {
+	var count int64
+	err := DB.Model(&BillingStatement{}).Where("user_id = ?", userId).Count(&count).Error
+	return count > 0, err
 }
 
 // StreamBillingStatementLines 按时间正序把全部明细分批交给 fn，供导出使用。

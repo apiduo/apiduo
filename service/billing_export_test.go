@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -273,4 +274,159 @@ func TestBillingExportKeyStaysWithinThreeSegments(t *testing.T) {
 	assert.NoError(t, err, "归档 key 必须能通过下载端点的路径校验")
 	_, err = normalizeExportKey(draft)
 	assert.NoError(t, err)
+}
+
+// 页大小越界要夹到上界，而不是回落到默认 50：传 200 被服务层多取一行变成 201，
+// 下游若再按 <=200 判一次，用户只会拿到 50 行且 next_cursor 为空 —— 静默截断。
+func TestNormalizeBillingLinePageSize(t *testing.T) {
+	assert.Equal(t, 50, NormalizeBillingLinePageSize(0))
+	assert.Equal(t, 50, NormalizeBillingLinePageSize(-3))
+	assert.Equal(t, 1, NormalizeBillingLinePageSize(1))
+	assert.Equal(t, 200, NormalizeBillingLinePageSize(200))
+	assert.Equal(t, 200, NormalizeBillingLinePageSize(201))
+	assert.Equal(t, 200, NormalizeBillingLinePageSize(5000))
+}
+
+// ClickHouse 那边 logs.id 恒为 0，游标只能落在 request_id 上。
+// 编码要能原样往返，且不和历史的 `<ts>_<id>` 混淆。
+func TestParseBillingLineCursorRoundTripsRequestId(t *testing.T) {
+	cursor := model.BillingLineCursor{
+		Valid:     true,
+		CreatedAt: 1700000000,
+		RequestId: "202611010553185537899618268d9d6yzJAUWTn",
+	}
+	encoded := FormatBillingLineCursor(cursor)
+	assert.Equal(t, "r.1700000000.202611010553185537899618268d9d6yzJAUWTn", encoded)
+
+	parsed := ParseBillingLineCursor(encoded)
+	assert.True(t, parsed.Valid)
+	assert.EqualValues(t, 1700000000, parsed.CreatedAt)
+	assert.Equal(t, cursor.RequestId, parsed.RequestId)
+	assert.Equal(t, 0, parsed.Id, "request_id 游标不该带 id")
+
+	assert.False(t, ParseBillingLineCursor("r.0.abc").Valid)
+	assert.False(t, ParseBillingLineCursor("r.1700000000.").Valid)
+	assert.False(t, ParseBillingLineCursor("r.1700000000").Valid)
+}
+
+// 同秒多行在 request_id 模式下必须既不重也不漏。
+func TestBillingLinesCursorByRequestIdTieBreak(t *testing.T) {
+	setupBillingTestDB(t)
+	start, end, err := BillingPeriodBounds("2026-10")
+	require.NoError(t, err)
+	for i := range 3 {
+		seedBillingLog(t, model.DB, model.Log{
+			UserId: 12, CreatedAt: start + 100, Type: model.LogTypeConsume,
+			ModelName: "m", Quota: 100, RequestId: "rid-" + string(rune('a'+i)),
+		})
+	}
+	seedBillingLog(t, model.DB, model.Log{
+		UserId: 12, CreatedAt: start + 200, Type: model.LogTypeConsume,
+		ModelName: "m", Quota: 100, RequestId: "rid-z",
+	})
+
+	rows, err := model.ListUserLogsForBilling(context.Background(), 12, start, end,
+		model.BillingLineFilter{},
+		model.BillingLineCursor{Valid: true, CreatedAt: start + 100, RequestId: "rid-a"}, 10)
+	require.NoError(t, err)
+
+	var seen []string
+	for _, row := range rows {
+		seen = append(seen, row.RequestId)
+	}
+	assert.Equal(t, []string{"rid-b", "rid-c", "rid-z"}, seen)
+}
+
+// 一页要能拿满 200 行（旧实现里服务层多取一行触发下游 <=200 的兜底，只回 50 行）。
+func TestBillingLinesPageHonoursLargePageSize(t *testing.T) {
+	setupBillingTestDB(t)
+	start, _, err := BillingPeriodBounds("2026-10")
+	require.NoError(t, err)
+	for i := range 60 {
+		seedBillingLog(t, model.DB, model.Log{
+			UserId: 13, CreatedAt: start + 100 + int64(i), Type: model.LogTypeConsume,
+			ModelName: "m", Quota: 100, RequestId: "rid-" + strconv.Itoa(i),
+		})
+	}
+
+	snapshot := BillingSnapshot{QuotaPerUnit: 500000, SettleRate: 7.3, Currency: "CNY"}
+	report, err := LoadDraftBillingReport(context.Background(), "2026-10", 13, "erin", snapshot, BillingProjectionAdmin)
+	require.NoError(t, err)
+
+	rows, next, err := LoadBillingLinesPage(context.Background(), report, model.BillingLineFilter{}, model.BillingLineCursor{}, 200)
+	require.NoError(t, err)
+	assert.Len(t, rows, 60)
+	assert.False(t, next.Valid)
+}
+
+// 已出账明细与当月明细共用同一个上界：调用方多取一行，所以 201 必须放行。
+// 旧实现按 >200 打回 50，page_size=200 会静默只给 50 行且 next_cursor 为空。
+func TestIssuedBillingLinesHonoursLargePageSize(t *testing.T) {
+	db := setupBillingTestDB(t)
+	statement := model.BillingStatement{
+		Period: "2026-09", UserId: 14, Username: "frank",
+		Status: model.BillingStatusIssued, PeriodStart: 1, PeriodEnd: 2,
+	}
+	require.NoError(t, db.Create(&statement).Error)
+	for i := range 60 {
+		line := model.BillingStatementLine{
+			StatementId: statement.Id, UserId: 14, CreatedAt: int64(1000 + i),
+			RequestId: "rid-" + strconv.Itoa(i), Type: model.LogTypeConsume,
+			Amount: "0.000100", Quota: 100,
+		}
+		require.NoError(t, db.Create(&line).Error)
+	}
+
+	rows, err := model.ListBillingStatementLinesAfter(statement.Id, model.BillingLineFilter{}, model.BillingLineCursor{}, model.BillingLinePageSizeMax+1)
+	require.NoError(t, err)
+	assert.Len(t, rows, 60)
+}
+
+// 已出账明细分页按 (created_at, id) 前进：同秒多行既不重也不漏。
+func TestIssuedBillingLinesSameSecondCursor(t *testing.T) {
+	db := setupBillingTestDB(t)
+	statement := model.BillingStatement{
+		Period: "2026-07", UserId: 16, Username: "gina",
+		Status: model.BillingStatusIssued, PeriodStart: 1, PeriodEnd: 2,
+	}
+	require.NoError(t, db.Create(&statement).Error)
+	for _, ts := range []int64{1000, 1000, 1000, 1100} {
+		require.NoError(t, db.Create(&model.BillingStatementLine{
+			StatementId: statement.Id, UserId: 16, CreatedAt: ts,
+			Type: model.LogTypeConsume, Amount: "0.000100", Quota: 100,
+		}).Error)
+	}
+
+	var seen []int64
+	cursor := model.BillingLineCursor{}
+	for range 5 {
+		page, err := model.ListBillingStatementLinesAfter(statement.Id, model.BillingLineFilter{}, cursor, 2)
+		require.NoError(t, err)
+		if len(page) == 0 {
+			break
+		}
+		for _, line := range page {
+			seen = append(seen, line.CreatedAt)
+		}
+		last := page[len(page)-1]
+		cursor = model.BillingLineCursor{Valid: true, CreatedAt: last.CreatedAt, Id: last.Id}
+	}
+	assert.Equal(t, []int64{1000, 1000, 1000, 1100}, seen)
+}
+
+// 用户被删除后 users 表查不到名字，但账单还在：代客查看要能继续。
+func TestBillingStatementExistsForUser(t *testing.T) {
+	db := setupBillingTestDB(t)
+	require.NoError(t, db.Create(&model.BillingStatement{
+		Period: "2026-08", UserId: 15, Username: "user#15",
+		Status: model.BillingStatusIssued, PeriodStart: 1, PeriodEnd: 2,
+	}).Error)
+
+	exists, err := model.BillingStatementExistsForUser(15)
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	exists, err = model.BillingStatementExistsForUser(999999)
+	require.NoError(t, err)
+	assert.False(t, exists)
 }
