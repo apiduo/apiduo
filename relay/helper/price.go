@@ -3,7 +3,9 @@ package helper
 import (
 	"errors"
 	"fmt"
+	// APIDUO:remap-hardening:BEGIN
 	"net/http"
+	// APIDUO:remap-hardening:END
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"

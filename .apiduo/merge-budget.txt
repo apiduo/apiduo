@@ -192,7 +192,12 @@
 # model_price_not_configured 的 NewAPIError（1 行变 3 行 + 标记块）：只有这个码在
 # error_catalog.go 映射成 404，QuotaClamp 等真实内部错误仍是 500。
 # deleted +1 即 relay.go 里被替换掉的那行 SetClientFacing。
+# 2026-11-23 blocks 668->669 / added 6963->6965：把 net/http 这个 import 纳入 remap-hardening 标记块。
+# 上一段的 price.go 改动新增了 http.StatusBadRequest，但 import 行落在块外，CI 的
+# marker coverage 因此判「新增未标记代码」并拦住发版。import 必须与用法同块，
+# 块的两行注释是覆盖检查的必要成本（blocks 按 BEGIN/END 对计数，同名块另起一对也算一个）；
+# 不用字面量 400 换掉常量。
 files	205
-blocks	668
-added	6963
+blocks	669
+added	6965
 deleted	492
