@@ -36,6 +36,34 @@ ssh ai-prod 'bash /opt/apiduo-cn/preflight.sh'
    这个字段单独用会给出假绿灯。
 3. **备份新鲜度 ≤ 26h**。cron 静默失败是常态，别靠"应该跑了"判断。
 
+## 二·四、ClickHouse 内存预算（Code: 241 的根因）
+
+配置在 `/www/data/apiduo-cn/clickhouse-config/config.d/zz-apiduo-cn.xml`（宿主机挂进容器，
+`/etc/clickhouse-server/config.d`）。两个数必须一起看：
+
+| 设置 | 值 | 说明 |
+|---|---|---|
+| `max_server_memory_usage` | 5G | 进程总上限。**比对的是 RSS，不是 `MemoryTracking`** |
+| 单查询 `max_memory_usage` | 4G | 在 `users.d/zz-apiduo-cn.xml`，只防单条查询 |
+
+关键事实：这个上限比的是**进程 RSS**。空闲 RSS 就有 3.3G（分配器驻留 + page cache，
+`SYSTEM DROP MARK CACHE` 只能回收约 0.14G），设 4G 时实际只剩 0.6G 给查询 ——
+一条 63.7 万行的账单聚合（实测要 500~700MB）就能顶到上限，随后**任何**查询都会被
+拒成 `Code: 241 (total) memory limit exceeded`，包括一次几十毫秒的 `count()`。
+2026-11-23 账单页「已删除用户查不到账单」的间歇故障就是这么来的。
+
+改这个值**不需要重启**：
+
+```bash
+# 改完 config.d 里的 <max_server_memory_usage>，然后
+docker exec apiduo-cn-clickhouse sh -c 'exec clickhouse-client --user="$CLICKHOUSE_USER" --password="$CLICKHOUSE_PASSWORD" -q "SYSTEM RELOAD CONFIG"'
+# 验证
+docker exec apiduo-cn-clickhouse sh -c 'exec clickhouse-client --user="$CLICKHOUSE_USER" --password="$CLICKHOUSE_PASSWORD" -q "SELECT value FROM system.server_settings WHERE name = '"'"'max_server_memory_usage'"'"'"'
+```
+
+`system.server_settings.changeable_without_restart` 会告诉你哪些能热改。要动之前先
+`cp -a` 备份，`ls zz-apiduo-cn.xml.bak-*` 里留着历次改动的原件。
+
 ## 二·五、盗刷追溯链路（出事后靠什么定位到人）
 
 一条请求的 IP 能落到日志里，要下面五条同时成立（preflight 第 9 节把可自动判定的都查了）：

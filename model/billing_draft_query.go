@@ -26,15 +26,15 @@ import (
 // 线上账单页首屏连续三次全挂，报 (total) memory limit exceeded（current RSS
 // 4.00 GiB / maximum 4.00 GiB），连 internal=0 也一样，前端只剩骨架。根因是
 // 服务端两个默认值叠在一起：max_bytes_before_external_group_by=0 让分组聚合
-// 只走内存、永不落盘，max_threads=32 又按线程数放大中间缓冲，而一个 60 万行
+// 只走内存、永不落盘，max_threads=32 又按线程数放大中间缓冲，而一个 63.7 万行
 // 账期的汇总要把 other 大列（实测 185 MiB）逐行解四次 JSON。
 //
 // 手工加一组 settings 后同一查询秒级返回，所以这里固化成「到 200MB 就落盘 +
-// 限 2 线程 + 限 1G 预算」。只作用于这两个聚合查询，不影响转发链路。
+// 限 2 线程 + 限 800MB 预算」。只作用于这两个聚合查询，不影响转发链路。
 const (
-	billingAggregateMemoryUsage = 1_000_000_000 // 1 GiB，比服务端默认 4G 更保守
-	billingAggregateSpillBytes  = 200_000_000   // 200 MB，超过就溢写到磁盘
-	billingAggregateThreads     = 2             // 默认 32，是中间缓冲的主要放大项
+	billingAggregateMemoryUsage = 800_000_000 // 单条 800MB，实测一条需要 500~700MB
+	billingAggregateSpillBytes  = 200_000_000 // 200 MB 就溢写到磁盘，别攒在内存里
+	billingAggregateThreads     = 2           // 默认 32，是中间缓冲的主要放大项
 )
 
 // billingAggregateContext 给聚合查询挂上上面那组内存策略。
@@ -57,14 +57,14 @@ func billingAggregateContext(ctx context.Context) context.Context {
 
 // 账单聚合的并发闸门与超时。
 //
-// 单条聚合实测需要 400~600MB（63.7 万行账期，other 列 185MB），而服务端总预算
-// 只有 4G、空闲基线已占 1.3G。三条以上并发就会把预算吃光，随后连一次几十毫秒的
-// count 都会被拒成 Code: 241 —— 0.0.217 之前 user_id=64 的详情间歇 404 就是这么来的。
-// 给单条查询限内存只能防住「一条查询吃太多」，防不住「很多条一起吃」，所以这里
-// 再限一个并发数：4 - 1.3G 基线 ≈ 2.7G，按 600MB 算最多四条，取 3 留余量。
+// 单条聚合实测需要 500~700MB（63.7 万行账期，other 列 185MB）。服务端总上限
+// 5G，但要比对的是进程 RSS 而不是 MemoryTracking：空闲 RSS 已 3.3G（分配器驻留
+// + page cache），只剩 1.7G 给查询。三条并发实测正好把 RSS 顶到 5.00G 并拒掉
+// 一条（Code: 241），两条则稳定。给单条查询限内存防不住「很多条一起吃」，所以
+// 这里再限并发数：1.7G / 0.8G ≈ 2 条。
 //
 // 名额是进程内的：多副本部署时实际上是「每副本 3 条」，要按副本数再核一次总预算。
-var billingAggregateSlots = make(chan struct{}, 3)
+var billingAggregateSlots = make(chan struct{}, 2)
 
 // billingAggregateTimeout 是单条聚合的上限。没有它，一条被 ClickHouse 拖住的
 // 查询会一直占着名额，把后面所有账单请求一起堵死；带上 deadline 后驱动还会顺带
