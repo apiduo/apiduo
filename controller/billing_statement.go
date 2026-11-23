@@ -157,7 +157,7 @@ func ExportBillingStatement(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		total, err := model.CountUserLogsForBilling(target.id, bounds.PeriodStart, bounds.PeriodEnd)
+		total, err := model.CountUserLogsForBilling(c.Request.Context(), target.id, bounds.PeriodStart, bounds.PeriodEnd)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -290,8 +290,17 @@ func billingTargetUser(c *gin.Context, period string) (billingUser, bool) {
 		if boundsErr != nil {
 			start, end = 0, 0
 		}
-		exists, lookupErr := model.BillingStatementExistsForUser(targetId, start, end)
-		if lookupErr != nil || !exists {
+		exists, lookupErr := model.BillingStatementExistsForUser(c.Request.Context(), targetId, start, end)
+		if lookupErr != nil {
+			// 查不动 ≠ 查无此人。ClickHouse 内存被打满时这里会在十几毫秒内
+			// 返回 Code: 241，把一次瞬时故障当成结论，运营就会看到「老客户的
+			// 账单不存在」。放行一份可能是空的账单，损失远小于拒绝一份真实账单。
+			// 权限面不受影响：只有管理员能传 user_id，全站列表本来就返回这些 id。
+			common.SysLog(common.LogText("billing statement existence probe failed, allowing the request: user_id=%d period=%s error=%v",
+				targetId, period, lookupErr))
+			exists = true
+		}
+		if !exists {
 			common.ApiError(c, common.NewMessage("User not found."))
 			return billingUser{}, false
 		}

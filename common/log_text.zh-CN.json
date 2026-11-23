@@ -354,6 +354,7 @@
   "batch update overflow: type=%d id=%d old=%d value=%d": "批量更新的累加值溢出: type=%d id=%d old=%d value=%d",
   "batch update started": "批量更新开始",
   "billable tool count ignored: tool=%s count=%d": "工具计费次数无效，已忽略: tool=%s count=%d",
+  "billing statement existence probe failed, allowing the request: user_id=%d period=%s error=%v": "账单归属探测失败，放行本次请求: user_id=%d period=%s error=%v",
   "build initial plugin router: %s": "初始化插件路由失败: %s",
   "build request failed: %s": "创建请求失败: %s",
   "build task plugin native submit view failed: %s": "任务插件提交响应: 构建任务数据失败: %s",

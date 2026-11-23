@@ -343,7 +343,10 @@ func BillingLineCursorFromLog(log *Log) BillingLineCursor {
 // 会把「这个月有 60 万次请求、但用户已被删除」的老客户判成不存在（线上实测
 // user_id=64/65 全部用户列表显示 user#64，点进详情却返回 User not found.）。
 // start/end 是该账期的边界，传 0 表示不查用量维度。
-func BillingStatementExistsForUser(userId int, start, end int64) (bool, error) {
+//
+// 用量维度只做存在性探测，不数总数：调用方要的是「有没有」，而 count 在服务端
+// 内存吃紧时会被直接拒绝，把一次瞬时故障变成一个「查无此人」的结论。
+func BillingStatementExistsForUser(ctx context.Context, userId int, start, end int64) (bool, error) {
 	var count int64
 	if err := DB.Model(&BillingStatement{}).Where("user_id = ?", userId).Count(&count).Error; err != nil {
 		return false, err
@@ -354,11 +357,7 @@ func BillingStatementExistsForUser(userId int, start, end int64) (bool, error) {
 	if start >= end {
 		return false, nil
 	}
-	used, err := CountUserLogsForBilling(userId, start, end)
-	if err != nil {
-		return false, err
-	}
-	return used > 0, nil
+	return BillingUserHasUsage(ctx, userId, start, end)
 }
 
 // StreamBillingStatementLines 按时间正序把全部明细分批交给 fn，供导出使用。

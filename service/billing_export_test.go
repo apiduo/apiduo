@@ -422,11 +422,11 @@ func TestBillingStatementExistsForUser(t *testing.T) {
 		Status: model.BillingStatusIssued, PeriodStart: 1, PeriodEnd: 2,
 	}).Error)
 
-	exists, err := model.BillingStatementExistsForUser(15, 0, 0)
+	exists, err := model.BillingStatementExistsForUser(context.Background(), 15, 0, 0)
 	require.NoError(t, err)
 	assert.True(t, exists)
 
-	exists, err = model.BillingStatementExistsForUser(999999, 0, 0)
+	exists, err = model.BillingStatementExistsForUser(context.Background(), 999999, 0, 0)
 	require.NoError(t, err)
 	assert.False(t, exists)
 }
@@ -444,17 +444,17 @@ func TestBillingStatementExistsForUserDraftMonth(t *testing.T) {
 	}).Error)
 
 	// 65 没有已出账快照，但 2026-11 有当月用量 → 仍在。
-	exists, err := model.BillingStatementExistsForUser(65, 400, 600)
+	exists, err := model.BillingStatementExistsForUser(context.Background(), 65, 400, 600)
 	require.NoError(t, err)
 	assert.True(t, exists)
 
 	// 同一用户换到没有用量的账期 → 不存在。
-	exists, err = model.BillingStatementExistsForUser(65, 1000, 2000)
+	exists, err = model.BillingStatementExistsForUser(context.Background(), 65, 1000, 2000)
 	require.NoError(t, err)
 	assert.False(t, exists)
 
 	// 已出账快照仍然优先，且不需要账期边界。
-	exists, err = model.BillingStatementExistsForUser(64, 0, 0)
+	exists, err = model.BillingStatementExistsForUser(context.Background(), 64, 0, 0)
 	require.NoError(t, err)
 	assert.True(t, exists)
 }

@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -84,13 +85,39 @@ func billingGroupColumn() string {
 
 // CountUserLogsForBilling 统计一个账期内要进账单的行数，用于导出前拒绝超限，
 // 而不是写到一半停下。错误行计入统计，导出时再按规则排除。
-func CountUserLogsForBilling(userId int, start, end int64) (int64, error) {
+func CountUserLogsForBilling(ctx context.Context, userId int, start, end int64) (int64, error) {
 	var total int64
-	err := LOG_DB.Model(&Log{}).
+	err := LOG_DB.WithContext(billingAggregateContext(ctx)).Model(&Log{}).
 		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
 			userId, start, end, billingConsumeTypes()).
 		Count(&total).Error
 	return total, err
+}
+
+// BillingUserHasUsage 回答「这个账期内有没有要进账单的日志」。
+//
+// 与 CountUserLogsForBilling 的差别是代价：这里要一行就够（LIMIT 1），count 要把
+// 匹配行全数一遍。代客查看只需要「有 / 没有」，数清没有意义。
+//
+// 线上 user_id=64/65 各只有 2~3 行，count 本身不算贵；问题是它与聚合查询抢
+// 同一份服务端内存预算（max_server_memory_usage 只有 4G），别人把预算吃满时
+// 它会在 12ms 内被直接拒绝（Code: 241），于是「查询失败」被上层误读成
+// 「这个用户没有账单」。行数少、成本确定，这一层不该存在这种失败面。
+func BillingUserHasUsage(ctx context.Context, userId int, start, end int64) (bool, error) {
+	var probe struct{ Hit uint8 }
+	err := LOG_DB.WithContext(billingAggregateContext(ctx)).Model(&Log{}).
+		Select("1 AS hit").
+		Where("user_id = ? AND created_at >= ? AND created_at < ? AND type IN ?",
+			userId, start, end, billingConsumeTypes()).
+		Limit(1).
+		Take(&probe).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return probe.Hit == 1, nil
 }
 
 // billingConsumeTypes 是账单明细的来源类型：消费、错误、退款。
