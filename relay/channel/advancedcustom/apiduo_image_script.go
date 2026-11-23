@@ -139,14 +139,22 @@ func planImageRequestWithModel(c *imageCanonical, cfg *dto.ImageProtocolConfig, 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	// 上游一次只产出一张：n 是计费口径，不是扇出指令。网关不会按 n 发多次上游
+	// 请求，原样转发只会让上游重复出图（按次重复扣费）或直接 400。这里只改写
+	// 发往上游的副本，canonical 保留客户端原值 —— prepareImageProtocol 随后用
+	// 它决定计费张数。缺席保持缺席：默认值归上游，效果同样是 1 张。
+	upstreamView := c.clone()
+	if _, exists := upstreamView.fields["n"]; exists {
+		upstreamView.fields["n"] = 1
+	}
 	// 历史值（seedream / gpt-image-2）在这里一并收敛，见 NormalizeImageUpstream。
 	switch dto.NormalizeImageUpstream(cfg.Upstream) {
 	case dto.ImageUpstreamARK:
-		return planSeedream(c, cfg)
+		return planSeedream(upstreamView, cfg)
 	case dto.ImageUpstreamOpenAI:
-		return planGPTImage2(c, cfg)
+		return planGPTImage2(upstreamView, cfg)
 	case dto.ImageUpstreamGemini:
-		return planGemini(c, upstreamModel)
+		return planGemini(upstreamView, upstreamModel)
 	default:
 		return nil, fmt.Errorf("unknown image upstream %q", cfg.Upstream)
 	}

@@ -94,6 +94,28 @@ images 的 `data[]` 里没有任何好处，而客户端不写这个字段通常
 与 images 的同名字段只是同名。传 `"b64_json"` 字符串在**反序列化阶段**就 400，到不了转换层。
 所以：**chat 入口永远给 url；要 base64 必须走 `/v1/images/generations`。**
 
+### 2.4 n 的口径
+
+**n 是计费张数，不是上游扇出指令。**
+
+| 环节 | 值 |
+|---|---|
+| canonical（客户端请求） | 合法值保留；`<1` / 小数 / 不可解析归一为 `1`；**缺席保持缺席** |
+| 发往上游 | **恒为 1**；Gemini 干脆不发这个字段（等于抠掉，效果相同） |
+| 计费 | 客户端请求的 n，上限 `dto.MaxImageN` = 128 |
+
+网关一次请求只发一个上游调用（`doImageProtocolRequest` 里单次 `DoApiRequest`），
+没有按 n 拆单的路径 —— 要 n 张独立结果由客户端发 n 次请求。
+
+改写只发生在**发往上游的副本**上（`planImageRequestWithModel` 的 `upstreamView`），
+canonical 保留原值：`prepareImageProtocol` 随后读它决定 `imageRequestCount`。
+顺序颠倒会让「按 n 计费」退化成按 1 张计费。
+
+三条上游同一条规则：**上游收不到 n，也不会按 n 扇出**。Gemini 的 `generationConfig`
+只有 `responseModalities` 与 `imageConfig`，本来就没有 candidateCount；不因为它只出一张
+就在入口拒绝 n>1 —— 拒绝与「n 只计费」互相矛盾，且拒绝路径还要在预消费前额外挡一次。
+
+
 ## 3. 主端点的合法形状
 
 - 必须是路径（`/` 开头），不带域名、query、fragment。

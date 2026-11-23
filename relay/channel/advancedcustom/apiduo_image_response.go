@@ -43,8 +43,8 @@ type imageResponse struct {
 	Created int64
 	Data    []imageResponseItem
 	Extras  map[string]any
-	// Usage 只有 Gemini 上游提供：上游的 token 计量是展示用事实，
-	// 账本仍按张（见 §6 展示与计费分离）。
+	// Usage 只有 Gemini 上游提供。它既是账本口径（billedUsage），
+	// 也是按模态计价（img_o）的唯一来源。
 	Usage *imageUsageSummary
 }
 
@@ -55,6 +55,9 @@ type imageUsageSummary struct {
 	CompletionTokens int
 	TotalTokens      int
 	ThoughtsTokens   int
+	// ImageOutputTokens 是 candidatesTokensDetails 里 IMAGE 模态的 token 数。
+	// 表达式计费的 img_o 靠它：c 会把这块扣掉，让输出图片和输出文字分开定价。
+	ImageOutputTokens int
 }
 
 // decodeImageResponse 解析上游 {created, data:[{url|b64_json, …}]}。
@@ -169,6 +172,7 @@ func finishImageNativeResponse(
 //   - Gemini：usageMetadata（解码时已折进 imageResponse.Usage）
 //   - OpenAI 形状：envelope 的 usage（ark 回 output_tokens/total_tokens；
 //     多数 b64 类接口不回，此时 ok=false）
+//
 // 拿不到就是拿不到——不要用图片张数去猜 token。
 func (r *imageResponse) usageFromUpstream() (*dto.Usage, bool) {
 	if r == nil {
@@ -180,7 +184,11 @@ func (r *imageResponse) usageFromUpstream() (*dto.Usage, bool) {
 		// total-prompt，而不是 candidatesTokenCount：后者不含 thoughts，用它
 		// 会让每个请求少收一截。
 		completion := max(u.TotalTokens-prompt, 0)
-		return &dto.Usage{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: u.TotalTokens}, true
+		usage := &dto.Usage{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: u.TotalTokens}
+		// 输出侧按模态拆开。引擎只在表达式引用 img_o 时才从 c 里扣，
+		// 所以老配置（ModelRatio/CompletionRatio）行为不变。
+		usage.CompletionTokenDetails.ImageTokens = u.ImageOutputTokens
+		return usage, true
 	}
 	raw, ok := r.Extras["usage"].(map[string]any)
 	if !ok {
@@ -195,7 +203,11 @@ func (r *imageResponse) usageFromUpstream() (*dto.Usage, bool) {
 	if total == 0 {
 		return nil, false
 	}
-	return &dto.Usage{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: total}, true
+	usage := &dto.Usage{PromptTokens: prompt, CompletionTokens: completion, TotalTokens: total}
+	if details, ok := raw["completion_tokens_details"].(map[string]any); ok {
+		usage.CompletionTokenDetails.ImageTokens = intField(details, "image_tokens")
+	}
+	return usage, true
 }
 
 // billedUsage 是账本口径：上游给了真实 token 就按 token，没给退回 {1,0,1}。
@@ -607,10 +619,14 @@ func decodeGeminiImageResponse(raw []byte, fallbackCreated int64) (*imageRespons
 			BlockReason string `json:"blockReason"`
 		} `json:"promptFeedback"`
 		UsageMetadata *struct {
-			PromptTokenCount     int `json:"promptTokenCount"`
-			CandidatesTokenCount int `json:"candidatesTokenCount"`
-			TotalTokenCount      int `json:"totalTokenCount"`
-			ThoughtsTokenCount   int `json:"thoughtsTokenCount"`
+			PromptTokenCount        int `json:"promptTokenCount"`
+			CandidatesTokenCount    int `json:"candidatesTokenCount"`
+			TotalTokenCount         int `json:"totalTokenCount"`
+			ThoughtsTokenCount      int `json:"thoughtsTokenCount"`
+			CandidatesTokensDetails []struct {
+				Modality   string `json:"modality"`
+				TokenCount int    `json:"tokenCount"`
+			} `json:"candidatesTokensDetails"`
 		} `json:"usageMetadata"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
@@ -645,11 +661,18 @@ func decodeGeminiImageResponse(raw []byte, fallbackCreated int64) (*imageRespons
 	}
 	result := &imageResponse{Created: created, Data: items}
 	if usage := envelope.UsageMetadata; usage != nil && usage.TotalTokenCount > 0 {
+		imageOutput := 0
+		for _, detail := range usage.CandidatesTokensDetails {
+			if strings.EqualFold(strings.TrimSpace(detail.Modality), "IMAGE") {
+				imageOutput += detail.TokenCount
+			}
+		}
 		result.Usage = &imageUsageSummary{
-			PromptTokens:     usage.PromptTokenCount,
-			CompletionTokens: usage.CandidatesTokenCount,
-			TotalTokens:      usage.TotalTokenCount,
-			ThoughtsTokens:   usage.ThoughtsTokenCount,
+			PromptTokens:      usage.PromptTokenCount,
+			CompletionTokens:  usage.CandidatesTokenCount,
+			TotalTokens:       usage.TotalTokenCount,
+			ThoughtsTokens:    usage.ThoughtsTokenCount,
+			ImageOutputTokens: imageOutput,
 		}
 	}
 	return result, nil

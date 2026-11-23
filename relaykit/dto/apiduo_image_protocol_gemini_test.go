@@ -2,26 +2,6 @@ package dto
 
 import "testing"
 
-func TestRejectsImageCountOnlyForGemini(t *testing.T) {
-	gemini := &ImageProtocolConfig{Enabled: true, Upstream: ImageUpstreamGemini}
-	if err := gemini.RejectsImageCount(1); err != nil {
-		t.Fatalf("n=1 must pass: %v", err)
-	}
-	if err := gemini.RejectsImageCount(2); err == nil {
-		t.Fatal("n=2 must be rejected for gemini")
-	}
-
-	ark := &ImageProtocolConfig{Enabled: true, Upstream: ImageUpstreamARK}
-	if err := ark.RejectsImageCount(4); err != nil {
-		t.Fatalf("ark keeps supporting n: %v", err)
-	}
-
-	disabled := &ImageProtocolConfig{Upstream: ImageUpstreamGemini}
-	if err := disabled.RejectsImageCount(4); err != nil {
-		t.Fatalf("disabled protocol must not reject: %v", err)
-	}
-}
-
 func TestImageUpstreamGeminiIsValid(t *testing.T) {
 	cfg := &ImageProtocolConfig{Enabled: true, Upstream: ImageUpstreamGemini}
 	if err := cfg.Validate(); err != nil {

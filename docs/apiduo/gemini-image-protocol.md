@@ -277,11 +277,13 @@ parts[3] inlineData    image/png  1376×768  （成品，字节不同）
 
 | 入口 | 交付 | 理由 |
 |---|---|---|
-| `images/generations`、`images/edits`、`chat`、`responses` | **只取最后一个 inlineData** | 这些入口的 `n` 就是交付张数，`data[]` 长度必须等于 n；账本按 n 预扣 |
+| `images/generations`、`images/edits`、`chat`、`responses` | **只取最后一个 inlineData** | 单次调用只产出一张成品；`n` 只决定计费张数，不决定 `data[]` 长度 |
 | `:generateContent`（Gemini 原生） | **全部 part** | 客户端说 Gemini，就按 Gemini 语义回；两个 part 都是上游的合法输出 |
 
 实现是 `deliverableImages`（`apiduo_image_response.go`）：只对 `upstream=gemini` 且多个图时
-裁到最后一个。ark / openai 的 `n` 是真扇出，不能裁——它们的 `data[]` 长度必须保持 n。
+裁到最后一个。2026-11-23 起三条上游都不按 n 扇出（`n` 不上行，见
+`image-endpoint-contract.md` §2.4）；裁剪仍只对 gemini 生效——只有它会在一次回包里
+给草稿 + 成品两张。
 
 裁掉草稿也省一次转存：`alignImageCarriers` 在裁剪之后执行，草稿不会被上传对象存储。
 
@@ -331,7 +333,7 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 `responseModalities` 只写 `IMAGE`（不带 `TEXT`）：这是唯一能压住「草稿图 + 成品图」
 两张的开关，见 §3.5 的四组实测。
 
-- `n > 1` 拒绝：一次调用只产出一张最终图，拒绝点在 `PrepareImageBillingForRequest` 之前。
+- `n` 不转发：上游恒出 1 张，`n` 只决定计费张数（`image-endpoint-contract.md` §2.4）。
 - `size` 只映射五个确定档（1:1 / 3:2 / 2:3 / 16:9 / 9:16），未知值交给上游默认。
 - `seed` / `style` / `quality` / `negative_prompt` / `mask` 丢弃并记 `other.dropped_params`。
 
@@ -446,21 +448,46 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 token。实测 `nano-banana-2.1`：prompt 3 / candidates 1120 / thoughts 526 / total 1649，
 按 token 计费要收 3 + 1646。
 
-配置示例（把 zenmux 的 `image $30/1M`、`completion $7.5/1M` 折成倍率）：
+配置示例（zenmux 官方价：prompt $1.5/1M、completion $7.5/1M、image $30/1M）：
 
 ```json
 {
-  "ModelRatio": {"google/gemini-nano-banana-2.1": 7.5},
-  "CompletionRatio": {"google/gemini-nano-banana-2.1": 4}
+  "ModelRatio": {"google/gemini-nano-banana-2.1": 0.75},
+  "CompletionRatio": {"google/gemini-nano-banana-2.1": 20}
 }
 ```
 
-`CompletionRatio = 30 / 7.5 = 4`；`ModelRatio` 按「1 单位 = $0.002/1M token」折算
-（`QuotaPerUnit=500000` 时 7.5 → $7.5/1M）。
+折算规则：`每 token 配额 = 美元价 × QuotaPerUnit / 1e6`，`QuotaPerUnit=500000` 时
+$1.5/1M → 0.75、$30/1M → 15。`CompletionRatio` 是相对 `ModelRatio` 的倍数，
+所以 `15 / 0.75 = 20`。**不是** `30 / 7.5`：分子分母取错了维度。
+
+**CompletionRatio 要按 image 价折，不能按 completion 价。** `billedUsage` 把
+`candidates + thoughts` 合成一个 `completion`，而图片模型的输出 token 绝大多数是
+IMAGE 模态，上游按 `image` 计价（这里是 `completion` 的 4 倍）。同一次调用
+（prompt 11 / 输出图片 1120 / 输出文字含思考 522）三种口径：按 0.25 收 $0.0126、
+按模态精确算 $0.0375、整段输出按 image 价一刀切 $0.0493。倍率口径下宁可高收
+不可低收（多收的文本/思考只有几百 token，$0.0004 量级）。
+
+要精确到模态只能用表达式计费（`billing_setting.billing_mode[model]=tiered_expr`）。
+图片入口与文本共用 `PostTextConsumeQuota`，所以表达式对 `/v1/images/generations`
+同样生效，且能拿到 `image_count`、`img_o`。`img_o` 来自
+`candidatesTokensDetails[modality=IMAGE]`（Gemini）或
+`completion_tokens_details.image_tokens`（OpenAI 形状），表达式引用它之后 `c`
+会自动扣掉这部分。zenmux 这个模型写成：
+
+```text
+v1: p * 1.5 + c * 7.5 + img_o * 30
+```
+
+`p * 1.5` 是 $1.5/1M 输入，`c * 7.5` 是剩下的文字/思考输出，`img_o * 30` 是图片
+输出。输入图片（图生图）还没拆出来，仍在 `p` 里按输入价收。
+
+`cachedContentTokenCount` 也不参与计费：Gemini 的缓存命中量没有被拆出来，
+prompt 一律按全价收（对图片模型可忽略）。
 
 两条口径都遵守的约束：
 
-- `n` 恒 1（`n>1` 在计费前拒绝）。
+- `n` 不上行；计费张数按客户端请求的 n（`image-endpoint-contract.md` §2.4）。
 - **每个图片入口都要标记 `ImageRequestCount`**（`markImageRequest`）。它影响
   `BillingSession.reserve` 的 `requireAvailableQuota`：不设时 `relayInfo.Request` 不是
   `*dto.ImageRequest`，授信额度用户可以跳过可用额度检查，把余额打成负数。
@@ -476,6 +503,27 @@ model  prompt  completion  quota
 xr     7       1290        1297      ← 7 + 1290，按 token
 xx     1       0           10000     ← 0.02 × 500000，按次，未受 token 影响
 ```
+
+### 6.1 生产实测（2026-11-23，apiduo.cn 0.0.201，zenmux 真实上游）
+
+临时渠道：group `zenmux-test`、`image_protocol.upstream=gemini`、base_url
+`https://zenmux.ai/api/vertex-ai`，两个公开模型名分别落到按 token 与按次。
+均为 `POST /v1/images/generations` 的真实请求（单次 21–46s，返回 1.2–1.4 MB PNG）：
+
+| 公开模型 | 配价 | 入口 | prompt | completion | 实收 quota | 期望 | 结论 |
+|---|---|---|---|---|---|---|---|
+| `zenmux-gemini-token` | ratio 15 / completion 0.25 | images | 11 | 1642 | 6323 | 11×15 + 1642×3.75 = 6322.5 | 一致 |
+| `zenmux-gemini-call` | price $0.05 | images | 11 | 1896 | 25000 | 0.05 × 500000 | 一致 |
+| `zenmux-gemini-token` | ratio 15 / completion 0.25 | chat | 10 | 1966 | 7523 | 10×15 + 1966×3.75 = 7522.5 | 一致 |
+
+三条日志 `other.usage_billing_path` 都是 `upstream`；按次那条的 `completion_tokens`
+是 1896，`quota` 仍是 25000 —— 按次口径确实不吃 token。小数按四舍五入
+（6322.5 → 6323）。
+
+**已知缺口：images 入口的回包没有 `usage`。** Gemini 的 usageMetadata 只进了账本
+（`imageResponse.Usage` 没有写进 `encodeImageResponse` 的信封），chat 入口有。
+ark/openai 上游反而会把 envelope 的 `usage` 原样带出，于是同一个入口按上游不同
+给不给 usage。按 token 计价的客户端目前只能从账单侧核对。
 
 ## 7. 测试方案：两类 + 一条不可区分性
 
@@ -605,7 +653,8 @@ I1 失效。用 `base_url + 版本 + 模型` 构造，主端点保持稳定，�
 ### D3 为什么 n > 1 不扇出？
 
 N 次里部分成功怎么计费、怎么退、怎么拼 `data[]`、超时怎么算，同步入口没有承载者。
-拒绝点必须在 `PrepareImageBillingForRequest` 之前，否则账单多一对 0 元行。
+所以 `n` 只做计费口径，不进上游：上游收到的是 1（或者干脆没有这个字段）。早期版本在
+入口拒绝 `n>1`，2026-11-23 起统一为「上游 1 张、按 n 计费」，拒绝分支已删除。
 
 ### D4 为什么不把 `size` 做下拉？
 
@@ -627,7 +676,7 @@ N 次里部分成功怎么计费、怎么退、怎么拼 `data[]`、超时怎么
 1. Gemini 路径的版本段取错（`v1` vs `v1beta`）→ 全量 404，且页面显示正常。
 2. 某个入口忘了按白名单重建、走了透传 → 只有该入口泄漏，T3 只测 images 会漏。
 3. 无存储渠道的上游 URL 没改写 → 泄漏发生在「上游给 url」的分支，mock 要覆盖。
-4. `n>1` 的拒绝放在 adaptor → 预消费-退款对，财务对不上。
+4. `n` 的改写顺序放错（先改 canonical 再读计费）→ 计费退化成按 1 张。
 5. Gemini 回包缺 `index` / `finishReason` → 只有官方 SDK 报错，自研客户端测不出来。
 6. 解码器没按 upstream 分派 → images / chat / responses 入口 × gemini 上游全部 502，
    而 T1 如果只测 `b64_json` 是否非空、不看状态码，会误判为通过。
@@ -648,7 +697,7 @@ N 次里部分成功怎么计费、怎么退、怎么拼 `data[]`、超时怎么
 | 上游组合 | Gemini 渠道只服务 Gemini | 任意入口 × 任意上游 |
 | 代码量 | 小：`ConvertImageRequest` 加香蕉分支 + `GeminiImageHandler` 解码 `candidates` | 大：5 折叠 + 3 编码 + 5 回包 + 出口净化 |
 | 存量回归 | 零（只加分支） | 中（删透传兜底影响所有图片渠道） |
-| `n>1` 拒绝 | `ConvertImageRequest` 在 `PrepareImageBillingForRequest` 之前，天然不产生预消费 | 要在 `image_handler.go` 加一行 |
+| `n>1` 处理 | 单独渠道各写一套 | 统一为「上游 1 张 + 按 n 计费」 |
 | 一致性 | 两套 size / 错误 / 净化，必然漂移 | 一套 |
 | 扩展成本 | 每接一家写一次 | 加一个脚本 |
 

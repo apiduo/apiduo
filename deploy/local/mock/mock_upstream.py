@@ -306,6 +306,10 @@ class Handler(BaseHTTPRequestHandler):
                     "promptTokenCount": 7,
                     "candidatesTokenCount": 1290,
                     "totalTokenCount": 1297,
+                    # 输出模态明细：表达式计费的 img_o 靠它，缺了就全按文字价算。
+                    "candidatesTokensDetails": [
+                        {"modality": "IMAGE", "tokenCount": 1290},
+                    ],
                 },
             }
             if ":streamGenerateContent" in path and "alt=sse" in self.path:

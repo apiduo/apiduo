@@ -100,24 +100,6 @@ func (c *ImageProtocolConfig) Validate() error {
 	return nil
 }
 
-// RejectsImageCount reports whether this upstream can honour an OpenAI-style
-// n. Gemini's single generateContent call returns one final image; multiple
-// candidates are samples of the same prompt, not independent copies, so the two
-// n meanings cannot be mapped onto each other.
-//
-// The caller must invoke this before PrepareImageBillingForRequest: ImageCount
-// is multiplied into the price, and a reject-then-refund leaves a zero-quota
-// pair in the ledger.
-func (c *ImageProtocolConfig) RejectsImageCount(n int) error {
-	if c == nil || !c.Enabled || n <= 1 {
-		return nil
-	}
-	if NormalizeImageUpstream(c.Upstream) != ImageUpstreamGemini {
-		return nil
-	}
-	return fmt.Errorf("gemini image models generate one image per request; send n separate requests")
-}
-
 // ServesPath 说明图片协议自己接管的入站入口。
 //
 // 五个入口全部默认接管，不依赖 advanced_routes 里的转发声明：这些路径的语义在

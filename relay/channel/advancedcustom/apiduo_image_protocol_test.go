@@ -436,15 +436,92 @@ func TestCanonicalNormalisesN(t *testing.T) {
 	}
 }
 
+// 上游一次只产出一张：n 只决定计费张数，任何上游都不按 n 扇出。
+func TestImagePlanSendsNToOne(t *testing.T) {
+	ref := protocolTestDataURI()
+	cases := []struct {
+		name     string
+		upstream string
+		body     string
+		form     bool
+	}{
+		{"ark t2i", dto.ImageUpstreamARK, `{"model":"m","prompt":"p","n":4}`, false},
+		{"openai t2i", dto.ImageUpstreamOpenAI, `{"model":"m","prompt":"p","n":4}`, false},
+		{"openai i2i", dto.ImageUpstreamOpenAI, `{"model":"m","prompt":"p","n":4,"image":"` + ref + `"}`, true},
+		{"gemini t2i", dto.ImageUpstreamGemini, `{"model":"m","prompt":"p","n":4}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			canonical := protocolCanonical(t, tc.body)
+			plan, err := planImageRequest(canonical, &dto.ImageProtocolConfig{Enabled: true, Upstream: tc.upstream})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.form {
+				if got := protocolFormField(t, plan, "n"); got != "1" {
+					t.Fatalf("upstream n = %q, want 1", got)
+				}
+			} else if value, exists := protocolDecode(t, plan)["n"]; exists && value != float64(1) {
+				// Gemini 连这个字段都不发，等价于抠掉。
+				t.Fatalf("upstream n = %#v, want 1 or absent", value)
+			}
+			// canonical 必须保留客户端原值：计费张数读的是它，不是上游副本。
+			if canonical.fields["n"] != 4 {
+				t.Fatalf("planning rewrote the client n: %#v", canonical.fields["n"])
+			}
+		})
+	}
+}
+
+func TestImagePlanKeepsAbsentN(t *testing.T) {
+	plan, err := planImageRequest(
+		protocolCanonical(t, `{"model":"m","prompt":"p"}`),
+		&dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := protocolDecode(t, plan)["n"]; exists {
+		t.Fatal("absent n must stay absent; the default belongs to the upstream")
+	}
+}
+
+// protocolFormField 读 multipart plan 里的文本字段，缺失返回空串。
+func protocolFormField(t *testing.T, plan *imagePlan, key string) string {
+	t.Helper()
+	_, params, err := mime.ParseMediaType(plan.ContentType)
+	if err != nil {
+		t.Fatalf("content type %q: %v", plan.ContentType, err)
+	}
+	reader := multipart.NewReader(bytes.NewReader(plan.Body), params["boundary"])
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			return ""
+		}
+		if err != nil {
+			t.Fatalf("read form: %v", err)
+		}
+		if part.FormName() != key {
+			continue
+		}
+		value, err := io.ReadAll(part)
+		if err != nil {
+			t.Fatalf("read field %q: %v", key, err)
+		}
+		return string(value)
+	}
+}
+
 // 口径：只要不是 b64_json 就优先要 url。缺席与非法值都归一到 url ——
 // 图像响应的 base64 动辄几 MB，客户端不写这个字段通常只是没想到。
 func TestCanonicalDefaultsResponseFormatToURL(t *testing.T) {
 	for _, body := range []string{
-		`{"model":"m","prompt":"p"}`,                          // 缺席
-		`{"model":"m","prompt":"p","response_format":null}`,    // 空值
-		`{"model":"m","prompt":"p","response_format":""}`,      // 空串
-		`{"model":"m","prompt":"p","response_format":"png"}`,   // 非法值
-		`{"model":"m","prompt":"p","response_format":"url"}`,   // 显式 url
+		`{"model":"m","prompt":"p"}`,                         // 缺席
+		`{"model":"m","prompt":"p","response_format":null}`,  // 空值
+		`{"model":"m","prompt":"p","response_format":""}`,    // 空串
+		`{"model":"m","prompt":"p","response_format":"png"}`, // 非法值
+		`{"model":"m","prompt":"p","response_format":"url"}`, // 显式 url
 	} {
 		canonical := protocolCanonical(t, body)
 		if got := canonical.fields["response_format"]; got != "url" {

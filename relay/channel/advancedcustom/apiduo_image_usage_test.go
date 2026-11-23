@@ -8,7 +8,8 @@ func TestBilledUsageFromGeminiMetadata(t *testing.T) {
 	body := `{"candidates":[{"content":{"parts":[
 		{"inlineData":{"mimeType":"image/png","data":"aGVsbG8="}}
 	]},"finishReason":"STOP"}],
-	"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":1120,"totalTokenCount":1649,"thoughtsTokenCount":526}}`
+	"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":1120,"totalTokenCount":1649,"thoughtsTokenCount":526,
+	"candidatesTokensDetails":[{"modality":"IMAGE","tokenCount":1120}]}}`
 
 	decoded, err := decodeGeminiImageResponse([]byte(body), 0)
 	if err != nil {
@@ -17,6 +18,31 @@ func TestBilledUsageFromGeminiMetadata(t *testing.T) {
 	usage := decoded.billedUsage()
 	if usage.PromptTokens != 3 || usage.CompletionTokens != 1646 || usage.TotalTokens != 1649 {
 		t.Fatalf("usage = %+v, want prompt 3 / completion 1646 / total 1649", usage)
+	}
+	// img_o 是表达式计费按输出模态分价的唯一来源。completion 仍是
+	// total-prompt（含 thoughts），图片模态只从中拆出一部分。
+	if usage.CompletionTokenDetails.ImageTokens != 1120 {
+		t.Fatalf("image output tokens = %d, want 1120", usage.CompletionTokenDetails.ImageTokens)
+	}
+}
+
+// OpenAI 形状的明细在 completion_tokens_details.image_tokens 里；缺了它，
+// 按模态计价的表达式会把整段输出按文字价收。
+func TestBilledUsageKeepsOpenAIOutputImageTokens(t *testing.T) {
+	body := `{"created":1,"data":[{"b64_json":"aGVsbG8="}],
+	"usage":{"prompt_tokens":5,"completion_tokens":900,"total_tokens":905,
+	"completion_tokens_details":{"text_tokens":20,"image_tokens":880}}}`
+
+	decoded, err := decodeImageResponse([]byte(body))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	usage := decoded.billedUsage()
+	if usage.PromptTokens != 5 || usage.CompletionTokens != 900 || usage.TotalTokens != 905 {
+		t.Fatalf("usage = %+v", usage)
+	}
+	if usage.CompletionTokenDetails.ImageTokens != 880 {
+		t.Fatalf("image output tokens = %d, want 880", usage.CompletionTokenDetails.ImageTokens)
 	}
 }
 
