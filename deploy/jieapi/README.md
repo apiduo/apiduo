@@ -398,6 +398,7 @@ tail -n 200 /www/wwwlogs/jieapi.com.error.log | grep -E 'upstream|no live'
 
 | 项 | 值 | 位置 |
 |---|---|---|
+| 容器 CPU 配额 | 24 核（原 8 核，物理 32 逻辑核） | compose `deploy.resources.limits.cpus` |
 | 容器内存限额 | 128G（原 32G） | compose `deploy.resources.limits.memory` |
 | `max_server_memory_usage` | 112 GiB（容器的 87.5%） | `clickhouse/zz-memory.xml` |
 | `max_concurrent_queries` | 200（原 1000） | 同上 |
@@ -411,6 +412,16 @@ tail -n 200 /www/wwwlogs/jieapi.com.error.log | grep -E 'upstream|no live'
   不是业务流量；>4 GiB 的采样点总共 1 个，>6 GiB 为 0；
 - 所以 112 GiB 是峰值的 20 倍——它不会成为日常约束，只在「有人跑飞」时兜底。
 - 两条极限查询 96 GiB 仍在 112 GiB 内；即使打满，物理机还剩约 137 GiB。
+
+**但要说清楚：这不是性能优化。** 同一批采样里 CPU 使用率 1.58%、`/proc/pressure`
+的 cpu/io/memory 全是 0.00，23.5M 行全表扫（`count() ... WHERE token_id=846`）
+0.82 秒跑完，且 `max_threads=8 / 16 / 24` 实测无差异（0.82 / 0.81 / 0.82 秒）。
+所以放宽这些上限买到的是「有边界」，不是「更快」。
+
+CPU 配额从 8 提到 24 同理：它只是解除上限，**实际并行度仍由 `max_threads` 决定**，
+而 profile 里是 `auto(8)`（启动时按当时的 cgroup 配额固化）。要真正用上多核才需要
+显式调 `max_threads`，但当前没有收益，不建议为了「看起来更快」去加线程——线程数
+同时会放大聚合的中间缓冲（`apiduo.cn` 的 241 就是 `max_threads=32` 放大的）。
 
 **必须文件级挂载，不能挂目录**：
 
