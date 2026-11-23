@@ -6,15 +6,15 @@
 
 ## 0. 一句话
 
-**四个入口折叠成一份 canonical 请求，永远发往主端点；配置面只有一个地址。**
+**五个入口折叠成一份 canonical 请求，永远发往主端点；配置面只有一个地址。**
 
 ## 1. 不变量（改代码前先确认这四条仍成立）
 
 | 编号 | 必须成立 | 违反后的症状 |
 |---|---|---|
 | **I1** | 图像渠道的配置面**只有一个**可配置地址：主端点 | 用户要改上游必须改多处，必然漂移 |
-| **I2** | `/v1/images/generations`、`/v1/images/edits`、`/v1/chat/completions`、`/v1/responses` 是**四个前门**，只决定怎么读请求、怎么回包 | 被当成四条路由，每条各配一个上游 |
-| **I3** | 四个入口的报文差异在**折叠**这一步被抹平，产出一份 canonical 请求；canonical 是中间产物，**不是配置项** | 页面出现「canonical 端点」输入框 |
+| **I2** | `/v1/images/generations`、`/v1/images/edits`、`/v1/chat/completions`、`/v1/responses`、`/v1beta/models/{model}:generateContent` 是**五个前门**，只决定怎么读请求、怎么回包 | 被当成五条路由，每条各配一个上游 |
+| **I3** | 五个入口的报文差异在**折叠**这一步被抹平，产出一份 canonical 请求；canonical 是中间产物，**不是配置项** | 页面出现「canonical 端点」输入框 |
 | **I4** | canonical 之后**永远**发往主端点；协议内部的第二遍处理（如 OpenAI 把带图请求改写成 `edits` + multipart）是**运行时行为**，不占配置面 | 页面出现第二个地址输入框，或「图生图另发」开关 |
 
 推论：`单端点 / 双端点`、`seedream / gpt-image-2`、`上游布局` 这些**都不是用户的选择**，是 I4 的结果。
@@ -28,8 +28,13 @@
 | `/v1/images/edits` | multipart 文件 part | canonical（图片落成引用） | 主端点 | 2 |
 | `/v1/chat/completions` | `messages[]` | canonical（取末轮） | 主端点 | 2 |
 | `/v1/responses` | `input[]` / string | canonical（取末轮） | 主端点 | 2 |
+| `/v1beta/models/{model}:generateContent` | `contents[]` | canonical（取末轮） | 主端点 | 2 |
 
 「发出」这一列在任何情况下都只有主端点一个值。若实现里出现第二个目标，先回看 I4。
+
+**五个入口全部默认接管。** 开了 `image_protocol` 的渠道不需要在 `advanced_routes` 里声明它们：
+渠道选择器用 `ImageProtocol.ServesPath` 直接放行，`adaptor.resolveRoute` 用同一份判据合成预检路由。
+代价是同一条渠道不能既做文本又做图片——混挂要拆渠道。
 
 ### 2.1 chat 回包口径
 

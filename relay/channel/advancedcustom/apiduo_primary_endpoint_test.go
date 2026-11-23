@@ -104,14 +104,19 @@ func TestPrepareImageProtocolFollowsChannelPrimary(t *testing.T) {
 func TestResolveAllowsImageProtocolPathsWithoutRoute(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, path := range []string{"/v1/images/generations", "/v1/images/edits"} {
+	for _, path := range []string{
+		"/v1/images/generations", "/v1/images/edits",
+		"/v1/chat/completions", "/v1/responses",
+		"/v1beta/models/gemini-2.5-flash-image:generateContent",
+	} {
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
 		c.Request = httptest.NewRequest(http.MethodPost, path, nil)
 		c.Request.Header.Set("Content-Type", "application/json")
 
+		// 路由表里只留一条与图片无关的路径：五个入口都不该依赖它。
 		info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
-			Routes: []dto.AdvancedCustomRoute{{IncomingPath: "/v1/chat/completions", UpstreamPath: "/v1/chat/completions"}},
+			Routes: []dto.AdvancedCustomRoute{{IncomingPath: "/v1/embeddings", UpstreamPath: "/v1/embeddings"}},
 		})
 		info.RelayMode = relayconstant.RelayModeImagesGenerations
 		info.RequestURLPath = path
@@ -130,10 +135,10 @@ func TestResolveAllowsImageProtocolPathsWithoutRoute(t *testing.T) {
 		}
 	}
 
-	// chat 不在协议接管的范围内：没写路由仍然是错误。
+	// 协议之外的路径（如 embeddings）仍然要在路由表里写。
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/embeddings", nil)
 	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
 		Routes: []dto.AdvancedCustomRoute{{IncomingPath: "/v1/images/edits"}},
 	})
@@ -141,6 +146,6 @@ func TestResolveAllowsImageProtocolPathsWithoutRoute(t *testing.T) {
 	info.ChannelOtherSettings.ImageProtocol = &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK}
 	adaptor := &Adaptor{}
 	if err := adaptor.resolve(c, info); err == nil {
-		t.Fatal("chat must still require a declared route")
+		t.Fatal("paths outside the five image entries must still declare a route")
 	}
 }

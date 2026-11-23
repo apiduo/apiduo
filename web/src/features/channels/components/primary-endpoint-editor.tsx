@@ -150,6 +150,16 @@ export function PrimaryEndpointEditor(props: {
     [props.routes, primary]
   )
 
+  // 协议接管时，五个默认入口即使没写路由也在服务；把它们并进「入口去向」，
+  // 否则表格里只有一条，读者会以为其余四条不生效。
+  const servedEntries = useMemo(() => {
+    const declared = derivations.map((row) => row.incomingPath)
+    const missing = IMAGE_PROTOCOL_DEFAULT_ENTRIES.filter(
+      (entry) => !declared.some((path) => path === entry)
+    )
+    return [...declared, ...missing]
+  }, [derivations])
+
   const [advancedOpen, setAdvancedOpen] = useState(false)
   // 落点单元格平时是「跟随主端点」，点了才变成输入框。用入口路径当键，
   // 同一入口的多条路由本来就共享一个落点。
@@ -664,19 +674,19 @@ export function PrimaryEndpointEditor(props: {
                 {t('Where each entry goes')}
               </p>
               <ul className='mt-1 space-y-0.5'>
-                {derivations.map((row) => (
+                {servedEntries.map((incomingPath) => (
                   <li
-                    key={row.incomingPath}
+                    key={incomingPath}
                     className='flex items-baseline gap-1.5 text-[11px]'
                   >
                     <span className='text-muted-foreground shrink-0 font-mono text-[10px]'>
-                      {row.incomingPath}
+                      {incomingPath}
                     </span>
                     <ArrowRight
                       className='text-muted-foreground/50 size-2.5 shrink-0 self-center'
                       aria-hidden='true'
                     />
-                    <span className='min-w-0'>{t(entryRouteKey(row.incomingPath, protocolOn))}</span>
+                    <span className='min-w-0'>{t(entryRouteKey(incomingPath, protocolOn))}</span>
                   </li>
                 ))}
               </ul>
@@ -741,7 +751,7 @@ function entryRouteKey(incomingPath: string, protocolOn: boolean): string {
   if (isChatEntry(incomingPath) || path.endsWith('/v1/responses')) {
     return 'Turned into an image task, then converted from the primary endpoint'
   }
-  if (path.includes(':generateContent')) {
+  if (path.includes(':generateContent') || path.includes(':streamGenerateContent')) {
     return 'Converted from the primary endpoint'
   }
   return 'Not intercepted; keeps its own landing'
@@ -780,13 +790,24 @@ function upstreamEndpointLabel(baseUrl?: string): string {
  * `prepareImageProtocol` 的 `RelayModeChatCompletions` 分支——它不看主端点是不是
  * 图片路径，只要协议开着就折叠。
  */
+/**
+ * 图片协议默认接管的入口。判据与后端 `ImageProtocolConfig.ServesPath` 一一对应：
+ * 五个入口不看路由表，只要协议开启就接管。这里列出来是为了让「不需要写路由」
+ * 这件事在页面上可见——路由表里没有它们，不代表渠道不服务它们。
+ */
+const IMAGE_PROTOCOL_DEFAULT_ENTRIES = [
+  '/v1/images/generations',
+  '/v1/images/edits',
+  '/v1/chat/completions',
+  '/v1/responses',
+  '/v1beta/models/{model}:generateContent',
+] as const
+
 function isFoldedByImageProtocol(incomingPath: string): boolean {
   const path = incomingPath.replace(/\/+$/, '')
-  return (
-    path.endsWith('/v1/images/generations') ||
-    path.endsWith('/v1/images/edits') ||
-    path.endsWith('/v1/chat/completions')
-  )
+  if (IMAGE_PROTOCOL_DEFAULT_ENTRIES.some((entry) => entry === path)) return true
+  if (path.endsWith('/v1/chat/completions')) return true
+  return path.includes(':generateContent') || path.includes(':streamGenerateContent')
 }
 
 function DerivationRow(props: {

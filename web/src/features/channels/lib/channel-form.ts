@@ -51,6 +51,7 @@ import {
 import { readTaskExtendPluginKeys } from './channel-plugin-extensions'
 /* APIDUO:primary-endpoint:BEGIN */
 import {
+  readImageProtocolEnabled,
   readPrimaryEndpoint,
   withPrimaryFallbackRoutes,
 } from './primary-endpoint'
@@ -384,9 +385,10 @@ export const channelFormSchema = z
             ),
           }
         : advancedCustomConfig
+      const imageProtocolOn = readImageProtocolEnabled(data.settings)
       const advancedCustomError = primaryMalformed
         ? null
-        : validateAdvancedCustomConfig(validationCopy)
+        : validateAdvancedCustomConfig(validationCopy, imageProtocolOn)
       /* APIDUO:primary-endpoint:END */
       if (advancedCustomError) {
         addRequiredIssue(ctx, 'advanced_custom', advancedCustomError.message)

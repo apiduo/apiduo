@@ -613,7 +613,8 @@ export function getAdvancedCustomRegexModelPattern(modelRule: string): string {
 }
 
 export function validateAdvancedCustomConfig(
-  config: AdvancedCustomConfig | null
+  config: AdvancedCustomConfig | null,
+  allowEmptyRoutes = false
 ): AdvancedCustomValidationError | null {
   if (!config) {
     return { message: 'Advanced custom configuration is required' }
@@ -621,7 +622,8 @@ export function validateAdvancedCustomConfig(
 
   const normalized = normalizeAdvancedCustomConfig(config)
   const routes = normalized.advanced_routes || []
-  if (routes.length === 0) {
+  // 图片协议的五个入口默认接管，路由表可以为空；非图片渠道仍然至少要一条。
+  if (routes.length === 0 && !allowEmptyRoutes) {
     return {
       message: 'Advanced custom configuration requires at least one route',
     }

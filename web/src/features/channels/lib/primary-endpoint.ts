@@ -130,6 +130,25 @@ export function readPrimaryEndpoint(settingsJson?: string): string {
   }
 }
 
+/**
+ * 图片协议是否开启。开了就是图片渠道：五个入口默认接管，路由表可以为空。
+ * 与后端 `ImageProtocolConfig.Enabled` 同一语义。
+ */
+export function readImageProtocolEnabled(settingsJson?: string): boolean {
+  if (!settingsJson?.trim()) return false
+  try {
+    const parsed: unknown = JSON.parse(settingsJson)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false
+    const protocol = (parsed as Record<string, unknown>).image_protocol
+    if (!protocol || typeof protocol !== 'object' || Array.isArray(protocol)) {
+      return false
+    }
+    return (protocol as Record<string, unknown>).enabled === true
+  } catch {
+    return false
+  }
+}
+
 /** 把主端点写回 settings JSON；空串表示删除该字段（回到「从路由推导」）。 */
 export function writePrimaryEndpoint(
   settingsJson: string | undefined,

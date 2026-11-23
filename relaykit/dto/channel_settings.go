@@ -530,10 +530,23 @@ func IsAdvancedCustomConverterAllowed(converter string) bool {
 }
 
 func (c *AdvancedCustomConfig) Validate() error {
+	return c.validate(false)
+}
+
+// ValidateForImageChannel 用于开了图片协议的渠道：它的五个入口默认接管，
+// 路由表可以为空——运营不需要为了通过校验去写一条用不到的路由。
+func (c *AdvancedCustomConfig) ValidateForImageChannel() error {
+	return c.validate(true)
+}
+
+func (c *AdvancedCustomConfig) validate(allowEmptyRoutes bool) error {
 	if c == nil {
 		return fmt.Errorf("advanced_custom is required")
 	}
 	if len(c.Routes) == 0 {
+		if allowEmptyRoutes {
+			return nil
+		}
 		return fmt.Errorf("advanced_custom requires at least one route")
 	}
 

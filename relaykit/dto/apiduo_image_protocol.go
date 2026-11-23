@@ -120,21 +120,30 @@ func (c *ImageProtocolConfig) RejectsImageCount(n int) error {
 
 // ServesPath 说明图片协议自己接管的入站入口。
 //
-// 这两个路径的语义在协议层已经定死（折叠成 canonical 再按上游脚本发出），
-// 不依赖 advanced_routes 里的转发声明。渠道选择器如果把「没写路由」当成
-// 「不支持」，客户端会在协议本来能处理的情况下拿到一个无法解释的 503。
+// 五个入口全部默认接管，不依赖 advanced_routes 里的转发声明：这些路径的语义在
+// 协议层已经定死（折叠成 canonical 再按上游脚本发出）。渠道选择器如果把
+// 「没写路由」当成「不支持」，客户端会在协议本来能处理的情况下拿到一个无法解释的 503。
 //
-// 只放行图片入口：chat 还有纯文本语义，不能替运维决定一条聊天请求要不要变成出图任务。
+// 判据是渠道定位，不是请求内容：开了图片协议的渠道就是图片渠道，它接管的五个入口
+// 全部按出图处理。同一条渠道不能既做文本又做图片——混挂要拆渠道。
 func (c *ImageProtocolConfig) ServesPath(path string) bool {
 	if c == nil || !c.Enabled {
 		return false
 	}
-	switch strings.TrimSuffix(strings.TrimSpace(path), "/") {
-	case "/v1/images/generations", "/v1/images/edits":
+	path = strings.TrimSuffix(strings.TrimSpace(path), "/")
+	switch path {
+	case "/v1/images/generations", "/v1/images/edits",
+		"/v1/chat/completions", "/v1/responses":
 		return true
-	default:
-		return false
 	}
+	// Gemini 原生入口把模型与动词都放在路径里，按形状匹配：
+	// /v1beta/models/{model}:generateContent 与 :streamGenerateContent。
+	// 不能按前缀一刀切：/v1beta/models 是模型列表，不属于出图入口。
+	if rest, ok := strings.CutPrefix(path, "/v1beta/models/"); ok {
+		return strings.HasSuffix(rest, ":generateContent") ||
+			strings.HasSuffix(rest, ":streamGenerateContent")
+	}
+	return false
 }
 
 // WithChannelPrimary 让渠道主端点成为图片协议的唯一契约。

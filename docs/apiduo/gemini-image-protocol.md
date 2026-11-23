@@ -77,12 +77,20 @@ Gemini 不需要额外的主端点校验——它不读主端点。
 |---|---|---|---|---|
 | 1 | `POST /v1/images/generations` | `canonicalFromJSON` | OpenAI Images `data[]` | 协议自身放行（`ServesPath`） |
 | 2 | `POST /v1/images/edits` | `canonicalFromForm` | 同上 | 协议自身放行 |
-| 3 | `POST /v1/chat/completions` | `canonicalFromChat` | `chat.completion` + markdown | `advanced_routes` 声明 |
-| 4 | `POST /v1/responses` | `canonicalFromResponses` | `response` + `output_text` | `advanced_routes` 声明 |
-| 5 | `POST /v1beta/models/{model}:generateContent` | `canonicalFromGemini` | `candidates[].inlineData` | 路由声明 + 模型在 imagine 名单 |
+| 3 | `POST /v1/chat/completions` | `canonicalFromChat` | `chat.completion` + markdown | 协议自身放行 |
+| 4 | `POST /v1/responses` | `canonicalFromResponses` | `response` + `output_text` | 协议自身放行 |
+| 5 | `POST /v1beta/models/{model}:generateContent` | `canonicalFromGemini` | `candidates[].inlineData` | 协议自身放行 |
 
-前两个入口的放行不走路由表（`channelMatchesFilter` 里 `ImageProtocol.ServesPath` 直接返回 true）；
-后三个必须声明路由，这是「不替运维决定一条通用请求要不要出图」。
+**五个入口全部默认接管，不需要在 `advanced_routes` 里声明。** 判据是渠道定位而不是请求内容：
+开了图片协议的渠道就是图片渠道，它接管的五个入口一律按出图处理。
+
+- 渠道选择器：`channelMatchesFilter` 里 `ImageProtocol.ServesPath(path)` 返回 true 就直接放行，
+  不再要求 `advanced_routes` 命中；
+- 路由预检：`adaptor.resolveRoute` 用同一份判据合成一条「跟随主端点」的路由，真实地址仍由
+  `prepareImageProtocol` 的 plan 决定；
+- 配置校验：图片渠道的 `advanced_routes` 可以是空数组（`AdvancedCustomConfig.ValidateForImageChannel`），
+  保存时不再被「至少一条路由」拦住；非图片渠道仍然至少一条；
+- 代价：**同一条渠道不能既做文本又做图片**，混挂要拆渠道。
 
 ### 3.1 images / edits
 
@@ -113,15 +121,14 @@ Gemini 不需要额外的主端点校验——它不读主端点。
 `/v1beta/models/{model}:generateContent` 已在 `/v1beta` 路由组，`RelayModeGemini`，
 `info.Request` 是 `*dto.GeminiChatRequest`。不新增 router 条目。
 
-判据两层，全在运营配置：
+判据只有一层：`image_protocol.enabled`。
 
 | 层 | 判据 | 谁执行 | 不满足 |
 |---|---|---|---|
-| L1 | 路由声明该路径 | 渠道选择器 `SupportsPathForModel` | 渠道选不中，503 |
-| L2 | `image_protocol.enabled` | `prepareImageProtocol` 首行 | 原生透传 |
+| L1 | `image_protocol.enabled` | 渠道选择器 `ServesPath` + `prepareImageProtocol` 首行 | 渠道不认这条路径，503 |
 
-**渠道定位约定：开了图片协议的渠道就是图片渠道。** 运维为它声明 `:generateContent` 路由，
-就是声明出图入口；请求进来一律按出图折叠，不看 body，也不查全局模型名单。
+**渠道定位约定：开了图片协议的渠道就是图片渠道。** `:generateContent` 是它默认接管的五个入口
+之一，不需要额外声明路由；请求进来一律按出图折叠，不看 body，也不查全局模型名单。
 
 不查 `IsGeminiModelSupportImagine` 的原因：那份名单是 chat 转换用来决定是否加
 `responseModalities` 的，不是渠道能力判据。放进图片入口会制造新的静默失败——渠道配好了，
@@ -131,8 +138,8 @@ Gemini 不需要额外的主端点校验——它不读主端点。
 已经表达了意图。
 
 代价完全落在运营侧：**同一条渠道不能既做文本又做图片**，混挂的文本模型也会被按出图处理。
-渠道页在「图片协议开启 + 声明了 Gemini 入口」时给一行只读提示，提醒这条入口的请求全部
-按出图处理。这是提示，不是运行时开关。
+渠道页的「入口去向」会列出五个默认入口（即使路由表里没有它们），提醒这条渠道的请求
+全部按出图处理。这是展示，不是运行时开关。
 
 折叠：
 
@@ -506,7 +513,7 @@ Gemini 入口把上游 URL 转 inlineData 要下载公网地址，SSRF 防护会
 | `relaykit/dto/apiduo_image_protocol.go` | 加 `ImageUpstreamGemini`；`Validate` 三分支；不加模板校验、不改 `WithChannelPrimary` |
 | `relay/channel/advancedcustom/apiduo_image_script.go` | `planGemini`：路径用 `base_url + GetGeminiVersionSetting + model`；`size` 映射；`n>1` 不在这里拒 |
 | `relay/channel/advancedcustom/apiduo_image_canonical.go` | `canonicalFromGemini`（contents/parts）、`canonicalFromResponses`（input/instructions）、`readResponsesContent` |
-| `relay/channel/advancedcustom/apiduo_image_adaptor.go` | `prepareImageProtocol` 加 `RelayModeResponses` 与 `RelayModeGemini` 分支；Gemini 分支只按运营配置接管（路由声明 + 图片协议开关） |
+| `relay/channel/advancedcustom/apiduo_image_adaptor.go` | `prepareImageProtocol` 加 `RelayModeResponses` 与 `RelayModeGemini` 分支；`resolveRoute` 复用 `ServesPath` 合成预检路由 |
 | `relay/channel/advancedcustom/apiduo_image_response.go` | `decodeGeminiImageResponse`；`wrapGeminiResponse`；按入口重建、删除透传兜底；64 MiB 上限 |
 | `relay/image_handler.go` | 计费前调 `ImageProtocol.RejectsImageCount` |
 | `relaykit/types/error.go` | 新增 `ToGeminiError` |
@@ -624,8 +631,11 @@ N 次里部分成功怎么计费、怎么退、怎么拼 `data[]`、超时怎么
 
 | 存量配置 | 升级前行为 | 升级后行为 |
 |---|---|---|
-| `image_protocol.enabled=true` + 路由声明 `/v1/responses` | 按 converter 转发文本 | 折叠成出图 |
-| `image_protocol.enabled=true` + 路由声明 `:generateContent` | 原生透传 | 折叠成出图 |
+| `image_protocol.enabled=true` 的渠道收到 `/v1/responses` | 按 converter 转发文本 | 折叠成出图 |
+| `image_protocol.enabled=true` 的渠道收到 `:generateContent` | 原生透传 | 折叠成出图 |
+
+判据**不要求**路由表里写过这两条路径——只要渠道开着图片协议就接管。所以审计的关键是
+「这条渠道是不是纯图片渠道」，而不是「它有没有声明这两条路由」。
 
 审计（MySQL）：
 

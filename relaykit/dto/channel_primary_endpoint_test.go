@@ -81,16 +81,29 @@ func TestImageProtocolFollowsChannelPrimary(t *testing.T) {
 
 func TestImageProtocolServesPath(t *testing.T) {
 	enabled := &ImageProtocolConfig{Enabled: true, Upstream: ImageUpstreamARK}
-	for _, path := range []string{"/v1/images/generations", "/v1/images/edits", "/v1/images/edits/"} {
+	// 五个入口全部默认接管：开了图片协议的渠道就是图片渠道，不需要在
+	// advanced_routes 里逐条声明，也不需要按 body 判断这次要不要出图。
+	for _, path := range []string{
+		"/v1/images/generations", "/v1/images/edits", "/v1/images/edits/",
+		"/v1/chat/completions", "/v1/responses",
+		"/v1beta/models/gemini-2.5-flash-image:generateContent",
+		"/v1beta/models/google/gemini-nano-banana-2.1:generateContent",
+		"/v1beta/models/gemini-2.5-flash-image:streamGenerateContent",
+	} {
 		if !enabled.ServesPath(path) {
 			t.Fatalf("%q must be served by the image protocol", path)
 		}
 	}
-	if enabled.ServesPath("/v1/chat/completions") {
-		t.Fatal("chat must not be claimed by the image protocol")
-	}
-	if enabled.ServesPath("/v1/images/other") {
-		t.Fatal("only the two canonical image entries are claimed")
+	// 同前缀但不是出图入口，不能顺手接管。
+	for _, path := range []string{
+		"/v1/images/other",
+		"/v1beta/models",
+		"/v1beta/models/gemini-2.5-flash-image",
+		"/v1/embeddings",
+	} {
+		if enabled.ServesPath(path) {
+			t.Fatalf("%q must not be claimed by the image protocol", path)
+		}
 	}
 
 	disabled := &ImageProtocolConfig{Upstream: ImageUpstreamARK}

@@ -472,7 +472,13 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 	// 校验与匹配都基于补齐后的视图，存储里的空值不必改写。
 	config = config.WithPrimaryFallback(info.ChannelOtherSettings.PrimaryEndpoint)
 	// APIDUO:primary-endpoint:END
-	if err := config.Validate(); err != nil {
+	// 图片渠道的五个入口默认接管，路由表可以为空，校验按图片渠道的规则走；
+	// 其它自定义渠道仍然要求至少一条路由。
+	validate := config.Validate
+	if protocol := info.ChannelOtherSettings.ImageProtocol; protocol != nil && protocol.Enabled {
+		validate = config.ValidateForImageChannel
+	}
+	if err := validate(); err != nil {
 		return err
 	}
 
@@ -503,10 +509,9 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 		return nil
 	}
 	// APIDUO:primary-endpoint:BEGIN
-	// 图片协议自己接管 generations / edits：这两个入口的语义在协议层定死，不依赖路由表。
-	// 这里必须放行——选择器放行之后，GetRequestURL 会在 DoRequest 之前再解析一次路由，
-	// 解析不出来就是 500，协议根本没机会跑。真实 URL 由 prepareImageProtocol 的 plan 决定，
-	// 这里给的只是预检用的落点。
+	// 图片协议的五个入口全部默认接管，不依赖路由表。这里必须放行——选择器放行之后，
+	// GetRequestURL 会在 DoRequest 之前再解析一次路由，解析不出来就是 500，协议根本
+	// 没机会跑。真实 URL 由 prepareImageProtocol 的 plan 决定，这里给的只是预检用的落点。
 	if protocol := info.ChannelOtherSettings.ImageProtocol; protocol.ServesPath(incomingPath) {
 		primary := protocol.WithChannelPrimary(info.ChannelOtherSettings.PrimaryEndpoint).Primary()
 		if strings.TrimSpace(primary) != "" {
