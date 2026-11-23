@@ -168,8 +168,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					"type":  "error",
 					"error": newAPIError.ToClaudeError(upstreamURLs...),
 				})
+			// APIDUO:gemini-image-error:BEGIN
 			case types.RelayFormatGemini:
 				c.JSON(newAPIError.StatusCode, newAPIError.ToGeminiError())
+			// APIDUO:gemini-image-error:END
 			default:
 				c.JSON(newAPIError.StatusCode, gin.H{
 					"error": newAPIError.ToOpenAIError(upstreamURLs...),
@@ -335,11 +337,13 @@ func writeRelayStreamError(c *gin.Context, format types.RelayFormat, apiError *t
 		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: apiError.ToClaudeError(upstreamURLs...)})
 		return
 	}
+	// APIDUO:gemini-image-error:BEGIN
 	if format == types.RelayFormatGemini {
 		// Gemini 没有 [DONE] 约定：写完这一帧流就结束。
 		_ = helper.ObjectData(c, apiError.ToGeminiError())
 		return
 	}
+	// APIDUO:gemini-image-error:END
 	_ = helper.ObjectData(c, gin.H{"error": apiError.ToOpenAIError(upstreamURLs...)})
 	helper.Done(c)
 }

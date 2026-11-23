@@ -612,9 +612,11 @@ export function getAdvancedCustomRegexModelPattern(modelRule: string): string {
   return modelRule.slice(ADVANCED_CUSTOM_MODEL_REGEX_PREFIX.length)
 }
 
+// APIDUO:image-channel:BEGIN
 export function validateAdvancedCustomConfig(
   config: AdvancedCustomConfig | null,
   allowEmptyRoutes = false
+// APIDUO:image-channel:END
 ): AdvancedCustomValidationError | null {
   if (!config) {
     return { message: 'Advanced custom configuration is required' }
@@ -622,8 +624,10 @@ export function validateAdvancedCustomConfig(
 
   const normalized = normalizeAdvancedCustomConfig(config)
   const routes = normalized.advanced_routes || []
+  // APIDUO:image-channel:BEGIN
   // 图片协议的五个入口默认接管，路由表可以为空；非图片渠道仍然至少要一条。
   if (routes.length === 0 && !allowEmptyRoutes) {
+  // APIDUO:image-channel:END
     return {
       message: 'Advanced custom configuration requires at least one route',
     }

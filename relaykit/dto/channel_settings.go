@@ -503,10 +503,12 @@ func matchAdvancedCustomIncomingPathTemplate(configuredPath string, requestPath 
 	}
 
 	model := strings.TrimSuffix(strings.TrimPrefix(requestPath, parts[0]), parts[1])
+	/* APIDUO:image-protocol:BEGIN */
 	// `{model}` 的语义是「一个路径段」。带命名空间的模型名（google/gemini-…）
 	// 不走模板：配置路径写成字面量，由上面的精确相等分支匹配。
 	// 共享匹配器不能放宽——异步提交路径同样用 `{model}`，放宽会把
 	// `/v1beta/models/a/b:generateContent` 误当成模型 `a/b`。
+	/* APIDUO:image-protocol:END */
 	return model != "" && !strings.Contains(model, "/")
 }
 
@@ -530,23 +532,10 @@ func IsAdvancedCustomConverterAllowed(converter string) bool {
 }
 
 func (c *AdvancedCustomConfig) Validate() error {
-	return c.validate(false)
-}
-
-// ValidateForImageChannel 用于开了图片协议的渠道：它的五个入口默认接管，
-// 路由表可以为空——运营不需要为了通过校验去写一条用不到的路由。
-func (c *AdvancedCustomConfig) ValidateForImageChannel() error {
-	return c.validate(true)
-}
-
-func (c *AdvancedCustomConfig) validate(allowEmptyRoutes bool) error {
 	if c == nil {
 		return fmt.Errorf("advanced_custom is required")
 	}
 	if len(c.Routes) == 0 {
-		if allowEmptyRoutes {
-			return nil
-		}
 		return fmt.Errorf("advanced_custom requires at least one route")
 	}
 
@@ -625,6 +614,22 @@ func (c *AdvancedCustomConfig) validate(allowEmptyRoutes bool) error {
 
 	return nil
 }
+
+/* APIDUO:image-channel:BEGIN */
+// ValidateForImageChannel 用于开了图片协议的渠道：它的五个入口默认接管，
+// 路由表可以为空——运营不需要为了通过校验去写一条用不到的路由。
+// 有路由时仍走 Validate 的全部规则。
+func (c *AdvancedCustomConfig) ValidateForImageChannel() error {
+	if c == nil {
+		return fmt.Errorf("advanced_custom is required")
+	}
+	if len(c.Routes) == 0 {
+		return nil
+	}
+	return c.Validate()
+}
+
+/* APIDUO:image-channel:END */
 
 type advancedCustomPathModelState struct {
 	catchAllIndex int

@@ -1264,12 +1264,14 @@ func (channel *Channel) ValidateSettings() error {
 	}
 	if constant.IsAdvancedCustomChannel(channel.Type) {
 		if channelOtherSettings.AdvancedCustom == nil {
+			// APIDUO:image-channel:BEGIN
 			// 图片渠道的五个入口默认接管，不需要路由表；这里补一个空配置，
 			// 避免后续代码对 nil 解引用。
 			if !imageProtocolOn(channelOtherSettings) {
 				return fmt.Errorf("advanced_custom is required")
 			}
 			channelOtherSettings.AdvancedCustom = &dto.AdvancedCustomConfig{}
+			// APIDUO:image-channel:END
 		}
 	}
 	// APIDUO:primary-endpoint:BEGIN
@@ -1279,12 +1281,14 @@ func (channel *Channel) ValidateSettings() error {
 		channelOtherSettings.AdvancedCustom = channelOtherSettings.AdvancedCustom.WithPrimaryFallback(channelOtherSettings.PrimaryEndpoint)
 	}
 	// APIDUO:primary-endpoint:END
+	// APIDUO:image-channel:BEGIN
 	if channelOtherSettings.AdvancedCustom != nil {
 		validate := channelOtherSettings.AdvancedCustom.Validate
 		if imageProtocolOn(channelOtherSettings) {
 			validate = channelOtherSettings.AdvancedCustom.ValidateForImageChannel
 		}
 		if err := validate(); err != nil {
+	// APIDUO:image-channel:END
 			return err
 		}
 	}
@@ -1466,8 +1470,10 @@ func CountChannelsGroupByType() (map[int64]int64, error) {
 	return counts, nil
 }
 
+// APIDUO:image-channel:BEGIN
 // imageProtocolOn 说明这条渠道是不是图片渠道。ImageProtocol 是可选指针，
 // 直接读 .Enabled 会 nil panic。
 func imageProtocolOn(settings *dto.ChannelOtherSettings) bool {
 	return settings != nil && settings.ImageProtocol != nil && settings.ImageProtocol.Enabled
 }
+// APIDUO:image-channel:END

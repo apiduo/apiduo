@@ -472,6 +472,7 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 	// 校验与匹配都基于补齐后的视图，存储里的空值不必改写。
 	config = config.WithPrimaryFallback(info.ChannelOtherSettings.PrimaryEndpoint)
 	// APIDUO:primary-endpoint:END
+	// APIDUO:image-channel:BEGIN
 	// 图片渠道的五个入口默认接管，路由表可以为空，校验按图片渠道的规则走；
 	// 其它自定义渠道仍然要求至少一条路由。
 	validate := config.Validate
@@ -479,6 +480,7 @@ func (a *Adaptor) resolve(c *gin.Context, info *relaycommon.RelayInfo) error {
 		validate = config.ValidateForImageChannel
 	}
 	if err := validate(); err != nil {
+	// APIDUO:image-channel:END
 		return err
 	}
 
