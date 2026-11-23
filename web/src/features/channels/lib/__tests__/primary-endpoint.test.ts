@@ -70,10 +70,10 @@ describe('resolveDefaultPrimaryEndpoint', () => {
     },
   ]
 
-  it('图片渠道不从 chat 路由推导主端点', () => {
-    expect(
-      resolveDefaultPrimaryEndpoint(chatOnly(), { imageChannel: true })
-    ).toBe('/v1/images/generations')
+  it('模型未填的渠道按图片渠道处理：即使只有一条 chat 路由也种出图地址', () => {
+    expect(resolveDefaultPrimaryEndpoint(chatOnly())).toBe(
+      '/v1/images/generations'
+    )
   })
 
   it('已有的 generations 上游优先，保留 /v3 这类前缀', () => {
@@ -84,22 +84,18 @@ describe('resolveDefaultPrimaryEndpoint', () => {
         converter: 'none',
       },
     ]
-    expect(resolveDefaultPrimaryEndpoint(routes, { imageChannel: true })).toBe(
-      '/v3/images/generations'
-    )
+    expect(resolveDefaultPrimaryEndpoint(routes)).toBe('/v3/images/generations')
   })
 
-  it('聊天渠道仍按路由众数推导，不被改道到出图接口', () => {
-    expect(resolveDefaultPrimaryEndpoint(chatOnly())).toBe(
-      '/v1/chat/completions'
-    )
+  it('声明了文本模型的渠道仍按路由众数推导，不被改道到出图接口', () => {
+    expect(
+      resolveDefaultPrimaryEndpoint(chatOnly(), { textChannel: true })
+    ).toBe('/v1/chat/completions')
   })
 
-  it('空路由表按渠道性质回落', () => {
-    expect(resolveDefaultPrimaryEndpoint([], { imageChannel: true })).toBe(
-      '/v1/images/generations'
-    )
-    expect(resolveDefaultPrimaryEndpoint([])).toBe('')
+  it('空路由表：非文本渠道给出默认出图地址，文本渠道留空由调用方兜底', () => {
+    expect(resolveDefaultPrimaryEndpoint([])).toBe('/v1/images/generations')
+    expect(resolveDefaultPrimaryEndpoint([], { textChannel: true })).toBe('')
   })
 })
 
@@ -200,6 +196,51 @@ describe('applyPrimaryEndpoint', () => {
     expect(next[1].upstream_path).toBe('/v1/images/edits')
     // 原主端点是 generations，chat 自己指向 chat 属于显式覆盖，不能被冲掉。
     expect(next[2].upstream_path).toBe('/v1/chat/completions')
+  })
+
+  it('换到图片主端点时，文本落点保持显式覆盖，不清成跟随', () => {
+    // 默认值现在是 /v1/images/generations：打开开关不该顺手把对话路由改道到出图接口。
+    const input: AdvancedCustomRoute[] = [
+      {
+        incoming_path: '/v1/chat/completions',
+        upstream_path: '/v1/chat/completions',
+      },
+    ]
+    const next = applyPrimaryEndpoint(input, '/v1/images/generations', {
+      deriveToEmpty: true,
+    })
+    expect(next[0].upstream_path).toBe('/v1/chat/completions')
+  })
+
+  it('换到图片主端点时，图片落点仍然跟随', () => {
+    const input: AdvancedCustomRoute[] = [
+      {
+        incoming_path: '/v1/images/generations',
+        upstream_path: '/v1/images/generations',
+      },
+      {
+        incoming_path: '/v1/chat/completions',
+        upstream_path: '/v1/chat/completions',
+      },
+    ]
+    const next = applyPrimaryEndpoint(input, '/api/v3/images/generations', {
+      deriveToEmpty: true,
+    })
+    expect(next[0].upstream_path).toBe('')
+    expect(next[1].upstream_path).toBe('/v1/chat/completions')
+  })
+
+  it('换到文本主端点时行为不变：跟随的行照样清空', () => {
+    const input: AdvancedCustomRoute[] = [
+      {
+        incoming_path: '/v1/chat/completions',
+        upstream_path: '/v1/chat/completions',
+      },
+    ]
+    const next = applyPrimaryEndpoint(input, '/v1/messages', {
+      deriveToEmpty: true,
+    })
+    expect(next[0].upstream_path).toBe('')
   })
 })
 

@@ -130,24 +130,27 @@ function hasGenerationsTail(path: string): boolean {
 /**
  * 打开主端点开关时种什么值。
  *
- * 三档顺序：路由里已有的 generations 上游（保留 /v3 这类前缀）→ 图片渠道的默认地址 →
- * 路由众数。
+ * 三档顺序：
+ *   1. 路由里已有的 generations 上游 —— 保留 /v3、/api/v3 这类前缀；
+ *   2. 声明了文本模型的渠道 —— 按路由众数（chat / messages），别把文本渠道改道到出图；
+ *   3. 其余（图片渠道、模型还没填的新渠道）—— 一律 /v1/images/generations。
  *
- * 为什么图片渠道不能沿用众数：图片协议只认「像图片端点」的主端点，主端点写成
+ * 第 3 档为什么不再看路由众数：图片协议只认「像图片端点」的主端点，主端点写成
  * /v1/chat/completions 时协议会折回 /v1/images/generations，**页面存的**和**请求发的**
- * 就不是同一个地址（见 `docs/apiduo/primary-endpoint.md` §5）。聊天渠道没有这一层，
- * 仍按路由众数推导——否则会把文本渠道的上游改道到出图接口。
+ * 就不是同一个地址（见 `docs/apiduo/primary-endpoint.md` §5）。而运营新开一个图片渠道时，
+ * 路由往往是从「OpenAI Chat」这条默认入口起的，众数必然是 chat —— 按众数推导等于
+ * 每开一个图片渠道都要手工改一次主端点。
  */
 export function resolveDefaultPrimaryEndpoint(
   routes: readonly AdvancedCustomRoute[],
-  options?: { imageChannel?: boolean }
+  options?: { textChannel?: boolean }
 ): string {
   const imageUpstream = businessRoutes(routes)
     .map((route) => upstreamPathOf(route))
     .find((path) => path !== '' && hasGenerationsTail(path))
   if (imageUpstream) return imageUpstream
-  if (options?.imageChannel) return DEFAULT_PRIMARY_ENDPOINT
-  return resolvePrimaryEndpoint(routes)
+  if (options?.textChannel) return resolvePrimaryEndpoint(routes)
+  return DEFAULT_PRIMARY_ENDPOINT
 }
 
 /** 从渠道 settings JSON 里读主端点；坏 JSON 当没配。 */
@@ -155,8 +158,9 @@ export function readPrimaryEndpoint(settingsJson?: string): string {
   if (!settingsJson?.trim()) return ''
   try {
     const parsed: unknown = JSON.parse(settingsJson)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return ''
+    }
     const value = (parsed as Record<string, unknown>).primary_endpoint
     return typeof value === 'string' ? value.trim() : ''
   } catch {
@@ -172,8 +176,9 @@ export function readImageProtocolEnabled(settingsJson?: string): boolean {
   if (!settingsJson?.trim()) return false
   try {
     const parsed: unknown = JSON.parse(settingsJson)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return false
+    }
     const protocol = (parsed as Record<string, unknown>).image_protocol
     if (!protocol || typeof protocol !== 'object' || Array.isArray(protocol)) {
       return false
@@ -237,8 +242,9 @@ export function buildDerivations(
     // 同一入口多行时，只要有一行跟随主端点就仍算「跟随」——它本来就是这个入口的默认行为。
     existing.followsPrimary =
       existing.followsPrimary || !upstreamPath || upstreamPath === primary
-    if (!upstreamPath || upstreamPath === primary)
+    if (!upstreamPath || upstreamPath === primary) {
       existing.upstreamPath = primary
+    }
     existing.passThrough =
       existing.passThrough || Boolean(route.pass_through_body_enabled)
     existing.models = [...new Set([...existing.models, ...routeModels])]
@@ -258,13 +264,31 @@ export function applyPrimaryEndpoint(
 ): AdvancedCustomRoute[] {
   const primary = nextPrimary.trim()
   const previousPrimary = resolvePrimaryEndpoint(routes)
+  // 换到图片端点时，文本落点一律保留：清空它们等于让对话请求原样打到出图接口，
+  // 只有协议开着才不出事，而协议随时可能被关掉。
+  const switchingToImage = looksLikeImagePath(primary)
   return routes.map((route) => {
     if (isAdvancedCustomManagementPath(incomingPathOf(route))) return route
     const upstream = upstreamPathOf(route)
     if (upstream && upstream !== previousPrimary) return route
+    if (upstream && switchingToImage && isTextLanding(upstream)) return route
     // deriveToEmpty：存储形态只有「空 = 跟随主端点」一种，换主端点才真的只改一个字段。
     return { ...route, upstream_path: options?.deriveToEmpty ? '' : primary }
   })
+}
+
+/** 文本类上游落点。换到图片主端点时它们保持显式覆盖，不再跟随。 */
+function isTextLanding(path: string): boolean {
+  const tail = path.replace(/\/+$/, '')
+  return (
+    tail.endsWith('/chat/completions') ||
+    tail.endsWith('/completions') ||
+    tail.endsWith('/messages') ||
+    tail.endsWith('/responses') ||
+    tail.endsWith('/embeddings') ||
+    tail.endsWith(':generateContent') ||
+    tail.endsWith(':streamGenerateContent')
+  )
 }
 
 /** 改一个派生行：入口是主键，组内所有路由一起改。 */

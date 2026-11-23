@@ -176,6 +176,10 @@ export function PrimaryEndpointEditor(props: {
         looksLikeImagePath(route.incoming_path || '') ||
         looksLikeImagePath(route.upstream_path || '')
     )
+  // 只有「声明了模型、且不全是图片模型」才算文本渠道：它的主端点仍按上游众数推导。
+  // 模型没填的新渠道一律按图片渠道处理——新增渠道时路由往往只有一条 OpenAI Chat，
+  // 按众数推导会让每个图片渠道都要手工改一次主端点。
+  const textChannel = modelList.length > 0 && !imageOnlyChannel
 
   // 协议接管时，五个默认入口即使没写路由也在服务；把它们并进「入口去向」，
   // 否则表格里只有一条，读者会以为其余四条不生效。协议关闭时服务的就是路由表，
@@ -229,7 +233,7 @@ export function PrimaryEndpointEditor(props: {
       // 最后才沿用众数：图片渠道不能把 chat 路径写进主端点，协议会折回别处，
       // 页面存的地址和请求实际发的地址就不是同一个。
       const fallback =
-        resolveDefaultPrimaryEndpoint(props.routes, { imageChannel }) ||
+        resolveDefaultPrimaryEndpoint(props.routes, { textChannel }) ||
         DEFAULT_PRIMARY_ENDPOINT
       // 空路由表要先种一条派生，否则打开开关后保存会被「至少一条路由」拦住。
       const seeded = seedPrimaryRoute(props.routes, fallback)
