@@ -320,6 +320,8 @@
     "Preparing the file...": "正在生成文件…",
     "Rows": "行数",
     "Duration (ms)": "耗时（毫秒）",
-    "This period has not been issued; figures are a live aggregate.": "本期尚未出账，以下为实时聚合数据。"
+    "This period has not been issued; figures are a live aggregate.": "本期尚未出账，以下为实时聚合数据。",
+    "Filter by username or user ID": "按用户名或用户 ID 筛选",
+    "Live": "实时"
   }
 }

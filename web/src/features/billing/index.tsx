@@ -31,6 +31,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -148,6 +149,19 @@ export function Billing({ search, onSearchChange }: BillingProps) {
     queryFn: () => listBillingStatements(period),
     enabled: scope === 'all' && isAdmin,
   })
+
+  // 全站人数是几十到几百，本地过滤比每次输入都打一次后端划算，也没有抖动。
+  const [userFilter, setUserFilter] = useState('')
+  const filteredUsers = useMemo(() => {
+    const list = statementsQuery.data?.items ?? []
+    const keyword = userFilter.trim().toLowerCase()
+    if (!keyword) return list
+    return list.filter(
+      (row) =>
+        row.username.toLowerCase().includes(keyword) ||
+        String(row.user_id) === keyword
+    )
+  }, [statementsQuery.data, userFilter])
 
   const exportMutation = useMutation({
     mutationFn: () =>
@@ -411,7 +425,9 @@ export function Billing({ search, onSearchChange }: BillingProps) {
       if (statementsQuery.isError) {
         return <ErrorBlock message={(statementsQuery.error as Error).message} />
       }
-      if (!list || list.items.length === 0) {
+      if (!list) return null
+      const hasKeyword = userFilter.trim() !== ''
+      if (list.items.length === 0 && !hasKeyword) {
         return (
           <EmptyState
             icon={Receipt}
@@ -421,8 +437,23 @@ export function Billing({ search, onSearchChange }: BillingProps) {
         )
       }
       return (
-        <StaticDataTable
-          data={list.items}
+        <div className='space-y-3'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Input
+              value={userFilter}
+              onChange={(event) => setUserFilter(event.target.value)}
+              placeholder={t('Filter by username or user ID')}
+              className='h-8 w-[260px]'
+            />
+            <Badge variant={list.is_draft ? 'outline' : 'secondary'}>
+              {list.is_draft ? t('Live') : t('Issued')}
+            </Badge>
+            <span className='text-muted-foreground text-xs'>
+              {filteredUsers.length} / {list.items.length}
+            </span>
+          </div>
+          <StaticDataTable
+          data={filteredUsers}
           getRowKey={(row) => row.user_id}
           columns={[
             {
@@ -476,13 +507,14 @@ export function Billing({ search, onSearchChange }: BillingProps) {
               id: 'status',
               header: t('Status'),
               cell: (row) => (
-                <Badge variant={row.status === 'paid' ? 'secondary' : 'outline'}>
-                  {row.is_issued ? t('Issued') : row.status}
+                <Badge variant={row.is_issued ? 'secondary' : 'outline'}>
+                  {row.is_issued ? t('Issued') : t('In progress (estimated)')}
                 </Badge>
               ),
             },
           ]}
-        />
+          />
+        </div>
       )
     }
 

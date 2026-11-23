@@ -237,6 +237,8 @@
     "Preparing the file...": "Preparing the file...",
     "Rows": "Rows",
     "Duration (ms)": "Duration (ms)",
-    "This period has not been issued; figures are a live aggregate.": "This period has not been issued; figures are a live aggregate."
+    "This period has not been issued; figures are a live aggregate.": "This period has not been issued; figures are a live aggregate.",
+    "Filter by username or user ID": "Filter by username or user ID",
+    "Live": "Live"
   }
 }

@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -191,7 +192,9 @@ func ListBillingStatements(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rows, err := model.ListBillingStatementsByPeriod(period)
+	keyword := strings.TrimSpace(c.Query("keyword"))
+
+	rows, isDraft, err := service.LoadBillingUserSummaries(c.Request.Context(), period, keyword)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -217,21 +220,25 @@ func ListBillingStatements(c *gin.Context) {
 			UserId:   row.UserId,
 			Username: row.Username,
 			Status:   row.Status,
-			Amount:   row.TotalAmount,
-			Quota:    row.TotalQuota,
+			Amount:   row.Amount,
+			Quota:    row.Quota,
 			Requests: row.Requests,
 			Errors:   row.Errors,
 			Refunds:  row.Refunds,
 			IssuedAt: row.IssuedAt,
 			DueAt:    row.DueAt,
 			Currency: row.Currency,
-			IsIssued: row.Status != model.BillingStatusDraft,
+			IsIssued: row.IsIssued,
 		})
 	}
+	// pending 只在「真的一个人都没用」时为 true。带关键词搜不到是「无匹配」，
+	// 说成「本期账单尚未出账」会误导运营去等 1 号。
+	pending := len(items) == 0 && keyword == ""
 	common.ApiSuccess(c, gin.H{
-		"period":  period,
-		"items":   items,
-		"pending": len(items) == 0,
+		"period":   period,
+		"items":    items,
+		"pending":  pending,
+		"is_draft": isDraft,
 	})
 }
 

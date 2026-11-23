@@ -123,6 +123,8 @@ export interface BillingStatementList {
   period: string
   items: BillingStatementListItem[]
   pending: boolean
+  // 未出账账期返回的是按用户实时聚合的结果，行上 is_issued=false。
+  is_draft?: boolean
 }
 
 export interface BillingSearch {

@@ -322,6 +322,8 @@
     "Preparing the file...": "正在產生檔案…",
     "Rows": "列數",
     "Duration (ms)": "耗時（毫秒）",
-    "This period has not been issued; figures are a live aggregate.": "本期尚未出帳，以下為即時彙總資料。"
+    "This period has not been issued; figures are a live aggregate.": "本期尚未出帳，以下為即時彙總資料。",
+    "Filter by username or user ID": "按使用者名稱或使用者 ID 篩選",
+    "Live": "即時"
   }
 }

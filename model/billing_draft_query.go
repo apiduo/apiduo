@@ -158,3 +158,49 @@ func SummarizeUserLogsForBilling(ctx context.Context, userId int, start, end int
 	sortBillingSummary(rows)
 	return rows, err
 }
+
+// BillingUserTotal 是一个用户在一个账期内的实时合计，供管理员的全站视图使用。
+type BillingUserTotal struct {
+	UserId   int
+	Requests int64
+	Errors   int64
+	Refunds  int64
+	Quota    int64
+}
+
+// SummarizeUserLogsByUser 按用户汇总一个账期。当月没有出账快照，管理员要看到
+// 「谁用了多少」只能实时聚合；一次 GROUP BY 回几十到几百行，比逐用户查便宜得多。
+func SummarizeUserLogsByUser(ctx context.Context, start, end int64) ([]BillingUserTotal, error) {
+	consume, errorType, refund := strconv.Itoa(LogTypeConsume), strconv.Itoa(LogTypeError), strconv.Itoa(LogTypeRefund)
+	rows := make([]BillingUserTotal, 0, 64)
+	err := LOG_DB.WithContext(ctx).Table("logs").
+		Select(`user_id AS user_id,
+			SUM(CASE WHEN type = `+consume+` THEN 1 ELSE 0 END) AS requests,
+			SUM(CASE WHEN type = `+errorType+` THEN 1 ELSE 0 END) AS errors,
+			SUM(CASE WHEN type = `+refund+` THEN 1 ELSE 0 END) AS refunds,
+			SUM(CASE WHEN type = `+refund+` THEN -quota ELSE quota END) AS quota`).
+		Where("created_at >= ? AND created_at < ? AND type IN ?", start, end, billingConsumeTypes()).
+		Group("user_id").
+		Scan(&rows).Error
+	return rows, err
+}
+
+// BillingUsernames 批量取用户名。删除过的用户查不到，调用方回落成 user#id。
+func BillingUsernames(ids []int) (map[int]string, error) {
+	names := make(map[int]string, len(ids))
+	if len(ids) == 0 {
+		return names, nil
+	}
+	type row struct {
+		Id       int
+		Username string
+	}
+	rows := make([]row, 0, len(ids))
+	if err := DB.Model(&User{}).Select("id, username").Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range rows {
+		names[item.Id] = item.Username
+	}
+	return names, nil
+}
