@@ -96,10 +96,10 @@ func (a *Adaptor) prepareImageProtocol(
 		canonical, err = canonicalFromResponses(request, info.UpstreamModelName)
 
 	case relayconstant.RelayModeGemini:
-		// 判据只有运营配置的两层：渠道声明了这条入站路径，且开着图片协议。
-		// 声明即出图，与 chat 入口同一套语义，不看 body，也不查全局模型名单。
-		// 名单是 chat 转换用来决定 responseModalities 的，不是渠道能力判据；
-		// 放这里会让「渠道配好、名单漏加」变成静默不出图。
+		// 判据只有一条：渠道开着图片协议（ServesPath 已经把这条路径算作它的入口，
+		// 不再需要 advanced_routes 声明）。开了就是图片渠道，与 chat 入口同一套语义，
+		// 不看 body，也不查全局模型名单——名单是 chat 转换决定 responseModalities 用的，
+		// 不是渠道能力判据，放这里会让「渠道配好、名单漏加」变成静默不出图。
 		request, ok := info.Request.(*dto.GeminiChatRequest)
 		if !ok {
 			return nil, true, errors.New("gemini image protocol requires a generateContent request")
@@ -136,7 +136,9 @@ func (a *Adaptor) prepareImageProtocol(
 	a.imageUpstreamPath = plan.UpstreamPath
 	a.imageRequestCount = 1
 	// canonical 的字段来自 JSON 解码，number 一律是 float64；只有直接读表单的
-	// 路径才会是 int。只认 int 会让 chat 入口的 n 恒为 1，多图请求按一张计费。
+	// 路径才会是 int。只认 int 会让 /v1/images/generations 的 n 恒为 1，多图按一张计费。
+	// 注意 chat / responses / Gemini 原生三个入口的 n 不参与计费：它们的折叠函数
+	// 刻意不搬 n（对话参数不该混进图像请求），所以这里的张数恒为 1。
 	switch n := canonical.fields["n"].(type) {
 	case int:
 		if n >= 1 {
