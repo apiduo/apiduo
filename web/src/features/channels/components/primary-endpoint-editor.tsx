@@ -168,9 +168,14 @@ export function PrimaryEndpointEditor(props: {
   const availablePaths = useMemo(
     () =>
       ADVANCED_CUSTOM_INCOMING_PATH_OPTIONS.filter(
-        (option) => !derivations.some((row) => row.incomingPath === option.value)
+        // 协议接管时按「实际服务的入口」过滤：五个默认入口已经接管，再加一条
+        // 是死配置——保存后它永远不会被读到。
+        (option) =>
+          !(protocolOn ? servedEntries : derivations.map((row) => row.incomingPath)).includes(
+            option.value
+          )
       ),
-    [derivations]
+    [derivations, protocolOn, servedEntries]
   )
 
   const setEnabled = (next: boolean) => {
@@ -371,7 +376,7 @@ export function PrimaryEndpointEditor(props: {
                   {t('Downstream')}
                 </p>
                 <p className='flex h-8 min-w-0 items-center truncate text-xs font-medium'>
-                  {t('{{count}} entries', { count: derivations.length })}
+                  {t('{{count}} entries', { count: servedEntries.length })}
                 </p>
               </div>
             </div>
@@ -608,7 +613,7 @@ export function PrimaryEndpointEditor(props: {
           <div className='flex flex-wrap items-center justify-between gap-2 px-4 py-3'>
             <div className='flex items-center gap-2'>
               <p className='text-sm font-medium'>{t('Entries')}</p>
-              <Badge variant='outline'>{derivations.length}</Badge>
+              <Badge variant='outline'>{servedEntries.length}</Badge>
             </div>
             <Combobox
               options={availablePaths.map((option) => ({
@@ -629,9 +634,11 @@ export function PrimaryEndpointEditor(props: {
           </div>
 
           {derivations.length === 0 ? (
-            <p className='text-muted-foreground border-t px-4 py-3 text-xs'>
-              {t('No derived endpoints yet.')}
-            </p>
+            protocolOn ? null : (
+              <p className='text-muted-foreground border-t px-4 py-3 text-xs'>
+                {t('No derived endpoints yet.')}
+              </p>
+            )
           ) : (
             <div className='divide-y border-t'>
               {derivations.map((row) => (

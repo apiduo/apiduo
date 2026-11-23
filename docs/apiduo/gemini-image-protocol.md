@@ -294,6 +294,8 @@ parts[3] inlineData    image/png  1376×768  （成品，字节不同）
 | `createTime` / `responseId` | **丢弃**：上游请求标识 |
 | `candidates[].index` | 上游不返回；网关重建时补 `0` |
 | `parts[].thought` | 丢弃（Gemini 入口重建时只保留 inlineData） |
+| `parts[].thoughtSignature` | 丢弃。实测成品图那一 part 带约 3.6 MB 的签名——响应体接近 10 MB 主要来自它，不是图本身。签名用于多轮续写，网关每次请求都是无状态单发，留着只增加体积 |
+| `mask`（图生图蒙版） | **拒绝 400**。Gemini 没有独立蒙版通道，静默忽略会让客户端以为在做局部重绘，实际拿到整图重绘且有计费 |
 
 `usageMetadata` 只影响展示，账本仍是 `Usage{Prompt:1, Completion:0, Total:1}` —— 
 入口与上游都不改变价钱。

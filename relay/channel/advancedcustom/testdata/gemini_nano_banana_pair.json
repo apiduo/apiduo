@@ -1,0 +1,56 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "**Illustrating A Feline Friend**\n\nI am refining the concept for a detailed colored-pencil illustration. My focus is on capturing the soft textures of a ginger tabby's fur and the gentle light filtering through a window onto a cozy windowsill. I'm also considering the inclusion of subtle background details like houseplants.\n\n",
+            "thought": true
+          },
+          {
+            "inlineData": {
+              "mimeType": "image/png",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=="
+            },
+            "thought": true
+          },
+          {
+            "text": "**Sharing Recent Findings**\n\nI've completed the current illustration and will now present it to you for review.\n\n",
+            "thought": true
+          },
+          {
+            "inlineData": {
+              "mimeType": "image/png",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            },
+            "thoughtSignature": "c2hvcnQtc2lnbmF0dXJl"
+          }
+        ]
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 3,
+    "candidatesTokenCount": 1120,
+    "totalTokenCount": 1649,
+    "trafficType": "ON_DEMAND",
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 3
+      }
+    ],
+    "candidatesTokensDetails": [
+      {
+        "modality": "IMAGE",
+        "tokenCount": 1120
+      }
+    ],
+    "thoughtsTokenCount": 526
+  },
+  "modelVersion": "google/gemini-nano-banana-2.1",
+  "createTime": "2026-11-23T06:29:22.347216Z",
+  "responseId": "Qt0Da9CYFbbpodAPiKPSyQM"
+}

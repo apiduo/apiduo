@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -425,5 +426,75 @@ func TestWrapGeminiResponseUsesRealUsage(t *testing.T) {
 	parts, _ := first["content"].(map[string]any)["parts"].([]any)
 	if len(parts) != 1 {
 		t.Fatalf("gemini entry keeps the source parts, got %d", len(parts))
+	}
+}
+
+// Gemini 没有 mask 通道，静默忽略会产出「不是用户要的图」并照常计费。
+func TestPlanGeminiRejectsMask(t *testing.T) {
+	canonical := newImageCanonical()
+	canonical.fields["model"] = "banana"
+	canonical.fields["prompt"] = "make the sky blue"
+	canonical.fields["image"] = "data:image/png;base64,aGVsbG8="
+	canonical.fields["mask"] = "data:image/png;base64,bWFzaw=="
+
+	_, err := planGemini(canonical, "banana")
+	if err == nil {
+		t.Fatal("mask must be rejected instead of silently dropped")
+	}
+	if !strings.Contains(err.Error(), "mask") {
+		t.Fatalf("error must name the offending field, got %v", err)
+	}
+}
+
+// 真实上游（zenmux / google/gemini-nano-banana-2.1）的报文形状，只把 base64 换成
+// 1x1 PNG、thoughtSignature 换成短值。锁三件事：
+//
+//	① 未知字段（thought / thoughtSignature / createTime / responseId）不影响解码；
+//	② usageMetadata 解析成展示用量，trafficType 不出网关；
+//	③ 两道 thought 夹两张图时，OpenAI 形状的入口只交付最后一张。
+func TestRealGeminiPairFixture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/gemini_nano_banana_pair.json")
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	decoded, err := decodeGeminiImageResponse(raw, 0)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(decoded.Data) != 2 {
+		t.Fatalf("decoder must stay faithful to the source, got %d", len(decoded.Data))
+	}
+	if decoded.Usage == nil ||
+		decoded.Usage.PromptTokens != 3 ||
+		decoded.Usage.CompletionTokens != 1120 ||
+		decoded.Usage.TotalTokens != 1649 ||
+		decoded.Usage.ThoughtsTokens != 526 {
+		t.Fatalf("usage must match the captured payload, got %+v", decoded.Usage)
+	}
+
+	// 1x1 PNG 的两种字节；成品是第二张。
+	final := decoded.Data[1].B64JSON
+	trimmed := deliverableImages(decoded, "gemini")
+	if len(trimmed.Data) != 1 || trimmed.Data[0].B64JSON != final {
+		t.Fatalf("OpenAI entries must deliver the final image only, got %d", len(trimmed.Data))
+	}
+
+	out, err := wrapGeminiResponse(trimmed, "google/gemini-nano-banana-2.1")
+	if err != nil {
+		t.Fatalf("wrap: %v", err)
+	}
+	var rebuilt map[string]any
+	if err := json.Unmarshal(out, &rebuilt); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, leaked := rebuilt["trafficType"]; leaked {
+		t.Fatal("trafficType must not appear at the top level")
+	}
+	usage := rebuilt["usageMetadata"].(map[string]any)
+	if _, leaked := usage["trafficType"]; leaked {
+		t.Fatalf("trafficType is upstream scheduling info: %#v", usage)
+	}
+	if _, leaked := rebuilt["responseId"]; leaked {
+		t.Fatalf("responseId is upstream identity: %#v", rebuilt)
 	}
 }

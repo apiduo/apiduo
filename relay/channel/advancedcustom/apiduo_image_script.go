@@ -253,6 +253,13 @@ func planGemini(c *imageCanonical, upstreamModel string) (*imagePlan, error) {
 		return nil, errors.New("gemini upstream requires a model name")
 	}
 
+	// Gemini 没有独立的 mask 通道：图生图靠 prompt + inlineData，局部重绘只能靠提示词
+	// 描述。静默忽略会让客户端以为自己在做 inpainting，实际拿到一张整图重绘——
+	// 有输出、有计费、结果不对，比直接拒绝更糟。
+	if _, exists := c.fields["mask"]; exists {
+		return nil, errors.New("mask is not supported by the gemini upstream: describe the region in the prompt instead")
+	}
+
 	prompt, _ := c.fields["prompt"].(string)
 	refs := c.imageRefs()
 	if strings.TrimSpace(prompt) == "" && len(refs) == 0 {
