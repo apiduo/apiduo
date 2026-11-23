@@ -210,6 +210,18 @@
     "The rate above is multiplied by the resolution factor": "上記の単価には解像度倍率が掛かります（倍率はチャネル設定を参照）",
     "Charged per token when usage is reported, per request otherwise": "トークン使用量が報告された場合はトークン課金、なければリクエスト課金",
     "Gemini protocol (generateContent)": "Gemini プロトコル（generateContent）",
-    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "参照画像は inlineData に変換されます。上流パスは Base URL・バージョン・モデル名から組み立てます。この入口のリクエストはすべて画像生成として扱われるため、テキストは別チャネルにしてください。"
+    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "参照画像は inlineData に変換されます。上流パスは Base URL・バージョン・モデル名から組み立てます。この入口のリクエストはすべて画像生成として扱われるため、テキストは別チャネルにしてください。",
+    "Recompute started. Numbers update in a few minutes.": "再計算を開始しました。数分で数値が更新されます。",
+    "Failed to start recompute": "再計算を開始できませんでした",
+    "Recomputing": "再計算中…",
+    "A recompute is already running.": "再計算はすでに実行中です。",
+    "Failed to update the item": "項目を更新できませんでした",
+    "Failed to load the queue": "キューを読み込めませんでした",
+    "Failed to save the record": "記録を保存できませんでした",
+    "Failed to update the tier": "ティアを更新できませんでした",
+    "Failed to create the batch": "バッチを作成できませんでした",
+    "Failed to stop the batch": "バッチを停止できませんでした",
+    "Failed to save the rules": "ルールを保存できませんでした",
+    "customers": "顧客"
   }
 }

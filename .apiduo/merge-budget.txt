@@ -176,7 +176,13 @@
 # 信封只给开了图片协议的渠道，判据与两个 c.JSON 必须在同一个 defer 里，挪出去就是
 # 第二套渲染路径。判据函数 ImageProtocolEnabled 写在 relay/helper/remap_hardening.go，
 # 不进合并面。
-files	204
-blocks	666
-added	6931
+# 2026-11-23 files 204->205 / blocks 666->667 / added 6931->6941：
+# 增长看板读数缓存 + 列表分页。分页工具（lib/pagination.ts、components/list-pager.tsx）、
+# 缓存实现（service/growth.go 内）与三个测试文件都是新文件，不计合并面。
+# files / blocks / added 的增长全部来自上游文件 SectionPageLayout 的一处文档：
+# fixedContent 是 10 个列表页共用的高度契约，「传错就静默裁剪」必须写在属性上，
+# 挪进新文件没人会读到。
+files	205
+blocks	667
+added	6941
 deleted	491

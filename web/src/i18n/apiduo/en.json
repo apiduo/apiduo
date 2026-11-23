@@ -240,6 +240,18 @@
     "The rate above is multiplied by the resolution factor": "The rate above is multiplied by the resolution factor",
     "Charged per token when usage is reported, per request otherwise": "Charged per token when usage is reported, per request otherwise",
     "Gemini protocol (generateContent)": "Gemini protocol (generateContent)",
-    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text."
+    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.",
+    "Recompute started. Numbers update in a few minutes.": "Recompute started. Numbers update in a few minutes.",
+    "Failed to start recompute": "Failed to start recompute",
+    "Recomputing": "Recomputing",
+    "A recompute is already running.": "A recompute is already running.",
+    "Failed to update the item": "Failed to update the item",
+    "Failed to load the queue": "Failed to load the queue",
+    "Failed to save the record": "Failed to save the record",
+    "Failed to update the tier": "Failed to update the tier",
+    "Failed to create the batch": "Failed to create the batch",
+    "Failed to stop the batch": "Failed to stop the batch",
+    "Failed to save the rules": "Failed to save the rules",
+    "customers": "customers"
   }
 }

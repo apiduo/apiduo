@@ -127,8 +127,14 @@ export async function createGrowthBatch(body: {
   return unwrap(res.data)
 }
 
-export async function recomputeGrowth(): Promise<void> {
-  await api.post('/api/growth/recompute')
+export async function recomputeGrowth(): Promise<{
+  started: boolean
+  already_running?: boolean
+}> {
+  const res = await api.post<
+    Envelope<{ started: boolean; already_running?: boolean }>
+  >('/api/growth/recompute')
+  return unwrap(res.data)
 }
 
 export async function getGrowthSettings(): Promise<GrowthSettings> {

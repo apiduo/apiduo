@@ -205,6 +205,18 @@
     "The rate above is multiplied by the resolution factor": "Le tarif ci-dessus est multiplié par le facteur de résolution (voir le canal)",
     "Charged per token when usage is reported, per request otherwise": "Facturé au token si l'usage est fourni, sinon par requête",
     "Gemini protocol (generateContent)": "Protocole Gemini (generateContent)",
-    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "Les références deviennent inlineData. L'URL de base, la version et le nom du modèle composent le chemin amont. Chaque requête sur cette entrée est traitée comme une génération d'image ; utilisez un canal séparé pour le texte."
+    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "Les références deviennent inlineData. L'URL de base, la version et le nom du modèle composent le chemin amont. Chaque requête sur cette entrée est traitée comme une génération d'image ; utilisez un canal séparé pour le texte.",
+    "Recompute started. Numbers update in a few minutes.": "Recalcul lancé. Les chiffres seront à jour dans quelques minutes.",
+    "Failed to start recompute": "Impossible de lancer le recalcul",
+    "Recomputing": "Recalcul en cours…",
+    "A recompute is already running.": "Un recalcul est déjà en cours.",
+    "Failed to update the item": "Impossible de mettre à jour cet élément",
+    "Failed to load the queue": "Impossible de charger la file d'attente",
+    "Failed to save the record": "Impossible d'enregistrer la note",
+    "Failed to update the tier": "Impossible de mettre à jour le niveau",
+    "Failed to create the batch": "Impossible de créer le lot",
+    "Failed to stop the batch": "Impossible d'arrêter le lot",
+    "Failed to save the rules": "Impossible d'enregistrer les règles",
+    "customers": "clients"
   }
 }

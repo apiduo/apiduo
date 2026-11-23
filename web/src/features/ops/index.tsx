@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -14,6 +14,7 @@ import {
   YAxis,
 } from 'recharts'
 
+import { ListPager } from '@/components/list-pager'
 import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DEFAULT_PAGE_SIZE, slicePage } from '@/lib/pagination'
 
 import {
   claimOpsIncident,
@@ -71,6 +73,9 @@ export function ServiceHealth() {
   // 全局模型筛选：填了之后曲线、聚类、下钻都只看这个模型。
   // 和"筛这一列"不同——那个只过滤表格行，这个影响所有区块。
   const [modelFilter, setModelFilter] = useState('')
+  // 下钻表分页：模型/渠道数量没有上限，一次渲染全部行会让页面在滚轮上失去响应。
+  const [breakdownPage, setBreakdownPage] = useState(1)
+  const [breakdownPageSize, setBreakdownPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   const range = RANGES.find((r) => r.key === rangeKey) ?? RANGES[0]
   const to = Math.floor(Date.now() / 1000)
@@ -125,6 +130,15 @@ export function ServiceHealth() {
   })
 
   const breakdownRows = breakdown.data?.rows ?? []
+  // 换维度/换时间窗/换筛选词都回到第一页：停在旧页码上会看到一张空表。
+  useEffect(() => {
+    setBreakdownPage(1)
+  }, [dim, rangeKey, modelFilter, breakdownPageSize])
+  const breakdownPageRows = slicePage(
+    breakdownRows,
+    breakdownPage,
+    breakdownPageSize
+  )
 
   // 两条线量纲不同（比例 vs 毫秒），必须双轴。
   // 合成单轴的话，P95 会把错误率压成一条贴地的直线。
@@ -148,7 +162,7 @@ export function ServiceHealth() {
   const worstP95 = points.reduce((m, p) => Math.max(m, p.p95_ms), 0)
 
   return (
-    <SectionPageLayout fixedContent>
+    <SectionPageLayout>
       <SectionPageLayout.Title>{t('Service health')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         {/* 全局模型筛选：填了就只看这个模型，曲线/聚类/下钻一起变。
@@ -478,7 +492,7 @@ export function ServiceHealth() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(breakdownRows).map((r) => (
+                    {(breakdownPageRows).map((r) => (
                       <tr key={r.key} className='border-b last:border-0'>
                         {/* 渠道维度加 # 前缀：毛利表和值班看板都用 #3 这种写法，
                             同一页里一处裸数字一处带井号，读起来像两个不同的东西。 */}
@@ -529,6 +543,16 @@ export function ServiceHealth() {
                     ))}
                   </tbody>
                 </table>
+              )}
+              {!breakdown.isLoading && breakdownRows.length > 0 && (
+                <ListPager
+                  className='mt-3'
+                  page={breakdownPage}
+                  pageSize={breakdownPageSize}
+                  total={breakdownRows.length}
+                  onPageChange={setBreakdownPage}
+                  onPageSizeChange={setBreakdownPageSize}
+                />
               )}
             </CardContent>
           </Card>

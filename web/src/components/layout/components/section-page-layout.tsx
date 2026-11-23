@@ -51,7 +51,17 @@ SectionPageLayoutBreadcrumb.displayName = 'SectionPageLayout.Breadcrumb'
 
 export type SectionPageLayoutProps = {
   children: ReactNode
+  /* APIDUO:page-layout:BEGIN */
+  /**
+   * Content 区不滚动，由页面自己管理滚动容器。
+   *
+   * 只给「单块自适应高度」的页面用（表格 + 自己滚动的表体，例如使用日志：
+   * `flex h-full min-h-0 flex-col` 里再放一张铺满剩余高度的表）。
+   * 堆叠卡片的页面传这个 prop 的后果是**静默裁剪**：内容比视口高出来的部分
+   * 既不能滚也看不见，用户只会说「页面卡死了」——服务质量和增长页都这么坏过。
+   */
   fixedContent?: boolean
+  /* APIDUO:page-layout:END */
   stackActionsOnMobile?: boolean
 }
 

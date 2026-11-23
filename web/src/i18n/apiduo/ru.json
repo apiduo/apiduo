@@ -205,6 +205,18 @@
     "The rate above is multiplied by the resolution factor": "Указанная ставка умножается на коэффициент разрешения (см. настройки канала)",
     "Charged per token when usage is reported, per request otherwise": "Списание за токены при наличии данных, иначе за запрос",
     "Gemini protocol (generateContent)": "Протокол Gemini (generateContent)",
-    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "Ссылки на изображения становятся inlineData. Путь к апстриму собирается из Base URL, версии и имени модели. Каждый запрос на этом входе считается генерацией изображения; для текста заведите отдельный канал."
+    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "Ссылки на изображения становятся inlineData. Путь к апстриму собирается из Base URL, версии и имени модели. Каждый запрос на этом входе считается генерацией изображения; для текста заведите отдельный канал.",
+    "Recompute started. Numbers update in a few minutes.": "Пересчёт запущен. Данные обновятся через несколько минут.",
+    "Failed to start recompute": "Не удалось запустить пересчёт",
+    "Recomputing": "Идёт пересчёт…",
+    "A recompute is already running.": "Пересчёт уже выполняется.",
+    "Failed to update the item": "Не удалось обновить запись",
+    "Failed to load the queue": "Не удалось загрузить очередь",
+    "Failed to save the record": "Не удалось сохранить заметку",
+    "Failed to update the tier": "Не удалось обновить уровень",
+    "Failed to create the batch": "Не удалось создать рассылку",
+    "Failed to stop the batch": "Не удалось остановить рассылку",
+    "Failed to save the rules": "Не удалось сохранить правила",
+    "customers": "клиентов"
   }
 }

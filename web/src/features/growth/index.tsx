@@ -1,8 +1,10 @@
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
+import { ListPager } from '@/components/list-pager'
 import { SectionPageLayout } from '@/components/layout'
-import { RetentionBoard } from './components/retention/retention-board'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,6 +15,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -29,34 +32,34 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { useDebounce } from '@/hooks'
 import { formatQuotaWithCurrency } from '@/lib/currency'
+import { DEFAULT_PAGE_SIZE } from '@/lib/pagination'
 
+import { RetentionBoard } from './components/retention/retention-board'
 import {
   createGrowthBatch,
   createGrowthTouch,
-  getGrowthModels,
-  getGrowthSettings,
-  stopGrowthBatch,
-  updateGrowthSettings,
   getGrowthAlerts,
   getGrowthBatches,
+  getGrowthModels,
   getGrowthOverview,
   getGrowthProfile,
+  getGrowthSettings,
   getGrowthUsers,
   recomputeGrowth,
+  stopGrowthBatch,
   updateGrowthAlertStatus,
+  updateGrowthSettings,
   updateGrowthTier,
 } from './api'
 import type {
   GrowthAlertItem,
-  GrowthAlertStats,
   GrowthBatch,
   GrowthBoardRow,
   GrowthModelStat,
-  GrowthOverview,
   GrowthProfile,
   GrowthSettings,
-  GrowthTouch,
 } from './types'
 
 const TIERS = ['K', 'A', 'B', 'S'] as const
@@ -110,8 +113,21 @@ function trendLabel(trend: string) {
   }
 }
 
+// 查询 key 统一收在这里：失效（invalidate）时按前缀清，
+// 写死字符串很容易漏掉某一个，然后出现「点了但页面没变」。
+const growthKeys = {
+  overview: ['growth', 'overview'] as const,
+  alerts: ['growth', 'alerts'] as const,
+  users: ['growth', 'users'] as const,
+  models: ['growth', 'models'] as const,
+  batches: ['growth', 'batches'] as const,
+  settings: ['growth', 'settings'] as const,
+  profile: (userId: number) => ['growth', 'profile', userId] as const,
+}
+
 export function Growth() {
   const { t } = useTranslation()
+  const qc = useQueryClient()
   const [tab, setTab] = useState('today')
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -124,18 +140,35 @@ export function Growth() {
     setProfileOpen(true)
   }, [])
 
+  // 重算是一次全量聚合，耗时以秒计。按钮必须锁住并给回执：
+  // 没有 pending 态时运营会连点，几个全表扫描叠在一起，
+  // 接着整个看板的请求都在后面排队——现象就是「页面卡死」。
+  const recompute = useMutation({
+    mutationFn: recomputeGrowth,
+    onSuccess: (result) => {
+      if (result?.already_running) {
+        toast.info(t('A recompute is already running.'))
+      } else {
+        toast.success(t('Recompute started. Numbers update in a few minutes.'))
+      }
+      // 聚合在后台跑。这里只标脏、不立刻重取：重算还没结束就抓，
+      // 拿到的还是旧数，等于在数据库最忙的时候再叠 5 个全量查询。
+      void qc.invalidateQueries({ queryKey: ['growth'], refetchType: 'none' })
+    },
+    onError: () => toast.error(t('Failed to start recompute')),
+  })
+
   return (
-    <SectionPageLayout fixedContent>
+    <SectionPageLayout>
       <SectionPageLayout.Title>{t('Growth')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <Button
           variant='outline'
           size='sm'
-          onClick={() => {
-            void recomputeGrowth()
-          }}
+          disabled={recompute.isPending}
+          onClick={() => recompute.mutate()}
         >
-          {t('Recompute')}
+          {recompute.isPending ? t('Recomputing') : t('Recompute')}
         </Button>
         <Button variant='outline' size='sm' onClick={() => setRulesOpen(true)}>
           {t('Rules')}
@@ -143,7 +176,9 @@ export function Growth() {
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <Tabs value={tab} onValueChange={(value) => setTab(String(value))}>
-          <TabsList>
+          {/* 页签要跟着内容滚：切换到「客户」后页面很长，
+              滚到一半想换页签不该先滚回顶部。 */}
+          <TabsList className='bg-background sticky top-0 z-10'>
             <TabsTrigger value='today'>{t('Today')}</TabsTrigger>
             <TabsTrigger value='segments'>{t('Customers')}</TabsTrigger>
             <TabsTrigger value='batches'>{t('Reach')}</TabsTrigger>
@@ -164,7 +199,6 @@ export function Growth() {
           <TabsContent value='batches'>
             <BatchPanel />
           </TabsContent>
-
         </Tabs>
 
         <Sheet open={profileOpen} onOpenChange={setProfileOpen}>
@@ -205,46 +239,42 @@ function TodayPanel({
   onOpenProfile: (userId: number) => void
 }) {
   const { t } = useTranslation()
-  const [items, setItems] = useState<GrowthAlertItem[]>([])
-  const [stats, setStats] = useState<GrowthAlertStats[]>([])
-  const [followUps, setFollowUps] = useState<GrowthTouch[]>([])
-  const [overview, setOverview] = useState<GrowthOverview | null>(null)
-  const [loading, setLoading] = useState(true)
+  const qc = useQueryClient()
 
-  const reload = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [data, ov] = await Promise.all([
-        getGrowthAlerts(),
-        getGrowthOverview().catch(() => null),
-      ])
-      setOverview(ov)
-      setItems(data.items)
-      setStats(data.stats)
-      setFollowUps(data.follow_ups ?? [])
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const alerts = useQuery({
+    queryKey: growthKeys.alerts,
+    queryFn: () => getGrowthAlerts(),
+    staleTime: 30_000,
+  })
+  const overview = useQuery({
+    queryKey: growthKeys.overview,
+    queryFn: getGrowthOverview,
+    staleTime: 60_000,
+  })
 
-  useEffect(() => {
-    void reload()
-  }, [reload])
+  const items = alerts.data?.items ?? []
+  const stats = alerts.data?.stats ?? []
+  const followUps = alerts.data?.follow_ups ?? []
+  const ov = overview.data ?? null
 
-  const handle = async (
-    item: GrowthAlertItem,
-    status: 'done' | 'ignore'
-  ) => {
-    await updateGrowthAlertStatus(item.user_id, item.kind, status)
-    await reload()
-  }
+  const mark = useMutation({
+    mutationFn: (args: { item: GrowthAlertItem; status: 'done' | 'ignore' }) =>
+      updateGrowthAlertStatus(args.item.user_id, args.item.kind, args.status),
+    onSuccess: () => {
+      // 标记之后队列和统计会变；客户列表的「最近触达」也变了。
+      // 概览指标不随预警状态动，别为一次点击再拉一遍全量聚合。
+      void qc.invalidateQueries({ queryKey: growthKeys.alerts })
+      void qc.invalidateQueries({ queryKey: growthKeys.users })
+    },
+    onError: () => toast.error(t('Failed to update the item')),
+  })
 
   const total = stats.reduce((acc, s) => acc + s.total, 0)
   const resolved = stats.reduce((acc, s) => acc + s.resolved, 0)
 
   return (
     <div className='space-y-3'>
-      {overview && (
+      {ov && (
         <Card>
           <CardContent className='flex flex-wrap items-end justify-between gap-4 py-5'>
             <div>
@@ -252,25 +282,25 @@ function TodayPanel({
                 {t('Weekly billed consumption')}
               </p>
               <p className='mt-1 text-3xl font-semibold tabular-nums'>
-                ${fmtUsd(overview.weekly_billed_usd)}
+                ${fmtUsd(ov.weekly_billed_usd)}
               </p>
               <p className='text-muted-foreground mt-1 text-xs'>
                 {t('Last week same period')} $
-                {fmtUsd(overview.prev_week_billed_usd)}
+                {fmtUsd(ov.prev_week_billed_usd)}
               </p>
             </div>
             <div className='text-right'>
               <p
                 className={`text-lg font-medium tabular-nums ${
-                  overview.week_over_week_pct > 0
+                  ov.week_over_week_pct > 0
                     ? 'text-emerald-600'
-                    : overview.week_over_week_pct < 0
+                    : ov.week_over_week_pct < 0
                       ? 'text-destructive'
                       : 'text-muted-foreground'
                 }`}
               >
-                {overview.week_over_week_pct > 0 ? '+' : ''}
-                {overview.week_over_week_pct.toFixed(1)}%
+                {ov.week_over_week_pct > 0 ? '+' : ''}
+                {ov.week_over_week_pct.toFixed(1)}%
               </p>
               <p className='text-muted-foreground text-xs'>
                 {t('Week over week')}
@@ -337,8 +367,15 @@ function TodayPanel({
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-2'>
-          {loading && <p className='text-muted-foreground text-sm'>{t('Loading')}</p>}
-          {!loading && items.length === 0 && (
+          {alerts.isPending && (
+            <p className='text-muted-foreground text-sm'>{t('Loading')}</p>
+          )}
+          {alerts.isError && (
+            <p className='text-destructive text-sm'>
+              {t('Failed to load the queue')}
+            </p>
+          )}
+          {!alerts.isPending && items.length === 0 && (
             <p className='text-muted-foreground text-sm'>
               {t('No pending items')}
             </p>
@@ -386,13 +423,18 @@ function TodayPanel({
                 >
                   {t('Open')}
                 </Button>
-                <Button size='sm' onClick={() => void handle(item, 'done')}>
+                <Button
+                  size='sm'
+                  disabled={mark.isPending}
+                  onClick={() => mark.mutate({ item, status: 'done' })}
+                >
                   {t('Handled')}
                 </Button>
                 <Button
                   size='sm'
                   variant='ghost'
-                  onClick={() => void handle(item, 'ignore')}
+                  disabled={mark.isPending}
+                  onClick={() => mark.mutate({ item, status: 'ignore' })}
                 >
                   {t('Ignore')}
                 </Button>
@@ -411,34 +453,52 @@ function SegmentPanel({
   onOpenProfile: (userId: number) => void
 }) {
   const { t } = useTranslation()
-  const [overview, setOverview] = useState<GrowthOverview | null>(null)
-  const [rows, setRows] = useState<GrowthBoardRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [tier, setTier] = useState('')
-  const [keyword, setKeyword] = useState('')
-  const pageSize = 20
-
-  const reload = useCallback(async () => {
-    const [ov, list] = await Promise.all([
-      getGrowthOverview(),
-      getGrowthUsers({ page, pageSize, tier, keyword }),
-    ])
-    setOverview(ov)
-    setRows(list.items)
-    setTotal(list.total)
-  }, [page, tier, keyword])
+  // 「第几页」和筛选条件放在同一个状态里：分开存就必须靠 effect 在筛选变化后
+  // 把页码拉回第一页，而 effect 晚一拍——会先按旧页码发一次请求（p=2&keyword=新词），
+  // 再按 p=1 发第二次。一次搜索两次全量聚合，白花一次。
+  const [query, setQuery] = useState({
+    page: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
+    tier: '',
+    keyword: '',
+  })
+  const [keywordInput, setKeywordInput] = useState('')
+  // 每个按键都发请求 = 每个按键一次全量聚合。输入一个 8 字符的用户名
+  // 会排队十几个请求，运营感受是「打字卡、翻页慢」。
+  const debouncedKeyword = useDebounce(keywordInput.trim(), 300)
 
   useEffect(() => {
-    void reload()
-  }, [reload])
+    setQuery((prev) =>
+      prev.keyword === debouncedKeyword
+        ? prev
+        : { ...prev, keyword: debouncedKeyword, page: 1 }
+    )
+  }, [debouncedKeyword])
+
+  const overview = useQuery({
+    queryKey: growthKeys.overview,
+    queryFn: getGrowthOverview,
+    staleTime: 60_000,
+  })
+
+  const users = useQuery({
+    queryKey: [...growthKeys.users, query],
+    queryFn: () => getGrowthUsers(query),
+    // 翻页时保留上一页的行：清空成骨架屏再填回来，视觉上像页面卡了一下。
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  })
+
+  const rows: GrowthBoardRow[] = users.data?.items ?? []
+  const total = users.data?.total ?? 0
+  const maxPages = Math.max(1, Math.ceil(total / query.pageSize))
+  const currentPage = Math.min(query.page, maxPages)
 
   const stale = useMemo(() => {
-    if (!overview?.data_fresh_at) return true
-    return Date.now() / 1000 - overview.data_fresh_at > 7200
-  }, [overview])
-
-  const maxPages = Math.max(1, Math.ceil(total / pageSize))
+    const freshAt = overview.data?.data_fresh_at
+    if (!freshAt) return true
+    return Date.now() / 1000 - freshAt > 7200
+  }, [overview.data])
 
   return (
     <div className='space-y-3'>
@@ -452,19 +512,19 @@ function SegmentPanel({
       <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
         <MetricCard
           label={t('Weekly active users')}
-          value={String(overview?.week_active_users ?? 0)}
+          value={String(overview.data?.week_active_users ?? 0)}
         />
         <MetricCard
           label={t('Monthly active users')}
-          value={String(overview?.month_active_users ?? 0)}
+          value={String(overview.data?.month_active_users ?? 0)}
         />
         <MetricCard
           label={t('Top 10 revenue share')}
-          value={`${(overview?.top10_share ?? 0).toFixed(1)}%`}
+          value={`${(overview.data?.top10_share ?? 0).toFixed(1)}%`}
         />
         <MetricCard
           label={t('Paying users')}
-          value={String(overview?.paying_users ?? 0)}
+          value={String(overview.data?.paying_users ?? 0)}
         />
       </div>
 
@@ -480,20 +540,16 @@ function SegmentPanel({
             <Input
               className='h-8 w-40'
               placeholder={t('Search username')}
-              value={keyword}
-              onChange={(e) => {
-                setPage(1)
-                setKeyword(e.target.value)
-              }}
+              value={keywordInput}
+              onChange={(e) => setKeywordInput(e.target.value)}
             />
             <div className='flex gap-1'>
               <Button
                 size='sm'
-                variant={tier === '' ? 'default' : 'outline'}
-                onClick={() => {
-                  setPage(1)
-                  setTier('')
-                }}
+                variant={query.tier === '' ? 'default' : 'outline'}
+                onClick={() =>
+                  setQuery((prev) => ({ ...prev, tier: '', page: 1 }))
+                }
               >
                 {t('All')}
               </Button>
@@ -501,11 +557,10 @@ function SegmentPanel({
                 <Button
                   key={item}
                   size='sm'
-                  variant={tier === item ? 'default' : 'outline'}
-                  onClick={() => {
-                    setPage(1)
-                    setTier(item)
-                  }}
+                  variant={query.tier === item ? 'default' : 'outline'}
+                  onClick={() =>
+                    setQuery((prev) => ({ ...prev, tier: item, page: 1 }))
+                  }
                 >
                   {item}
                 </Button>
@@ -528,6 +583,14 @@ function SegmentPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
+              {users.isPending &&
+                Array.from({ length: 5 }, (_, index) => (
+                  <TableRow key={`skeleton-${index}`}>
+                    <TableCell colSpan={8}>
+                      <Skeleton className='h-5 w-full' />
+                    </TableCell>
+                  </TableRow>
+                ))}
               {rows.map((row) => (
                 <TableRow
                   key={row.user_id}
@@ -571,32 +634,19 @@ function SegmentPanel({
               ))}
             </TableBody>
           </Table>
-          <div className='mt-3 flex items-center justify-between text-xs'>
-            <span className='text-muted-foreground'>
-              {total} {t('users')}
-            </span>
-            <div className='flex items-center gap-2'>
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                {t('Previous')}
-              </Button>
-              <span>
-                {page} / {maxPages}
-              </span>
-              <Button
-                size='sm'
-                variant='outline'
-                disabled={page >= maxPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                {t('Next')}
-              </Button>
-            </div>
-          </div>
+          <ListPager
+            className='mt-3'
+            page={currentPage}
+            pageSize={query.pageSize}
+            total={total}
+            totalLabel={t('users')}
+            onPageChange={(next) =>
+              setQuery((prev) => ({ ...prev, page: next }))
+            }
+            onPageSizeChange={(size) =>
+              setQuery((prev) => ({ ...prev, pageSize: size, page: 1 }))
+            }
+          />
         </CardContent>
       </Card>
     </div>
@@ -605,25 +655,54 @@ function SegmentPanel({
 
 function ProfilePanel({ userId }: { userId: number | null }) {
   const { t } = useTranslation()
-  const [profile, setProfile] = useState<GrowthProfile | null>(null)
+  const qc = useQueryClient()
   const [method, setMethod] = useState('phone')
   const [contactRole, setContactRole] = useState('decision')
   const [feedback, setFeedback] = useState('')
   const [conclusion, setConclusion] = useState('follow_up')
   const [followUpAt, setFollowUpAt] = useState('')
-  const [saving, setSaving] = useState(false)
 
-  const reload = useCallback(async () => {
-    if (!userId) {
-      setProfile(null)
-      return
-    }
-    setProfile(await getGrowthProfile(userId))
-  }, [userId])
+  const profileQuery = useQuery({
+    queryKey: growthKeys.profile(userId ?? 0),
+    queryFn: () => getGrowthProfile(userId as number),
+    enabled: !!userId,
+    staleTime: 30_000,
+  })
 
-  useEffect(() => {
-    void reload()
-  }, [reload])
+  const invalidateProfile = () => {
+    if (!userId) return
+    void qc.invalidateQueries({ queryKey: growthKeys.profile(userId) })
+    void qc.invalidateQueries({ queryKey: growthKeys.alerts })
+    void qc.invalidateQueries({ queryKey: growthKeys.users })
+  }
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!userId) return
+      await createGrowthTouch(userId, {
+        method,
+        contact_role: contactRole,
+        feedback,
+        conclusion,
+        follow_up_at: followUpAt
+          ? Math.floor(new Date(followUpAt).getTime() / 1000)
+          : 0,
+      })
+    },
+    onSuccess: () => {
+      setFeedback('')
+      setFollowUpAt('')
+      invalidateProfile()
+    },
+    onError: () => toast.error(t('Failed to save the record')),
+  })
+
+  const setTier = useMutation({
+    mutationFn: (value: string) =>
+      updateGrowthTier(userId as number, value, value ? 'manual' : ''),
+    onSuccess: invalidateProfile,
+    onError: () => toast.error(t('Failed to update the tier')),
+  })
 
   if (!userId) {
     return (
@@ -635,27 +714,7 @@ function ProfilePanel({ userId }: { userId: number | null }) {
     )
   }
 
-  const submit = async () => {
-    if (!feedback.trim()) return
-    setSaving(true)
-    try {
-      await createGrowthTouch(userId, {
-        method,
-        contact_role: contactRole,
-        feedback,
-        conclusion,
-        follow_up_at: followUpAt
-          ? Math.floor(new Date(followUpAt).getTime() / 1000)
-          : 0,
-      })
-      setFeedback('')
-      setFollowUpAt('')
-      await reload()
-    } finally {
-      setSaving(false)
-    }
-  }
-
+  const profile: GrowthProfile | null = profileQuery.data ?? null
   const stat = profile?.stat
 
   return (
@@ -785,10 +844,12 @@ function ProfilePanel({ userId }: { userId: number | null }) {
             />
             <Button
               className='w-full'
-              disabled={saving || !feedback.trim()}
-              onClick={() => void submit()}
+              disabled={save.isPending || !feedback.trim()}
+              onClick={() => save.mutate()}
             >
-              {saving ? t('Saving') : t('Save and schedule follow-up')}
+              {save.isPending
+                ? t('Saving')
+                : t('Save and schedule follow-up')}
             </Button>
           </CardContent>
         </Card>
@@ -845,9 +906,8 @@ function ProfilePanel({ userId }: { userId: number | null }) {
               key={tier}
               size='sm'
               variant='outline'
-              onClick={() => {
-                void updateGrowthTier(userId, tier, 'manual').then(reload)
-              }}
+              disabled={setTier.isPending}
+              onClick={() => setTier.mutate(tier)}
             >
               {t('Set')} {tier}
             </Button>
@@ -855,9 +915,8 @@ function ProfilePanel({ userId }: { userId: number | null }) {
           <Button
             size='sm'
             variant='ghost'
-            onClick={() => {
-              void updateGrowthTier(userId, '', '').then(reload)
-            }}
+            disabled={setTier.isPending}
+            onClick={() => setTier.mutate('')}
           >
             {t('Clear override')}
           </Button>
@@ -869,19 +928,45 @@ function ProfilePanel({ userId }: { userId: number | null }) {
 
 function BatchPanel() {
   const { t } = useTranslation()
-  const [batches, setBatches] = useState<GrowthBatch[]>([])
+  const qc = useQueryClient()
   const [name, setName] = useState('')
   const [tier, setTier] = useState('A')
   const [amount, setAmount] = useState('20')
   const [windowDays, setWindowDays] = useState('14')
 
-  const reload = useCallback(async () => {
-    setBatches(await getGrowthBatches())
-  }, [])
+  const batches = useQuery({
+    queryKey: growthKeys.batches,
+    queryFn: getGrowthBatches,
+    staleTime: 30_000,
+  })
 
-  useEffect(() => {
-    void reload()
-  }, [reload])
+  const invalidate = () =>
+    void qc.invalidateQueries({ queryKey: growthKeys.batches })
+
+  const create = useMutation({
+    mutationFn: () =>
+      createGrowthBatch({
+        name: name || `Batch ${tier}`,
+        criteria: `tier=${tier}`,
+        benefit_type: 'quota_credit',
+        benefit_amount: Number(amount) || 0,
+        window_days: Number(windowDays) || 14,
+        tier,
+      }),
+    onSuccess: () => {
+      setName('')
+      invalidate()
+    },
+    onError: () => toast.error(t('Failed to create the batch')),
+  })
+
+  const stop = useMutation({
+    mutationFn: (id: number) => stopGrowthBatch(id),
+    onSuccess: invalidate,
+    onError: () => toast.error(t('Failed to stop the batch')),
+  })
+
+  const rows: GrowthBatch[] = batches.data ?? []
 
   return (
     <div className='space-y-3'>
@@ -893,7 +978,14 @@ function BatchPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className='overflow-x-auto'>
-          {batches.length === 0 && (
+          {batches.isPending && (
+            <div className='space-y-2'>
+              {Array.from({ length: 3 }, (_, index) => (
+                <Skeleton key={index} className='h-8 w-full' />
+              ))}
+            </div>
+          )}
+          {!batches.isPending && rows.length === 0 && (
             <p className='text-muted-foreground py-6 text-center text-sm'>
               {t('No batches yet. Create one below to start measuring.')}
             </p>
@@ -914,7 +1006,7 @@ function BatchPanel() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {batches.map((batch) => (
+              {rows.map((batch) => (
                 <TableRow key={batch.id}>
                   <TableCell className='font-mono text-xs'>
                     {batch.batch_no}
@@ -944,9 +1036,8 @@ function BatchPanel() {
                       <Button
                         size='sm'
                         variant='outline'
-                        onClick={() => {
-                          void stopGrowthBatch(batch.id).then(reload)
-                        }}
+                        disabled={stop.isPending}
+                        onClick={() => stop.mutate(batch.id)}
                       >
                         {t('Stop')}
                       </Button>
@@ -1008,18 +1099,7 @@ function BatchPanel() {
               onChange={(e) => setWindowDays(e.target.value)}
             />
           </div>
-          <Button
-            onClick={() => {
-              void createGrowthBatch({
-                name: name || `Batch ${tier}`,
-                criteria: `tier=${tier}`,
-                benefit_type: 'quota_credit',
-                benefit_amount: Number(amount) || 0,
-                window_days: Number(windowDays) || 14,
-                tier,
-              }).then(reload)
-            }}
-          >
+          <Button disabled={create.isPending} onClick={() => create.mutate()}>
             {t('Create')}
           </Button>
         </CardContent>
@@ -1030,30 +1110,43 @@ function BatchPanel() {
 
 function RulePanel() {
   const { t } = useTranslation()
-  const [settings, setSettings] = useState<GrowthSettings | null>(null)
-  const [saving, setSaving] = useState(false)
+  const qc = useQueryClient()
+  const [draft, setDraft] = useState<GrowthSettings | null>(null)
   const [savedAt, setSavedAt] = useState(0)
 
+  const settings = useQuery({
+    queryKey: growthKeys.settings,
+    queryFn: getGrowthSettings,
+    staleTime: 60_000,
+  })
+
+  // 表单用本地副本：直接绑定查询结果的话，后台一刷新就会把正在编辑的数字冲掉。
   useEffect(() => {
-    void getGrowthSettings().then(setSettings)
-  }, [])
+    if (settings.data) setDraft(settings.data)
+  }, [settings.data])
 
-  const patch = (key: keyof GrowthSettings, value: number) => {
-    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev))
-  }
-
-  const save = async () => {
-    if (!settings) return
-    setSaving(true)
-    try {
-      setSettings(await updateGrowthSettings(settings))
+  const save = useMutation({
+    mutationFn: (body: GrowthSettings) => updateGrowthSettings(body),
+    onSuccess: (next) => {
+      setDraft(next)
       setSavedAt(Date.now())
-    } finally {
-      setSaving(false)
-    }
-  }
+      void qc.invalidateQueries({ queryKey: growthKeys.settings })
+    },
+    onError: () => toast.error(t('Failed to save the rules')),
+  })
 
-  if (!settings) {
+  const recompute = useMutation({
+    mutationFn: recomputeGrowth,
+    onSuccess: (result) =>
+      result?.already_running
+        ? toast.info(t('A recompute is already running.'))
+        : toast.success(
+            t('Recompute started. Numbers update in a few minutes.')
+          ),
+    onError: () => toast.error(t('Failed to start recompute')),
+  })
+
+  if (!draft) {
     return (
       <Card>
         <CardContent className='text-muted-foreground py-8 text-center text-sm'>
@@ -1061,6 +1154,10 @@ function RulePanel() {
         </CardContent>
       </Card>
     )
+  }
+
+  const patch = (key: keyof GrowthSettings, value: number) => {
+    setDraft((prev) => (prev ? { ...prev, [key]: value } : prev))
   }
 
   const rows: Array<{
@@ -1146,7 +1243,7 @@ function RulePanel() {
                 type='number'
                 step={row.step ?? 1}
                 className='h-8 w-24 text-right'
-                value={String(settings[row.key])}
+                value={String(draft[row.key])}
                 onChange={(e) => patch(row.key, Number(e.target.value))}
               />
               <span className='text-muted-foreground w-10 text-xs'>
@@ -1155,8 +1252,11 @@ function RulePanel() {
             </div>
           ))}
           <div className='flex items-center gap-3 pt-3'>
-            <Button disabled={saving} onClick={() => void save()}>
-              {saving ? t('Saving') : t('Save')}
+            <Button
+              disabled={save.isPending}
+              onClick={() => save.mutate(draft)}
+            >
+              {save.isPending ? t('Saving') : t('Save')}
             </Button>
             {savedAt > 0 && (
               <span className='text-muted-foreground text-xs'>
@@ -1165,9 +1265,8 @@ function RulePanel() {
             )}
             <Button
               variant='outline'
-              onClick={() => {
-                void recomputeGrowth()
-              }}
+              disabled={recompute.isPending}
+              onClick={() => recompute.mutate()}
             >
               {t('Recompute now')}
             </Button>
@@ -1206,14 +1305,13 @@ function RulePanel() {
 
 function ModelShareCard() {
   const { t } = useTranslation()
-  const [rows, setRows] = useState<GrowthModelStat[]>([])
+  const models = useQuery({
+    queryKey: growthKeys.models,
+    queryFn: getGrowthModels,
+    staleTime: 5 * 60_000,
+  })
 
-  useEffect(() => {
-    void getGrowthModels()
-      .then(setRows)
-      .catch(() => setRows([]))
-  }, [])
-
+  const rows: GrowthModelStat[] = models.data ?? []
   if (rows.length === 0) return null
   const max = Math.max(...rows.map((r) => r.share_pct), 1)
 

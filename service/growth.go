@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -769,6 +770,64 @@ func dayMark() string {
 func weekMark() string {
 	y, w := time.Now().In(growthLocation()).ISOWeek()
 	return strconv.Itoa(y) + "-" + strconv.Itoa(w)
+}
+
+// ---- 看板读数缓存 ----------------------------------------------------------
+//
+// 概览、预警、模型构成每读一次都要全量扫派生表与配额表。运营台的真实用法是
+// 「几个人同时开着、切一下页签就重取一遍」，不缓存等于把同一份全表扫描重复 N 次，
+// 而这些数字本身来自离线聚合，30 秒内不可能变。
+//
+// 直接复用 ops 的缓存池（同一套 TTL、同一套按前缀失效），不再造第二个 map。
+// 缓存里不能带请求上下文：回调返回后请求可能已经结束，context 已取消。
+const growthCachePrefix = "growth:"
+
+func CachedGrowthOverview() (*GrowthOverview, error) {
+	return cachedOps("growth:overview", BuildGrowthOverview)
+}
+
+func CachedGrowthAlerts() ([]model.GrowthAlertItem, error) {
+	return cachedOps("growth:alerts", func() ([]model.GrowthAlertItem, error) {
+		// includeClosed 恒为 true：控制器的「只看未处理」在内存里过滤，
+		// 缓存带过滤条件会把同一份全量结果存两遍。
+		return BuildGrowthAlerts(true)
+	})
+}
+
+func CachedGrowthModels() ([]model.ModelStat, error) {
+	return cachedOps("growth:models", func() ([]model.ModelStat, error) {
+		return model.ScanModelBreakdown(context.Background(), DayStart(-29))
+	})
+}
+
+// InvalidateGrowthCache 清掉增长看板的读数缓存。
+//
+// 每个写接口都要调：标记预警、改分层、记一次触达都会改变队列或列表，
+// 靠 30 秒 TTL 自愈也行，但「点完页面没变化」一定会被当成没点上。
+func InvalidateGrowthCache() {
+	InvalidateOpsCache(growthCachePrefix)
+}
+
+// growthRefreshRunning 保证同一时刻只有一次全量重算。
+//
+// 重算是「扫 90 天 quota_data + 扫日志」的作业，耗时以秒到分钟计。
+// 运维/运营习惯是连点几下按钮确认「点上了」，没有互斥就会几个全量扫描并发，
+// 数据库被打满之后，看板所有请求一起排队——现象就是整页卡死。
+var growthRefreshRunning atomic.Bool
+
+// TryStartGrowthRefresh 抢占重算资格。已有重算在跑时返回 false。
+func TryStartGrowthRefresh() bool {
+	return growthRefreshRunning.CompareAndSwap(false, true)
+}
+
+// FinishGrowthRefresh 释放重算资格，必须 defer 调用。
+func FinishGrowthRefresh() {
+	growthRefreshRunning.Store(false)
+}
+
+// GrowthRefreshRunning 报告是否有重算在跑，供接口区分「已启动」与「已在跑」。
+func GrowthRefreshRunning() bool {
+	return growthRefreshRunning.Load()
 }
 
 /* APIDUO:growth:END */

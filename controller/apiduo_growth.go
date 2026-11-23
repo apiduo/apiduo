@@ -17,7 +17,7 @@ import (
 
 // GetGrowthOverview 返回概览指标。
 func GetGrowthOverview(c *gin.Context) {
-	overview, err := service.BuildGrowthOverview()
+	overview, err := service.CachedGrowthOverview()
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -48,7 +48,7 @@ func GetGrowthUsers(c *gin.Context) {
 // GetGrowthAlerts 返回预警队列。队列是实时算的，不落库；
 // 「已处理/已忽略」保存在用户聚合行的 alert_state 上。
 func GetGrowthAlerts(c *gin.Context) {
-	all, err := service.BuildGrowthAlerts(true)
+	all, err := service.CachedGrowthAlerts()
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -103,6 +103,8 @@ func UpdateGrowthAlertStatus(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 预警状态是队列的一部分，缓存的「全量预警」立刻作废。
+	service.InvalidateGrowthCache()
 	// 队列里点「已处理」必须落一条触达记录。
 	// 否则 7 天抑制不生效——运营刚打完电话，客户第二天还会收到同一件事的自动邮件。
 	// 这类「人工与自动打架」是运营系统最常见的信任崩塌方式。
@@ -201,6 +203,8 @@ func CreateGrowthTouch(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 触达会把 last_touch_at 往前推，7 天抑制立刻生效——队列必须重算。
+	service.InvalidateGrowthCache()
 	common.ApiSuccess(c, touch)
 }
 
@@ -229,6 +233,8 @@ func UpdateGrowthUserTier(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 人工分层直接改列表里的「有效档位」，概览的分层统计也跟着变。
+	service.InvalidateGrowthCache()
 	common.ApiSuccess(c, nil)
 }
 
@@ -290,7 +296,7 @@ func CreateGrowthBatch(c *gin.Context) {
 
 // GetGrowthModels 返回近 30 天各模型的消耗、用户数与请求数。
 func GetGrowthModels(c *gin.Context) {
-	stats, err := model.ScanModelBreakdown(c.Request.Context(), service.DayStart(-29))
+	stats, err := service.CachedGrowthModels()
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -352,14 +358,25 @@ func StopGrowthBatch(c *gin.Context) {
 }
 
 // RecomputeGrowth 手动触发重算，供运营在页面上一键刷新。
+//
+// 接口是幂等的：已经在跑就回 started=false，不排队、不再起第二个扫描。
+// 返回 200 而不是 409——对调用方来说「已经在跑」达成了同一个意图，
+// 用错误码只会让前端弹一个看起来像失败的提示。
 func RecomputeGrowth(c *gin.Context) {
+	if !service.TryStartGrowthRefresh() {
+		common.ApiSuccess(c, gin.H{"started": false, "already_running": true})
+		return
+	}
 	go func() {
+		defer service.FinishGrowthRefresh()
 		if err := service.RefreshGrowthStats(); err != nil {
 			common.SysLog(common.LogText("growth manual refresh failed: %s", err.Error()))
 		}
 		if err := service.SettleGrowthBatches(); err != nil {
 			common.SysLog(common.LogText("growth manual settle failed: %s", err.Error()))
 		}
+		// 重算完成才失效：在开头失效等于让「重算中」的页面反复读旧数重算一次。
+		service.InvalidateGrowthCache()
 	}()
 	common.ApiSuccess(c, gin.H{"started": true})
 }

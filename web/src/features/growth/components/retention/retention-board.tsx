@@ -18,14 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Users, Wallet } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ListPager } from '@/components/list-pager'
 import { EmptyState } from '@/components/empty-state'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserBalanceSeries } from '@/features/dashboard/api'
 import { ApiduoGlow } from '@/features/apiduo-appearance'
+import { DEFAULT_PAGE_SIZE, slicePage } from '@/lib/pagination'
 import {
   computeRunway,
   roundTopUp,
@@ -84,6 +86,8 @@ export function RetentionBoard() {
   const { t } = useTranslation()
   const [filter, setFilter] = useState<RunwayLevel | 'all'>('all')
   const [topUpRow, setTopUpRow] = useState<RetentionRow | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const tzOffset = useMemo(() => -new Date().getTimezoneOffset(), [])
 
   const query = useQuery({
@@ -142,6 +146,15 @@ export function RetentionBoard() {
   const visibleRows =
     filter === 'all' ? rows : rows.filter((row) => row.level === filter)
   const loading = query.isLoading
+
+  // 分页必须做在前端渲染这一层：接口一次返回全部有消耗的客户，
+  // 每个客户 14 天序列，几千个客户时一次性挂载几千个 <tr> 会把主线程锁死。
+  // 汇总计数仍然按全量算，分页只影响渲染。
+  useEffect(() => {
+    setPage(1)
+  }, [filter, pageSize])
+
+  const pagedRows = slicePage(visibleRows, page, pageSize)
 
   if (query.isError) {
     return (
@@ -285,7 +298,7 @@ export function RetentionBoard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map((row) => {
+                  {pagedRows.map((row) => {
                     const style = LEVEL_STYLE[row.level]
                     const topUp =
                       roundTopUp(row.runway.suggestedTopUp / quotaPerUnit) *
@@ -361,6 +374,18 @@ export function RetentionBoard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+        {!loading && visibleRows.length > 0 && (
+          <div className='border-t px-3 py-2 sm:px-4'>
+            <ListPager
+              page={page}
+              pageSize={pageSize}
+              total={visibleRows.length}
+              totalLabel={t('customers')}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           </div>
         )}
       </div>

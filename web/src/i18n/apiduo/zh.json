@@ -288,6 +288,18 @@
     "The rate above is multiplied by the resolution factor": "上面的单价还要乘分辨率倍率（不同档位倍率见渠道配置）",
     "Charged per token when usage is reported, per request otherwise": "上游报告 token 用量时按 token 计费，未报告时按次计费",
     "Gemini protocol (generateContent)": "Gemini 协议（generateContent）",
-    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "图片引用会转成 inlineData；上游路径由 Base URL、版本和模型名拼出。这个入口上的每次请求都按出图处理；纯文本请另开渠道。"
+    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "图片引用会转成 inlineData；上游路径由 Base URL、版本和模型名拼出。这个入口上的每次请求都按出图处理；纯文本请另开渠道。",
+    "Recompute started. Numbers update in a few minutes.": "重算已开始，数字会在几分钟内更新。",
+    "Failed to start recompute": "启动重算失败",
+    "Recomputing": "重算中…",
+    "A recompute is already running.": "已经有一次重算在进行中。",
+    "Failed to update the item": "更新这条待办失败",
+    "Failed to load the queue": "加载待办队列失败",
+    "Failed to save the record": "保存记录失败",
+    "Failed to update the tier": "更新分层失败",
+    "Failed to create the batch": "创建批次失败",
+    "Failed to stop the batch": "停止批次失败",
+    "Failed to save the rules": "保存规则失败",
+    "customers": "客户"
   }
 }
