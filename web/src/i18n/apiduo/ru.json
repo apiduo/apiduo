@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Hide upstream model from clients": "Скрывать вышестоящую модель от клиентов",
+    "Responses report the requested model, and upstream error text is replaced by the gateway error catalog. Only models this channel remaps are affected.": "В ответах указывается запрошенная модель, а текст ошибки вышестоящего провайдера заменяется каталогом ошибок шлюза. Затрагивает только модели, переназначенные этим каналом.",
+    "Configure a model mapping on this channel first.": "Сначала настройте сопоставление моделей для этого канала.",
     "mcp.Default priority": "Приоритет по умолчанию",
     "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "Приоритет выше выигрывает, когда вызывающая сторона не указала model. Сравнение идёт только внутри одного типа результата; при равенстве — по алфавиту model_id.",
     "mcp.Cost note (optional)": "Примечание о стоимости (необязательно)",

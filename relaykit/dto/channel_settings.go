@@ -181,6 +181,11 @@ type ChannelOtherSettings struct {
 	// APIDUO:artifact-storage:BEGIN
 	ArtifactStorage *ChannelArtifactStorageConfig `json:"artifact_storage,omitempty"`
 	// APIDUO:artifact-storage:END
+	// APIDUO:remap-hardening:BEGIN
+	// RemapHardening hides this channel's model_mapping result from clients.
+	// It only applies when the mapping actually matched.
+	RemapHardening bool `json:"remap_hardening,omitempty"`
+	// APIDUO:remap-hardening:END
 /* APIDUO:async:END */
 	// PluginConfig is the config a type-61 channel gives its plugin, checked
 	// against the plugin's meta.channelConfig when the channel is saved.

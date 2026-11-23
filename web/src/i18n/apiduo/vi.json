@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Hide upstream model from clients": "Ẩn mô hình thượng nguồn khỏi máy khách",
+    "Responses report the requested model, and upstream error text is replaced by the gateway error catalog. Only models this channel remaps are affected.": "Phản hồi hiển thị mô hình được yêu cầu và văn bản lỗi thượng nguồn được thay bằng danh mục lỗi của cổng. Chỉ ảnh hưởng đến các mô hình được kênh này ánh xạ lại.",
+    "Configure a model mapping on this channel first.": "Trước tiên hãy cấu hình ánh xạ mô hình cho kênh này.",
     "mcp.Default priority": "Độ ưu tiên mặc định",
     "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "Ưu tiên cao hơn sẽ được chọn khi bên gọi bỏ qua model. Chỉ so sánh trong cùng loại đầu ra; bằng nhau thì theo thứ tự chữ cái của model_id.",
     "mcp.Cost note (optional)": "Ghi chú chi phí (tùy chọn)",

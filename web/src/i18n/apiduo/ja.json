@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Hide upstream model from clients": "上流モデルをクライアントから隠す",
+    "Responses report the requested model, and upstream error text is replaced by the gateway error catalog. Only models this channel remaps are affected.": "応答には要求されたモデル名を返し、上流のエラーテキストはゲートウェイのエラーカタログに置き換えます。このチャネルで再マッピングされたモデルのみが対象です。",
+    "Configure a model mapping on this channel first.": "先にこのチャネルでモデルマッピングを設定してください。",
     "mcp.Default priority": "デフォルト優先度",
     "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "呼び出し側が model を省略した場合、優先度の高いものが選ばれます。同じ出力種別内でのみ競合し、同値は model_id の辞書順です。",
     "mcp.Cost note (optional)": "コスト表記（任意）",

@@ -251,6 +251,17 @@ export interface LogOtherData {
     // Reject / intercept reason (admin only)
     reject_reason?: string
     task_plugin?: TaskPluginInfo
+    // APIDUO:remap-hardening:BEGIN
+    // Written here instead of the top level so the user projection drops them
+    // with the rest of admin_info. Historical rows keep them at the top level.
+    is_model_mapped?: boolean
+    upstream_model_name?: string
+    response_model?: {
+      requested_model: string
+      upstream_model: string
+      returned_model: string
+    }
+    // APIDUO:remap-hardening:END
   }
   root_info?: {
     task_plugin?: TaskPluginRuntimeInfo
@@ -461,6 +472,11 @@ export interface TaskLog {
     request_id?: string
     request_path?: string
     task_plugin?: TaskPluginInfo
+    // APIDUO:remap-hardening:BEGIN
+    // The executed model name lives here because properties is returned to
+    // every viewer of the task list.
+    upstream_model_name?: string
+    // APIDUO:remap-hardening:END
   }
   root_info?: {
     task_plugin?: TaskPluginRuntimeInfo

@@ -126,8 +126,10 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 		other.SetPublic("reasoning_effort", relayInfo.ReasoningEffort)
 	}
 	if relayInfo.IsModelMapped {
-		other.SetPublic("is_model_mapped", true)
-		other.SetPublic("upstream_model_name", relayInfo.UpstreamModelName)
+		// APIDUO:remap-hardening:BEGIN
+		other.SetAdmin("is_model_mapped", true)
+		other.SetAdmin("upstream_model_name", relayInfo.UpstreamModelName)
+		// APIDUO:remap-hardening:END
 	}
 
 	isSystemPromptOverwritten := common.GetContextKeyBool(ctx, constant.ContextKeySystemPromptOverride)
@@ -157,7 +159,9 @@ func AppendResponseModelLogInfo(relayInfo *relaycommon.RelayInfo, other *model.L
 		(relayInfo.ChannelMeta == nil || !relayInfo.IsModelMapped) {
 		return
 	}
-	other.SetPublic("response_model", *observation)
+	// APIDUO:remap-hardening:BEGIN
+	other.SetAdmin("response_model", *observation)
+	// APIDUO:remap-hardening:END
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {

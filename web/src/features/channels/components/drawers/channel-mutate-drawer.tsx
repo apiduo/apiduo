@@ -104,6 +104,9 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+/* APIDUO:remap-hardening:BEGIN */
+import { RemapHardeningField } from './remap-hardening-field'
+/* APIDUO:remap-hardening:END */
 import { Textarea } from '@/components/ui/textarea'
 import { SecureVerificationDialog } from '@/features/auth/secure-verification'
 import { PluginIcon } from '@/features/task-plugins/components/plugin-icon'
@@ -2750,6 +2753,13 @@ export function ChannelMutateDrawer({
           </FormItem>
         )}
       />
+      {/* APIDUO:remap-hardening:BEGIN */}
+      <RemapHardeningField
+        control={form.control}
+        disabled={sensitiveLocked}
+        modelMapping={form.watch('model_mapping')}
+      />
+      {/* APIDUO:remap-hardening:END */}
     </div>
   )
 

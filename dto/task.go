@@ -83,6 +83,10 @@ type TaskAdminInfo struct {
 	RequestID   string          `json:"request_id,omitempty"`
 	RequestPath string          `json:"request_path,omitempty"`
 	TaskPlugin  *TaskPluginInfo `json:"task_plugin,omitempty"`
+	// APIDUO:remap-hardening:BEGIN
+	// Admin-only: properties is returned to every viewer of the task list.
+	UpstreamModelName string `json:"upstream_model_name,omitempty"`
+	// APIDUO:remap-hardening:END
 }
 
 type TaskRootInfo struct {

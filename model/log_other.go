@@ -23,6 +23,12 @@ var legacySensitiveLogOtherKeys = []string{
 	"channel_name",
 	"channel_type",
 	"reject_reason",
+	// APIDUO:remap-hardening:BEGIN
+	// Historical rows store these at the top level; strip on read.
+	"is_model_mapped",
+	"upstream_model_name",
+	"response_model",
+	// APIDUO:remap-hardening:END
 }
 
 type logOtherVisibility int

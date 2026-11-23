@@ -88,6 +88,10 @@ export function TaskDetailsDialog(props: TaskDetailsDialogProps) {
   const plugin = access.plugin
   const runtime = access.runtime
   const properties = props.log.properties
+  /* APIDUO:remap-hardening:BEGIN admins get this from admin_info */
+  const upstreamModelName =
+    properties?.upstream_model_name || props.log.admin_info?.upstream_model_name
+  /* APIDUO:remap-hardening:END */
 
   return (
     <Dialog
@@ -149,13 +153,11 @@ export function TaskDetailsDialog(props: TaskDetailsDialogProps) {
               mono
             />
           ) : null}
-          {properties?.upstream_model_name ? (
-            <DetailRow
-              label={t('Actual Model')}
-              value={properties.upstream_model_name}
-              mono
-            />
+          {/* APIDUO:remap-hardening:BEGIN */}
+          {upstreamModelName ? (
+            <DetailRow label={t('Actual Model')} value={upstreamModelName} mono />
           ) : null}
+          {/* APIDUO:remap-hardening:END */}
           {props.log.fail_reason ? (
             <DetailRow
               label={t('Fail Reason')}

@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Hide upstream model from clients": "對客戶端隱藏上游模型",
+    "Responses report the requested model, and upstream error text is replaced by the gateway error catalog. Only models this channel remaps are affected.": "回應中回顯請求的模型名稱，上游錯誤文字替換為閘道錯誤碼表中的文案。僅影響本渠道發生重對映的模型。",
+    "Configure a model mapping on this channel first.": "請先在本渠道設定模型重對映。",
     "mcp.Default priority": "預設優先級",
     "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "呼叫方未指定 model 時，優先級高者先被選中。只在同一產物類型內競爭；同值按 model_id 字典序。",
     "mcp.Cost note (optional)": "價格說明（選填）",

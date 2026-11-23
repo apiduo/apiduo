@@ -86,6 +86,23 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+/* APIDUO:remap-hardening:BEGIN */
+	// Retry-After carries no upstream identity and is the only backoff hint a
+	// rate-limited client can act on. It is retained on the error rather than
+	// forwarded here: only the remap-hardening path re-emits it, so channels
+	// without the flag keep their current response exactly.
+	defer func() {
+		retryAfter := strings.TrimSpace(resp.Header.Get("Retry-After"))
+		if retryAfter == "" || newApiErr == nil {
+			return
+		}
+		encoded, err := json.Marshal(map[string]string{"retry_after": retryAfter})
+		if err != nil {
+			return
+		}
+		newApiErr.Metadata = encoded
+	}()
+/* APIDUO:remap-hardening:END */
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {

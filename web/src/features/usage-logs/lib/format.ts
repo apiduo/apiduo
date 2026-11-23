@@ -166,7 +166,20 @@ export function hasToolSurcharge(other: LogOtherData | null): boolean {
 export function parseLogOther(other: string): LogOtherData | null {
   if (!other) return null
   try {
-    return JSON.parse(other) as LogOtherData
+    /* APIDUO:remap-hardening:BEGIN */
+    // Current rows keep these under admin_info, historical rows at the top
+    // level. Lifting them here keeps every reader (badge, dialogs, mobile card)
+    // byte-identical to upstream. A user never receives admin_info, so there is
+    // nothing to lift in their payload.
+    const parsed = JSON.parse(other) as LogOtherData
+    const admin = parsed?.admin_info
+    if (admin) {
+      parsed.is_model_mapped ??= admin.is_model_mapped
+      parsed.upstream_model_name ??= admin.upstream_model_name
+      parsed.response_model ??= admin.response_model
+    }
+    return parsed
+    /* APIDUO:remap-hardening:END */
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to parse log other field:', error)

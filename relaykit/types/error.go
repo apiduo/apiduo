@@ -122,6 +122,12 @@ type NewAPIError struct {
 	StatusCode     int
 	Metadata       json.RawMessage
 	topUp          *TopUpHint
+/* APIDUO:remap-hardening:BEGIN */
+	// clientFacing is set only for requests whose model a channel remapped
+	// under remap_hardening. It overrides the identity fields at render time
+	// while Err and RelayError keep the upstream text for admin logs.
+	clientFacing *ClientError
+/* APIDUO:remap-hardening:END */
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -251,6 +257,9 @@ func (e *NewAPIError) ToOpenAIError(upstreamURLs ...string) OpenAIError {
 			Hint: "余额不足，充值后可继续调用",
 		}
 	}
+/* APIDUO:remap-hardening:BEGIN */
+	e.applyClientFacing(&result)
+/* APIDUO:remap-hardening:END */
 	return result
 }
 
@@ -281,6 +290,9 @@ func (e *NewAPIError) ToClaudeError(upstreamURLs ...string) ClaudeError {
 	if result.Message == "" {
 		result.Message = string(e.errorType)
 	}
+/* APIDUO:remap-hardening:BEGIN */
+	e.applyClientFacingClaude(&result)
+/* APIDUO:remap-hardening:END */
 	return result
 }
 

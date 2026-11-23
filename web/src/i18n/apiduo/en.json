@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Hide upstream model from clients": "Hide upstream model from clients",
+    "Responses report the requested model, and upstream error text is replaced by the gateway error catalog. Only models this channel remaps are affected.": "Responses report the requested model, and upstream error text is replaced by the gateway error catalog. Only models this channel remaps are affected.",
+    "Configure a model mapping on this channel first.": "Configure a model mapping on this channel first.",
     "mcp.Default priority": "Default priority",
     "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.",
     "mcp.Cost note (optional)": "Cost note (optional)",

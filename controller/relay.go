@@ -103,6 +103,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	var relayInfo *relaycommon.RelayInfo
 	var ingressRecord []relaycommon.RequestPluginRecord
+/* APIDUO:remap-hardening:BEGIN */
+	// Last defer: Finalize runs after the error path rendered into it. Realtime
+	// is excluded because its frames bypass the writer.
+	if relayFormat != types.RelayFormatOpenAIRealtime {
+		hardening := helper.NewRemapHardeningWriter(c.Writer, func() (string, bool) {
+			if !helper.RemapResponseRewrite(c, relayInfo) {
+				return "", false
+			}
+			return relayInfo.OriginModelName, true
+		})
+		c.Writer = hardening
+		defer hardening.Finalize()
+	}
+/* APIDUO:remap-hardening:END */
 	// Registered first so that it runs last: the request plugins' report
 	// hooks receive the request once the client has the whole response and
 	// the request has settled.
@@ -116,6 +130,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			logger.LogError(c, common.LogText("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			upstreamURLs := common.UpstreamAddresses(c)
+/* APIDUO:remap-hardening:BEGIN */
+			// The catalog message carries its own request id, so order is free.
+			if helper.RemapHardeningEnabled(c, relayInfo) {
+				newAPIError.SetClientFacing(requestId)
+				// Backoff hint survives the rewrite: it names no upstream.
+				if retryAfter := helper.RetryAfterHint(newAPIError); retryAfter != "" {
+					c.Header("Retry-After", retryAfter)
+				}
+			}
+			// Write the status in place so both render calls stay upstream.
+			if catalogStatus, ok := newAPIError.ClientErrorStatus(); ok {
+				newAPIError.StatusCode = catalogStatus
+			}
+/* APIDUO:remap-hardening:END */
 			if relayFormat != types.RelayFormatOpenAIRealtime && c.Writer.Written() &&
 				strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
 				writeRelayStreamError(c, relayFormat, newAPIError)

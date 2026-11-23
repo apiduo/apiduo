@@ -62,20 +62,28 @@ func TestResponseModelComparisonAndLog(t *testing.T) {
 				info.ObserveResponseModel(name)
 			}
 			other := service.GenerateTextOtherInfo(c, info, 1, 1, 1, 0, 0, 0, 1)
+			/* APIDUO:remap-hardening:BEGIN the observation is admin-only */
 			var stored struct {
-				ResponseModel *relaycommon.ResponseModel `json:"response_model"`
+				AdminInfo struct {
+					ResponseModel *relaycommon.ResponseModel `json:"response_model"`
+				} `json:"admin_info"`
 			}
+			/* APIDUO:remap-hardening:END */
 			require.NoError(t, common.UnmarshalJsonStr(other.JSONString(), &stored))
+			/* APIDUO:remap-hardening:BEGIN */
 			if tc.returned == "" {
-				assert.Nil(t, stored.ResponseModel)
+				assert.Nil(t, stored.AdminInfo.ResponseModel)
 				return
 			}
-			require.NotNil(t, stored.ResponseModel)
+			require.NotNil(t, stored.AdminInfo.ResponseModel)
 			assert.Equal(t, &relaycommon.ResponseModel{
 				RequestedModel: "requested", UpstreamModel: "mapped", ReturnedModel: tc.returned,
-			}, stored.ResponseModel)
+			}, stored.AdminInfo.ResponseModel)
+			/* APIDUO:remap-hardening:END */
 			assert.NotContains(t, other.JSONString(), "mismatch")
-			assert.Equal(t, tc.mismatch, stored.ResponseModel.Mismatch())
+			/* APIDUO:remap-hardening:BEGIN */
+			assert.Equal(t, tc.mismatch, stored.AdminInfo.ResponseModel.Mismatch())
+			/* APIDUO:remap-hardening:END */
 			assert.Equal(t, "mapped", info.UpstreamModelName)
 		})
 	}
@@ -107,11 +115,16 @@ func TestResponseModelLogOmitsUnchangedModel(t *testing.T) {
 			other := service.GenerateTextOtherInfo(c, info, 1, 1, 1, 0, 0, 0, 1)
 			require.NotNil(t, info.ResponseModel)
 			assert.Equal(t, float64(1), other.Snapshot()["model_ratio"])
+			/* APIDUO:remap-hardening:BEGIN */
+			adminInfo, _ := other.Snapshot()["admin_info"].(map[string]any)
 			if tc.record {
-				assert.Equal(t, *info.ResponseModel, other.Snapshot()["response_model"])
+				assert.Equal(t, *info.ResponseModel, adminInfo["response_model"])
 			} else {
-				assert.NotContains(t, other.Snapshot(), "response_model")
+				assert.NotContains(t, adminInfo, "response_model")
 			}
+			// The user-visible level must never carry the observation.
+			assert.NotContains(t, other.Snapshot(), "response_model")
+			/* APIDUO:remap-hardening:END */
 		})
 	}
 }
@@ -232,7 +245,10 @@ func TestResponseModelHandlersCaptureBeforeConversion(t *testing.T) {
 			assert.Equal(t, &relaycommon.ResponseModel{RequestedModel: "requested", UpstreamModel: "mapped", ReturnedModel: "returned"}, info.ResponseModel)
 			assert.True(t, info.ResponseModel.Mismatch())
 			other := service.GenerateTextOtherInfo(c, info, 1, 1, 1, 0, 0, 0, 1)
-			assert.Equal(t, *info.ResponseModel, other.Snapshot()["response_model"])
+			/* APIDUO:remap-hardening:BEGIN */
+			adminInfo, _ := other.Snapshot()["admin_info"].(map[string]any)
+			assert.Equal(t, *info.ResponseModel, adminInfo["response_model"])
+			/* APIDUO:remap-hardening:END */
 		})
 	}
 }

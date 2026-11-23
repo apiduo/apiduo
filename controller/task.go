@@ -504,6 +504,14 @@ func tasksToDto(tasks []*model.Task, fillUser bool, viewerRole int) []*dto.TaskD
 		item := relay.TaskModel2Dto(task)
 		item.LegacyVideoAvailable = legacyVideoAvailable(task)
 		item.ResultDiscarded = task.PrivateData.ResultDiscarded
+/* APIDUO:remap-hardening:BEGIN */
+		// Properties is part of the client payload, so the executed model name
+		// leaves it here and comes back through admin_info for admins.
+		if properties, ok := item.Properties.(model.Properties); ok && properties.UpstreamModelName != "" {
+			properties.UpstreamModelName = ""
+			item.Properties = properties
+		}
+/* APIDUO:remap-hardening:END */
 		if task.Status == model.TaskStatusSuccess {
 			item.ResultURL = ""
 			if taskFailReasonIsLegacyResultURL(task.FailReason) {
@@ -529,6 +537,12 @@ func tasksToDto(tasks []*model.Task, fillUser bool, viewerRole int) []*dto.TaskD
 					}
 				}
 			}
+/* APIDUO:remap-hardening:BEGIN */
+			adminInfo.UpstreamModelName = task.Properties.UpstreamModelName
+			if adminInfo.UpstreamModelName != "" {
+				item.AdminInfo = adminInfo
+			}
+/* APIDUO:remap-hardening:END */
 			if adminInfo.RequestID != "" || adminInfo.RequestPath != "" || adminInfo.TaskPlugin != nil {
 				item.AdminInfo = adminInfo
 			}

@@ -153,6 +153,9 @@ export interface ChannelOtherSettings {
   upstream_model_update_ignored_models?: string[]
   upstream_model_update_last_check_time?: number
   upstream_model_update_last_detected_models?: string[]
+  /* APIDUO:remap-hardening:BEGIN */
+  remap_hardening?: boolean
+  /* APIDUO:remap-hardening:END */
   advanced_custom?: AdvancedCustomConfig
   /* APIDUO:advanced-async:BEGIN */
   advanced_async?: AdvancedAsyncConfig

@@ -319,6 +319,9 @@ export const channelFormSchema = z
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
+    /* APIDUO:remap-hardening:BEGIN */
+    remap_hardening: z.boolean().optional(),
+    /* APIDUO:remap-hardening:END */
     // The bound plugin's channel settings (type 61, stored in settings JSON)
     plugin_config: z.record(z.string(), z.unknown()).optional(),
     // Their values as typed, null until edited (not sent to backend)
@@ -572,6 +575,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
+  /* APIDUO:remap-hardening:BEGIN */
+  remap_hardening: false,
+  /* APIDUO:remap-hardening:END */
   advanced_custom: '',
   /* APIDUO:advanced-async:BEGIN */
   advanced_async: '',
@@ -657,6 +663,9 @@ export function transformChannelToFormDefaults(
   let claudeBetaQuery = false
   let ollamaOpenAIChat = false
   let disableTaskPollingSleep = false
+  /* APIDUO:remap-hardening:BEGIN */
+  let remapHardening = false
+  /* APIDUO:remap-hardening:END */
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
@@ -686,6 +695,9 @@ export function transformChannelToFormDefaults(
       claudeBetaQuery = parsed.claude_beta_query === true
       ollamaOpenAIChat = parsed.ollama_openai_chat === true
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
+      /* APIDUO:remap-hardening:BEGIN */
+      remapHardening = parsed.remap_hardening === true
+      /* APIDUO:remap-hardening:END */
       upstreamModelUpdateCheckEnabled =
         parsed.upstream_model_update_check_enabled === true
       upstreamModelUpdateAutoSyncEnabled =
@@ -759,6 +771,9 @@ export function transformChannelToFormDefaults(
     claude_beta_query: claudeBetaQuery,
     ollama_openai_chat: ollamaOpenAIChat,
     disable_task_polling_sleep: disableTaskPollingSleep,
+    /* APIDUO:remap-hardening:BEGIN */
+    remap_hardening: remapHardening,
+    /* APIDUO:remap-hardening:END */
     allow_safety_identifier: allowSafetyIdentifier,
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
@@ -935,6 +950,16 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
 
   settingsObj.disable_task_polling_sleep =
     formData.disable_task_polling_sleep === true
+
+  /* APIDUO:remap-hardening:BEGIN */
+  // Kept out of settings when false so enabling it is the only write, and a
+  // channel without a mapping never carries a dead flag.
+  if (formData.remap_hardening === true) {
+    settingsObj.remap_hardening = true
+  } else {
+    delete settingsObj.remap_hardening
+  }
+  /* APIDUO:remap-hardening:END */
 
   // Upstream model update settings (for model-fetchable channel types; a
   // plugin channel shows them when its plugin can list models)

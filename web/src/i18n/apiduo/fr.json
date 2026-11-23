@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Hide upstream model from clients": "Masquer le modèle amont aux clients",
+    "Responses report the requested model, and upstream error text is replaced by the gateway error catalog. Only models this channel remaps are affected.": "Les réponses indiquent le modèle demandé et le texte d'erreur amont est remplacé par le catalogue d'erreurs de la passerelle. Seuls les modèles redirigés par ce canal sont concernés.",
+    "Configure a model mapping on this channel first.": "Configurez d'abord un mappage de modèle sur ce canal.",
     "mcp.Default priority": "Priorité par défaut",
     "mcp.Higher wins when the caller omits model. Competes inside the same output kind; ties fall back to id.": "La priorité la plus élevée l'emporte lorsque l'appelant omet model. La comparaison se fait au sein du même type de sortie ; à égalité, ordre alphabétique du model_id.",
     "mcp.Cost note (optional)": "Note de coût (facultatif)",

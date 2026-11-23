@@ -253,10 +253,15 @@ export function useTaskLogsColumns(
         accessorFn: (row) =>
           row.properties?.origin_model_name ||
           row.properties?.upstream_model_name ||
+          row.admin_info?.upstream_model_name ||
           '',
         cell: ({ row }) => {
           const origin = row.original.properties?.origin_model_name
-          const upstream = row.original.properties?.upstream_model_name
+          // The backend moved the executed name out of properties for every
+          // viewer; admins still receive it through admin_info.
+          const upstream =
+            row.original.properties?.upstream_model_name ||
+            row.original.admin_info?.upstream_model_name
           const label = origin || upstream
           if (!label) {
             return <span className='text-muted-foreground/60 text-xs'>-</span>

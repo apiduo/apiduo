@@ -87,7 +87,55 @@
 #    apiduo 的 resolveUsageSchema / entriesTier，扩展现有 async-usage 块
 #    覆盖这 5 行（块数不变）。
 
-files	198
-blocks	609
-added	6461
-deleted	459
+# 2026-11-23 files 198->201 / blocks 609->642 / added 6461->6646 / deleted 459->481：
+# 渠道「重定向增强」：本渠道 model_mapping 命中的请求，响应只出现客户端请求名，
+# 上游指纹置 null，上游错误文本换成网关错误码表。开关是 channels.settings 的
+# remap_hardening，判据为 IsModelMapped && RemapHardening，两者都在 RelayInfo 上，
+# 因此 writer 用闭包延迟读取，不需要新增 context key（也没有改 distributor 与
+# relay/helper/model_mapped.go —— 这两处曾试改后回退）。
+# 1) relaykit/types/error.go：结构体加 1 个私有字段，两个信封函数各加 1 行。
+#    挂接点必须在 ToOpenAIError / ToClaudeError 内部：四条协议、流式与非流式、
+#    错误体全部从这里出。改由主模块覆盖会让 controller 的 3 个渲染分支各改 5 行，
+#    上游行数反而更多。files +1 即此。码表在新文件 error_catalog.go（不计合并面）。
+# 2) relaykit/dto/channel_settings.go：开关字段加在既有 APIDUO:async 块内，不新增
+#    标记块，也不新增上游文件。
+# 3) controller/relay.go：2 块。writer 必须装在这里才能覆盖四种协议与错误路径，
+#    且 Finalize 必须是最后一个 defer；判据块写回 StatusCode 而保留下面两处
+#    c.JSON 与上游逐字节相同。
+# 4) service/log_info_generate.go + task_billing.go：5 处 SetPublic 改 SetAdmin，
+#    受众在构造点唯一确定，无法外移。model/log_other.go 的保留键加 3 个，历史行
+#    因此不需要数据库迁移。
+# 5) controller/task.go + dto/task.go：properties 对所有视角可见，执行模型名改从
+#    admin_info 下发；DTO 构造与结构体定义无法挪进新文件。files +2 即此。
+# 6) 前端只留一个入口：lib/format.ts 的 parseLogOther 把 admin_info 的三个字段
+#    提升到顶层，角标、详情、移动端卡片全部保持上游原文（details-dialog 已回退到
+#    零改动）。抽屉开关抽成新文件 remap-hardening-field.tsx，drawer 只剩 import
+#    与一行挂接。channel-form.ts 的 4 处是表单双向序列化（schema/默认值/读/写），
+#    分散在四个不可合并的位置。
+# 7) i18n 三个文案进 apiduo/*.json 覆盖层，locales/*.json 与上游保持一致，零冲突。
+# 8) relay/response_model_test.go：上游断言 observation 在顶层，与新行为相反，
+#    改为读 admin_info；每段各自成块，删除该特性时可整块还原。
+# 9) service/error.go：本地端到端发现 429 的 Retry-After 被丢掉（上游头不转发，body
+#    又被收敛成自有码表）。退避值不含上游标识，是限流客户端唯一可执行的信息，必须
+#    保留。挂接只能在这里：resp.Header 在 RelayErrorHandler 之外已经拿不到，函数签名
+#    只有 context.Context 无法写 gin 头，所以用 defer 落到 NewAPIError.Metadata，
+#    再由 relay.go 的既有块决定是否对客户端发。blocks +1 / added +21 即此。
+
+# 2026-11-23（全量回归后）files 201->202 / blocks 643->646 / added 6667->6692 / deleted 481->483：
+# 1) 响应体干净度：Claude/Gemini 的 usage.billing_usage（source: oai_chat、semantic: openai）
+#    是网关自己填的转换归属，不能给客户端。writer 新增 nullJSONField（对象/数组要平衡括号），
+#    在既有块内调用，不新增块也不新增上游文件。
+# 2) 错误收敛判据拆成两个：RemapHardeningEnabled 只看渠道开关，ChannelMeta 为 nil 时回落到
+#    distributor 写在 context 里的设置（余额不足发生在 InitChannelMeta 之前，原判据永远 false）；
+#    RemapResponseRewrite 才要求 IsModelMapped。都在新文件 relay/helper/remap_hardening.go。
+# 3) files +1 / blocks +3 / added +22 / deleted +2 来自 web/src/components/__tests__/command-menu.test.tsx：
+#    该用例在干净 HEAD 上就是红的（apiduo 菜单改造后未同步测试）。排查结论是 jsdom 里导航
+#    查询（nav-apps / pricing-issues）401 触发全局清认证，ADMIN 用例退化成 guest，于是补
+#    vi.mock 隔离网络、每场景 cleanup + 重置 store。属于测试债偿还，与 remap_hardening 无关，
+#    但被本次全量回归暴露。
+# 4) 其余 +9 行为 controller/relay.go 与 service/error.go 的挂接点微调（判据换签名、
+#    Retry-After 落 Metadata）。
+files	202
+blocks	646
+added	6692
+deleted	483
