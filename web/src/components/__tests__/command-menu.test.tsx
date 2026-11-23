@@ -23,9 +23,11 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen } from '@testing-library/react'
+/* APIDUO:test-isolation:BEGIN */
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterAll, afterEach, beforeAll, expect, test } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest'
+/* APIDUO:test-isolation:END */
 
 import { SearchProvider } from '@/context/search-provider'
 import { ROLE } from '@/lib/roles'
@@ -34,6 +36,22 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { CommandMenu } from '../command-menu'
 import { Search } from '../search'
+
+/* APIDUO:test-isolation:BEGIN
+ * Navigation data comes from queries. In jsdom they fail with 401, and the
+ * global handler then clears the auth store — which silently turns every case
+ * into a guest. Stub them so the role under test is the role observed.
+ */
+vi.mock('@/features/nav-apps/hooks', () => ({
+  useNavApps: () => [],
+  useNavAppGroupOrder: () => [],
+  useNavAppGroupTitle: () => '',
+  useNavAppGroups: () => [],
+}))
+vi.mock('@/features/system-settings/models/pricing-issues', () => ({
+  useModelPricingIssueBadge: () => 0,
+}))
+/* APIDUO:test-isolation:END */
 
 const adminEntries = ['Channels', 'Models', 'Users', 'Redemption Codes']
 const superAdminEntries = [
@@ -74,7 +92,12 @@ afterEach(() => {
 })
 
 async function searchEntriesFor(role: number, sidebarModulesAdmin = '') {
+  /* APIDUO:test-isolation:BEGIN only one dialog may exist in the document */
+  cleanup()
+  document.body.innerHTML = ''
+  useAuthStore.setState(useAuthStore.getInitialState(), true)
   useAuthStore.getState().auth.setUser({ id: 1, username: 'alice', role })
+  /* APIDUO:test-isolation:END */
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
