@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+	"golang.org/x/sync/singleflight"
 )
 
 // opsCache 是分析接口的结果缓存。
@@ -25,42 +27,82 @@ type opsCacheEntry struct {
 var (
 	opsCacheMu sync.RWMutex
 	opsCache   = map[string]opsCacheEntry{}
+	// opsCacheFlights 把同一 key 的并发未命中合并成一次查询。
+	opsCacheFlights singleflight.Group
+	// opsCacheGeneration 每次失效自增：填充期间发生过失效的结果不能再写回，
+	// 否则「刚点完的写操作」会被一个在途的旧查询盖住，页面 30 秒看不到变化。
+	opsCacheGeneration atomic.Uint64
 )
 
 const opsCacheTTL = 30 * time.Second
 
 // cachedOps 命中返回缓存，否则执行 fn 并写入。
 //
-// 没有做 singleflight：缓存未命中时的并发查询仍会各自执行。
-// 这是刻意的取舍——加 singleflight 需要引入额外依赖或手写等待队列，
-// 而真实场景下「几十个人同一秒点开看板」并不存在，
-// 限流（2 req/s）已经把这里的并发压得很低。
+// 同一个 key 只让一个请求去查（singleflight）。这条以前是刻意不做的：那时
+// 缓存的调用方是几十毫秒的分析查询，2 req/s 的限流已经够。增长看板接进来之后
+// 前提变了——它的三个读数各是一次 90 天全表扫描，而写接口每次都会失效缓存，
+// 多开页签/切页签正好落在失效后的窗口里，几个请求就会同时扫同一张表。
+// 并发扫描把数据库打满，看板所有请求一起排队，现象是整页卡死。
+//
+// 失败不写缓存（否则一次抖动会让看板空白一个 TTL），等待者拿到同一个错误。
 func cachedOps[T any](key string, fn func() (T, error)) (T, error) {
-	opsCacheMu.RLock()
-	entry, ok := opsCache[key]
-	opsCacheMu.RUnlock()
-	if ok && time.Now().Before(entry.expire) {
-		if v, typeOK := entry.value.(T); typeOK {
-			return v, nil
-		}
+	if value, ok := readOpsCache[T](key); ok {
+		return value, nil
 	}
 
-	value, err := fn()
+	value, err, _ := opsCacheFlights.Do(key, func() (any, error) {
+		// 拿到飞行权之前可能已经有人写好缓存：省掉一次重复查询。
+		if cached, ok := readOpsCache[T](key); ok {
+			return cached, nil
+		}
+		generation := opsCacheGeneration.Load()
+		result, err := fn()
+		if err != nil {
+			return nil, err
+		}
+		// 填充期间有人失效过：这份结果可能已经过时，交给下一次查询重算，
+		// 但不能让写回把刚发生的变更盖掉。等待者仍拿到这次的结果。
+		if opsCacheGeneration.Load() == generation {
+			writeOpsCache(key, result)
+		}
+		return result, nil
+	})
 	if err != nil {
 		var zero T
 		return zero, err
 	}
+	typed, ok := value.(T)
+	if !ok {
+		var zero T
+		return zero, fmt.Errorf("ops cache %s holds %T", key, value)
+	}
+	return typed, nil
+}
 
+// readOpsCache 只读命中判断；过期与类型不符都算未命中。
+func readOpsCache[T any](key string) (T, bool) {
+	opsCacheMu.RLock()
+	entry, ok := opsCache[key]
+	opsCacheMu.RUnlock()
+	if !ok || !time.Now().Before(entry.expire) {
+		var zero T
+		return zero, false
+	}
+	value, typeOK := entry.value.(T)
+	return value, typeOK
+}
+
+// writeOpsCache 写入并顺手清理过期项，避免长期运行后 map 无限增长。
+func writeOpsCache[T any](key string, value T) {
+	now := time.Now()
 	opsCacheMu.Lock()
-	// 顺手清理过期项，避免长期运行后 map 无限增长
+	defer opsCacheMu.Unlock()
 	for k, e := range opsCache {
-		if time.Now().After(e.expire) {
+		if now.After(e.expire) {
 			delete(opsCache, k)
 		}
 	}
-	opsCache[key] = opsCacheEntry{value: value, expire: time.Now().Add(opsCacheTTL)}
-	opsCacheMu.Unlock()
-	return value, nil
+	opsCache[key] = opsCacheEntry{value: value, expire: now.Add(opsCacheTTL)}
 }
 
 // 下面四个是具体入口：缓存 key 必须包含全部查询参数，
@@ -100,6 +142,7 @@ func CachedChannelMargins(ctx context.Context, from, to int64) ([]model.ChannelM
 // 然后重复点、收到 409、再怀疑系统坏了。
 // 按前缀清而不是清空整表：改一条事项不该让图表缓存一起失效。
 func InvalidateOpsCache(prefix string) {
+	opsCacheGeneration.Add(1)
 	opsCacheMu.Lock()
 	defer opsCacheMu.Unlock()
 	for k := range opsCache {
