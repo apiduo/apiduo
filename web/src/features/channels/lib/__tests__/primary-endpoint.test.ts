@@ -13,6 +13,7 @@ import {
   previewRoutePlan,
   readPrimaryEndpoint,
   removeDerivation,
+  resolveDefaultPrimaryEndpoint,
   resolvePrimaryEndpoint,
   withPrimaryFallbackRoutes,
   writePrimaryEndpoint,
@@ -45,13 +46,60 @@ describe('resolvePrimaryEndpoint', () => {
   it('忽略管理面路由', () => {
     const withManagement: AdvancedCustomRoute[] = [
       ...routes(),
-      { incoming_path: '/api/advanced-custom/models', upstream_path: '/v1/models' },
+      {
+        incoming_path: '/api/advanced-custom/models',
+        upstream_path: '/v1/models',
+      },
     ]
-    expect(resolvePrimaryEndpoint(withManagement)).toBe('/v1/images/generations')
+    expect(resolvePrimaryEndpoint(withManagement)).toBe(
+      '/v1/images/generations'
+    )
   })
 
   it('没有可用路由时返回空串', () => {
     expect(resolvePrimaryEndpoint([])).toBe('')
+  })
+})
+
+describe('resolveDefaultPrimaryEndpoint', () => {
+  const chatOnly = (): AdvancedCustomRoute[] => [
+    {
+      incoming_path: '/v1/chat/completions',
+      upstream_path: '/v1/chat/completions',
+      converter: 'none',
+    },
+  ]
+
+  it('图片渠道不从 chat 路由推导主端点', () => {
+    expect(
+      resolveDefaultPrimaryEndpoint(chatOnly(), { imageChannel: true })
+    ).toBe('/v1/images/generations')
+  })
+
+  it('已有的 generations 上游优先，保留 /v3 这类前缀', () => {
+    const routes: AdvancedCustomRoute[] = [
+      {
+        incoming_path: '/v1/chat/completions',
+        upstream_path: '/v3/images/generations',
+        converter: 'none',
+      },
+    ]
+    expect(resolveDefaultPrimaryEndpoint(routes, { imageChannel: true })).toBe(
+      '/v3/images/generations'
+    )
+  })
+
+  it('聊天渠道仍按路由众数推导，不被改道到出图接口', () => {
+    expect(resolveDefaultPrimaryEndpoint(chatOnly())).toBe(
+      '/v1/chat/completions'
+    )
+  })
+
+  it('空路由表按渠道性质回落', () => {
+    expect(resolveDefaultPrimaryEndpoint([], { imageChannel: true })).toBe(
+      '/v1/images/generations'
+    )
+    expect(resolveDefaultPrimaryEndpoint([])).toBe('')
   })
 })
 
@@ -63,7 +111,9 @@ describe('declared primary endpoint', () => {
   })
 
   it('空串仍然回落到众数（兼容旧配置）', () => {
-    expect(resolvePrimaryEndpoint(routes(), '  ')).toBe('/v1/images/generations')
+    expect(resolvePrimaryEndpoint(routes(), '  ')).toBe(
+      '/v1/images/generations'
+    )
   })
 
   it('从 settings JSON 读主端点，坏 JSON 当没配', () => {
@@ -162,9 +212,9 @@ describe('patchDerivation / addDerivation / removeDerivation', () => {
     const edited = next.filter(
       (route) => route.incoming_path === '/v1/images/edits'
     )
-    expect(edited.every((route) => route.pass_through_body_enabled === false)).toBe(
-      true
-    )
+    expect(
+      edited.every((route) => route.pass_through_body_enabled === false)
+    ).toBe(true)
     expect(
       edited.every(
         (route) =>
@@ -174,7 +224,11 @@ describe('patchDerivation / addDerivation / removeDerivation', () => {
   })
 
   it('新增派生跟随主端点且不带透传', () => {
-    const next = addDerivation(routes(), '/v1/responses', '/v1/images/generations')
+    const next = addDerivation(
+      routes(),
+      '/v1/responses',
+      '/v1/images/generations'
+    )
     const added = next.at(-1)
     expect(added).toBeDefined()
     expect(added?.upstream_path).toBe('/v1/images/generations')
@@ -208,7 +262,9 @@ describe('previewRoutePlan', () => {
   })
 
   it('edits 透传但主端点是 generations ⇒ 明确报警', () => {
-    const plan = previewRoutePlan(routes(), { incomingPath: '/v1/images/edits' })
+    const plan = previewRoutePlan(routes(), {
+      incomingPath: '/v1/images/edits',
+    })
     expect(plan.upstreamPath).toBe('/v1/images/generations')
     expect(plan.warnings).toContain('edits-passthrough-to-json-upstream')
   })
@@ -258,7 +314,10 @@ describe('withPrimaryFallbackRoutes', () => {
     const next = withPrimaryFallbackRoutes(
       [
         { incoming_path: '/v1/images/generations', upstream_path: '' },
-        { incoming_path: '/v1/chat/completions', upstream_path: '/custom/chat' },
+        {
+          incoming_path: '/v1/chat/completions',
+          upstream_path: '/custom/chat',
+        },
       ],
       ' /v1/images/generations '
     )
@@ -292,7 +351,9 @@ describe('fillPrimaryForStats', () => {
       '/v1/images/generations'
     )
     const parsed = JSON.parse(filled as string)
-    expect(parsed.advanced_routes[0].upstream_path).toBe('/v1/images/generations')
+    expect(parsed.advanced_routes[0].upstream_path).toBe(
+      '/v1/images/generations'
+    )
     expect(parsed.advanced_routes[1].upstream_path).toBe('/x')
   })
 

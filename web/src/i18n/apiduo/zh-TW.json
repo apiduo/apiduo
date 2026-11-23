@@ -288,6 +288,8 @@
     "Without {{field}}": "無 {{field}}",
     "{{field}} {{operator}} {{value}}": "{{field}} {{operator}} {{value}}",
     "The rate above is multiplied by the resolution factor": "上面的單價還要乘解析度倍率（不同檔位倍率見渠道設定）",
-    "Charged per token when usage is reported, per request otherwise": "上游回報 token 用量時按 token 計費，未回報時按次計費"
+    "Charged per token when usage is reported, per request otherwise": "上游回報 token 用量時按 token 計費，未回報時按次計費",
+    "Gemini protocol (generateContent)": "Gemini 協議（generateContent）",
+    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "圖片引用會轉成 inlineData；上游路徑由 Base URL、版本與模型名拼出。這個入口上的每次請求都按出圖處理；純文字請另開渠道。"
   }
 }

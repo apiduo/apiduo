@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { apiduoBlockMark } from '@/features/apiduo-marks/marks'
+import { isImageModelName } from '@/features/apiduo-playground/lib/model-kind'
 import {
   ADVANCED_CUSTOM_INCOMING_PATH_OPTIONS,
   getAdvancedCustomConverterOptions,
@@ -44,15 +45,16 @@ import {
   addDerivation,
   applyPrimaryEndpoint,
   buildDerivations,
+  DEFAULT_PRIMARY_ENDPOINT,
   type RouteDerivation,
   looksLikeImagePath,
   patchDerivation,
   removeDerivation,
+  resolveDefaultPrimaryEndpoint,
   resolvePrimaryEndpoint,
   seedPrimaryRoute,
 } from '@/features/channels/lib/primary-endpoint'
 import type { AdvancedCustomRoute } from '@/features/channels/types'
-import { isImageModelName } from '@/features/apiduo-playground/lib/model-kind'
 import { converterLabel } from '@/features/protocol-matrix/lib/mode-label'
 import { cn } from '@/lib/utils'
 
@@ -60,6 +62,12 @@ import { cn } from '@/lib/utils'
 // 每张卡只说两件事：图生图走哪、用什么编码——这正是两种布局的全部差别。
 const [IMAGE_SHAPE_SINGLE, IMAGE_SHAPE_DUAL, IMAGE_SHAPE_GEMINI] =
   IMAGE_PROTOCOL_UPSTREAMS
+
+// 入口列表每行一个 grid，第三列必须写成固定宽而不是 auto：
+// auto 会按每行自己的内容算列宽（两行是「更多/删除」按钮、三行是「图片协议接管」徽标），
+// 于是中间那列「主端点」在两类行里各落一个 x，竖着看就是错开的。
+const ENTRY_ROW_GRID =
+  'grid grid-cols-1 items-center gap-2 px-4 py-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)_7.5rem]'
 
 // 每张卡只回答一个问题：主端点在上游落成几条路径。
 // 不复述下游请求类型——下游只认主端点，那是另一层的事（见入口卡的「入口去向」）。
@@ -150,15 +158,48 @@ export function PrimaryEndpointEditor(props: {
     [props.routes, primary]
   )
 
-  // 协议接管时，五个默认入口即使没写路由也在服务；把它们并进「入口去向」，
-  // 否则表格里只有一条，读者会以为其余四条不生效。
-  const servedEntries = useMemo(() => {
-    const declared = derivations.map((row) => row.incomingPath)
-    const missing = IMAGE_PROTOCOL_DEFAULT_ENTRIES.filter(
-      (entry) => !declared.some((path) => path === entry)
+  // 模型清单先于开关打开就需要：它决定「这个渠道是不是图片渠道」，进而决定
+  // 打开开关时种图片地址还是 chat 地址。
+  const modelList = (props.models || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  const imageOnlyChannel =
+    modelList.length > 0 && modelList.every((name) => isImageModelName(name))
+  // 图片渠道的三个信号：协议已开、声明模型全是图片模型、路由里已有图片入口或落点。
+  // 任一成立，主端点默认值就不能从 chat 路由推导——图片协议不认 chat 主端点。
+  const imageChannel =
+    protocolOn ||
+    imageOnlyChannel ||
+    props.routes.some(
+      (route) =>
+        looksLikeImagePath(route.incoming_path || '') ||
+        looksLikeImagePath(route.upstream_path || '')
     )
-    return [...declared, ...missing]
-  }, [derivations])
+
+  // 协议接管时，五个默认入口即使没写路由也在服务；把它们并进「入口去向」，
+  // 否则表格里只有一条，读者会以为其余四条不生效。协议关闭时服务的就是路由表，
+  // 计数必须跟着同一个集合走，否则会出现「5 个入口」对着一张 1 行的表。
+  const servedEntries = useMemo(() => {
+    const declaredEntries = derivations.map((row) => row.incomingPath)
+    if (!protocolOn) return declaredEntries
+    const missing = IMAGE_PROTOCOL_DEFAULT_ENTRIES.filter(
+      (entry) => !declaredEntries.some((path) => path === entry)
+    )
+    return [...declaredEntries, ...missing]
+  }, [derivations, protocolOn])
+
+  // 协议接管、路由表里却没有的那几条：列表里补成只读行。数字与行数同源，
+  // 否则「5 个入口」只能靠页脚那串小字去解释。
+  const protocolOnlyEntries = useMemo(
+    () =>
+      protocolOn
+        ? servedEntries.filter(
+            (entry) => !derivations.some((row) => row.incomingPath === entry)
+          )
+        : [],
+    [derivations, protocolOn, servedEntries]
+  )
 
   const [advancedOpen, setAdvancedOpen] = useState(false)
   // 落点单元格平时是「跟随主端点」，点了才变成输入框。用入口路径当键，
@@ -171,9 +212,11 @@ export function PrimaryEndpointEditor(props: {
         // 协议接管时按「实际服务的入口」过滤：五个默认入口已经接管，再加一条
         // 是死配置——保存后它永远不会被读到。
         (option) =>
-          !(protocolOn ? servedEntries : derivations.map((row) => row.incomingPath)).includes(
-            option.value
-          )
+          !(
+            protocolOn
+              ? servedEntries
+              : derivations.map((row) => row.incomingPath)
+          ).includes(option.value)
       ),
     [derivations, protocolOn, servedEntries]
   )
@@ -182,9 +225,12 @@ export function PrimaryEndpointEditor(props: {
     setKeepOpen(next)
     setEditingPath(null)
     if (next) {
-      // 打开时优先沿用现有路由里出现最多的上游，避免凭空造一个陌生地址。
+      // 打开时先看路由里已有的 generations 落点，再看这个渠道是不是图片渠道，
+      // 最后才沿用众数：图片渠道不能把 chat 路径写进主端点，协议会折回别处，
+      // 页面存的地址和请求实际发的地址就不是同一个。
       const fallback =
-        resolvePrimaryEndpoint(props.routes) || '/v1/images/generations'
+        resolveDefaultPrimaryEndpoint(props.routes, { imageChannel }) ||
+        DEFAULT_PRIMARY_ENDPOINT
       // 空路由表要先种一条派生，否则打开开关后保存会被「至少一条路由」拦住。
       const seeded = seedPrimaryRoute(props.routes, fallback)
       props.onPrimaryEndpointChange?.(fallback)
@@ -197,10 +243,7 @@ export function PrimaryEndpointEditor(props: {
         const editsRow = derivations.find(
           (row) => row.incomingPath === '/v1/images/edits'
         )
-        const editsUpstream = (editsRow?.upstreamPath || '').replace(
-          /\/+$/,
-          ''
-        )
+        const editsUpstream = (editsRow?.upstreamPath || '').replace(/\/+$/, '')
         const dual = editsUpstream.endsWith('/v1/images/edits')
         props.onImageProtocolChange?.({
           enabled: true,
@@ -230,10 +273,17 @@ export function PrimaryEndpointEditor(props: {
   }
 
   // 形状错误只报第一条：两条同时出现时，用户会以为要同时满足两个条件。
+  // 「末段必须是 generations」只对图片渠道成立：纯 chat 渠道主端点写
+  // /v1/chat/completions 是合法的（后端只校验形状），报红等于让用户去修一个
+  // 并不存在的问题。
   let pathError: string | null = null
   if (declared && !declared.startsWith('/')) {
     pathError = t('Primary endpoint must be a path starting with /.')
-  } else if (declared && !declared.endsWith('/generations')) {
+  } else if (
+    declared &&
+    (imageChannel || looksLikeImagePath(declared)) &&
+    !declared.endsWith('/generations')
+  ) {
     pathError = t(
       'This path does not end with generations, so image requests will not land where the protocol expects.'
     )
@@ -242,13 +292,6 @@ export function PrimaryEndpointEditor(props: {
   // 只声明图片模型、且还没有任何主端点配置的渠道，是「图片渠道的默认值不顺手」那一类：
   // 空着就是哑管道，用户得自己摸索出主端点 + 协议两件事。这里给一条可见的建议，
   // 而不是在建渠道时静默写配置——静默写入会让「同时服务 chat 的渠道」被折叠掉。
-  const modelList = (props.models || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-  const imageOnlyChannel =
-    modelList.length > 0 && modelList.every((name) => isImageModelName(name))
-
   const protocolSummary = protocolOn
     ? `${t('Image protocol on')} · ${t(upstreamLayoutLabel)}`
     : ''
@@ -260,7 +303,8 @@ export function PrimaryEndpointEditor(props: {
   // 图生图的落点预览：显式覆盖优先，否则按后端 `deriveEditPath` 的同一规则算，
   // 卡片上写的路径就是请求真的会去的路径。前端只做预览，保存后仍以后端为准。
   const editPathPreview =
-    (props.imageProtocol?.edit_path || '').trim() || deriveEditPathPreview(primary)
+    (props.imageProtocol?.edit_path || '').trim() ||
+    deriveEditPathPreview(primary)
 
   return (
     <div
@@ -327,9 +371,7 @@ export function PrimaryEndpointEditor(props: {
                       onClick={() => setAdvancedOpen(true)}
                     >
                       <Badge variant='outline' className='font-normal'>
-                        {dualEndpoint
-                          ? t('Two endpoints')
-                          : t('One endpoint')}
+                        {dualEndpoint ? t('Two endpoints') : t('One endpoint')}
                       </Badge>
                     </button>
                   ) : null}
@@ -448,7 +490,9 @@ export function PrimaryEndpointEditor(props: {
                   />
                 </div>
 
-                {protocolOn && declared !== '' && !looksLikeImagePath(declared) ? (
+                {protocolOn &&
+                declared !== '' &&
+                !looksLikeImagePath(declared) ? (
                   <p className='text-muted-foreground text-xs'>
                     {t(
                       'This endpoint is not an image path, so the protocol keeps folding image entries to /v1/images/generations; the other entries still forward here.'
@@ -494,7 +538,9 @@ export function PrimaryEndpointEditor(props: {
                                 })
                               }}
                               className={cn(
-                                'focus-visible:ring-ring/50 rounded-lg border p-3 text-left outline-none transition-colors focus-visible:ring-3',
+                                // 三张卡等高：内容按列排，行区固定预留两条，
+                                // 否则「1 条路」与「2 条路」的说明文字起始位置错开。
+                                'focus-visible:ring-ring/50 flex h-full flex-col rounded-lg border p-3 text-left outline-none transition-colors focus-visible:ring-3',
                                 checked
                                   ? 'border-primary bg-primary/5'
                                   : 'hover:border-foreground/25'
@@ -525,8 +571,10 @@ export function PrimaryEndpointEditor(props: {
                               </span>
 
                               {/* 一行一条上游路径。标签说「什么时候走它」，
-                                  不是「客户端调了哪个接口」——后者属于下游那一层。 */}
-                              <span className='mt-2.5 block space-y-1'>
+                                  不是「客户端调了哪个接口」——后者属于下游那一层。
+                                  行区固定两行高：单端点卡只有一行，不预留就会让下方
+                                  说明比双端点卡高出一行，三张卡的正文对不齐。 */}
+                              <span className='mt-2.5 grid min-h-[3.25rem] content-start gap-1'>
                                 {card.rows.map((row) => {
                                   const target =
                                     row.target === 'edit'
@@ -633,12 +681,10 @@ export function PrimaryEndpointEditor(props: {
             />
           </div>
 
-          {derivations.length === 0 ? (
-            protocolOn ? null : (
-              <p className='text-muted-foreground border-t px-4 py-3 text-xs'>
-                {t('No derived endpoints yet.')}
-              </p>
-            )
+          {derivations.length === 0 && protocolOnlyEntries.length === 0 ? (
+            <p className='text-muted-foreground border-t px-4 py-3 text-xs'>
+              {t('No derived endpoints yet.')}
+            </p>
           ) : (
             <div className='divide-y border-t'>
               {derivations.map((row) => (
@@ -662,12 +708,38 @@ export function PrimaryEndpointEditor(props: {
                   }
                 />
               ))}
+              {/* 协议接管但没有路由的入口：只读行。它们也是「入口」，数字要能落到行上。 */}
+              {protocolOnlyEntries.map((incomingPath) => (
+                <div key={incomingPath} className={ENTRY_ROW_GRID}>
+                  <div className='min-w-0'>
+                    <p className='text-muted-foreground truncate font-mono text-[11px]'>
+                      {incomingPath}
+                    </p>
+                    <p className='text-muted-foreground truncate text-[11px]'>
+                      {t(entryRouteKey(incomingPath, true))}
+                    </p>
+                  </div>
+                  <div className='flex min-w-0 items-center gap-1.5'>
+                    <span className='text-muted-foreground inline-flex min-w-0 items-center gap-1.5 text-[11px]'>
+                      <ArrowRight
+                        className='size-3 shrink-0'
+                        aria-hidden='true'
+                      />
+                      <span className='truncate'>{t('Primary endpoint')}</span>
+                    </span>
+                  </div>
+                  <div className='flex items-center justify-end gap-1'>
+                    <Badge variant='outline' className='shrink-0 font-normal'>
+                      {t('Folded by the image protocol')}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* 逐入口写明「这一条被怎么处理」。原来只有一句静态提示、且只提 responses，
-              读的人没法回答「chat 走哪」——而 chat 恰恰是最容易想错的一条：
-              它会被转成出图任务，带图时和图生图同路。 */}
+          {/* 协议关闭时只有一句「按各自路由原样转发」：逐入口的处理已经写在行里，
+              页脚再列一遍等于把同一件事说两次。 */}
           {protocolOn ? null : (
             <p className='text-muted-foreground border-t px-4 py-2 text-[11px] leading-relaxed'>
               {t(
@@ -675,32 +747,7 @@ export function PrimaryEndpointEditor(props: {
               )}
             </p>
           )}
-          {protocolOn ? (
-            <div className='border-t px-4 py-2.5'>
-              <p className='text-muted-foreground text-[11px]'>
-                {t('Where each entry goes')}
-              </p>
-              <ul className='mt-1 space-y-0.5'>
-                {servedEntries.map((incomingPath) => (
-                  <li
-                    key={incomingPath}
-                    className='flex items-baseline gap-1.5 text-[11px]'
-                  >
-                    <span className='text-muted-foreground shrink-0 font-mono text-[10px]'>
-                      {incomingPath}
-                    </span>
-                    <ArrowRight
-                      className='text-muted-foreground/50 size-2.5 shrink-0 self-center'
-                      aria-hidden='true'
-                    />
-                    <span className='min-w-0'>{t(entryRouteKey(incomingPath, protocolOn))}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
         </section>
-
       ) : (
         <section className='rounded-lg border border-dashed p-4'>
           <p className='text-sm'>{t('Nothing is folded while this is off.')}</p>
@@ -752,13 +799,19 @@ function entryRouteKey(incomingPath: string, protocolOn: boolean): string {
     return 'Not intercepted; forwarded as-is'
   }
   const path = incomingPath.replace(/\/+$/, '')
-  if (path.endsWith('/v1/images/generations') || path.endsWith('/v1/images/edits')) {
+  if (
+    path.endsWith('/v1/images/generations') ||
+    path.endsWith('/v1/images/edits')
+  ) {
     return 'Converted from the primary endpoint'
   }
   if (isChatEntry(incomingPath) || path.endsWith('/v1/responses')) {
     return 'Turned into an image task, then converted from the primary endpoint'
   }
-  if (path.includes(':generateContent') || path.includes(':streamGenerateContent')) {
+  if (
+    path.includes(':generateContent') ||
+    path.includes(':streamGenerateContent')
+  ) {
     return 'Converted from the primary endpoint'
   }
   return 'Not intercepted; keeps its own landing'
@@ -812,9 +865,13 @@ const IMAGE_PROTOCOL_DEFAULT_ENTRIES = [
 
 function isFoldedByImageProtocol(incomingPath: string): boolean {
   const path = incomingPath.replace(/\/+$/, '')
-  if (IMAGE_PROTOCOL_DEFAULT_ENTRIES.some((entry) => entry === path)) return true
+  if (IMAGE_PROTOCOL_DEFAULT_ENTRIES.some((entry) => entry === path)) {
+    return true
+  }
   if (path.endsWith('/v1/chat/completions')) return true
-  return path.includes(':generateContent') || path.includes(':streamGenerateContent')
+  return (
+    path.includes(':generateContent') || path.includes(':streamGenerateContent')
+  )
 }
 
 function DerivationRow(props: {
@@ -921,7 +978,7 @@ function DerivationRow(props: {
   else if (showInput) landingCell = editCell
 
   return (
-    <div className='grid grid-cols-1 items-center gap-2 px-4 py-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)_auto]'>
+    <div className={ENTRY_ROW_GRID}>
       <div className='min-w-0'>
         <p className='flex items-center gap-1.5 truncate text-xs font-medium'>
           {t(getAdvancedCustomIncomingPathLabel(row.incomingPath))}
@@ -1007,9 +1064,7 @@ function DerivationRow(props: {
               />
             </label>
             <p className='text-muted-foreground text-[11px] leading-relaxed'>
-              {t(
-                'The same fields are editable in the Forwarding Routes tab.'
-              )}
+              {t('The same fields are editable in the Forwarding Routes tab.')}
             </p>
           </PopoverContent>
         </Popover>

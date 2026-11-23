@@ -1,8 +1,5 @@
+import type { AdvancedCustomConverter, AdvancedCustomRoute } from '../types'
 import { isAdvancedCustomManagementPath } from './advanced-custom'
-import type {
-  AdvancedCustomConverter,
-  AdvancedCustomRoute,
-} from '../types'
 
 /**
  * 主端点 + 派生端点。
@@ -61,8 +58,11 @@ function upstreamPathOf(route: AdvancedCustomRoute): string {
   return (route.upstream_path || '').trim()
 }
 
-function normalizeConverter(route: AdvancedCustomRoute): AdvancedCustomConverter {
-  return ((route.converter || 'none').trim() || 'none') as AdvancedCustomConverter
+function normalizeConverter(
+  route: AdvancedCustomRoute
+): AdvancedCustomConverter {
+  return ((route.converter || 'none').trim() ||
+    'none') as AdvancedCustomConverter
 }
 
 function isEdits(path: string): boolean {
@@ -82,7 +82,9 @@ function isImageEndpoint(path: string): boolean {
 }
 
 /** 只保留业务路由；模型列表 / 余额查询是管理面，不属于「入口 → 上游」的投影。 */
-function businessRoutes(routes: readonly AdvancedCustomRoute[]): AdvancedCustomRoute[] {
+function businessRoutes(
+  routes: readonly AdvancedCustomRoute[]
+): AdvancedCustomRoute[] {
   return routes.filter(
     (route) => !isAdvancedCustomManagementPath(incomingPathOf(route))
   )
@@ -117,12 +119,44 @@ export function resolvePrimaryEndpoint(
   return primary
 }
 
+/** 图片渠道没有可推导值时用的主端点。前缀由上游决定（v1 / v3 / api/v3 都可），这里只定首段。 */
+export const DEFAULT_PRIMARY_ENDPOINT = '/v1/images/generations'
+
+/** 末段是 generations 的上游路径（前缀不限：v1 / v3 / api/v3 都算）。 */
+function hasGenerationsTail(path: string): boolean {
+  return path.replace(/\/+$/, '').endsWith('/images/generations')
+}
+
+/**
+ * 打开主端点开关时种什么值。
+ *
+ * 三档顺序：路由里已有的 generations 上游（保留 /v3 这类前缀）→ 图片渠道的默认地址 →
+ * 路由众数。
+ *
+ * 为什么图片渠道不能沿用众数：图片协议只认「像图片端点」的主端点，主端点写成
+ * /v1/chat/completions 时协议会折回 /v1/images/generations，**页面存的**和**请求发的**
+ * 就不是同一个地址（见 `docs/apiduo/primary-endpoint.md` §5）。聊天渠道没有这一层，
+ * 仍按路由众数推导——否则会把文本渠道的上游改道到出图接口。
+ */
+export function resolveDefaultPrimaryEndpoint(
+  routes: readonly AdvancedCustomRoute[],
+  options?: { imageChannel?: boolean }
+): string {
+  const imageUpstream = businessRoutes(routes)
+    .map((route) => upstreamPathOf(route))
+    .find((path) => path !== '' && hasGenerationsTail(path))
+  if (imageUpstream) return imageUpstream
+  if (options?.imageChannel) return DEFAULT_PRIMARY_ENDPOINT
+  return resolvePrimaryEndpoint(routes)
+}
+
 /** 从渠道 settings JSON 里读主端点；坏 JSON 当没配。 */
 export function readPrimaryEndpoint(settingsJson?: string): string {
   if (!settingsJson?.trim()) return ''
   try {
     const parsed: unknown = JSON.parse(settingsJson)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return ''
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      return ''
     const value = (parsed as Record<string, unknown>).primary_endpoint
     return typeof value === 'string' ? value.trim() : ''
   } catch {
@@ -138,7 +172,8 @@ export function readImageProtocolEnabled(settingsJson?: string): boolean {
   if (!settingsJson?.trim()) return false
   try {
     const parsed: unknown = JSON.parse(settingsJson)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      return false
     const protocol = (parsed as Record<string, unknown>).image_protocol
     if (!protocol || typeof protocol !== 'object' || Array.isArray(protocol)) {
       return false
@@ -202,7 +237,8 @@ export function buildDerivations(
     // 同一入口多行时，只要有一行跟随主端点就仍算「跟随」——它本来就是这个入口的默认行为。
     existing.followsPrimary =
       existing.followsPrimary || !upstreamPath || upstreamPath === primary
-    if (!upstreamPath || upstreamPath === primary) existing.upstreamPath = primary
+    if (!upstreamPath || upstreamPath === primary)
+      existing.upstreamPath = primary
     existing.passThrough =
       existing.passThrough || Boolean(route.pass_through_body_enabled)
     existing.models = [...new Set([...existing.models, ...routeModels])]
@@ -366,7 +402,9 @@ export function withPrimaryFallbackRoutes(
   const center = primary.trim()
   if (!center) return [...routes]
   return routes.map((route) =>
-    (route.upstream_path || '').trim() ? route : { ...route, upstream_path: center }
+    (route.upstream_path || '').trim()
+      ? route
+      : { ...route, upstream_path: center }
   )
 }
 
@@ -398,7 +436,8 @@ export function fillPrimaryForStats(
   const routes = config.advanced_routes.map((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item
     const route = item as Record<string, unknown>
-    const upstream = typeof route.upstream_path === 'string' ? route.upstream_path.trim() : ''
+    const upstream =
+      typeof route.upstream_path === 'string' ? route.upstream_path.trim() : ''
     if (upstream) return item
     changed = true
     return { ...route, upstream_path: center }

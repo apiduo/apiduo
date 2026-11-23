@@ -238,6 +238,8 @@
     "Without {{field}}": "Without {{field}}",
     "{{field}} {{operator}} {{value}}": "{{field}} {{operator}} {{value}}",
     "The rate above is multiplied by the resolution factor": "The rate above is multiplied by the resolution factor",
-    "Charged per token when usage is reported, per request otherwise": "Charged per token when usage is reported, per request otherwise"
+    "Charged per token when usage is reported, per request otherwise": "Charged per token when usage is reported, per request otherwise",
+    "Gemini protocol (generateContent)": "Gemini protocol (generateContent)",
+    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text."
   }
 }

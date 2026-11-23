@@ -208,6 +208,8 @@
     "Without {{field}}": "{{field}} なし",
     "{{field}} {{operator}} {{value}}": "{{field}} {{operator}} {{value}}",
     "The rate above is multiplied by the resolution factor": "上記の単価には解像度倍率が掛かります（倍率はチャネル設定を参照）",
-    "Charged per token when usage is reported, per request otherwise": "トークン使用量が報告された場合はトークン課金、なければリクエスト課金"
+    "Charged per token when usage is reported, per request otherwise": "トークン使用量が報告された場合はトークン課金、なければリクエスト課金",
+    "Gemini protocol (generateContent)": "Gemini プロトコル（generateContent）",
+    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "参照画像は inlineData に変換されます。上流パスは Base URL・バージョン・モデル名から組み立てます。この入口のリクエストはすべて画像生成として扱われるため、テキストは別チャネルにしてください。"
   }
 }
