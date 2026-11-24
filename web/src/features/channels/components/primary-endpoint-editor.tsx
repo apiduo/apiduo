@@ -95,8 +95,10 @@ const IMAGE_SHAPE_CARDS = [
     value: IMAGE_SHAPE_GEMINI.value,
     title: 'One upstream path',
     subtitle: IMAGE_SHAPE_GEMINI.label,
-    rows: [{ label: 'Every request', target: 'primary', encoding: 'JSON' }],
-    note: 'References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.',
+    // Gemini 不落主端点：路径由 Base URL、版本和模型名拼出，所以这一行不能
+    // 回显 primary（那会让页面写着 /v1/images/generations，实际发到 /v1beta）。
+    rows: [{ label: 'Every request', target: 'gemini', encoding: 'JSON' }],
+    note: 'References become inlineData; the path is base URL + version + /models/…:generateContent. Every entry on this channel returns an image, so keep the channel image-only.',
     dual: false,
   },
 ] as const
@@ -583,11 +585,13 @@ export function PrimaryEndpointEditor(props: {
                                   const target =
                                     row.target === 'edit'
                                       ? editPathPreview
-                                      : primary
+                                      : row.target === 'gemini'
+                                        ? t('Built from Base URL')
+                                        : primary
                                   return (
                                     <span
                                       key={row.label}
-                                      className='flex items-center gap-1.5 text-[11px]'
+                                      className='flex min-w-0 items-center gap-1.5 text-[11px]'
                                     >
                                       <span className='text-muted-foreground w-16 shrink-0 truncate'>
                                         {t(row.label)}
@@ -598,7 +602,7 @@ export function PrimaryEndpointEditor(props: {
                                       />
                                       <span
                                         className={cn(
-                                          'min-w-0 truncate rounded border px-1 py-0.5 font-mono text-[10px]',
+                                          'min-w-0 flex-1 truncate rounded border px-1 py-0.5 font-mono text-[10px]',
                                           row.target === 'edit'
                                             ? 'bg-primary/10'
                                             : 'bg-muted'

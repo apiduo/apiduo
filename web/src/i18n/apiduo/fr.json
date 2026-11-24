@@ -205,7 +205,7 @@
     "The rate above is multiplied by the resolution factor": "Le tarif ci-dessus est multiplié par le facteur de résolution (voir le canal)",
     "Charged per token when usage is reported, per request otherwise": "Facturé au token si l'usage est fourni, sinon par requête",
     "Gemini protocol (generateContent)": "Protocole Gemini (generateContent)",
-    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "Les références deviennent inlineData. L'URL de base, la version et le nom du modèle composent le chemin amont. Chaque requête sur cette entrée est traitée comme une génération d'image ; utilisez un canal séparé pour le texte.",
+    "References become inlineData; the path is base URL + version + /models/…:generateContent. Every entry on this channel returns an image, so keep the channel image-only.": "References become inlineData; the path is base URL + version + /models/…:generateContent. Every entry on this channel returns an image, so keep the channel image-only.",
     "Recompute started. Numbers update in a few minutes.": "Recalcul lancé. Les chiffres seront à jour dans quelques minutes.",
     "Failed to start recompute": "Impossible de lancer le recalcul",
     "Recomputing": "Recalcul en cours…",

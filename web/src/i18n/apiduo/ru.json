@@ -205,7 +205,7 @@
     "The rate above is multiplied by the resolution factor": "Указанная ставка умножается на коэффициент разрешения (см. настройки канала)",
     "Charged per token when usage is reported, per request otherwise": "Списание за токены при наличии данных, иначе за запрос",
     "Gemini protocol (generateContent)": "Протокол Gemini (generateContent)",
-    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "Ссылки на изображения становятся inlineData. Путь к апстриму собирается из Base URL, версии и имени модели. Каждый запрос на этом входе считается генерацией изображения; для текста заведите отдельный канал.",
+    "References become inlineData; the path is base URL + version + /models/…:generateContent. Every entry on this channel returns an image, so keep the channel image-only.": "References become inlineData; the path is base URL + version + /models/…:generateContent. Every entry on this channel returns an image, so keep the channel image-only.",
     "Recompute started. Numbers update in a few minutes.": "Пересчёт запущен. Данные обновятся через несколько минут.",
     "Failed to start recompute": "Не удалось запустить пересчёт",
     "Recomputing": "Идёт пересчёт…",

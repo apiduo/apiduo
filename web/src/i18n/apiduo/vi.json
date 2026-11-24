@@ -205,7 +205,7 @@
     "The rate above is multiplied by the resolution factor": "Đơn giá trên nhân với hệ số độ phân giải (xem cấu hình kênh)",
     "Charged per token when usage is reported, per request otherwise": "Tính theo token nếu có dữ liệu, ngược lại tính theo lượt",
     "Gemini protocol (generateContent)": "Giao thức Gemini (generateContent)",
-    "References become inlineData. Base URL, version and model name build the upstream path. Every request on this entry is treated as image generation; use a separate channel for text.": "Tham chiếu ảnh được chuyển thành inlineData. Đường dẫn thượng nguồn ghép từ Base URL, phiên bản và tên model. Mọi yêu cầu ở đầu vào này đều được xử lý như tạo ảnh; văn bản nên dùng kênh riêng.",
+    "References become inlineData; the path is base URL + version + /models/…:generateContent. Every entry on this channel returns an image, so keep the channel image-only.": "References become inlineData; the path is base URL + version + /models/…:generateContent. Every entry on this channel returns an image, so keep the channel image-only.",
     "Recompute started. Numbers update in a few minutes.": "Đã bắt đầu tính lại. Số liệu sẽ cập nhật trong vài phút.",
     "Failed to start recompute": "Không bắt đầu được việc tính lại",
     "Recomputing": "Đang tính lại…",

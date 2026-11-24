@@ -184,7 +184,7 @@
 | 主端点（§3.4.1「配置面只有主端点」） | `settings.primary_endpoint` | 上游真正讲的那个端点 | 不是「路由中枢」，也不是 canonical |
 | 从端点 / 覆盖开关 | `advanced_routes[].upstream_path`、`image_protocol.edit_path` | 由主端点推导、可被显式覆盖 | 不是第二个主端点 |
 | canonical 请求体 | `imageCanonical`（`canonicalFrom*`） | 折叠后的唯一一份 generations JSON | **不是端点**——它是报文形状 |
-| 前门（载体前门 / 对话前门） | 四个入口 | 只决定怎么读请求、怎么回包 | 不含适配逻辑 |
+| 前门（载体前门 / 对话前门） | 五个入口 | 只决定怎么读请求、怎么回包 | 不含适配逻辑 |
 | 上游脚本 | `planSeedream` / `planGPTImage2` | 把 canonical 变成上游请求 | 不做入口判断 |
 
 两个曾用名与弃用理由：
