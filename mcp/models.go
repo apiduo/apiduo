@@ -372,7 +372,7 @@ func SaveProfile(p *ModelProfile) error {
 // 前端每个字段都有下拉、数字框和长度约束，但接口层此前只校验了 kind 与
 // parameters 的 JSON 合法性，于是直连 API 能写出这些「前端造不出来」的声明：
 //
-//	protocol=grpc          → 每次工具调用在 getTransport 处失败，错误要到 agent
+//	kind=grpc              → 每次工具调用在 getTransport 处失败，错误要到 agent
 //	                         真的调用时才出现，而声明看起来是保存成功的
 //	max_ref_images=-1      → 运行时按「不支持参考图」处理，提示还写「上限 0」
 //	display_name 20 万字符 → 列表接口原样回传，面板每选一次模型就多背一份体积
@@ -381,7 +381,7 @@ func SaveProfile(p *ModelProfile) error {
 // 那条错误对管理员没有意义；这里提前拒掉，文案能直接照着改。
 func validateProfileShape(p *ModelProfile) error {
 	// 空值一律当「未声明」：UpdateProfile 只写请求里出现的键，形状校验不能把
-	// 没改的字段当成错。真正落库前 SaveProfile 会补上默认 kind 与 protocol。
+	// 没改的字段当成错。真正落库前 normalizeAndValidateProfile 会校验 kind。
 	if p.Kind != "" {
 		if !knownKinds[p.Kind] {
 			return userErrf("产物类型只能是 %s，收到 %q", kindList(), p.Kind)
