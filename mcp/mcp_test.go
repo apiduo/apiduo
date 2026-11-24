@@ -58,6 +58,39 @@ func TestMigrateCreatesTablesAndSeedsRules(t *testing.T) {
 	}
 }
 
+// 旧库与旧 dump 恢复出来的 mcp_model_profiles 会留着 0.0.137 之前的 protocol 列，
+// 而 AutoMigrate 从不删列。该列 NOT NULL 无默认值，新代码 INSERT 不带它 ⇒ MySQL 1364，
+// 面板「新建能力声明」永远失败。这条用例锁住「启动即自愈」。
+func TestMigrateDropsLegacyProtocolColumn(t *testing.T) {
+	db := withTestDB(t)
+	if err := Migrate(); err != nil {
+		t.Fatalf("Migrate 失败: %v", err)
+	}
+	// 还原线上表结构：建表语句来自 0.0.137 之前的结构体。
+	if err := db.Exec("ALTER TABLE mcp_model_profiles ADD COLUMN protocol varchar(32) NOT NULL DEFAULT 'ark'").Error; err != nil {
+		t.Fatalf("造历史列失败: %v", err)
+	}
+	if !db.Migrator().HasColumn("mcp_model_profiles", "protocol") {
+		t.Fatal("历史列没造出来，用例无效")
+	}
+
+	if err := Migrate(); err != nil {
+		t.Fatalf("二次 Migrate 失败: %v", err)
+	}
+	if db.Migrator().HasColumn("mcp_model_profiles", "protocol") {
+		t.Fatal("Migrate 没有清掉历史 protocol 列")
+	}
+
+	// 清完之后新建必须真的能落库 —— 只删列不验证写入等于没测。
+	p := ModelProfile{ModelId: "m-after-cleanup", Kind: "image", Enabled: true}
+	if err := SaveProfile(&p); err != nil {
+		t.Fatalf("清理后新建声明失败: %v", err)
+	}
+	if _, ok := GetProfileByModelId("m-after-cleanup"); !ok {
+		t.Fatal("清理后新建的声明读不回来")
+	}
+}
+
 // 三态是本项目最容易写错的地方：nil / 0 / N 必须是三件不同的事。
 func TestProfileTriState(t *testing.T) {
 	withTestDB(t)

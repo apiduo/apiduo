@@ -153,6 +153,22 @@ func Migrate() error {
 	if model.DB == nil {
 		return errors.New("主库未初始化")
 	}
+	// 0.0.137 删掉了 protocol 字段，但 AutoMigrate 只加列、不删列 —— 从旧库
+	// 或旧 dump 恢复的实例会一直留着它。而它建表时是 NOT NULL 无默认值，
+	// 新代码 INSERT 不带这一列，MySQL 严格模式下直接 1364：面板「新建能力
+	// 声明」永远失败，报错还被 apiWriteErr 抹成「内部错误」。
+	// 这列在当前代码里已无任何读者（model/main.go 里那段改写旧值的 SQL 也有
+	// 列存在性守卫），所以在这里清掉；失败只记日志，不能让 MCP 拖垮启动。
+	if model.DB.Migrator().HasColumn("mcp_model_profiles", "protocol") {
+		// 用原生 DDL 而不是 Migrator().DropColumn：后者在 sqlite 驱动上对
+		// 「只给表名」的调用会 nil 解引用（glebarez/sqlite v1.11 migrator.go:159），
+		// 启动期 Panic 比少删一列严重得多。这行 SQL 三家库语法一致。
+		if err := model.DB.Exec("ALTER TABLE mcp_model_profiles DROP COLUMN protocol").Error; err != nil {
+			common.SysError("[mcp] 清理历史 protocol 列失败: " + err.Error())
+		} else {
+			common.SysLog("[mcp] 已清理 mcp_model_profiles 的历史 protocol 列")
+		}
+	}
 	if err := model.DB.AutoMigrate(&ModelProfile{}, &ErrorRule{}, &IdempotencyRecord{}, &Setting{}); err != nil {
 		return err
 	}
