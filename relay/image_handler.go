@@ -52,6 +52,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	info.ImageRequestCount = 0
 	// APIDUO:image-usage-estimate:BEGIN
 	info.EstimatedImageUsage = nil
+	info.EstimatedImageCount = 0
 	info.ImageUsageEstimated = false
 	// APIDUO:image-usage-estimate:END
 
@@ -229,6 +230,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		imageusage.CountInputImages(request.Images),
 	); ok {
 		info.EstimatedImageUsage = estimate.Usage()
+		info.EstimatedImageCount = imageCount
 	}
 	// APIDUO:image-usage-estimate:END
 

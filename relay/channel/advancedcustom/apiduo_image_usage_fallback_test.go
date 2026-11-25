@@ -3,6 +3,7 @@ package advancedcustom
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
@@ -60,5 +61,50 @@ func TestUpstreamGeminiUsageWinsOverEstimate(t *testing.T) {
 	usage := decoded.billedUsage()
 	if usage.CompletionTokens != 1646 || usage.TotalTokens != 1649 {
 		t.Fatalf("usage = %+v, want the upstream numbers", usage)
+	}
+}
+
+// An upstream that folds n delivers fewer images than requested. The estimate
+// is per requested image, so settlement must scale down to what arrived.
+func TestBilledUsageScalesEstimateToDeliveredImages(t *testing.T) {
+	decoded, err := decodeImageResponse([]byte(`{"created":1,"data":[{"b64_json":"aGVsbG8="}]}`))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	decoded.fallbackUsage = &dto.Usage{
+		PromptTokens:           10,
+		CompletionTokens:       392,
+		TotalTokens:            402,
+		CompletionTokenDetails: dto.OutputTokenDetails{ImageTokens: 392},
+	}
+	info := &common.RelayInfo{EstimatedImageCount: 2}
+
+	usage := decoded.billedUsageWith(info)
+	if usage.CompletionTokens != 196 {
+		t.Fatalf("completion = %d, want 196 (one delivered image)", usage.CompletionTokens)
+	}
+	if usage.CompletionTokenDetails.ImageTokens != 196 {
+		t.Fatalf("img_o = %d, want 196", usage.CompletionTokenDetails.ImageTokens)
+	}
+	if usage.TotalTokens != 10+196 {
+		t.Fatalf("total = %d, want %d", usage.TotalTokens, 10+196)
+	}
+	if !info.ImageUsageEstimated {
+		t.Fatal("estimate must be marked")
+	}
+}
+
+// Delivering every requested image leaves the estimate untouched.
+func TestBilledUsageKeepsEstimateWhenAllImagesArrive(t *testing.T) {
+	decoded, err := decodeImageResponse([]byte(`{"created":1,"data":[{"b64_json":"aGVsbG8="}]}`))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	estimate := &dto.Usage{PromptTokens: 10, CompletionTokens: 196, TotalTokens: 206}
+	decoded.fallbackUsage = estimate
+
+	usage := decoded.billedUsageWith(&common.RelayInfo{EstimatedImageCount: 1})
+	if usage != estimate {
+		t.Fatalf("usage = %+v, want the estimate", usage)
 	}
 }

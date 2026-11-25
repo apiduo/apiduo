@@ -200,6 +200,9 @@ type RelayInfo struct {
 	// no upstream usage falls back to it so the response body and the ledger
 	// carry the same numbers.
 	EstimatedImageUsage *dto.Usage
+	// EstimatedImageCount is the image count EstimatedImageUsage was computed
+	// for. An adaptor that delivers fewer images scales the estimate by it.
+	EstimatedImageCount int
 	// ImageUsageEstimated is set when settlement used EstimatedImageUsage
 	// because the upstream reported none. Admin logs surface it so estimates
 	// can be calibrated against real usage.

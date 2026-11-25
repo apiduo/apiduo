@@ -260,10 +260,22 @@ func (r *imageResponse) billedUsageWith(info *common.RelayInfo) *dto.Usage {
 		return usage
 	}
 	if r.fallbackUsage != nil {
-		if info != nil {
-			info.ImageUsageEstimated = true
+		if info == nil {
+			return r.fallbackUsage
 		}
-		return r.fallbackUsage
+		info.ImageUsageEstimated = true
+		// Upstreams fold n: duck answers n=2 with one image. Charging the
+		// requested count would over-estimate, so scale to what was delivered.
+		requested, delivered := info.EstimatedImageCount, len(r.Data)
+		if requested <= delivered || delivered == 0 {
+			return r.fallbackUsage
+		}
+		scaled := *r.fallbackUsage
+		scaled.CompletionTokens = r.fallbackUsage.CompletionTokens * delivered / requested
+		scaled.CompletionTokenDetails = r.fallbackUsage.CompletionTokenDetails
+		scaled.CompletionTokenDetails.ImageTokens = r.fallbackUsage.CompletionTokenDetails.ImageTokens * delivered / requested
+		scaled.TotalTokens = scaled.PromptTokens + scaled.CompletionTokens
+		return &scaled
 	}
 	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}
 }
