@@ -320,6 +320,8 @@ func encodeImageResponse(response *imageResponse) ([]byte, error) {
 // 两个方向都做，不只是「把 base64 换成链接」：
 //
 //	客户端要 url  而上游给 b64  ⇒ 落存储换链接（需要配置；失败保留 b64）
+//	客户端要 url  而上游给 url  ⇒ 下载后落存储换自己的链接（上游链接会过期，
+//	                              且「开了存储」不该只覆盖回 b64 的那一半上游）
 //	客户端要 b64  而上游给 url  ⇒ 下载后重新编码（不依赖任何配置）
 //
 // 任何一步失败都保留上游原样 —— 配置缺口和网络抖动都不该把一次成功的生成
@@ -332,30 +334,49 @@ func alignImageCarriers(ctx context.Context, channelID int, response *imageRespo
 	for idx := range response.Data {
 		item := &response.Data[idx]
 		if wantURL {
-			if item.B64JSON == "" {
-				continue
-			}
-			// 已经是地址：只把它归位到 url，别再下载回来重存一遍。
+			// 错位形态（地址进了 base64 字段）先归位，再按链接统一处理。
 			if looksLikeRemoteReference(item.B64JSON) {
 				item.URL = item.B64JSON
 				item.B64JSON = ""
 				changed = true
+			}
+			if item.B64JSON != "" {
+				raw, err := base64.StdEncoding.DecodeString(item.B64JSON)
+				if err != nil || len(raw) == 0 {
+					continue
+				}
+				mime, err := detectImageMimeType(raw, "")
+				if err != nil {
+					mime = "image/png"
+				}
+				stored, err := service.PersistArtifactBytes(ctx, channelID, imageObjectKey(raw, mime), mime, raw)
+				if err != nil {
+					continue
+				}
+				item.URL = stored.URL
+				item.B64JSON = ""
+				changed = true
 				continue
 			}
-			raw, err := base64.StdEncoding.DecodeString(item.B64JSON)
-			if err != nil || len(raw) == 0 {
+			// 上游给的是链接。artifact storage 开着就意味着「本渠道的产物留在
+			// 自己的桶里」——回 base64 和回链接是同一个产物的两种形状，后者
+			// 不是豁免。已是本存储地址（或渠道根本没配存储）时跳过：前者不必
+			// 自己下载自己，后者没有地方落盘。
+			if item.URL == "" || service.ArtifactStorageCovers(channelID, item.URL) {
 				continue
 			}
-			mime, err := detectImageMimeType(raw, "")
-			if err != nil {
+			raw, mime, fetchErr := service.FetchArtifactBytes(ctx, item.URL)
+			if fetchErr != nil || len(raw) == 0 {
+				continue
+			}
+			if mime == "" {
 				mime = "image/png"
 			}
-			stored, err := service.PersistArtifactBytes(ctx, channelID, imageObjectKey(raw, mime), mime, raw)
-			if err != nil {
+			stored, storeErr := service.PersistArtifactBytes(ctx, channelID, imageObjectKey(raw, mime), mime, raw)
+			if storeErr != nil || stored == nil || stored.URL == "" {
 				continue
 			}
 			item.URL = stored.URL
-			item.B64JSON = ""
 			changed = true
 			continue
 		}

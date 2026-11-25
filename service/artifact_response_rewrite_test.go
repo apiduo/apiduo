@@ -600,3 +600,14 @@ func TestFetchArtifactBytesRejectsNon2xx(t *testing.T) {
 		t.Fatal("a 404 must not be treated as a downloadable artifact")
 	}
 }
+
+// 没有渠道存储时一律回答「不必下载」：没有地方落盘，下载只是白跑一趟。
+// 这也是图片协议渠道在没有配存储时的行为基线。
+func TestArtifactStorageCoversEmptyChain(t *testing.T) {
+	if !ArtifactStorageCovers(0, "https://upstream.example.com/files/a.jpg") {
+		t.Error("an empty chain must answer true")
+	}
+	if !ArtifactStorageCovers(0, "") {
+		t.Error("an empty reference must answer true")
+	}
+}

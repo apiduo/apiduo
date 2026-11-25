@@ -83,13 +83,20 @@ images 的 `data[]` 里没有任何好处，而客户端不写这个字段通常
 | 客户端要 | 上游给 | 结果 |
 |---|---|---|
 | url | b64 | 落对象存储换链接（渠道要开存储；失败保留 b64） |
-| url | url | 透传 |
+| url | url | 落对象存储换链接（**不是自有地址才下载**；失败保留上游链接） |
 | b64 | b64 | 透传 |
 | b64 | url | 下载后重新编码（不依赖任何配置） |
 
 任一步失败都保留上游原样。响应侧 `url` 与 `b64_json` **互斥**：换掉一个就清掉另一个。
 `data[]` 只回 `url` / `b64_json` / `revised_prompt`：上游的 `size` / `model` / `size_applied`
 一律不回显（白名单见协议文档 §5.1）。
+
+**「开了存储」= 本渠道的产物留在自己的桶里**，不是「只收 base64 那种产物」。上游回链接不是
+豁免：那个链接会过期（签名短链）或不受控（缓存、带宽、可用性），同一张图两种形状只能有一种
+归宿。判据是 `service.ArtifactStorageCovers`：地址以任一目标的 `PublicBaseURL` 开头就跳过
+（不必自己下载自己）；渠道没配存储时也跳过（没有地方落盘）。没配 `PublicBaseURL` 的目标只会
+产生签名地址、无法按前缀识别，这类会多下载一次并以同一 content-addressed key 重存——幂等，
+代价是一次 GET。
 
 ⚠️ **chat 入口没有这个开关。** `dto.GeneralOpenAIRequest.ResponseFormat` 是
 `{type, json_schema}` 结构体 —— chat 的 `response_format` 指的是 `json_object` / `text`，

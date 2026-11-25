@@ -52,6 +52,38 @@ func (c *ArtifactStorageChain) Empty() bool {
 	return c == nil || len(c.Targets) == 0
 }
 
+// ArtifactStorageCovers reports whether a URL needs no further storage work.
+//
+// Two cases answer yes. It already lives in this channel's bucket (prefix match
+// on PublicBaseURL), or the channel has no storage at all — the second is not a
+// property of the URL but of the caller's world, and it is the honest answer:
+// there is nowhere to put the bytes, so downloading them would only waste a
+// round trip.
+//
+// This is what lets an image-protocol channel keep its promise. artifact
+// storage being enabled means "this channel's products stay in our bucket";
+// a provider that answers with a link instead of base64 is a different shape of
+// the same product, not an exemption. A target without PublicBaseURL can only
+// produce presigned addresses, so its objects cannot be recognised by prefix;
+// they are fetched once and re-stored under the same content-addressed key,
+// which is idempotent but does cost one download.
+func ArtifactStorageCovers(channelID int, rawURL string) bool {
+	chain := ResolveArtifactStorageChainForChannelID(channelID)
+	if chain.Empty() {
+		return true
+	}
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return true
+	}
+	for _, target := range chain.Targets {
+		if target.PublicBaseURL != "" && strings.HasPrefix(trimmed, target.PublicBaseURL) {
+			return true
+		}
+	}
+	return false
+}
+
 // StoredArtifact is the result of a successful write.
 type StoredArtifact struct {
 	// Key is the object key inside the bucket.

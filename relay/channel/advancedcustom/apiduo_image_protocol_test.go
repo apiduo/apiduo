@@ -1181,3 +1181,18 @@ func TestReferenceForItemStillEncodesBase64(t *testing.T) {
 		t.Errorf("reference must be a data URI, got %q", reference[:40])
 	}
 }
+
+// 没有配存储时，上游给的链接必须原样留着：既不该下载，也不该改写成空。
+func TestAlignImageCarriersLeavesRemoteURLWhenStoreDisabled(t *testing.T) {
+	const link = "https://upstream.example.com/files/abc.jpg"
+	response := &imageResponse{Created: 1, Data: []imageResponseItem{{URL: link}}}
+
+	changed := alignImageCarriers(context.Background(), 0, response, true)
+
+	if changed {
+		t.Fatal("nothing may change while no artifact storage is configured")
+	}
+	if response.Data[0].URL != link || response.Data[0].B64JSON != "" {
+		t.Errorf("item changed: %#v", response.Data[0])
+	}
+}
