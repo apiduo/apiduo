@@ -314,10 +314,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		usage.(*dto.Usage).PromptTokens = 1
 	}
 
+	// APIDUO:image-log-quality:BEGIN
+	// No default: "standard" is a DALL-E word, gpt-image defaults to "auto",
+	// and Gemini image requests have no quality at all. Printing one would
+	// report a tier the upstream never received.
 	quality := request.Quality
-	if quality == "" {
-		quality = "standard"
-	}
+	// APIDUO:image-log-quality:END
 
 	var logContent []*common.Message
 
