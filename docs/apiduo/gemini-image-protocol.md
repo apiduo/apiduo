@@ -474,7 +474,8 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
   404 `NOT_FOUND`、429 `RESOURCE_EXHAUSTED`、5xx `INTERNAL`）。
 - 安全过滤（`finishReason=SAFETY` / `IMAGE_SAFETY` / `PROHIBITED_CONTENT` /
   `IMAGE_PROHIBITED_CONTENT` / `BLOCKLIST` / `RECITATION` / `IMAGE_RECITATION` / `SPII` /
-  `blockReason`）统一成 400 + `content_policy_violation`，不把上游的原始 reason 写进 message。
+  `blockReason`）统一成 400 + `content_filter`（客户端码；网关侧用 `prompt_blocked`，与文本
+  渠道的提示词审核同码），不把上游的原始 reason 写进客户端 message。
 - 零图且不是上述理由时，错误文案带上 `finishReason`（`upstream returned no image
   (finishReason=…)`）：管理端日志必须能区分「上游抽风」和「被挡了」。
 
@@ -629,7 +630,7 @@ ark/openai 上游反而会把 envelope 的 `usage` 原样带出，于是同一�
 | T1-5 | Gemini 原生 | 回包 `candidates[0].content.parts[0].inlineData`，`finishReason=STOP` |
 
 每个用例再加三个变体：`imageConfig` 五档比例、`n=2`（断言 400 且**未发上游**）、
-`SAFETY`（断言 400 `content_policy_violation`、未重试）。
+`SAFETY`（断言 400 `content_filter`、未重试）。
 
 ### 7.2 T2：非 Gemini 上游 × Gemini 入口
 
@@ -707,7 +708,7 @@ Gemini 入口把上游 URL 转 inlineData 要下载公网地址，SSRF 防护会
 
 - 五个入口 × 两个上游（gemini、ark）都能出图，回包形状符合各自协议；
 - `n=2` 在五个入口都返回 400，且未产生上游请求、未产生预消费；
-- `SAFETY` / `IMAGE_RECITATION` 在五个入口都返回 400 `content_policy_violation`，不重试。
+- `SAFETY` / `IMAGE_RECITATION` 在五个入口都返回 400 `content_filter`（`prompt_blocked`），不重试。
 
 不暴露上游：
 

@@ -173,7 +173,7 @@ func finishImageNativeResponse(
 	if err != nil {
 		var blocked *geminiImageBlockedError
 		if errors.As(err, &blocked) {
-			return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			return nil, types.NewOpenAIError(err, types.ErrorCodePromptBlocked, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
@@ -559,7 +559,7 @@ func finishImageChatResponse(
 	if err != nil {
 		var blocked *geminiImageBlockedError
 		if errors.As(err, &blocked) {
-			return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			return nil, types.NewOpenAIError(err, types.ErrorCodePromptBlocked, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 	}
@@ -624,6 +624,10 @@ const imageLargeResponseMaxBytes = 64 << 20
 
 // geminiImageBlockedError 区分「上游拒画」与「网关读不懂」：前者 400 且不重试，
 // 后者 502。两者都不允许把上游原文透给客户端。
+//
+// 错误码用 prompt_blocked（目录里映射到客户端 content_filter），与文本渠道的
+// prompt 审核同码。用 invalid_request 会让客户端以为请求格式有问题，去改参数
+// 而不是改提示词——这正是这类拒绝最容易被误处理的点。
 type geminiImageBlockedError struct{ reason string }
 
 func (e *geminiImageBlockedError) Error() string {
@@ -840,7 +844,7 @@ func finishImageGeminiResponse(c *gin.Context, resp *http.Response, info *common
 	if decodeErr != nil {
 		var blocked *geminiImageBlockedError
 		if errors.As(decodeErr, &blocked) {
-			return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			return nil, types.NewOpenAIError(decodeErr, types.ErrorCodePromptBlocked, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
@@ -935,7 +939,7 @@ func finishImageResponsesResponse(c *gin.Context, resp *http.Response, info *com
 	if decodeErr != nil {
 		var blocked *geminiImageBlockedError
 		if errors.As(decodeErr, &blocked) {
-			return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			return nil, types.NewOpenAIError(decodeErr, types.ErrorCodePromptBlocked, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
