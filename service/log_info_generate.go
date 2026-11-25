@@ -125,12 +125,14 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	if relayInfo.ReasoningEffort != "" {
 		other.SetPublic("reasoning_effort", relayInfo.ReasoningEffort)
 	}
+	// APIDUO:image-usage-estimate:BEGIN
 	if relayInfo.ImageUsageEstimated {
 		// The upstream reported no usage and the ledger used the local
 		// lower-bound estimate. Kept public so the estimate can be calibrated
 		// against real upstream usage on the same model.
 		other.SetPublic("usage_estimated", true)
 	}
+	// APIDUO:image-usage-estimate:END
 	if relayInfo.IsModelMapped {
 		// APIDUO:remap-hardening:BEGIN
 		other.SetAdmin("is_model_mapped", true)

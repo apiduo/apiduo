@@ -23,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// APIDUO:image-usage-estimate:BEGIN
 // hasUpstreamImageUsage reports whether an adaptor's usage came from the
 // upstream response rather than from its single-unit placeholder. A real image
 // request never costs one token, so {prompt:1, completion:0, total:1} means the
@@ -33,6 +34,8 @@ func hasUpstreamImageUsage(usage *dto.Usage) bool {
 	}
 	return usage.PromptTokens > 1 || usage.CompletionTokens > 0 || usage.TotalTokens > 1
 }
+
+// APIDUO:image-usage-estimate:END
 
 // outboundImageCounter is an image adaptor whose upstream body carries the
 // image count in a member other than n. OutboundImageCount reads the count
@@ -45,8 +48,10 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	info.InitChannelMeta(c)
 	info.BillingImageCount = nil
 	info.ImageRequestCount = 0
+	// APIDUO:image-usage-estimate:BEGIN
 	info.EstimatedImageUsage = nil
 	info.ImageUsageEstimated = false
+	// APIDUO:image-usage-estimate:END
 
 	imageReq, ok := info.Request.(*dto.ImageRequest)
 	if !ok {
@@ -203,6 +208,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		requestBody = body
 	}
 
+	// APIDUO:image-usage-estimate:BEGIN
 	// The estimate is computed before the request so an adaptor that gets no
 	// usage from upstream can put the same numbers in the response body it
 	// writes and in the usage it returns for billing. A channel alias may hide
@@ -222,6 +228,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	); ok {
 		info.EstimatedImageUsage = estimate.Usage()
 	}
+	// APIDUO:image-usage-estimate:END
 
 	if billingErr := service.PrepareImageBillingForRequest(c, info, imageCount); billingErr != nil {
 		return billingErr
@@ -270,6 +277,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		return newAPIError
 	}
 
+	// APIDUO:image-usage-estimate:BEGIN
 	// An upstream that reports nothing leaves the adaptor's single-unit
 	// placeholder. Settle on the local lower-bound estimate instead, so a
 	// token-priced image model is not billed one token per image.
@@ -284,6 +292,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	} else {
 		usage = &dto.Usage{}
 	}
+	// APIDUO:image-usage-estimate:END
 
 	// The log content shows the settled count: the count the handler derived
 	// from the upstream response when it did, otherwise the reserved quantity.

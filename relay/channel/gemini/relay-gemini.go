@@ -55,6 +55,7 @@ func patchGeminiZeroCompletionUsage(c *gin.Context, info *relaycommon.RelayInfo,
 	estimated := service.ResponseText2Usage(c, responseText, info.UpstreamModelName, usage.PromptTokens)
 	usage.CompletionTokens = estimated.CompletionTokens
 	if imageCount != 0 && usage.CompletionTokens == 0 {
+		// APIDUO:image-usage-estimate:BEGIN
 		// The chat entry has no image request to estimate from, so use the
 		// cheapest published image tier. The old 1400 sat between 2.5 Flash
 		// Image's 1290 and 3 Pro Image's 2000 without matching either.
@@ -64,6 +65,7 @@ func patchGeminiZeroCompletionUsage(c *gin.Context, info *relaycommon.RelayInfo,
 		}
 		usage.CompletionTokens = imageCount * perImage
 		info.ImageUsageEstimated = true
+		// APIDUO:image-usage-estimate:END
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	// Settlement prefers BillingUsage, so fill the missing completion in the
@@ -598,6 +600,7 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	// prompt tokens and left completion at zero, which billed a token-priced
 	// image model almost nothing. Prefer upstream usage, then the request's
 	// lower-bound estimate, and only then the single-unit placeholder.
+	// APIDUO:image-usage-estimate:BEGIN
 	usage := imagePredictUsage(geminiResponse.UsageMetadata, info.EstimatedImageUsage, info.GetEstimatePromptTokens())
 	if usage == info.EstimatedImageUsage {
 		info.ImageUsageEstimated = true
@@ -612,9 +615,11 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 		empty.TotalTokens = empty.PromptTokens
 		usage = &empty
 	}
+	// APIDUO:image-usage-estimate:END
 	return usage, nil
 }
 
+// APIDUO:image-usage-estimate:BEGIN
 // imagePredictUsage picks the usage of one image predict response: upstream,
 // then the local estimate, then the single-unit placeholder every image
 // settlement path understands.
@@ -628,6 +633,8 @@ func imagePredictUsage(metadata *dto.GeminiUsageMetadata, estimate *dto.Usage, f
 	}
 	return &dto.Usage{PromptTokens: 1, TotalTokens: 1}
 }
+
+// APIDUO:image-usage-estimate:END
 
 type GeminiModelsResponse struct {
 	Models        []dto.GeminiModel `json:"models"`
