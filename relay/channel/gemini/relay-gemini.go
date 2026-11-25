@@ -14,7 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	// APIDUO:image-usage-estimate:BEGIN
 	"github.com/QuantumNous/new-api/pkg/imageusage"
+	// APIDUO:image-usage-estimate:END
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -595,12 +597,12 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	c.Writer.WriteHeader(resp.StatusCode)
 	_, _ = c.Writer.Write(jsonResponse)
 
+	// APIDUO:image-usage-estimate:BEGIN
 	// A predict response either reports usageMetadata or reports nothing at
 	// all. The old fallback charged the *input* tile cost (258 tokens) as
 	// prompt tokens and left completion at zero, which billed a token-priced
 	// image model almost nothing. Prefer upstream usage, then the request's
 	// lower-bound estimate, and only then the single-unit placeholder.
-	// APIDUO:image-usage-estimate:BEGIN
 	usage := imagePredictUsage(geminiResponse.UsageMetadata, info.EstimatedImageUsage, info.GetEstimatePromptTokens())
 	if usage == info.EstimatedImageUsage {
 		info.ImageUsageEstimated = true
@@ -615,9 +617,10 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 		empty.TotalTokens = empty.PromptTokens
 		usage = &empty
 	}
-	// APIDUO:image-usage-estimate:END
 	return usage, nil
 }
+
+// APIDUO:image-usage-estimate:END
 
 // APIDUO:image-usage-estimate:BEGIN
 // imagePredictUsage picks the usage of one image predict response: upstream,

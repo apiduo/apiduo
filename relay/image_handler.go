@@ -11,7 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	// APIDUO:image-usage-estimate:BEGIN
 	"github.com/QuantumNous/new-api/pkg/imageusage"
+	// APIDUO:image-usage-estimate:END
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relay/requestplugin"
