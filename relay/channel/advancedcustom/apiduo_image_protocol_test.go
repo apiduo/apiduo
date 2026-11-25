@@ -1041,6 +1041,14 @@ func TestEncodeImageResponseFillsTokensWithoutEnvelopeUsage(t *testing.T) {
 	if len(envelope.Usage) == 0 {
 		t.Error("usage must not be an empty object")
 	}
+	in, _ := envelope.Usage["input_tokens_details"].(map[string]any)
+	if in["text_tokens"] != float64(13) || in["image_tokens"] != float64(0) {
+		t.Errorf("input details = %#v, want the whole prompt on text", in)
+	}
+	out, _ := envelope.Usage["output_tokens_details"].(map[string]any)
+	if out["image_tokens"] != float64(1120) || out["text_tokens"] != float64(482) {
+		t.Errorf("output details = %#v, want 1120 image + 482 text/thoughts", out)
+	}
 }
 
 func TestImageRefRetriesOnceOnConnectionDrop(t *testing.T) {

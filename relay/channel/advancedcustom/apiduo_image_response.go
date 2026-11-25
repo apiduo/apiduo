@@ -376,16 +376,23 @@ func imageUsageEnvelope(existing any, usage *dto.Usage) map[string]any {
 	if usage == nil || reportedTokens {
 		return merged
 	}
+	// The detail split must add up to the totals; an upstream that reported one
+	// modality only (Gemini gives no input-image breakdown) leaves the rest on
+	// the text side, which is also where thoughts are billed.
+	inputImage := usage.PromptTokensDetails.ImageTokens
+	inputText := usage.PromptTokens - inputImage
+	outputImage := usage.CompletionTokenDetails.ImageTokens
+	outputText := usage.CompletionTokens - outputImage
 	merged["input_tokens"] = usage.PromptTokens
 	merged["output_tokens"] = usage.CompletionTokens
 	merged["total_tokens"] = usage.TotalTokens
 	merged["input_tokens_details"] = map[string]any{
-		"text_tokens":  usage.PromptTokensDetails.TextTokens,
-		"image_tokens": usage.PromptTokensDetails.ImageTokens,
+		"text_tokens":  inputText,
+		"image_tokens": inputImage,
 	}
 	merged["output_tokens_details"] = map[string]any{
-		"text_tokens":  usage.CompletionTokenDetails.TextTokens,
-		"image_tokens": usage.CompletionTokenDetails.ImageTokens,
+		"text_tokens":  outputText,
+		"image_tokens": outputImage,
 	}
 	return merged
 }
