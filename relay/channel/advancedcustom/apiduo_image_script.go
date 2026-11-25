@@ -7,15 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"mime/multipart"
-	"net"
-	"net/http"
 	"net/textproto"
 	"net/url"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -30,94 +25,10 @@ import (
  * 载体是四个维度里唯一可能触发 IO 的（URL 要下载才能内联），所以留在这一层，
  * 不放进纯函数折叠层。上游只收 multipart 文件时，URL 垫图必然要下载；
  * 防 SSRF 靠下载层的强制校验，而不是「关掉下载」。
+ *
+ * 下载本身（拨号 / 重试 / SSRF / 大小判据）在 apiduo_image_fetch.go；
+ * 本文件只做协议转换与 multipart 编码，不碰网络。
  */
-
-const (
-	imageURLFetchTimeout     = 10 * time.Second
-	imageURLDialTimeout      = 5 * time.Second
-	imageURLFetchMaxRedirect = 3
-	// imageRefDownloadWorkers 是单请求内垫图下载的并发上限。太高会打爆目标站点，
-	// 太低会让 10 张图串行到请求超时。
-	imageRefDownloadWorkers = 4
-)
-
-// imageMaxRefBytes 是单张引用（data URI / 下载 / 裸 base64）的大小上限。
-// 用变量而非常量：单测要把它临时调小，避免造 20MB 夹具。
-var imageMaxRefBytes = 20 << 20
-
-// imageRefAllowAddress 是地址准入钩子。默认拒绝回环/私网/链路本地/多播/保留段；
-// 单测替换它把 httptest 的 127.0.0.1 放进白名单，生产路径不替换。
-var imageRefAllowAddress = func(ip net.IP) error {
-	if isPrivateIP(ip) {
-		return fmt.Errorf("image reference resolves to a non-public address %s", ip)
-	}
-	return nil
-}
-
-// imageRefBlockedCIDRs 补 IsPrivate() 覆盖不到的段：CGNAT、保留/文档/基准测试段。
-var imageRefBlockedCIDRs = func() []*net.IPNet {
-	blocks := []string{
-		"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24",
-		"198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4",
-		"100::/64", "2001:db8::/32",
-	}
-	out := make([]*net.IPNet, 0, len(blocks))
-	for _, block := range blocks {
-		if _, parsed, err := net.ParseCIDR(block); err == nil {
-			out = append(out, parsed)
-		}
-	}
-	return out
-}()
-
-// imageRefHTTPClient 在所有下载之间复用：连接池 + 逐跳校验 + 连接前校验 IP。
-// 每次 new client 会让 N 张垫图做 N 次 TLS 握手，慢目标下直接把请求拖死。
-var imageRefHTTPClient = &http.Client{
-	Timeout: imageURLFetchTimeout,
-	Transport: &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConns:          16,
-		MaxIdleConnsPerHost:   8,
-		IdleConnTimeout:       30 * time.Second,
-		TLSHandshakeTimeout:   imageURLDialTimeout,
-		ResponseHeaderTimeout: imageURLFetchTimeout,
-		ForceAttemptHTTP2:     true,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
-			if err != nil {
-				return nil, fmt.Errorf("resolve %q: %w", host, err)
-			}
-			dialer := &net.Dialer{Timeout: imageURLDialTimeout, KeepAlive: 30 * time.Second}
-			var lastErr error
-			for _, ip := range ips {
-				// 校验与连接用同一批 IP：先解析再连，避免 rebinding 在两次解析之间换地址。
-				if err := imageRefAllowAddress(ip); err != nil {
-					return nil, err
-				}
-				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-				if err == nil {
-					return conn, nil
-				}
-				lastErr = err
-			}
-			if lastErr == nil {
-				lastErr = fmt.Errorf("no usable address for %q", host)
-			}
-			return nil, lastErr
-		},
-	},
-	CheckRedirect: func(request *http.Request, via []*http.Request) error {
-		// Go 默认最多跟 10 跳且不重验 host：一个公网 URL 302 到内网就绕过 SSRF 防线。
-		if len(via) >= imageURLFetchMaxRedirect {
-			return fmt.Errorf("image URL redirects more than %d times", imageURLFetchMaxRedirect)
-		}
-		return validateImageRefURL(request.URL)
-	},
-}
 
 type imagePlan struct {
 	UpstreamPath string
@@ -126,13 +37,15 @@ type imagePlan struct {
 	ImageCount   int
 }
 
+// planImageRequest 是测试用的便捷入口；生产路径从请求取 ctx，客户端断开时
+// 正在下载的垫图能立刻停下。
 func planImageRequest(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, error) {
-	return planImageRequestWithModel(c, cfg, "")
+	return planImageRequestWithModel(context.Background(), c, cfg, "")
 }
 
 // planImageRequestWithModel 多一个上游模型名：Gemini 的模型与动词都在路径里，
 // 且必须是重定向后的名字。其它上游忽略它。
-func planImageRequestWithModel(c *imageCanonical, cfg *dto.ImageProtocolConfig, upstreamModel string) (*imagePlan, error) {
+func planImageRequestWithModel(ctx context.Context, c *imageCanonical, cfg *dto.ImageProtocolConfig, upstreamModel string) (*imagePlan, error) {
 	if cfg == nil || !cfg.Enabled {
 		return nil, errors.New("image protocol is not enabled")
 	}
@@ -152,9 +65,9 @@ func planImageRequestWithModel(c *imageCanonical, cfg *dto.ImageProtocolConfig, 
 	case dto.ImageUpstreamARK:
 		return planSeedream(upstreamView, cfg)
 	case dto.ImageUpstreamOpenAI:
-		return planGPTImage2(upstreamView, cfg)
+		return planGPTImage2(ctx, upstreamView, cfg)
 	case dto.ImageUpstreamGemini:
-		return planGemini(upstreamView, upstreamModel)
+		return planGemini(ctx, upstreamView, upstreamModel)
 	default:
 		return nil, fmt.Errorf("unknown image upstream %q", cfg.Upstream)
 	}
@@ -196,7 +109,7 @@ func planSeedream(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, 
 }
 
 // planGPTImage2：文生图走主端点（不收 image）；图生图走从端点，编码成 multipart 文件。
-func planGPTImage2(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, error) {
+func planGPTImage2(ctx context.Context, c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, error) {
 	if !c.hasImage() {
 		upstream := c.clone()
 		upstream.drop("image", "mask")
@@ -220,7 +133,10 @@ func planGPTImage2(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan,
 		}
 	}
 
-	ctx := context.Background()
+	// 垫图与 mask 共用同一个整批预算：两者串行，各给 90s 会把请求拖到三分钟。
+	ctx, cancel := context.WithTimeout(ctx, imageRefBatchTimeout)
+	defer cancel()
+
 	images, err := resolveImageRefs(ctx, c.imageRefs())
 	if err != nil {
 		return nil, err
@@ -252,7 +168,7 @@ func planGPTImage2(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan,
 // planGemini：单端点，模型与动词都在路径里。路径不读主端点——
 // 主端点前缀是 /v1，Gemini 的版本前缀是 /v1beta，从前者推导只能靠猜。
 // 版本取 model_setting，与 Gemini 原生渠道同一份配置。
-func planGemini(c *imageCanonical, upstreamModel string) (*imagePlan, error) {
+func planGemini(ctx context.Context, c *imageCanonical, upstreamModel string) (*imagePlan, error) {
 	model := strings.TrimSpace(upstreamModel)
 	if model == "" {
 		model = strings.TrimSpace(c.model())
@@ -279,7 +195,7 @@ func planGemini(c *imageCanonical, upstreamModel string) (*imagePlan, error) {
 		parts = append(parts, map[string]any{"text": prompt})
 	}
 	if len(refs) > 0 {
-		blobs, err := resolveImageRefs(context.Background(), refs)
+		blobs, err := resolveImageRefs(ctx, refs)
 		if err != nil {
 			return nil, err
 		}
@@ -393,196 +309,9 @@ func deriveEditPath(primary string) (string, error) {
 	return parsed.String(), nil
 }
 
-type imageBlob struct {
-	Data     []byte
-	MimeType string
-	Name     string
-}
-
-// resolveImageRef 把三种引用统一成字节。data URI 与裸 base64 是本地解码；
-// http(s) 一律下载，SSRF 防护在 validateImageRefURL 与连接层强制。
-func resolveImageRef(ctx context.Context, ref string) (imageBlob, error) {
-	ref = strings.TrimSpace(ref)
-
-	if strings.HasPrefix(ref, "data:") {
-		return decodeDataURI(ref)
-	}
-	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
-		return fetchImageRef(ctx, ref)
-	}
-	if decoded, err := base64.StdEncoding.DecodeString(ref); err == nil && len(decoded) > 0 {
-		mimeType, err := detectImageMimeType(decoded, "")
-		if err != nil {
-			return imageBlob{}, err
-		}
-		return imageBlob{Data: decoded, MimeType: mimeType, Name: "image"}, nil
-	}
-	return imageBlob{}, fmt.Errorf("unrecognised image reference %q", truncateForLog(ref))
-}
-
-func decodeDataURI(ref string) (imageBlob, error) {
-	comma := strings.IndexByte(ref, ',')
-	if comma < 0 || !strings.HasSuffix(ref[:comma], ";base64") {
-		return imageBlob{}, errors.New("data URI must be base64 encoded")
-	}
-	mimeType := strings.TrimSuffix(strings.TrimPrefix(ref[:comma], "data:"), ";base64")
-	decoded, err := base64.StdEncoding.DecodeString(ref[comma+1:])
-	if err != nil {
-		return imageBlob{}, fmt.Errorf("invalid data URI: %w", err)
-	}
-	if len(decoded) == 0 {
-		return imageBlob{}, errors.New("data URI is empty")
-	}
-	if len(decoded) > imageMaxRefBytes {
-		return imageBlob{}, fmt.Errorf("image exceeds %d bytes", imageMaxRefBytes)
-	}
-	if !strings.HasPrefix(mimeType, "image/") {
-		sniffed, sniffErr := detectImageMimeType(decoded, mimeType)
-		if sniffErr != nil {
-			return imageBlob{}, sniffErr
-		}
-		mimeType = sniffed
-	}
-	return imageBlob{Data: decoded, MimeType: mimeType, Name: "image"}, nil
-}
-
-func fetchImageRef(ctx context.Context, ref string) (imageBlob, error) {
-	parsed, err := url.Parse(ref)
-	if err != nil {
-		return imageBlob{}, fmt.Errorf("invalid image URL %q", truncateForLog(ref))
-	}
-	if err := validateImageRefURL(parsed); err != nil {
-		return imageBlob{}, err
-	}
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, ref, nil)
-	if err != nil {
-		return imageBlob{}, fmt.Errorf("invalid image URL %q", truncateForLog(ref))
-	}
-	request.Header.Set("Accept", "image/*")
-	resp, err := imageRefHTTPClient.Do(request)
-	if err != nil {
-		return imageBlob{}, fmt.Errorf("download image: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return imageBlob{}, fmt.Errorf("download image: upstream returned %d", resp.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(imageMaxRefBytes)+1))
-	if err != nil {
-		return imageBlob{}, fmt.Errorf("read image: %w", err)
-	}
-	if len(data) > imageMaxRefBytes || len(data) == 0 {
-		return imageBlob{}, fmt.Errorf("image exceeds %d bytes or is empty", imageMaxRefBytes)
-	}
-	mimeType, err := detectImageMimeType(data, resp.Header.Get("Content-Type"))
-	if err != nil {
-		return imageBlob{}, err
-	}
-	return imageBlob{Data: data, MimeType: mimeType, Name: "image"}, nil
-}
-
-// resolveImageRefs 并发下载多张垫图（上限 imageRefDownloadWorkers）并保持客户端顺序；
-// 任一失败取消其余，避免为一个必然失败的请求继续下载剩下的图。
-func resolveImageRefs(ctx context.Context, refs []string) ([]imageBlob, error) {
-	if len(refs) == 0 {
-		return nil, nil
-	}
-	if len(refs) == 1 {
-		blob, err := resolveImageRef(ctx, refs[0])
-		if err != nil {
-			return nil, fmt.Errorf("image reference: %w", err)
-		}
-		return []imageBlob{blob}, nil
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	blobs := make([]imageBlob, len(refs))
-	sem := make(chan struct{}, imageRefDownloadWorkers)
-	var wg sync.WaitGroup
-	var once sync.Once
-	var firstErr error
-
-	for index, ref := range refs {
-		index, ref := index, ref
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-			defer func() { <-sem }()
-
-			blob, err := resolveImageRef(ctx, ref)
-			if err != nil {
-				once.Do(func() {
-					firstErr = fmt.Errorf("image reference: %w", err)
-					cancel()
-				})
-				return
-			}
-			blobs[index] = blob
-		}()
-	}
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	return blobs, nil
-}
-
-// validateImageRefURL 是 SSRF 第一道闸：只允许 http(s)，host 必须可解析且不含内网地址。
-// 重定向每一跳都会再走一次（见 imageRefHTTPClient.CheckRedirect）。
-func validateImageRefURL(target *url.URL) error {
-	if target == nil {
-		return errors.New("image reference URL is nil")
-	}
-	switch strings.ToLower(target.Scheme) {
-	case "http", "https":
-	default:
-		return fmt.Errorf("image reference scheme %q is not allowed", target.Scheme)
-	}
-	host := strings.TrimSpace(target.Hostname())
-	if host == "" {
-		return errors.New("image reference URL has no host")
-	}
-	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
-		return fmt.Errorf("image reference host %q is not allowed", host)
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return imageRefAllowAddress(ip)
-	}
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return fmt.Errorf("image reference host %q cannot be resolved: %w", host, err)
-	}
-	for _, ip := range ips {
-		if err := imageRefAllowAddress(ip); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func isPrivateIP(ip net.IP) bool {
-	if ip == nil {
-		return true
-	}
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
-		return true
-	}
-	for _, block := range imageRefBlockedCIDRs {
-		if block.Contains(ip) {
-			return true
-		}
-	}
-	return false
-}
+// imageReferenceFetchError 标记「请求本身合法，失败发生在网关到图片源的链路上」。
+// 上层据此回 502 并保留重试机会；400 只留给客户端能自己修正的错误（URL 非法、
+// 指向内网、目标明确 4xx、内容不是图片）。
 
 func inlineBareBase64(ref string) string {
 	if strings.HasPrefix(ref, "data:") || strings.HasPrefix(ref, "http://") ||
@@ -603,7 +332,17 @@ func inlineBareBase64(ref string) string {
 // encodeImageForm 把 canonical 的文本字段 + 图片字节写成 multipart。
 // 单图用 image，多图用 image[]（OpenAI edits 约定）。
 func encodeImageForm(c *imageCanonical, images []imageBlob, mask *imageBlob) ([]byte, string, error) {
+	// 8 张几 MB 的图加上 multipart 头，不预分配会让 bytes.Buffer 反复翻倍扩容，
+	// 峰值内存近乎翻番。
+	payloadBytes := 0
+	for _, blob := range images {
+		payloadBytes += len(blob.Data)
+	}
+	if mask != nil {
+		payloadBytes += len(mask.Data)
+	}
 	var buf bytes.Buffer
+	buf.Grow(payloadBytes + 4096)
 	writer := multipart.NewWriter(&buf)
 
 	for key, value := range c.fields {
@@ -681,11 +420,4 @@ func extensionForMime(mimeType string) string {
 	default:
 		return ".bin"
 	}
-}
-
-func truncateForLog(value string) string {
-	if len(value) > 64 {
-		return value[:64] + "…"
-	}
-	return value
 }

@@ -2,6 +2,7 @@ package advancedcustom
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"mime/multipart"
@@ -117,7 +118,12 @@ func (a *Adaptor) prepareImageProtocol(
 		return nil, true, err
 	}
 
-	plan, err := planImageRequestWithModel(canonical, cfg, info.UpstreamModelName)
+	// 请求 ctx：客户端断开时，正在下载的垫图不再继续跑满整批预算。
+	requestCtx := context.Background()
+	if c.Request != nil {
+		requestCtx = c.Request.Context()
+	}
+	plan, err := planImageRequestWithModel(requestCtx, canonical, cfg, info.UpstreamModelName)
 	if err != nil {
 		return nil, true, err
 	}
@@ -264,6 +270,16 @@ func (a *Adaptor) doImageProtocolRequest(
 		return nil, false, nil
 	}
 	if err != nil {
+		// 垫图下载失败是网关到图片源之间的问题，不是客户端把请求写错了：
+		// 回 502 且不跳过重试，换个时间重发通常就能过。
+		var fetchErr *imageReferenceFetchError
+		if errors.As(err, &fetchErr) {
+			return nil, true, types.NewOpenAIError(
+				err,
+				types.ErrorCodeBadResponse,
+				http.StatusBadGateway,
+			)
+		}
 		return nil, true, types.NewOpenAIError(
 			err,
 			types.ErrorCodeInvalidRequest,

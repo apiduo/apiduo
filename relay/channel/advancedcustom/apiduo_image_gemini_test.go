@@ -1,6 +1,7 @@
 package advancedcustom
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -41,7 +42,7 @@ func TestPlanGeminiTextToImage(t *testing.T) {
 	canonical.fields["prompt"] = "a cat"
 	canonical.fields["size"] = "1024x1024"
 
-	plan, err := planGemini(canonical, "gemini-2.5-flash-image")
+	plan, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image")
 	if err != nil {
 		t.Fatalf("planGemini: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestPlanGeminiImageToImageKeepsOrder(t *testing.T) {
 	canonical.fields["aspect_ratio"] = "16:9"
 	canonical.fields["image_size"] = "2k"
 
-	plan, err := planGemini(canonical, "gemini-3-pro-image-preview")
+	plan, err := planGemini(context.Background(), canonical, "gemini-3-pro-image-preview")
 	if err != nil {
 		t.Fatalf("planGemini: %v", err)
 	}
@@ -106,7 +107,7 @@ func TestPlanGeminiRejectsUnknownImageSize(t *testing.T) {
 	canonical.fields["prompt"] = "a cat"
 	canonical.fields["image_size"] = "8K"
 
-	if _, err := planGemini(canonical, "gemini-2.5-flash-image"); err == nil {
+	if _, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image"); err == nil {
 		t.Fatal("image_size 8K must be rejected")
 	}
 }
@@ -116,7 +117,7 @@ func TestPlanGeminiUnknownSizeIsLeftToUpstream(t *testing.T) {
 	canonical.fields["prompt"] = "a cat"
 	canonical.fields["size"] = "999x999"
 
-	plan, err := planGemini(canonical, "gemini-2.5-flash-image")
+	plan, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image")
 	if err != nil {
 		t.Fatalf("planGemini: %v", err)
 	}
@@ -341,7 +342,7 @@ func TestPlanGeminiKeepsNamespacedModelSegments(t *testing.T) {
 	canonical := newImageCanonical()
 	canonical.fields["model"] = "google/gemini-nano-banana-2.1"
 	canonical.fields["prompt"] = "a cat"
-	plan, err := planGemini(canonical, "google/gemini-nano-banana-2.1")
+	plan, err := planGemini(context.Background(), canonical, "google/gemini-nano-banana-2.1")
 	if err != nil {
 		t.Fatalf("planGemini: %v", err)
 	}
@@ -438,7 +439,7 @@ func TestPlanGeminiRejectsMask(t *testing.T) {
 	canonical.fields["image"] = "data:image/png;base64,aGVsbG8="
 	canonical.fields["mask"] = "data:image/png;base64,bWFzaw=="
 
-	_, err := planGemini(canonical, "banana")
+	_, err := planGemini(context.Background(), canonical, "banana")
 	if err == nil {
 		t.Fatal("mask must be rejected instead of silently dropped")
 	}

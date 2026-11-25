@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"mime/multipart"
 	"net"
@@ -14,10 +16,14 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/gin-gonic/gin"
 )
 
 var protocolTestPNG = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
@@ -195,7 +201,7 @@ func TestImageRefRejectsNonPublicAddresses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", raw, err)
 		}
-		if err := validateImageRefURL(parsed); err == nil {
+		if err := validateImageRefURL(context.Background(), parsed); err == nil {
 			t.Fatalf("%s must be rejected", raw)
 		}
 	}
@@ -240,8 +246,17 @@ func TestImageRefDownloadRevalidatesRedirects(t *testing.T) {
 
 func TestImageRefsDownloadConcurrentlyAndKeepOrder(t *testing.T) {
 	allowLoopbackForTest(t)
-	const count = 8
+	const count = imageRefDownloadWorkers * 2
+	var inFlight, peak atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := inFlight.Add(1)
+		for {
+			observed := peak.Load()
+			if current <= observed || peak.CompareAndSwap(observed, current) {
+				break
+			}
+		}
+		defer inFlight.Add(-1)
 		time.Sleep(120 * time.Millisecond)
 		w.Header().Set("Content-Type", "image/png")
 		// 末尾带索引，用来验证写回顺序而不是完成顺序。
@@ -252,7 +267,8 @@ func TestImageRefsDownloadConcurrentlyAndKeepOrder(t *testing.T) {
 
 	refs := make([]string, count)
 	for i := range refs {
-		refs[i] = fmt.Sprintf("%s/a.png?i=%d", server.URL, i)
+		// 单字符编码：两位数索引会让 index[0] 与 i 不再一一对应。
+		refs[i] = fmt.Sprintf("%s/a.png?i=%c", server.URL, 'A'+i)
 	}
 	started := time.Now()
 	blobs, err := resolveImageRefs(context.Background(), refs)
@@ -264,11 +280,15 @@ func TestImageRefsDownloadConcurrentlyAndKeepOrder(t *testing.T) {
 		t.Fatalf("expected %d blobs, got %d", count, len(blobs))
 	}
 	for i, blob := range blobs {
-		if tail := blob.Data[len(blob.Data)-1]; tail != byte('0'+i) {
+		if tail := blob.Data[len(blob.Data)-1]; tail != byte('A'+i) {
 			t.Fatalf("blob %d out of order: tail=%q", i, tail)
 		}
 	}
-	// 4 并发 × 120ms = 2 轮 ≈ 240ms；全串行要 960ms。
+	// 峰值在飞数才是并发度的直接证据：只看墙钟的话，4 路也能在阈值内跑完。
+	if got := peak.Load(); got < int32(imageRefDownloadWorkers) {
+		t.Fatalf("expected at least %d concurrent downloads, peak was %d", imageRefDownloadWorkers, got)
+	}
+	// 8 路 × 120ms，16 张两轮 ≈ 240ms；全串行要 1.92s。
 	if elapsed > 700*time.Millisecond {
 		t.Fatalf("downloads look serial: %s", elapsed)
 	}
@@ -947,5 +967,168 @@ func TestEncodeImageResponseRoundTripsExtras(t *testing.T) {
 	}
 	if _, exists := entry["b64_json"]; exists {
 		t.Error("b64_json must not appear once it was replaced by a url")
+	}
+}
+
+func TestImageRefRetriesOnceOnConnectionDrop(t *testing.T) {
+	allowLoopbackForTest(t)
+	var hits atomic.Int32
+	// 声明 1024 字节却只写 8 字节：客户端读 body 时拿到 unexpected EOF。
+	// 用「半个响应」而不是掐连接，是为了避开 net/http 对幂等 GET 的内部重试，
+	// 让 hits 只反映我们自己的重试次数。
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		if hits.Add(1) == 1 {
+			w.Header().Set("Content-Length", "1024")
+			_, _ = w.Write(protocolTestPNG)
+			return
+		}
+		_, _ = w.Write(protocolTestPNG)
+	}))
+	server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	defer server.Close()
+
+	blob, err := fetchImageRef(context.Background(), server.URL+"/a.png")
+	if err != nil {
+		t.Fatalf("a dropped connection must be retried once: %v", err)
+	}
+	if got := hits.Load(); got != 2 {
+		t.Fatalf("expected 2 attempts, got %d", got)
+	}
+	if !bytes.Equal(blob.Data, protocolTestPNG) {
+		t.Fatalf("payload mismatch: %q", blob.Data)
+	}
+}
+
+func TestImageRefStatusErrorsAreNotRetried(t *testing.T) {
+	allowLoopbackForTest(t)
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	if _, err := fetchImageRef(context.Background(), server.URL+"/a.png"); err == nil {
+		t.Fatal("404 must fail")
+	}
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("4xx must not be retried, got %d attempts", got)
+	}
+}
+
+// 2026-11-25 线上事故的回归闸：端到端预算必须大于首字节判据，整批预算不能
+// 小于单张预算，否则「慢但能下」的多图请求会再次整批 400。
+func TestImageRefTimeoutBudgetsStayOrdered(t *testing.T) {
+	if imageURLFetchTimeout <= imageURLHeaderTimeout {
+		t.Fatalf("end-to-end %s must exceed header budget %s", imageURLFetchTimeout, imageURLHeaderTimeout)
+	}
+	if imageRefBatchTimeout < imageURLFetchTimeout {
+		t.Fatalf("batch budget %s must cover a single image %s", imageRefBatchTimeout, imageURLFetchTimeout)
+	}
+}
+
+func TestImageRefStopsAfterMaxAttempts(t *testing.T) {
+	allowLoopbackForTest(t)
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Length", "1024")
+		_, _ = w.Write(protocolTestPNG)
+	}))
+	server.Config.ErrorLog = log.New(io.Discard, "", 0)
+	defer server.Close()
+
+	if _, err := fetchImageRef(context.Background(), server.URL+"/a.png"); err == nil {
+		t.Fatal("persistent drops must fail")
+	}
+	if got := hits.Load(); got != int32(imageRefFetchAttempts) {
+		t.Fatalf("expected %d attempts, got %d", imageRefFetchAttempts, got)
+	}
+}
+
+// 502 分流的判据在错误类型上：网关侧（网络 / 5xx / 408 / 429）才允许客户端重试，
+// 目标明确 4xx 说明是 URL 本身不行，仍归 400。
+func TestImageReferenceFetchErrorClassification(t *testing.T) {
+	allowLoopbackForTest(t)
+	cases := []struct {
+		name        string
+		status      int
+		gatewaySide bool
+	}{
+		{"service unavailable is gateway side", http.StatusServiceUnavailable, true},
+		{"bad gateway is gateway side", http.StatusBadGateway, true},
+		{"rate limited is gateway side", http.StatusTooManyRequests, true},
+		{"request timeout is gateway side", http.StatusRequestTimeout, true},
+		{"not found is client side", http.StatusNotFound, false},
+		{"forbidden is client side", http.StatusForbidden, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+			}))
+			defer server.Close()
+
+			_, err := downloadImageRef(context.Background(), imageRefHTTPClient, server.URL+"/a.png")
+			if err == nil {
+				t.Fatal("expected failure")
+			}
+			var fetchErr *imageReferenceFetchError
+			if got := errors.As(err, &fetchErr); got != tc.gatewaySide {
+				t.Fatalf("gateway-side=%v, want %v (err=%v)", got, tc.gatewaySide, err)
+			}
+		})
+	}
+
+	// 端口直接关掉：连接失败必须算网关侧。
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	target := dead.URL + "/a.png"
+	dead.Close()
+
+	_, err := downloadImageRef(context.Background(), imageRefHTTPClient, target)
+	if err == nil {
+		t.Fatal("closed port must fail")
+	}
+	var fetchErr *imageReferenceFetchError
+	if !errors.As(err, &fetchErr) {
+		t.Fatalf("connection failure must be gateway-side: %v", err)
+	}
+}
+
+// 下载失败要让客户端看到 502 且保留重试；不能和「请求写错了」共用 400。
+func TestDoImageProtocolRequestMapsFetchFailureToBadGateway(t *testing.T) {
+	allowLoopbackForTest(t)
+	gin.SetMode(gin.TestMode)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer upstream.Close()
+
+	info := apiduoImageTestInfo()
+	info.RelayMode = relayconstant.RelayModeImagesGenerations
+
+	body := fmt.Sprintf(`{"model":"m","prompt":"p","image":"%s/a.png"}`, upstream.URL)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	adaptor := &Adaptor{}
+	_, handled, err := adaptor.doImageProtocolRequest(c, info)
+	if !handled {
+		t.Fatal("generations request must be handled by the image protocol")
+	}
+	var apiErr *types.NewAPIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("must be an API error, got %T: %v", err, err)
+	}
+	if apiErr.StatusCode != http.StatusBadGateway {
+		t.Fatalf("download failure must be 502, got %d (%v)", apiErr.StatusCode, err)
+	}
+	if types.IsSkipRetryError(apiErr) {
+		t.Fatal("gateway-side failure must stay retryable")
 	}
 }
