@@ -193,12 +193,14 @@ func finishImageNativeResponse(
 	decoded = deliverableImages(decoded, upstream)
 	decoded = decoded.withEstimatedUsage(info)
 	alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL)
-	out, err := encodeImageResponse(decoded)
+	_, upstreamReported := decoded.usageFromUpstream()
+	usage := decoded.billedUsageWith(info)
+	out, err := encodeImageResponse(decoded, usage, upstreamReported)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
 	writeImageJSON(c, out)
-	return decoded.billedUsageWith(info), nil
+	return usage, nil
 }
 
 // usageFromUpstream 取上游声明的 token 用量。两种形状：
@@ -336,7 +338,7 @@ func decodeImageForUpstream(raw []byte, upstream string, fallbackCreated int64) 
 
 // encodeImageResponse 把 canonical 还原成 images 形状。Extras 原样带回，
 // usage 是计费依据，丢一次就等于丢一次收入。
-func encodeImageResponse(response *imageResponse) ([]byte, error) {
+func encodeImageResponse(response *imageResponse, usage *dto.Usage, upstreamReported bool) ([]byte, error) {
 	envelope := make(map[string]any, len(response.Extras)+2)
 	maps.Copy(envelope, response.Extras)
 	envelope["created"] = response.Created
@@ -353,7 +355,32 @@ func encodeImageResponse(response *imageResponse) ([]byte, error) {
 		items = append(items, entry)
 	}
 	envelope["data"] = items
+	envelope["usage"] = imageUsageEnvelope(envelope["usage"], usage, upstreamReported)
 	return json.Marshal(envelope)
+}
+
+// imageUsageEnvelope 返回 OpenAI Images 形状的 usage。上游报了 token 就原样
+// 保留它的对象；只报了张数（ark 的 {generated_images: 1}）时补上本次结算的
+// token，让回包与账本说同一组数字。
+func imageUsageEnvelope(existing any, usage *dto.Usage, upstreamReported bool) map[string]any {
+	reported, _ := existing.(map[string]any)
+	merged := make(map[string]any, len(reported)+6)
+	maps.Copy(merged, reported)
+	if upstreamReported || usage == nil {
+		return merged
+	}
+	merged["input_tokens"] = usage.PromptTokens
+	merged["output_tokens"] = usage.CompletionTokens
+	merged["total_tokens"] = usage.TotalTokens
+	merged["input_tokens_details"] = map[string]any{
+		"text_tokens":  usage.PromptTokensDetails.TextTokens,
+		"image_tokens": usage.PromptTokensDetails.ImageTokens,
+	}
+	merged["output_tokens_details"] = map[string]any{
+		"text_tokens":  usage.CompletionTokenDetails.TextTokens,
+		"image_tokens": usage.CompletionTokenDetails.ImageTokens,
+	}
+	return merged
 }
 
 // alignImageCarriers 让 data[] 的载体与客户端要的一致。

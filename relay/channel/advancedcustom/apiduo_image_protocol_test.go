@@ -947,7 +947,7 @@ func TestEncodeImageResponseRoundTripsExtras(t *testing.T) {
 		}},
 		Extras: map[string]any{"usage": map[string]any{"total_tokens": 7}},
 	}
-	encoded, err := encodeImageResponse(response)
+	encoded, err := encodeImageResponse(response, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,6 +967,47 @@ func TestEncodeImageResponseRoundTripsExtras(t *testing.T) {
 	}
 	if _, exists := entry["b64_json"]; exists {
 		t.Error("b64_json must not appear once it was replaced by a url")
+	}
+}
+
+// 上游只报张数时，回包要补上本次结算的 token，否则「响应说 generated_images、
+// 账单按 196 token 收」会让人以为计费口径不一致。
+func TestEncodeImageResponseFillsEstimatedTokens(t *testing.T) {
+	response := &imageResponse{
+		Created: 1,
+		Data:    []imageResponseItem{{URL: "https://cdn.example.com/a.png"}},
+		Extras:  map[string]any{"usage": map[string]any{"generated_images": 1}},
+	}
+	usage := &dto.Usage{
+		PromptTokens:           9,
+		CompletionTokens:       196,
+		TotalTokens:            205,
+		PromptTokensDetails:    dto.InputTokenDetails{TextTokens: 9},
+		CompletionTokenDetails: dto.OutputTokenDetails{ImageTokens: 196},
+	}
+
+	encoded, err := encodeImageResponse(response, usage, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Usage map[string]any `json:"usage"`
+	}
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Usage["generated_images"] != float64(1) {
+		t.Errorf("upstream generated_images lost: %#v", envelope.Usage)
+	}
+	if envelope.Usage["input_tokens"] != float64(9) || envelope.Usage["output_tokens"] != float64(196) {
+		t.Errorf("token fields missing: %#v", envelope.Usage)
+	}
+	if envelope.Usage["total_tokens"] != float64(205) {
+		t.Errorf("total = %#v", envelope.Usage["total_tokens"])
+	}
+	details, _ := envelope.Usage["output_tokens_details"].(map[string]any)
+	if details["image_tokens"] != float64(196) {
+		t.Errorf("img_o missing: %#v", envelope.Usage)
 	}
 }
 
