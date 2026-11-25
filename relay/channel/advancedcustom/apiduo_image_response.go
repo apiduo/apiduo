@@ -46,6 +46,19 @@ type imageResponse struct {
 	// Usage 只有 Gemini 上游提供。它既是账本口径（billedUsage），
 	// 也是按模态计价（img_o）的唯一来源。
 	Usage *imageUsageSummary
+	// fallbackUsage 是本次请求的本地下界估算（relay 层算好挂在 RelayInfo 上）。
+	// 上游不给 usage 时用它，保证回包 usage 与账本同源。
+	fallbackUsage *dto.Usage
+}
+
+// withEstimatedUsage attaches the request's local estimate. It returns the
+// response unchanged when the relay layer produced none, which happens for
+// models without a published token table.
+func (r *imageResponse) withEstimatedUsage(info *common.RelayInfo) *imageResponse {
+	if r != nil && info != nil {
+		r.fallbackUsage = info.EstimatedImageUsage
+	}
+	return r
 }
 
 // imageUsageSummary 是 Gemini usageMetadata 里允许出网关的字段。
@@ -178,13 +191,14 @@ func finishImageNativeResponse(
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
 	decoded = deliverableImages(decoded, upstream)
+	decoded = decoded.withEstimatedUsage(info)
 	alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL)
 	out, err := encodeImageResponse(decoded)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
 	writeImageJSON(c, out)
-	return decoded.billedUsage(), nil
+	return decoded.billedUsageWith(info), nil
 }
 
 // usageFromUpstream 取上游声明的 token 用量。两种形状：
@@ -192,7 +206,9 @@ func finishImageNativeResponse(
 //   - OpenAI 形状：envelope 的 usage（ark 回 output_tokens/total_tokens；
 //     多数 b64 类接口不回，此时 ok=false）
 //
-// 拿不到就是拿不到——不要用图片张数去猜 token。
+// 拿不到时由 billedUsage 回退到本地下界估算（relay 层挂在 RelayInfo 上），
+// 没有估算才落 {1,0,1}。不要在这里按图片张数猜 token：这张表属于计费口径，
+// 不属于解码器。
 func (r *imageResponse) usageFromUpstream() (*dto.Usage, bool) {
 	if r == nil {
 		return nil, false
@@ -229,12 +245,25 @@ func (r *imageResponse) usageFromUpstream() (*dto.Usage, bool) {
 	return usage, true
 }
 
-// billedUsage 是账本口径：上游给了真实 token 就按 token，没给退回 {1,0,1}。
-// {1,0,1} 是按次计价的口径（UsePrice 时 token 不参与价格），也是
-// hasBillableUsage 的下限。按 token 计价的模型必须拿到真实用量，否则结算 0。
+// billedUsage 是账本口径：上游给了真实 token 就按 token；没给就用本地下界
+// 估算；两者都没有才退回 {1,0,1}。{1,0,1} 是按次计价的口径（UsePrice 时
+// token 不参与价格），也是 hasBillableUsage 的下限。按 token 计价的模型
+// 必须拿到真实用量或估算，否则结算 0。
 func (r *imageResponse) billedUsage() *dto.Usage {
+	return r.billedUsageWith(nil)
+}
+
+// billedUsageWith also marks the request when the local estimate is what the
+// ledger will use, so admin logs can separate estimates from reported usage.
+func (r *imageResponse) billedUsageWith(info *common.RelayInfo) *dto.Usage {
 	if usage, ok := r.usageFromUpstream(); ok {
 		return usage
+	}
+	if r.fallbackUsage != nil {
+		if info != nil {
+			info.ImageUsageEstimated = true
+		}
+		return r.fallbackUsage
 	}
 	return &dto.Usage{PromptTokens: 1, CompletionTokens: 0, TotalTokens: 1}
 }
@@ -585,6 +614,7 @@ func finishImageChatResponse(
 		return nil, types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 	}
 	decoded = deliverableImages(decoded, upstream)
+	decoded = decoded.withEstimatedUsage(info)
 	// 客户端要链接、上游只给 base64：先落存储换成地址，再走折形。
 	// 失败就保留 base64 —— 那正是「没配存储就透传」的行为。
 	if info != nil {
@@ -638,7 +668,7 @@ func finishImageChatResponse(
 		info.ImageRequestCount = count
 		info.UpdateImageCount(int64(count))
 	}
-	return decoded.billedUsage(), nil
+	return decoded.billedUsageWith(info), nil
 }
 
 const imageLargeResponseMaxBytes = 64 << 20
@@ -871,6 +901,7 @@ func finishImageGeminiResponse(c *gin.Context, resp *http.Response, info *common
 		}
 		return nil, types.NewOpenAIError(decodeErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 	}
+	decoded = decoded.withEstimatedUsage(info)
 	if info != nil {
 		// Gemini 只认 inlineData：这里强制 b64，不换链接。
 		alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, false)
@@ -888,7 +919,7 @@ func finishImageGeminiResponse(c *gin.Context, resp *http.Response, info *common
 		writeImageJSON(c, out)
 	}
 	markImageRequest(info, 1)
-	return decoded.billedUsage(), nil
+	return decoded.billedUsageWith(info), nil
 }
 
 // markImageRequest 让 BillingSession 把这条请求当图片请求处理。不设时，
@@ -968,6 +999,7 @@ func finishImageResponsesResponse(c *gin.Context, resp *http.Response, info *com
 	}
 	model := ""
 	decoded = deliverableImages(decoded, upstream)
+	decoded = decoded.withEstimatedUsage(info)
 	if info != nil {
 		model = info.OriginModelName
 		alignImageCarriers(c.Request.Context(), info.GetChannelID(), decoded, a.imageWantURL)
@@ -977,11 +1009,11 @@ func finishImageResponsesResponse(c *gin.Context, resp *http.Response, info *com
 		if markdownErr != nil {
 			return nil, types.NewOpenAIError(markdownErr, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 		}
-		if streamErr := writeResponsesImageStream(c, info, model, markdown, decoded.billedUsage()); streamErr != nil {
+		if streamErr := writeResponsesImageStream(c, info, model, markdown, decoded.billedUsageWith(info)); streamErr != nil {
 			return nil, streamErr
 		}
 		markImageRequest(info, 1)
-		return decoded.billedUsage(), nil
+		return decoded.billedUsageWith(info), nil
 	}
 	out, err := wrapResponsesResponse(decoded, model)
 	if err != nil {
@@ -989,7 +1021,7 @@ func finishImageResponsesResponse(c *gin.Context, resp *http.Response, info *com
 	}
 	writeImageJSON(c, out)
 	markImageRequest(info, 1)
-	return decoded.billedUsage(), nil
+	return decoded.billedUsageWith(info), nil
 }
 
 // writeResponsesImageStream 把完整 markdown 包成 Responses 的 SSE 事件序列。

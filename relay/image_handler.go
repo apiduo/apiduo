@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/imageusage"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relay/requestplugin"
@@ -21,6 +22,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// hasUpstreamImageUsage reports whether an adaptor's usage came from the
+// upstream response rather than from its single-unit placeholder. A real image
+// request never costs one token, so {prompt:1, completion:0, total:1} means the
+// upstream reported nothing.
+func hasUpstreamImageUsage(usage *dto.Usage) bool {
+	if usage == nil {
+		return false
+	}
+	return usage.PromptTokens > 1 || usage.CompletionTokens > 0 || usage.TotalTokens > 1
+}
 
 // outboundImageCounter is an image adaptor whose upstream body carries the
 // image count in a member other than n. OutboundImageCount reads the count
@@ -33,6 +45,8 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	info.InitChannelMeta(c)
 	info.BillingImageCount = nil
 	info.ImageRequestCount = 0
+	info.EstimatedImageUsage = nil
+	info.ImageUsageEstimated = false
 
 	imageReq, ok := info.Request.(*dto.ImageRequest)
 	if !ok {
@@ -189,6 +203,26 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		requestBody = body
 	}
 
+	// The estimate is computed before the request so an adaptor that gets no
+	// usage from upstream can put the same numbers in the response body it
+	// writes and in the usage it returns for billing. A channel alias may hide
+	// the model family, so fall back to the public name when the upstream one
+	// has no table.
+	estimateModel := request.Model
+	if !imageusage.Supported(estimateModel) {
+		estimateModel = info.OriginModelName
+	}
+	if estimate, ok := imageusage.ForRequest(
+		estimateModel,
+		request.Prompt,
+		request.Size,
+		request.Quality,
+		imageCount,
+		imageusage.CountInputImages(request.Images),
+	); ok {
+		info.EstimatedImageUsage = estimate.Usage()
+	}
+
 	if billingErr := service.PrepareImageBillingForRequest(c, info, imageCount); billingErr != nil {
 		return billingErr
 	}
@@ -234,6 +268,21 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
+	}
+
+	// An upstream that reports nothing leaves the adaptor's single-unit
+	// placeholder. Settle on the local lower-bound estimate instead, so a
+	// token-priced image model is not billed one token per image.
+	if usageObj, ok := usage.(*dto.Usage); ok {
+		if info.EstimatedImageUsage != nil && !hasUpstreamImageUsage(usageObj) {
+			usage = info.EstimatedImageUsage
+			info.ImageUsageEstimated = true
+		}
+	} else if info.EstimatedImageUsage != nil {
+		usage = info.EstimatedImageUsage
+		info.ImageUsageEstimated = true
+	} else {
+		usage = &dto.Usage{}
 	}
 
 	// The log content shows the settled count: the count the handler derived

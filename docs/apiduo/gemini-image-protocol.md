@@ -528,7 +528,7 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 |---|---|---|
 | Gemini | `usageMetadata` | `prompt = promptTokenCount`，`completion = totalTokenCount - promptTokenCount` |
 | ark / OpenAI 形状 | envelope 的 `usage` | `prompt = prompt_tokens/input_tokens`，`completion = completion_tokens/output_tokens` |
-| 都没有 | — | 退回 `{1,0,1}`（按次口径的下限，也是 `hasBillableUsage` 的下限） |
+| 都没有 | `pkg/imageusage` | 本地下界估算，标 `usage_estimated`；模型无公开 token 表才退回 `{1,0,1}`（按次口径的下限，也是 `hasBillableUsage` 的下限） |
 
 **`completion` 取 `total - prompt`，不取 `candidatesTokenCount`。** Gemini 的
 `totalTokenCount` 含 `thoughtsTokenCount`（思考按输出计费），用 candidates 会漏掉思考
@@ -590,6 +590,23 @@ model  prompt  completion  quota
 xr     7       1290        1297      ← 7 + 1290，按 token
 xx     1       0           10000     ← 0.02 × 500000，按次，未受 token 影响
 ```
+
+### 6.0 上游不返 usage 时的本地下界估算
+
+`pkg/imageusage` 按模型族查公开表，一律取官方口径的下界：尺寸未知按 1024×1024，
+quality 未知按 low，输入图按最小画布计，思考 token 记 0，结果向下取整。
+
+| 模型族 | 单张输出 token |
+|---|---|
+| `gpt-image-1` / `-1-mini` / `-1.5` | 1024²：low 272 / medium 1056 / high 4160；其余尺寸按面积外推 |
+| `gpt-image-2` | 1024²：low 196 / medium 1763（按官方价格比推算）/ high 7024 |
+| `gemini-2.5-flash-image` | 1290，与宽高比、分辨率无关 |
+| `gemini-3-pro-image*` | 1K/2K 1120，4K 2000 |
+
+估算只对表内模型生效，表外模型保留 `{1,0,1}`，不凭空造数。估算结果同源写入
+回包 `usage` 与账本；`CompletionTokenDetails.ImageTokens` 必须一起填，否则表达式
+的 `img_o` 为 0、整段输出按文本价收。日志 `other.usage_estimated=true` 标记本次
+结算走了估算，便于和真实上游对账后调表。
 
 ### 6.1 生产实测（2026-11-23，apiduo.cn 0.0.201，zenmux 真实上游）
 

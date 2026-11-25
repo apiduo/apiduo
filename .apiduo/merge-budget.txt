@@ -216,14 +216,137 @@
 # 退款为负且逐行 clamp）与 billing_job_test.go（重跑幂等、只有错误行的用户不出账）、
 # controller/billing_statement_test.go（默认客户投影，internal=1 且管理员才给内部字段）。
 
-# 2026-11-25 added 6996->7009：图片协议渠道的响应转存错位。
+# 2026-11-24 blocks 673->674 / added 6996->7015 / deleted 492->554：
+# /api/models 从「渠道类型 -> adaptor 宣称的模型名」改为模型广场的目录。
+# 1) router/api-router.go：上游那一行替换为 GetModelCatalog，并包进 1 个标记块
+#    （blocks +1 / added +5）。不能挪进新文件：同一路径同一方法的 handler 只能
+#    注册一次，改的必须是上游那一行。
+# 2) controller/model.go 删除 54 行：DashboardListModels、channelTypePluginModels、
+#    channelId2Models 的声明与构造段、两个 import。判据是实测：18 天 3 次调用
+#    全部 401（其中 1 次是本次复核自己发的），web/src 零引用，channelId2Models
+#    只被 DashboardListModels 读取。deleted +54 是净删除，不是替换上游实现。
+# 3) middleware/access_token_routes.go：GET /api/models 改 accessTokenAnyRule
+#    （与 /api/pricing 一致，公开接口不额外要求 scope）；顺带补 0.0.225 漏掉的
+#    billing/issue 两条规则 —— 路由覆盖测试在本轮之前就是红的，与新功能无关。
+# 4) 新增逻辑都在 apiduo 自有文件里（model/model_catalog.go、
+#    controller/model_catalog.go 与测试），不计合并面。
+
+# 2026-11-24 files 205->212 / blocks 674->688 / added 7015->7278 / deleted 554->568：
+# 模型广场的完整链路：目录接口 + 选型字段 + 后台可编辑 + 前端展示。
+# 1) model/model_meta.go（新计入）：6 列（context_length / max_output_tokens /
+#    input_modalities / output_modalities / capabilities / release_date）、枚举校验、
+#    Update 的 Select 白名单。字段清单必须与 Create/Update 同时改，否则「存得住但
+#    更新丢失」；校验放在 Insert/Update 入口，是唯一能覆盖两条写路径的位置。
+# 2) web/.../models 三个文件（types / model-form / drawer）：schema、默认值、回填、
+#    提交、抽屉挂接。150 行表单已抽到自有文件 model-catalog-fields.tsx，上游抽屉只留
+#    import 与一行组件。
+# 3) web/.../pricing 四处（lib/filters、hooks/use-filters、model-card、model-details）：
+#    搜索索引纳入能力标签与上下文，卡片与详情展示选型字段；展示组件与常量都在新文件
+#    （model-catalog-meta.tsx、lib/catalog.ts）。
+# 4) deleted +14 来自 lib/filters.ts 的 filterBySearch 被替换（原 14 行换成 20 行）。
+
+# 2026-11-24 files 212->222 / blocks 688->718 / added 7278->8094 / deleted 568->836：
+# 模型广场按已评审的产品原型重构展示层。原型比后端字段先行，所以这一轮几乎全在
+# 前端，且大部分是「上游写法被整体替换」，deleted +268 由此而来，不是删功能。
+# 1) 七个 pricing 文件整块替换：pricing-sidebar / model-card / pricing-toolbar /
+#    pricing-columns / index / hooks/use-filters / lib/filters。这些文件承载的
+#    信息架构（页头统计、场景标签、多选分面、卡片排布、三视图）与上游的表格化
+#    写法没有可复用的交集，逐行标注只会留下几百个一行块。块内首行写明合并方式。
+# 2) 新逻辑全部落在 apiduo 自有文件，不计合并面：lib/plaza.ts（场景判据与分面
+#    计数）、components/{plaza-hero,plaza-ticker,plaza-group-bar,plaza-view-toggle,
+#    capability-matrix,modality-icon}.tsx。判据是「这些文件在上游不存在」。
+# 3) 局部挂接点（各有明确理由，无法外移）：
+#    - components/search-bar.tsx：`/` 聚焦与 11px 输入框，三处各一块。
+#    - constants.ts：矩阵视图 + 两个新排序，三处各一块。
+#    - pricing-table.tsx + model-card-grid.tsx：表格最小宽度与两列断点。
+#    - lib/filters.ts 已整块，故模态/能力/场景的 AND-OR 判据在块内。
+#    - routes/pricing/index.tsx：view 枚举加 matrix，一行一块。
+#    - api.ts / types.ts / hooks/use-pricing-data.ts / model-details.tsx：
+#      目录接口的取数与 join，上一轮漏标，本轮补齐（未标记行清零）。
+#    - middleware/access_token_routes.go：GET /api/models 改公开规则，上一轮漏标。
+# 4) blocks +30 的构成：整文件块 7 + 上述局部块约 18 + 上一轮遗留补标 5。
+#    没有为了过闸门而合并标记块：一个块对应一处可独立回退的改动。
+# 5) 遗留：本文件之外仍有并行未完成功能（dashboard / access_token / log.go /
+#    relaykit error / nav-group）的未标记行，不属本次范围，未在本轮动它们。
+
+# 2026-11-24 files 222->223 / blocks 718->719 / added 8094->8104 / deleted 836->837：
+# 上一条的余量。system-settings/models/model-pricing-sheet.tsx 的价格预览用
+# `effectivePreview.effective` 直接构造报价行，预览响应缺 effective 时整块面板
+# 抛 TypeError 白屏（models 测试因此暴露）。守卫写在 useMemo 的判据上：它是唯一
+# 同时看得到预览响应与报价模式的位置，改成 `effectivePreview?.effective` 后，
+# 缺字段只意味着「不覆盖泳道」。files/blocks 各 +1 即此。
+#
+# 2026-11-24 files 223->225 / blocks 719->722 / added 8104->8438 / deleted 837->904：
+# 模型广场的第二轮：别名归并、价格变动、对比、矩阵列头筛选。
+# 1) 后端只加两个上游挂接点，逻辑全在 apiduo 自有文件：
+#    - model/main.go 一处 AutoMigrate（1 块，files +1），model_price_history 表。
+#    - controller/option.go 一处 RecordModelPriceSnapshot（1 块）。
+#    model/model_price_history.go 与测试、model_catalog.go 的新字段都不在上游。
+# 2) 前端 pricing 组件整块重写后的追加改动：卡片加对比勾选与价格徽章、矩阵列头
+#    可点、Sidebar/Toolbar 属性透传。这些文件已整块归 apiduo，块数不变。
+#    files +1 是 components/index.ts 首次出现标记（新组件导出）。
+# 3) deleted +67：卡片、侧栏、工具条的结构性重排把上游行替换掉，不是删功能。
+#    added +334 里约 120 行是三个新组件（compare-tray / compare-dialog /
+#    price-change-badge），它们不在上游，不计合并面；其余是既有整块文件内的扩写。
+# 4) 嵌套标记的问题：整文件大块不能包住文件里原有的 discount / async-usage 小块，
+#    markercheck 不支持嵌套，会错配 END。处理方式是从被整块收编的文件里删掉那些
+#    内层注释行（代码保留）——整个文件已声明归 apiduo，细分标记对合并没有信息量，
+#    留着只会让 CI 误判。
+#
+# 2026-11-24 added 8438->8445：端到端测试暴露的三处修复，全部在上游文件里。
+# 1) model/model_catalog.go 与 model/main.go 的改动不新增块：@ 前缀过滤复用既有
+#    函数体；迁移块与 growth 块贴齐（去掉块间空行，避免被算成未标记新增）。
+# 2) router/api-router.go：GET /api/models 补 DisableCache，与 /api/pricing 对齐。
+#    缺了它浏览器按启发式缓存目录，运营改完元数据广场不更新（E2E 实测复现）。
+# 3) web/.../model-card.tsx 的别名文案去掉重复计数（+1 1 个别名），在上游文件的
+#    整块里，不新增块。
+# 说明：model/main.go 仍有 1 行未标记（ClickHouse 的 use_time_ms 列），属并行功能，
+# 不是本轮引入。
+#
+# 2026-11-24 files 225->226 / blocks 722->724 / added 8445->8464 / deleted 904->905：
+# 降级测试逼出来的两处改动，都落在上游文件里。
+# 1) web/src/lib/query-client.ts（files +1 / blocks +2）：query 缓存原本对所有 500
+#    一律 navigate('/500')。目录是一次增强查询，它 500 时整页变成错误页，价格明明已经
+#    加载好了也看不到（E2E 复现）。加一个 meta.errorPage 开关，默认仍是接管整页，
+#    只有模型目录关掉 —— 默认行为不变，所以不是全局放宽。
+# 2) use-filters.ts 的 COMPARE_LIMIT（已在整文件块内，不新增块）：深链 ?compare= 塞 5 个
+#    时之前只截断「点击添加」的路径，地址栏能绕过 4 列上限。上限收到解析处。
+#    added +19 是这两处的注释与常量。
+#
+# 2026-11-24 files 226->229 / blocks 724->732 / added 8464->8597 / deleted 905->918：
+# 「筛选可分享、详情可定位」。三处新增标记面：
+# 1) routes/pricing/$modelId/index.tsx（files +1，blocks +1）：详情路由的 search schema
+#    要接受列表页的全部参数（scene/out/in/caps/compare/view=matrix），否则从详情返回时
+#    筛选被 zod 丢掉 —— 表现是「点返回回到未筛选的列表」。
+# 2) model-details.tsx（blocks +7）：文件头两个 import、ModelHeader 整组件（加了复制链接
+#    与抽屉里的「新页面打开」）、useModelShareUrl、props 的 standalone、两处传参。
+#    这个文件的其余改动（catalog 字段、async-usage）早有独立块，没有新增。
+# 3) use-filters.ts 仍是整文件块，场景与分面从组件 state 改成 URL state 不新增块。
+# added +133 / deleted +13 主要是 ModelHeader 的分享区和 use-filters 的状态派生。
+#
+# 2026-11-24 blocks 732->739 / added 8597->8747 / deleted 918->933：
+# 「分享与定位」后半段：页码与详情 tab 进 URL、卡片接入入口、对比弹窗可复制、价格徽章封顶。
+# 1) 不新增文件：改动都落在已有 apiduo 块里（use-filters 整文件、model-card 整文件、
+#    routes 的两处 schema 块）。blocks +7 来自三处新标记：
+#    - model-details.tsx：Tabs 受控（1）、handleTabChange（1）、tab props（已在既有块内）
+#    - model-card-grid.tsx：import 行（1）、currentPage 受控（1）
+#    - __tests__/model-cards.test.tsx：useState 导入（1）、两个新用例（1）、分页宿主（1）
+#    另 +1 是上面这些块收尾时的空行归并。
+# 2) 顺手修的两个真问题（都在 apiduo 自有文件，不计块）：
+#    - compare-tray.tsx 用 portal 挂到 body：外层 PageTransition 是 motion 容器（带
+#      transform），会把 fixed 变成相对它的绝对定位，浮条被推到视口外；
+#    - 浮条内层从 flex-wrap 改单行 + chips 横滚，避免「清空/对比」被挤到第二行。
+# 3) 场景标签 Reasoning -> Reasoning tasks：与能力分面同名会让用户点错（列表里两个
+#    「推理 2」）。只改文案，判据仍在 plaza.ts。
+#
+# 2026-11-25 added 8747->8760：图片协议渠道的响应转存错位。
 # 通用改写器（service.RewriteResponseArtifacts）在 DoResponse **之前**跑，而
 # defaultArtifactFieldNames 含 data，于是 Gemini 的 inlineData.data 被换成存储
 # 链接，解码层再把它当 base64 解析：images 回 b64_json=URL、chat 502 invalid b64_json。
 # 三处 handler（image / compatible / claude）各加一个 if 跳过（+2 行/处）与一行
 # 注释（+3），共 +13 行；判据与测试在 relay/common/apiduo_artifact_rewrite.go
 # （新文件，不计合并面）。不新增标记块：三处都落在既有的 artifact-rewrite 块内。
-files	205
-blocks	673
-added	7009
-deleted	492
+files	229
+blocks	739
+added	8760
+deleted	933

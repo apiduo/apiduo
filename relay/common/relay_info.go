@@ -194,6 +194,15 @@ type RelayInfo struct {
 	// ImageQuotaBeforeGroup is the frozen legacy estimate before request ratios.
 	ImageRequestCount     int
 	ImageQuotaBeforeGroup float64
+	// EstimatedImageUsage is the locally computed usage of this image request,
+	// nil when the model has no published token table. An adaptor that receives
+	// no upstream usage falls back to it so the response body and the ledger
+	// carry the same numbers.
+	EstimatedImageUsage *dto.Usage
+	// ImageUsageEstimated is set when settlement used EstimatedImageUsage
+	// because the upstream reported none. Admin logs surface it so estimates
+	// can be calibrated against real usage.
+	ImageUsageEstimated bool
 
 	Request dto.Request
 

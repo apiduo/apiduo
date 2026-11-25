@@ -632,6 +632,9 @@ type GeminiImageParameters struct {
 
 type GeminiImageResponse struct {
 	Predictions []GeminiImagePrediction `json:"predictions"`
+	// UsageMetadata is present on Gemini image predict responses and absent on
+	// Imagen ones. A pointer distinguishes "not reported" from all-zero counts.
+	UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
 }
 
 type GeminiImagePrediction struct {

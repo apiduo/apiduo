@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/imageusage"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -54,7 +55,15 @@ func patchGeminiZeroCompletionUsage(c *gin.Context, info *relaycommon.RelayInfo,
 	estimated := service.ResponseText2Usage(c, responseText, info.UpstreamModelName, usage.PromptTokens)
 	usage.CompletionTokens = estimated.CompletionTokens
 	if imageCount != 0 && usage.CompletionTokens == 0 {
-		usage.CompletionTokens = imageCount * 1400
+		// The chat entry has no image request to estimate from, so use the
+		// cheapest published image tier. The old 1400 sat between 2.5 Flash
+		// Image's 1290 and 3 Pro Image's 2000 without matching either.
+		perImage := imageusage.GeminiImageOutputTokens(info.UpstreamModelName, "")
+		if perImage == 0 {
+			perImage = imageusage.GeminiLowestImageOutputTokens
+		}
+		usage.CompletionTokens = imageCount * perImage
+		info.ImageUsageEstimated = true
 	}
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	// Settlement prefers BillingUsage, so fill the missing completion in the
@@ -584,18 +593,40 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	c.Writer.WriteHeader(resp.StatusCode)
 	_, _ = c.Writer.Write(jsonResponse)
 
-	// https://github.com/google-gemini/cookbook/blob/719a27d752aac33f39de18a8d3cb42a70874917e/quickstarts/Counting_Tokens.ipynb
-	// each image has fixed 258 tokens
-	const imageTokens = 258
-	generatedImages := len(openAIResponse.Data)
-
-	usage := &dto.Usage{
-		PromptTokens:     imageTokens * generatedImages, // each generated image has fixed 258 tokens
-		CompletionTokens: 0,                             // image generation does not calculate completion tokens
-		TotalTokens:      imageTokens * generatedImages,
+	// A predict response either reports usageMetadata or reports nothing at
+	// all. The old fallback charged the *input* tile cost (258 tokens) as
+	// prompt tokens and left completion at zero, which billed a token-priced
+	// image model almost nothing. Prefer upstream usage, then the request's
+	// lower-bound estimate, and only then the single-unit placeholder.
+	usage := imagePredictUsage(geminiResponse.UsageMetadata, info.EstimatedImageUsage, info.GetEstimatePromptTokens())
+	if usage == info.EstimatedImageUsage {
+		info.ImageUsageEstimated = true
 	}
-
+	// A predict response that produced no image must not settle the output side
+	// of the estimate: the upstream filtered every candidate, so only input
+	// cost remains.
+	if len(openAIResponse.Data) == 0 && usage == info.EstimatedImageUsage {
+		empty := *usage
+		empty.CompletionTokens = 0
+		empty.CompletionTokenDetails.ImageTokens = 0
+		empty.TotalTokens = empty.PromptTokens
+		usage = &empty
+	}
 	return usage, nil
+}
+
+// imagePredictUsage picks the usage of one image predict response: upstream,
+// then the local estimate, then the single-unit placeholder every image
+// settlement path understands.
+func imagePredictUsage(metadata *dto.GeminiUsageMetadata, estimate *dto.Usage, fallbackPromptTokens int) *dto.Usage {
+	if dto.HasGeminiUsageMetadataTokens(metadata) {
+		usage := buildUsageFromGeminiMetadata(metadata, fallbackPromptTokens)
+		return &usage
+	}
+	if estimate != nil {
+		return estimate
+	}
+	return &dto.Usage{PromptTokens: 1, TotalTokens: 1}
 }
 
 type GeminiModelsResponse struct {
