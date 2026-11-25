@@ -88,6 +88,8 @@ images 的 `data[]` 里没有任何好处，而客户端不写这个字段通常
 | b64 | url | 下载后重新编码（不依赖任何配置） |
 
 任一步失败都保留上游原样。响应侧 `url` 与 `b64_json` **互斥**：换掉一个就清掉另一个。
+`data[]` 只回 `url` / `b64_json` / `revised_prompt`：上游的 `size` / `model` / `size_applied`
+一律不回显（白名单见协议文档 §5.1）。
 
 ⚠️ **chat 入口没有这个开关。** `dto.GeneralOpenAIRequest.ResponseFormat` 是
 `{type, json_schema}` 结构体 —— chat 的 `response_format` 指的是 `json_object` / `text`，
@@ -96,7 +98,7 @@ images 的 `data[]` 里没有任何好处，而客户端不写这个字段通常
 
 ### 2.4 n 的口径
 
-**n 是计费张数，不是上游扇出指令。**
+**n 是计费张数，不是上游扇出指令。**（2026-11-25 确认保留这个口径，不改成按交付收费。）
 
 | 环节 | 值 |
 |---|---|
@@ -111,10 +113,12 @@ images 的 `data[]` 里没有任何好处，而客户端不写这个字段通常
 canonical 保留原值：`prepareImageProtocol` 随后读它决定 `imageRequestCount`。
 顺序颠倒会让「按 n 计费」退化成按 1 张计费。
 
+交付侧不保证 `data[]` 长度等于 n（上游一次只产出一张）；`n>1` 时按 n 计费、交付 1 张，
+这是既有口径，客服口径要写清。
+
 三条上游同一条规则：**上游收不到 n，也不会按 n 扇出**。Gemini 的 `generationConfig`
 只有 `responseModalities` 与 `imageConfig`，本来就没有 candidateCount；不因为它只出一张
 就在入口拒绝 n>1 —— 拒绝与「n 只计费」互相矛盾，且拒绝路径还要在预消费前额外挡一次。
-
 
 ## 3. 主端点的合法形状
 
@@ -148,7 +152,9 @@ canonical 保留原值：`prepareImageProtocol` 随后读它决定 `imageRequest
 | 把 `edit_path` 放在主配置面 | 它是 I4 的逃生阀，默认推导；露出来就会被当成第二个端点 |
 | 让 Gemini 的版本前缀从主端点推导（`/v1` 改成 `/v1beta`） | 两者不是同一维度；猜错是每次请求 404 |
 | 透传上游给的图片 URL | 链接 host 就是上游身份；非本域必须转存或降级 b64 |
-| 把 Gemini 的 `size` 做成像素下拉 | `aspectRatio` 是比例不是像素，映射必然有损；只映射确定档，其余交给上游 |
+| 按上游厂商写分支（域名、`DUCK_*` 常量、拼图/张数/放大上限、能力表） | 网关只认三种**报文形状**；厂商差异让上游自己报错，网关不预判、不截断、不降档 |
+| 为某个上游把参数改写成它「能接受」的值（降档、拆单、按上限截断） | 那是替用户做决定；协议层只做字段搬运与必要的单位换算 |
+| 把 Gemini 的 `size` 做成**客户端可见**的像素下拉 | `aspectRatio` 是比例不是像素，暴露成选项等于让客户端依赖本网关的方言。内部折算成 canonical 的 WxH 是另一回事——不折，ark 形状的上游会丢尺寸（`gemini-image-protocol.md` §3.3.1） |
 
 ## 5. 术语（一个词只指一件事）
 

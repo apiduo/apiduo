@@ -147,9 +147,75 @@ Gemini 不需要额外的主端点校验——它不读主端点。
 |---|---|
 | `contents` 最后一条 `role=user` 的 `parts[]` | 只取这一轮 |
 | `parts[].text`（多个） | `prompt`，按序拼接 |
-| `parts[].inlineData` | `image` = `data:<mime>;base64,<data>` |
-| `generationConfig.imageConfig.aspectRatio` | `aspect_ratio` |
-| `generationConfig.imageConfig.imageSize` | `image_size` |
+| `parts[].inlineData`（可多张） | `image` = `data:<mime>;base64,<data>`，**保序**；多张保持数组 |
+| `parts[].fileData`（`fileUri` 公网 http(s)） | `image` 里的一项 URL 引用，**与 inlineData 按 parts 顺序合并**；落不落成字节由脚本层按上游决定（§3.3.1） |
+| URL 形态的 `inlineData.data` | **400**：不是 Gemini 的语法，公网引用属于 `fileData.fileUri` |
+| `generationConfig.imageConfig.aspectRatio` | `aspect_ratio`（原值，只给 `planGemini`） |
+| `generationConfig.imageConfig.imageSize` | `image_size`（大写，只给 `planGemini`） |
+| `aspectRatio` / `imageSize` 任一 | **同时**折出 `size`（官方像素 WxH，见 §3.3.1） |
+
+#### 3.3.1 `imageConfig` 折成 `size`，载体只有 b64
+
+`aspect_ratio` / `image_size` 是 Gemini 方言，只有 `upstream=gemini` 的 `planGemini` 读它们。
+上游是 ark / openai 形状时（duck 就是 ark 形状），请求体只认 `size` —— 不折这一步，比例和
+档位会一起丢（2026-11-25 实测：`16:9 2K` 与 `1:1 4K` 都恒出 1254×1254）。
+
+折算口径（`geminiCanonicalSize`）：
+
+| 输入 | canonical `size` | 理由 |
+|---|---|---|
+| `aspectRatio` + `imageSize` | 官方像素表的精确 WxH（`16:9` + `2K` → `2752x1536`） | duck 的档位只能表方形、比例只能控比例；同时兑现两者只有 WxH 一种形态 |
+| 只有 `aspectRatio` | 该比例的 1K 档（`16:9` → `1376x768`） | `imageSize` 的官方默认值就是 1K |
+| 只有 `imageSize` | 该档位的 1:1（`2K` → `2048x2048`） | `aspectRatio` 的官方默认值就是 1:1 |
+| 比例不在官方表 | 按档位面积算，宽高取 8 的倍数 | 不因为网关枚举落后就 400 |
+| `imageSize` 不是 1K/2K/4K | **400** | 这个值上游也认不出，丢掉等于让客户端以为档位生效了 |
+| `aspectRatio` 不是 `a:b` | **400** | 同上 |
+
+官方像素表（1K/2K/4K × 14 个比例）来源：Google Gemini API image generation 文档的
+resolution 表。`16:9` 的 1K 是 1376×768，不是按 1024² 面积现算的 1368×768 ——
+与官方一致，同一份 `imageConfig` 在这条链路和 Google 直连上拿到同一组像素。
+
+`aspect_ratio` / `image_size` 原值仍保留在 canonical 里给 `planGemini` 用（从像素反推比例
+是有损的，表外比例会被算回去）。发给 ark / openai 形状的上游之前，`dropEntryDialect()`
+会把这两个键删掉：它们已经被 `size` 兑现，再下传就是「收下再丢」。
+
+**载体有两种：`inlineData` 的 base64 与 `fileData` 的公网 URL。** 两者按 `parts` 出现顺序
+合并进同一个 `image` 数组 —— 顺序就是语义，混合载体也不许先收完 b64 再补 URL。URL 要不要
+落成字节由脚本层按上游能力决定：
+
+| 上游 | URL 引用怎么处理 | 代价 |
+|---|---|---|
+| `ark`（duck） | `image` 字段原样带 URL | 零下载，上游自己抓 |
+| `openai` / `gemini` | 下载后转 data URI / inlineData | 单张 ≤20 MiB、整批 90s、首字节 10s；SSRF 三道闸（解析后校验、逐跳重定向重验、私网段拒绝）在下载层 |
+
+三级降级，不拒绝合法语法：
+
+| 情况 | 行为 |
+|---|---|
+| 上游收 URL | 直接折进 `image`，零下载 |
+| 上游只收 base64 | 网关下载后内联 |
+| 下载失败 / 超大 / 非图片 | 400 且 message 指明原因；网关到图源之间的问题（5xx / 超时）回 502 并保留重试 |
+
+**收下 URL 不等于收下任何字符串。** `gs://` / `file://` 一律 400（网关和上游都取不到），
+字面量内网地址（`127.0.0.1`、`10.x`、`localhost`…）也在折叠层就拒：ark 形状的上游会原样
+转发链接并自己抓取，不挡等于让客户端借上游网段做 SSRF。域名不在折叠层解析（纯函数不碰
+网络），解析后的校验在 `validateImageRefURL`。
+
+| 客户端给的 | 行为 |
+|---|---|
+| `parts[].inlineData` + `mimeType: image/*` + base64 | 收下，多张保序成数组 |
+| `parts[].fileData.fileUri` 是公网 http(s) | 收下，与 inlineData 按序合并 |
+| `fileData.fileUri` 是 `gs://` / `file://` / 空 / 无 host | **400**，message 指明只收公网 http(s) |
+| `fileData.fileUri` 是字面量内网地址 / `localhost` | **400**（SSRF） |
+| 一个 part 同时给 `inlineData` 与 `fileData` | **400**：一个 part 只有一个载体 |
+| `inlineData.data` 是 `http(s)://` / `gs://` / `data:` | **400**，message 指向 `fileData.fileUri` |
+| `inlineData.mimeType` 缺失 | **400** |
+| `inlineData.data` 为空 | **400** |
+| 非 `image/*` 的 `inlineData` / `fileData`（音频 / PDF） | 跳过：不参与图像语义，与 text part 里的无关内容同等对待 |
+
+旧版本（0.0.220 ~ 本改动前）把 `fileData` 一律 400 是方向错的：官方文档把「用网址传图」
+与 inlineData、File API 并列为三种输入方式，Vertex 还给了 15 MiB 的单文件上限与专用错误码
+`URL_RETRIEVAL_STATUS_UNSAFE`。拒绝合法语法会把 Gemini SDK / Vertex 封装客户端整类挡在门外。
 
 **流式载体按 `alt` 分派。** `:streamGenerateContent` 带 `?alt=sse` 回 SSE（Google SDK
 默认如此），不带则回官方默认的 JSON 数组流 `[{…}]`。一刀切回 SSE 会让 curl 与自研客户端
@@ -312,6 +378,17 @@ parts[3] inlineData    image/png  1376×768  （成品，字节不同）
 
 三者的脚本签名相同（`canonical → plan{path, contentType, body}`），入口不感知上游。
 
+**脚本只描述报文形状，不描述某家实现的行为。** 判据里不出现厂商名、域名、`DUCK_*` 这类
+常量，也不出现「4~9 张会拼 contact sheet」「最多几张」「放大系数」这类能力假设 ——
+那些是上游自己的事，它拒绝就按错误信封回，网关不预判、不截断、不替它降档。
+判断标准：把这条分支的注释换到任意一家同类上游身上，如果它变得没意义，那它就是过度适配。
+
+**multipart 的多图字段名是 `image[]`，不是重复的 `image`。** 这是 OpenAI 官方文档与官方
+SDK 的编码方式（数组参数在 multipart 里写成同名 `key[]` 重复）。只认裸 `image` 的上游
+（duck 的 openai 模式实测 400 `image is required`）属于实现不符合约定，网关侧不猜：
+改成重复 `image` 会让真正的 OpenAI edits 多图失效，两者只能二选一。接这类上游用它自己的
+ark 模式（单端点 JSON，`image` 直接是数组），或让上游接受 `image[]`。
+
 **回包解码必须按 upstream 分派。** `doImageProtocolResponse` 不能无条件用 OpenAI 解码器：
 gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到空 `data[]`，表现为
 「编码对、解码错」——日志里上游 200，客户端收到 502。唯一的按上游分叉点是
@@ -333,7 +410,7 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 `responseModalities` 只写 `IMAGE`（不带 `TEXT`）：这是唯一能压住「草稿图 + 成品图」
 两张的开关，见 §3.5 的四组实测。
 
-- `n` 不转发：上游恒出 1 张，`n` 只决定计费张数（`image-endpoint-contract.md` §2.4）。
+- `n` 不转发：上游恒出 1 张，计费张数按客户端请求的 n（`image-endpoint-contract.md` §2.4）。
 - `size` 只映射五个确定档（1:1 / 3:2 / 2:3 / 16:9 / 9:16），未知值交给上游默认。
 - `seed` / `style` / `quality` / `negative_prompt` / `mask` 丢弃并记 `other.dropped_params`。
 
@@ -345,10 +422,15 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 
 | 入口 | 允许出现的字段 | 必须丢弃 |
 |---|---|---|
-| images | `created` `data[].url` `data[].b64_json` `data[].revised_prompt` `usage?` | `candidates` `modelVersion` `promptFeedback` 以及一切上游附加字段 |
+| images | `created` `data[].url` `data[].b64_json` `data[].revised_prompt` `usage?` | `candidates` `modelVersion` `promptFeedback`、上游的 `size` / `model` / `size_applied` 以及一切上游附加字段 |
 | chat | `id` `object` `created` `model` `choices` `usage` | 同上 |
 | responses | `id` `object` `created_at` `status` `model` `output` `usage` | 同上 |
 | gemini | `candidates` `usageMetadata` `modelVersion` `promptFeedback` | `data` `created` `object` 以及 OpenAI 特有字段 |
+
+**`size` 不回显，尽管上游会回。** 它是上游自己重采样的结果（duck 把 1254² 放大到
+2048² 再回 `size=2048x2048`），回给客户端会被当成模型原生像素；要真实尺寸只能读图本身。
+同理，`model` 是上游身份，客户端的模型名由 `OriginModelName` 提供（§5.2），
+两者都不从上游报文里取。
 
 实现上不是「解析后原样编码」，而是「按入口的结构体重建」。现有
 `finishImageNativeResponse` 在解析失败时 `IOCopyBytesGracefully` 原样透传——这条兜底必须删除：
@@ -552,7 +634,7 @@ Gemini 入口发同一请求，分别打 `ark` 与 `openai`。
 
 | 用例 | 上游 | 断言 |
 |---|---|---|
-| T2-1 | ark | 上游收到主端点 JSON，`prompt`/`image` 形状正确；回包是 Gemini 形状 |
+| T2-1 | ark | 上游收到主端点 JSON，`prompt`/`image` 形状正确；`size` 来自 imageConfig 折算（`16:9`+`2K` → `2752x1536`），且**不带** `aspect_ratio`/`image_size`；回包是 Gemini 形状 |
 | T2-2 | openai（文生图） | 上游收到主端点 JSON，无 `image` |
 | T2-3 | openai（图生图） | 上游收到 edits multipart，文件 part 正确；回包是 Gemini 形状 |
 
@@ -656,10 +738,17 @@ N 次里部分成功怎么计费、怎么退、怎么拼 `data[]`、超时怎么
 所以 `n` 只做计费口径，不进上游：上游收到的是 1（或者干脆没有这个字段）。早期版本在
 入口拒绝 `n>1`，2026-11-23 起统一为「上游 1 张、按 n 计费」，拒绝分支已删除。
 
-### D4 为什么不把 `size` 做下拉？
+### D4 为什么 `imageConfig` 要折成 `size`？
 
-`aspectRatio` 是比例不是像素。只映射确定档，未知值交给上游默认；不做用户可见的映射表，
-因为映射表会随上游换代变化。
+`aspectRatio` 是比例、`imageSize` 是档位，两者合起来才等价于一个像素目标。上游是 gemini 时
+原样转发最好；但 ark / openai 形状的上游只认 `size`，而且档位只能表方形、比例只能控比例 ——
+要同时兑现两者，唯一形态是 WxH（§3.3.1）。
+
+表用 Google 的官方像素表，不是面积现算：客户端从 Gemini 迁过来，期望的就是表里的宽高
+（16:9 的 1K 是 1376×768）。表外比例才按面积算，不为枚举落后而 400。
+
+不做客户端可见的 `size` 下拉：那个字段在 Gemini 协议里不存在，暴露它等于让客户端依赖
+本网关的方言。
 
 ### D5 为什么删除透传兜底？
 

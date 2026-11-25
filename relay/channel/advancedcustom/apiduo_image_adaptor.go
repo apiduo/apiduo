@@ -140,22 +140,32 @@ func (a *Adaptor) prepareImageProtocol(
 		a.imageWantURL = false
 	}
 	a.imageUpstreamPath = plan.UpstreamPath
-	a.imageRequestCount = 1
-	// canonical 的字段来自 JSON 解码，number 一律是 float64；只有直接读表单的
-	// 路径才会是 int。只认 int 会让 /v1/images/generations 的 n 恒为 1，多图按一张计费。
-	// 注意 chat / responses / Gemini 原生三个入口的 n 不参与计费：它们的折叠函数
-	// 刻意不搬 n（对话参数不该混进图像请求），所以这里的张数恒为 1。
-	switch n := canonical.fields["n"].(type) {
+	// 计费张数只读客户端的 n（2026-11-25 用户确认：按 n 收，不改原有口径）。
+	// 上游一次只产出一张，n 不是扇出指令（planImageRequestWithModel 把它改写成 1）；
+	// chat / responses / Gemini 原生三个入口的折叠函数刻意不搬 n，所以那里恒为 1。
+	a.imageRequestCount = requestedImageCount(canonical)
+	return plan, true, nil
+}
+
+// requestedImageCount 是客户端声明的计费张数，不是扇出指令。
+// canonical 的字段来自 JSON 解码，number 一律是 float64；只有直接读表单的
+// 路径才会是 int。chat / responses / Gemini 原生三个入口的折叠函数刻意不搬 n
+// （对话参数不该混进图像请求），所以它们的计费张数恒为 1。
+func requestedImageCount(c *imageCanonical) int {
+	if c == nil {
+		return 1
+	}
+	switch n := c.fields["n"].(type) {
 	case int:
 		if n >= 1 {
-			a.imageRequestCount = n
+			return n
 		}
 	case float64:
 		if n >= 1 {
-			a.imageRequestCount = int(n)
+			return int(n)
 		}
 	}
-	return plan, true, nil
+	return 1
 }
 
 // requireFileStreamEdits 守住 edits 这扇门：OpenAI 的 /v1/images/edits 只接受

@@ -103,6 +103,9 @@ func decodeImageResponse(raw []byte) (*imageResponse, error) {
 		if revised, ok := object["revised_prompt"]; ok {
 			item.Extras["revised_prompt"] = revised
 		}
+		// 上游的 size / model / size_applied 一律不回显：白名单只有
+		// url / b64_json / revised_prompt（§5.1）。size 尤其不能回 —— 它是上游
+		// 自己重采样的结果，回给客户端会被当成模型原生像素。
 		result.Data = append(result.Data, item)
 	}
 	return result, nil
@@ -247,7 +250,7 @@ func intField(raw map[string]any, keys ...string) int {
 // deliverableImages 只保留「本次交付」的图。
 //
 // Gemini 的图片模型会先出一张草稿再出成品——实测
-// google/gemini-nano-banana-2.1 一次调用回两个 inlineData（中间那张是
+// Gemini 类上游一次调用可能回多帧 inlineData（前面的是草稿、最后是成品），
 // “refining the concept”，最后那张才是成品），加 candidateCount=1 也拦不住。
 // OpenAI 形状的入口里 n 就是交付张数：多给会与 n、与账本（按 n 预扣）对不上，
 // 所以只取最后一张。其它上游原样返回——ark / openai 的 n 是真扇出，不能裁。

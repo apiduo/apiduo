@@ -55,7 +55,7 @@ func planImageRequestWithModel(ctx context.Context, c *imageCanonical, cfg *dto.
 	// 上游一次只产出一张：n 是计费口径，不是扇出指令。网关不会按 n 发多次上游
 	// 请求，原样转发只会让上游重复出图（按次重复扣费）或直接 400。这里只改写
 	// 发往上游的副本，canonical 保留客户端原值 —— prepareImageProtocol 随后用
-	// 它决定计费张数。缺席保持缺席：默认值归上游，效果同样是 1 张。
+	// 它当计费上限（结算按实际交付收紧）。缺席保持缺席：默认值归上游，效果同样是 1 张。
 	upstreamView := c.clone()
 	if _, exists := upstreamView.fields["n"]; exists {
 		upstreamView.fields["n"] = 1
@@ -63,9 +63,9 @@ func planImageRequestWithModel(ctx context.Context, c *imageCanonical, cfg *dto.
 	// 历史值（seedream / gpt-image-2）在这里一并收敛，见 NormalizeImageUpstream。
 	switch dto.NormalizeImageUpstream(cfg.Upstream) {
 	case dto.ImageUpstreamARK:
-		return planSeedream(upstreamView, cfg)
+		return planARK(upstreamView, cfg)
 	case dto.ImageUpstreamOpenAI:
-		return planGPTImage2(ctx, upstreamView, cfg)
+		return planOpenAI(ctx, upstreamView, cfg)
 	case dto.ImageUpstreamGemini:
 		return planGemini(ctx, upstreamView, upstreamModel)
 	default:
@@ -73,12 +73,15 @@ func planImageRequestWithModel(ctx context.Context, c *imageCanonical, cfg *dto.
 	}
 }
 
-// planSeedream：单端点，带 image 即图生图。image 保持 str | list<str>，
-// JSON 编码。skill §3.7：seedream 的 mask 不转发；size 档位换算属方言，
+// planARK：单端点，带 image 即图生图。image 保持 str | list<str>，
+// JSON 编码。mask 在这个形状里没有通道，不转发；size 档位换算属方言，
 // 这里不擅自改写（会静默改变语义），留给显式配置。
-func planSeedream(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, error) {
+func planARK(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, error) {
 	upstream := c.clone()
 	upstream.drop("mask")
+	// Gemini 入口的 aspect_ratio / image_size 已在折叠层折成 size；再下传
+	// 就是让上游收下两个它不认的键（上游会忽略，客户端却以为尺寸生效）。
+	upstream.dropEntryDialect()
 
 	// 裸 base64 不是合法引用：补上 data URI 前缀，否则上游当 URL 解析并报
 	// invalid url specified（skill §3.5 实证）。
@@ -108,11 +111,12 @@ func planSeedream(c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, 
 	}, nil
 }
 
-// planGPTImage2：文生图走主端点（不收 image）；图生图走从端点，编码成 multipart 文件。
-func planGPTImage2(ctx context.Context, c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, error) {
+// planOpenAI：文生图走主端点（不收 image）；图生图走从端点，编码成 multipart 文件。
+func planOpenAI(ctx context.Context, c *imageCanonical, cfg *dto.ImageProtocolConfig) (*imagePlan, error) {
 	if !c.hasImage() {
 		upstream := c.clone()
 		upstream.drop("image", "mask")
+		upstream.dropEntryDialect()
 		body, err := upstream.bytes()
 		if err != nil {
 			return nil, err
@@ -153,7 +157,11 @@ func planGPTImage2(ctx context.Context, c *imageCanonical, cfg *dto.ImageProtoco
 		}
 	}
 
-	body, contentType, err := encodeImageForm(c, images, mask)
+	// multipart 分支同样不能带 Gemini 方言字段：encodeImageForm 会遍历全部字段，
+	// 不先删就会把 aspect_ratio / image_size 写进表单。
+	form := c.clone()
+	form.dropEntryDialect()
+	body, contentType, err := encodeImageForm(form, images, mask)
 	if err != nil {
 		return nil, err
 	}

@@ -1,8 +1,12 @@
 package advancedcustom
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
 )
@@ -498,5 +503,433 @@ func TestRealGeminiPairFixture(t *testing.T) {
 	}
 	if _, leaked := rebuilt["responseId"]; leaked {
 		t.Fatalf("responseId is upstream identity: %#v", rebuilt)
+	}
+}
+
+// ---------------------------------------------------------------- imageConfig → size
+
+// geminiImageConfigRequest 构造一条只带 imageConfig 的 Gemini 请求。
+func geminiImageConfigRequest(ratio, tier string) *dto.GeminiChatRequest {
+	config := map[string]any{}
+	if ratio != "" {
+		config["aspectRatio"] = ratio
+	}
+	if tier != "" {
+		config["imageSize"] = tier
+	}
+	raw, _ := json.Marshal(config)
+	return &dto.GeminiChatRequest{
+		Contents: []dto.GeminiChatContent{{
+			Role:  "user",
+			Parts: []dto.GeminiPart{{Text: "a cat"}},
+		}},
+		GenerationConfig: dto.GeminiChatGenerationConfig{ImageConfig: raw},
+	}
+}
+
+// size 是 canonical 的规范尺寸字段，ark / openai 形状的上游只认它。
+// 这里钉住官方像素表：换算法（面积/边长）之前先想清楚客户端预期。
+func TestCanonicalFromGeminiFoldsImageConfigToSize(t *testing.T) {
+	cases := []struct {
+		ratio string
+		tier  string
+		size  string
+	}{
+		{"16:9", "2K", "2752x1536"},
+		{"16:9", "4K", "5504x3072"},
+		{"9:16", "1K", "768x1376"},
+		{"21:9", "2K", "3168x1344"},
+		{"4:3", "", "1200x896"}, // imageSize 缺省 = 1K（官方默认）
+		{"", "4K", "4096x4096"}, // aspectRatio 缺省 = 1:1（官方默认）
+		{"1:1", "2K", "2048x2048"},
+		{"16 : 9", "2k", "2752x1536"}, // 空格 / 小写档位都要收敛
+		{"7:5", "2K", "2424x1728"},    // 表外比例：按档位面积算，取 8 的倍数
+	}
+	for _, tc := range cases {
+		canonical, err := canonicalFromGemini(geminiImageConfigRequest(tc.ratio, tc.tier), "gemini-3-pro-image")
+		if err != nil {
+			t.Fatalf("ratio=%q tier=%q: %v", tc.ratio, tc.tier, err)
+		}
+		if got := canonical.fields["size"]; got != tc.size {
+			t.Fatalf("ratio=%q tier=%q size = %v, want %s", tc.ratio, tc.tier, got, tc.size)
+		}
+	}
+}
+
+func TestCanonicalFromGeminiRejectsBadImageConfig(t *testing.T) {
+	cases := []struct {
+		name  string
+		ratio string
+		tier  string
+		want  string
+	}{
+		{"unknown tier", "16:9", "8K", "imageSize"},
+		{"tier is not a tier", "16:9", "2048x2048", "imageSize"},
+		{"ratio is a word", "wide", "2K", "aspectRatio"},
+		{"ratio has three parts", "16:9:1", "2K", "aspectRatio"},
+		{"ratio has a zero", "0:9", "2K", "aspectRatio"},
+	}
+	for _, tc := range cases {
+		_, err := canonicalFromGemini(geminiImageConfigRequest(tc.ratio, tc.tier), "m")
+		if err == nil {
+			t.Fatalf("%s: must be rejected instead of silently dropped", tc.name)
+		}
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: error must name %q, got %v", tc.name, tc.want, err)
+		}
+	}
+}
+
+// 多垫图：全部收下、保序、不压成标量。文档里「只取第一张」是旧行为。
+func TestCanonicalFromGeminiKeepsEveryInlineImage(t *testing.T) {
+	mimes := []string{"image/png", "image/jpeg", "image/webp"}
+	payloads := []string{"iVBORw0KGgo=", "/9j/4AAQ", "UklGRg=="}
+	parts := []dto.GeminiPart{{Text: "combine"}}
+	for i := range mimes {
+		parts = append(parts, dto.GeminiPart{
+			InlineData: &dto.GeminiInlineData{MimeType: mimes[i], Data: payloads[i]},
+		})
+	}
+	request := &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{Role: "user", Parts: parts}}}
+
+	canonical, err := canonicalFromGemini(request, "m")
+	if err != nil {
+		t.Fatalf("canonicalFromGemini: %v", err)
+	}
+	refs := canonical.imageRefs()
+	if len(refs) != len(mimes) {
+		t.Fatalf("image refs = %d, want %d", len(refs), len(mimes))
+	}
+	for i, mime := range mimes {
+		want := "data:" + mime + ";base64," + payloads[i]
+		if refs[i] != want {
+			t.Fatalf("refs[%d] = %q, want %q (order is semantics)", i, refs[i], want)
+		}
+	}
+	if _, ok := canonical.fields["image"].([]string); !ok {
+		t.Fatalf("multi-image must stay an array, got %T", canonical.fields["image"])
+	}
+}
+
+// inlineData 的载荷必须是 base64。公网地址走 fileData.fileUri（见下一个用例），
+// 写成 URL 的 inlineData 不是 Gemini 的语法。
+func TestCanonicalFromGeminiRejectsNonInlineCarriers(t *testing.T) {
+	cases := []struct {
+		name string
+		part dto.GeminiPart
+		want string
+	}{
+		{
+			"URL in inlineData",
+			dto.GeminiPart{InlineData: &dto.GeminiInlineData{MimeType: "image/png", Data: "https://example.com/a.png"}},
+			"not a URL",
+		},
+		{
+			"data URI in inlineData",
+			dto.GeminiPart{InlineData: &dto.GeminiInlineData{MimeType: "image/png", Data: "data:image/png;base64,iVBORw0KGgo="}},
+			"not a URL",
+		},
+		{
+			"missing mimeType",
+			dto.GeminiPart{InlineData: &dto.GeminiInlineData{Data: "iVBORw0KGgo="}},
+			"mimeType",
+		},
+		{
+			"empty payload",
+			dto.GeminiPart{InlineData: &dto.GeminiInlineData{MimeType: "image/png"}},
+			"data is empty",
+		},
+	}
+	for _, tc := range cases {
+		request := &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{
+			Role:  "user",
+			Parts: []dto.GeminiPart{{Text: "x"}, tc.part},
+		}}}
+		_, err := canonicalFromGemini(request, "m")
+		if err == nil {
+			t.Fatalf("%s: must be rejected", tc.name)
+		}
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: error must mention %q, got %v", tc.name, tc.want, err)
+		}
+	}
+}
+
+// 折出来的 size 必须真的发到 ark 形状的上游；方言字段不能再下传。
+func TestPlanARKUsesFoldedGeminiSize(t *testing.T) {
+	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK}
+	canonical, err := canonicalFromGemini(geminiImageConfigRequest("16:9", "2K"), "doubao-seedream-5-0")
+	if err != nil {
+		t.Fatalf("canonicalFromGemini: %v", err)
+	}
+	if err := canonical.normalize(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+
+	plan, err := planImageRequest(canonical, cfg)
+	if err != nil {
+		t.Fatalf("planImageRequest: %v", err)
+	}
+	body := decodeGeminiPlanBody(t, plan.Body)
+	if body["size"] != "2752x1536" {
+		t.Fatalf("size = %v, want 2752x1536", body["size"])
+	}
+	for _, key := range []string{"aspect_ratio", "image_size"} {
+		if _, exists := body[key]; exists {
+			t.Fatalf("%s must not be forwarded to an ark-shaped upstream: %#v", key, body[key])
+		}
+	}
+}
+
+// Gemini 入口必须真的走图片协议层，不能落回原生 Gemini 适配器。
+// 这是 prepareImageProtocol 的 RelayModeGemini 分支门禁：分支丢了，请求会落到
+// 原生适配器，size 与多垫图一起消失（ServesPath 那条链路由 dto 包的用例钉住）。
+func TestPrepareImageProtocolTakesGeminiEntry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost,
+		"/v1beta/models/gemini-3-pro-image:generateContent", bytes.NewReader([]byte(`{}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	request := geminiImageConfigRequest("16:9", "2K")
+	request.Contents[0].Parts = append(request.Contents[0].Parts,
+		dto.GeminiPart{InlineData: &dto.GeminiInlineData{MimeType: "image/png", Data: "iVBORw0KGgo="}},
+		dto.GeminiPart{InlineData: &dto.GeminiInlineData{MimeType: "image/jpeg", Data: "/9j/4AAQ"}},
+	)
+	info := &common.RelayInfo{
+		RelayMode: relayconstant.RelayModeGemini,
+		ChannelMeta: &common.ChannelMeta{
+			UpstreamModelName: "doubao-seedream-5-0",
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				ImageProtocol: &dto.ImageProtocolConfig{
+					Enabled:  true,
+					Upstream: dto.ImageUpstreamARK,
+				},
+			},
+		},
+		Request: request,
+	}
+
+	adaptor := &Adaptor{}
+	plan, handled, err := adaptor.prepareImageProtocol(c, info)
+	if err != nil {
+		t.Fatalf("prepareImageProtocol: %v", err)
+	}
+	if !handled {
+		t.Fatal("Gemini entry must be taken over by the image protocol")
+	}
+	body := decodeGeminiPlanBody(t, plan.Body)
+	if body["size"] != "2752x1536" {
+		t.Fatalf("size = %v, want 2752x1536", body["size"])
+	}
+	refs, ok := body["image"].([]any)
+	if !ok || len(refs) != 2 {
+		t.Fatalf("image = %#v, want a 2-element array (order preserved)", body["image"])
+	}
+	for _, key := range []string{"aspect_ratio", "image_size"} {
+		if _, exists := body[key]; exists {
+			t.Fatalf("%s must not reach an ark-shaped upstream", key)
+		}
+	}
+}
+
+// testPNGImage 造一张真 PNG：尺寸相关用例要从文件头量出宽高，
+// 不能用协议测试里的假头（只有 16 字节，解码器读不出 IHDR）。
+func testPNGImage(t *testing.T, width, height int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatalf("encode test png: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// fileData（公网 URL）与 inlineData（base64）是两种合法载体，必须按 parts 顺序
+// 合并进同一个数组：客户端 prompt 里「第一张的颜色 + 第二张的形状」全靠顺序。
+func TestCanonicalFromGeminiFoldsFileDataInOrder(t *testing.T) {
+	request := &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{
+		{Text: "第一张的颜色 + 第二张的形状 + 第三张的边数"},
+		{FileData: &dto.GeminiFileData{MimeType: "image/jpeg", FileUri: "https://cdn.example.com/a.jpg"}},
+		{InlineData: &dto.GeminiInlineData{MimeType: "image/png", Data: "iVBORw0KGgo="}},
+		{FileData: &dto.GeminiFileData{MimeType: "image/webp", FileUri: "https://cdn.example.com/b.webp"}},
+	}}}}
+
+	canonical, err := canonicalFromGemini(request, "m")
+	if err != nil {
+		t.Fatalf("canonicalFromGemini: %v", err)
+	}
+	want := []string{
+		"https://cdn.example.com/a.jpg",
+		"data:image/png;base64,iVBORw0KGgo=",
+		"https://cdn.example.com/b.webp",
+	}
+	refs := canonical.imageRefs()
+	if len(refs) != len(want) {
+		t.Fatalf("refs = %d, want %d (%#v)", len(refs), len(want), refs)
+	}
+	for i := range want {
+		if refs[i] != want[i] {
+			t.Fatalf("refs[%d] = %q, want %q (order is semantics)", i, refs[i], want[i])
+		}
+	}
+	if !canonical.hasImage() {
+		t.Fatal("fileData must count as an image reference: the request is image-to-image")
+	}
+}
+
+// 收下 URL 不等于收下任何字符串。取不到的 scheme 与字面量内网地址在折叠层就拒：
+// ark 形状的上游会原样转发链接并自己抓取，不挡等于让客户端借上游网段做 SSRF。
+func TestCanonicalFromGeminiRejectsBadFileData(t *testing.T) {
+	cases := []struct {
+		name string
+		part dto.GeminiPart
+		want string
+	}{
+		{
+			"empty uri",
+			dto.GeminiPart{FileData: &dto.GeminiFileData{MimeType: "image/png"}},
+			"fileUri is required",
+		},
+		{
+			"gcs uri",
+			dto.GeminiPart{FileData: &dto.GeminiFileData{MimeType: "image/png", FileUri: "gs://bucket/a.png"}},
+			"http(s)",
+		},
+		{
+			"file scheme",
+			dto.GeminiPart{FileData: &dto.GeminiFileData{MimeType: "image/png", FileUri: "file:///etc/passwd"}},
+			"http(s)",
+		},
+		{
+			"no host",
+			dto.GeminiPart{FileData: &dto.GeminiFileData{FileUri: "https://"}},
+			"no host",
+		},
+		{
+			"localhost",
+			dto.GeminiPart{FileData: &dto.GeminiFileData{FileUri: "http://localhost/a.png"}},
+			"not allowed",
+		},
+		{
+			"loopback",
+			dto.GeminiPart{FileData: &dto.GeminiFileData{FileUri: "http://127.0.0.1/a.png"}},
+			"non-public",
+		},
+		{
+			"rfc1918",
+			dto.GeminiPart{FileData: &dto.GeminiFileData{FileUri: "http://10.0.0.1/a.png"}},
+			"non-public",
+		},
+		{
+			"both carriers in one part",
+			dto.GeminiPart{
+				InlineData: &dto.GeminiInlineData{MimeType: "image/png", Data: "iVBORw0KGgo="},
+				FileData:   &dto.GeminiFileData{FileUri: "https://cdn.example.com/a.png"},
+			},
+			"not both",
+		},
+	}
+	for _, tc := range cases {
+		request := &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{
+			Role:  "user",
+			Parts: []dto.GeminiPart{{Text: "x"}, tc.part},
+		}}}
+		_, err := canonicalFromGemini(request, "m")
+		if err == nil {
+			t.Fatalf("%s: must be rejected", tc.name)
+		}
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: error must mention %q, got %v", tc.name, tc.want, err)
+		}
+	}
+}
+
+// 非图片 fileData（音频 / PDF）与 text part 里的无关内容同等对待：跳过，
+// 不算「字段被丢」，也不让请求误判成图生图。
+func TestCanonicalFromGeminiSkipsNonImageFileData(t *testing.T) {
+	request := &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{
+		{Text: "make it blue"},
+		{FileData: &dto.GeminiFileData{MimeType: "audio/mp3", FileUri: "https://cdn.example.com/a.mp3"}},
+	}}}}
+	canonical, err := canonicalFromGemini(request, "m")
+	if err != nil {
+		t.Fatalf("canonicalFromGemini: %v", err)
+	}
+	if canonical.hasImage() {
+		t.Fatalf("audio must not become an image reference: %#v", canonical.fields["image"])
+	}
+}
+
+// 第一级降级：ark 形状的 image 字段本来就收 URL，直接转发，零下载。
+// 这条用例不建任何服务 —— 一旦有人给 planARK 加上「先下载」，它会超时失败。
+func TestPlanARKForwardsFileDataURL(t *testing.T) {
+	request := &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{
+		{Text: "第一张的颜色 + 第二张的形状"},
+		{FileData: &dto.GeminiFileData{MimeType: "image/jpeg", FileUri: "https://cdn.example.com/a.jpg"}},
+		{InlineData: &dto.GeminiInlineData{MimeType: "image/png", Data: "iVBORw0KGgo="}},
+	}}}}
+	canonical, err := canonicalFromGemini(request, "doubao-seedream-5-0")
+	if err != nil {
+		t.Fatalf("canonicalFromGemini: %v", err)
+	}
+	if err := canonical.normalize(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+
+	plan, err := planImageRequest(canonical, &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK})
+	if err != nil {
+		t.Fatalf("planImageRequest: %v", err)
+	}
+	body := decodeGeminiPlanBody(t, plan.Body)
+	refs, ok := body["image"].([]any)
+	if !ok || len(refs) != 2 {
+		t.Fatalf("image = %#v, want a 2-element array", body["image"])
+	}
+	if refs[0] != "https://cdn.example.com/a.jpg" || refs[1] != "data:image/png;base64,iVBORw0KGgo=" {
+		t.Fatalf("image order changed on the way upstream: %#v", refs)
+	}
+}
+
+// 第二级降级：只收 base64 的上游（gemini / openai）由脚本层先下载再内联。
+// 下载层自己的 SSRF / 体积 / 超时规则由 protocol 测试覆盖，这里只钉接线。
+func TestPlanGeminiDownloadsFileDataURL(t *testing.T) {
+	allowLoopbackForTest(t)
+	pngBytes := testPNGImage(t, 8, 8)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	request := &dto.GeminiChatRequest{Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{
+		{Text: "参考这张图"},
+		{FileData: &dto.GeminiFileData{MimeType: "image/png", FileUri: server.URL + "/a.png"}},
+	}}}}
+	canonical, err := canonicalFromGemini(request, "gemini-3-pro-image")
+	if err != nil {
+		t.Fatalf("canonicalFromGemini: %v", err)
+	}
+	if err := canonical.normalize(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+
+	plan, err := planGemini(context.Background(), canonical, "gemini-3-pro-image")
+	if err != nil {
+		t.Fatalf("planGemini: %v", err)
+	}
+	parts := geminiPlanParts(t, plan.Body)
+	if len(parts) != 2 {
+		t.Fatalf("parts = %d, want text + one inlineData", len(parts))
+	}
+	inline, ok := parts[1].(map[string]any)["inlineData"].(map[string]any)
+	if !ok {
+		t.Fatalf("second part is not inlineData: %#v", parts[1])
+	}
+	if inline["mimeType"] != "image/png" {
+		t.Fatalf("mimeType = %#v, want image/png", inline["mimeType"])
+	}
+	if inline["data"] != base64.StdEncoding.EncodeToString(pngBytes) {
+		t.Fatal("downloaded bytes must be inlined base64, not the URL")
 	}
 }
