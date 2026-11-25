@@ -1132,3 +1132,52 @@ func TestDoImageProtocolRequestMapsFetchFailureToBadGateway(t *testing.T) {
 		t.Fatal("gateway-side failure must stay retryable")
 	}
 }
+
+// 上游改写器把 base64 换成了地址（历史配置留下的形态）：align 只归位，
+// 不再下载回来重存一遍。
+func TestAlignImageCarriersMovesRemoteReferenceIntoURL(t *testing.T) {
+	const link = "https://oss.example.com/cdn/apiduo/response/2026/11/25/abc123.png"
+	response := &imageResponse{Created: 1, Data: []imageResponseItem{{B64JSON: link}}}
+
+	changed := alignImageCarriers(context.Background(), 0, response, true)
+
+	if !changed {
+		t.Fatal("a misplaced link must be moved, otherwise the client gets a url inside b64_json")
+	}
+	if response.Data[0].URL != link {
+		t.Errorf("url = %q, want %q", response.Data[0].URL, link)
+	}
+	if response.Data[0].B64JSON != "" {
+		t.Errorf("b64_json must be cleared, got %q", response.Data[0].B64JSON)
+	}
+}
+
+// 同一个错位形态进 chat 的 markdown 拼装：按链接用，不能 502。
+func TestReferenceForItemAcceptsRemoteReference(t *testing.T) {
+	const link = "https://oss.example.com/cdn/apiduo/response/2026/11/25/abc123.png"
+	item := imageResponseItem{B64JSON: link}
+
+	reference, err := item.referenceForItem()
+
+	if err != nil {
+		t.Fatalf("a misplaced link must not fail the whole response: %v", err)
+	}
+	if reference != link {
+		t.Errorf("reference = %q, want %q", reference, link)
+	}
+}
+
+// 反向的守护：真正的 base64 仍然要编成 data URI，不能被误判成链接。
+func TestReferenceForItemStillEncodesBase64(t *testing.T) {
+	b64 := base64.StdEncoding.EncodeToString(protocolTestPNG)
+	item := imageResponseItem{B64JSON: b64}
+
+	reference, err := item.referenceForItem()
+
+	if err != nil {
+		t.Fatalf("base64 item must be accepted: %v", err)
+	}
+	if !strings.HasPrefix(reference, "data:image/") || !strings.Contains(reference, ";base64,") {
+		t.Errorf("reference must be a data URI, got %q", reference[:40])
+	}
+}

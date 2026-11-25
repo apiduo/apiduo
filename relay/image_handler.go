@@ -221,7 +221,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	// back the stored addresses. A stream, an oversized body, an unconfigured
 	// channel or any storage failure leaves the response exactly as the upstream
 	// produced it - storage must never turn a good answer into a bad one.
-	httpResp = service.RewriteResponseArtifactsInPlace(c.Request.Context(), info.GetChannelID(), httpResp)
+	//
+	// Image-protocol channels are skipped: the adaptor decodes their body right
+	// after this point and links images itself (alignImageCarriers).
+	if !info.ArtifactsHandledByAdaptor() {
+		httpResp = service.RewriteResponseArtifactsInPlace(c.Request.Context(), info.GetChannelID(), httpResp)
+	}
 	// APIDUO:artifact-rewrite:END
 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)

@@ -111,10 +111,26 @@ func decodeImageResponse(raw []byte) (*imageResponse, error) {
 	return result, nil
 }
 
+// looksLikeRemoteReference 判定一个「本该是 base64」的值是否其实是地址。
+//
+// 唯一已知的来源是通用响应改写器（service.RewriteResponseArtifacts）：它在
+// DoResponse 之前把上游的 base64 换成了存储链接。图片协议渠道已不再让那个
+// 改写器介入（RelayInfo.ArtifactsHandledByAdaptor），这里保留判定是为了不让
+// 遗留配置或将来新增的改写点把一次成功的生成打成 502。
+func looksLikeRemoteReference(value string) bool {
+	lowered := strings.ToLower(value)
+	return strings.HasPrefix(lowered, "http://") || strings.HasPrefix(lowered, "https://")
+}
+
 // referenceForItem 合成客户端可消费的图片引用。
 // url 与 b64_json 互斥；后者转成 data URI，裸 b64 会被当成链接而 400。
 func (i imageResponseItem) referenceForItem() (string, error) {
 	if i.B64JSON != "" {
+		// 字段装错位（地址进了 base64 字段）时当成链接用：宁可少一层封装，
+		// 也不让整条 chat 响应因为一个错位的值失败。
+		if looksLikeRemoteReference(i.B64JSON) {
+			return i.B64JSON, nil
+		}
 		decoded, err := base64.StdEncoding.DecodeString(i.B64JSON)
 		if err != nil {
 			return "", fmt.Errorf("invalid b64_json: %w", err)
@@ -317,6 +333,13 @@ func alignImageCarriers(ctx context.Context, channelID int, response *imageRespo
 		item := &response.Data[idx]
 		if wantURL {
 			if item.B64JSON == "" {
+				continue
+			}
+			// 已经是地址：只把它归位到 url，别再下载回来重存一遍。
+			if looksLikeRemoteReference(item.B64JSON) {
+				item.URL = item.B64JSON
+				item.B64JSON = ""
+				changed = true
 				continue
 			}
 			raw, err := base64.StdEncoding.DecodeString(item.B64JSON)
@@ -641,8 +664,13 @@ func decodeGeminiImageResponse(raw []byte, fallbackCreated int64) (*imageRespons
 
 	items := make([]imageResponseItem, 0, 1)
 	for _, candidate := range envelope.Candidates {
+		// 内容级拒绝统一走 400：客户端的请求本身不会被满足，重试也一样。
+		// RECITATION / IMAGE_RECITATION 是「可能复现受版权保护的内容」，
+		// 在图片场景里和 SAFETY 同一类；漏掉它只会变成 502「上游没图」，
+		// 让客户端误以为上游故障。
 		switch strings.ToUpper(strings.TrimSpace(candidate.FinishReason)) {
-		case "SAFETY", "IMAGE_SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST":
+		case "SAFETY", "IMAGE_SAFETY", "PROHIBITED_CONTENT", "IMAGE_PROHIBITED_CONTENT",
+			"BLOCKLIST", "RECITATION", "IMAGE_RECITATION", "SPII":
 			return nil, &geminiImageBlockedError{reason: candidate.FinishReason}
 		}
 		for _, part := range candidate.Content.Parts {
@@ -656,6 +684,14 @@ func decodeGeminiImageResponse(raw []byte, fallbackCreated int64) (*imageRespons
 		}
 	}
 	if len(items) == 0 {
+		// 零图且不是上面那些已知理由时，把 finishReason 带进错误里：否则
+		// 管理端日志只有「no image」，运维没有任何线索判断是上游抽风还是
+		// 被挡了。STOP/OTHER 这类也照实记，它们同样是有效信息。
+		for _, candidate := range envelope.Candidates {
+			if reason := strings.TrimSpace(candidate.FinishReason); reason != "" {
+				return nil, fmt.Errorf("upstream returned no image (finishReason=%s)", reason)
+			}
+		}
 		return nil, errors.New("upstream returned no image")
 	}
 	created := fallbackCreated

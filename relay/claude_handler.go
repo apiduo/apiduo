@@ -157,8 +157,11 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 	// APIDUO:artifact-rewrite:BEGIN
 	// Claude inlines images as source.media_type + source.data; the field table
-	// recognises that envelope.
-	httpResp = service.RewriteResponseArtifactsInPlace(c.Request.Context(), info.GetChannelID(), httpResp)
+	// recognises that envelope. Image-protocol channels are skipped: their body
+	// is decoded after this point, so a rewrite would replace the payload first.
+	if !info.ArtifactsHandledByAdaptor() {
+		httpResp = service.RewriteResponseArtifactsInPlace(c.Request.Context(), info.GetChannelID(), httpResp)
+	}
 	// APIDUO:artifact-rewrite:END
 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)

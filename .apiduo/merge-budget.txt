@@ -216,7 +216,14 @@
 # 退款为负且逐行 clamp）与 billing_job_test.go（重跑幂等、只有错误行的用户不出账）、
 # controller/billing_statement_test.go（默认客户投影，internal=1 且管理员才给内部字段）。
 
+# 2026-11-25 added 6996->7009：图片协议渠道的响应转存错位。
+# 通用改写器（service.RewriteResponseArtifacts）在 DoResponse **之前**跑，而
+# defaultArtifactFieldNames 含 data，于是 Gemini 的 inlineData.data 被换成存储
+# 链接，解码层再把它当 base64 解析：images 回 b64_json=URL、chat 502 invalid b64_json。
+# 三处 handler（image / compatible / claude）各加一个 if 跳过（+2 行/处）与一行
+# 注释（+3），共 +13 行；判据与测试在 relay/common/apiduo_artifact_rewrite.go
+# （新文件，不计合并面）。不新增标记块：三处都落在既有的 artifact-rewrite 块内。
 files	205
 blocks	673
-added	6996
+added	7009
 deleted	492

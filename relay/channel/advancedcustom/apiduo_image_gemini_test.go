@@ -933,3 +933,35 @@ func TestPlanGeminiDownloadsFileDataURL(t *testing.T) {
 		t.Fatal("downloaded bytes must be inlined base64, not the URL")
 	}
 }
+
+// IMAGE_RECITATION 是「可能复现受版权保护的内容」，与 SAFETY 同属内容级拒绝。
+// 之前它落到「no image」502，客户端会把一次可解释的拒绝当成上游故障。
+func TestDecodeGeminiImageResponseRecitationIsBlocked(t *testing.T) {
+	for _, reason := range []string{"IMAGE_RECITATION", "RECITATION", "IMAGE_PROHIBITED_CONTENT", "SPII"} {
+		raw := []byte(`{"candidates":[{"content":{"parts":[]},"finishReason":"` + reason + `"}]}`)
+		_, err := decodeGeminiImageResponse(raw, 1)
+		if err == nil {
+			t.Fatalf("%s must be an error", reason)
+		}
+		var blocked *geminiImageBlockedError
+		if !asBlocked(err, &blocked) {
+			t.Fatalf("%s: err = %T, want geminiImageBlockedError", reason, err)
+		}
+		if !strings.Contains(err.Error(), reason) {
+			t.Errorf("%s: message must carry the reason, got %q", reason, err.Error())
+		}
+	}
+}
+
+// 零图但不是已知的拒绝理由时，finishReason 必须进错误文案，否则日志里只有
+// 「no image」，运维无法判断是上游抽风还是被挡了。
+func TestDecodeGeminiImageResponseCarriesUnknownFinishReason(t *testing.T) {
+	raw := []byte(`{"candidates":[{"content":{"parts":[]},"finishReason":"IMAGE_OTHER"}]}`)
+	_, err := decodeGeminiImageResponse(raw, 1)
+	if err == nil {
+		t.Fatal("zero images must be an error")
+	}
+	if !strings.Contains(err.Error(), "IMAGE_OTHER") {
+		t.Errorf("message must carry finishReason, got %q", err.Error())
+	}
+}

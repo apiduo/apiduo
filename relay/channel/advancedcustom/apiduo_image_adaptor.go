@@ -132,7 +132,16 @@ func (a *Adaptor) prepareImageProtocol(
 	}
 
 	a.imageProtocolHandled = true
+	// 回包里的 model 必须是客户端认识的那个名字。canonical.model() 在 chat
+	// 入口读到的是 model_mapping 改写后的值（request.Model 已被替换），直接
+	// 回显就把上游身份漏出去了；OriginModelName 是 mapping 之前的原名。
+	// responses 入口一直用 OriginModelName，这里对齐同一条口径。
 	a.imageClientModel = canonical.model()
+	if info != nil {
+		if origin := strings.TrimSpace(info.OriginModelName); origin != "" {
+			a.imageClientModel = origin
+		}
+	}
 	// 归一化之后只剩两个值，所以这里等价于「客户端要的不是 b64」。
 	a.imageWantURL = canonical.fields["response_format"] != "b64_json"
 	// Gemini 入口只认 inlineData：这个入口的载体不能换成链接。
