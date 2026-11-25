@@ -70,6 +70,8 @@ func TestGeminiImageOutput(t *testing.T) {
 		{"2.5 flash image is flat", "gemini-2.5-flash-image", "1024x1024", 1290},
 		{"2.5 flash image portrait", "gemini-2.5-flash-image", "832x1248", 1290},
 		{"3 pro 1K", "gemini-3-pro-image-preview", "1024x1024", 1120},
+		{"nano-banana alias", "google/gemini-nano-banana-2.1", "1024x1024", 1120},
+		{"nano-banana 4K", "google/gemini-nano-banana-2.1", "4096x4096", 2000},
 		{"3 pro 2K", "gemini-3-pro-image-preview", "2048x2048", 1120},
 		{"3 pro 4K", "gemini-3-pro-image-preview", "4096x4096", 2000},
 	}
@@ -124,7 +126,7 @@ func TestPromptIncludesTextAndReferenceImages(t *testing.T) {
 }
 
 func TestSupported(t *testing.T) {
-	for _, model := range []string{"gpt-image-1", "gpt-image-1-mini", "gpt-image-2", "gemini-2.5-flash-image", "gemini-3-pro-image-preview"} {
+	for _, model := range []string{"gpt-image-1", "gpt-image-1-mini", "gpt-image-2", "gemini-2.5-flash-image", "gemini-3-pro-image-preview", "google/gemini-nano-banana-2.1"} {
 		if !Supported(model) {
 			t.Fatalf("%q must be supported", model)
 		}

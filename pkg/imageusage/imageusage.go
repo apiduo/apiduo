@@ -175,13 +175,19 @@ func geminiOutputTokens(model, size string) (int, bool) {
 	lower := strings.ToLower(model)
 	// "imagen" contains "image"; Imagen prices per image, not per token, so it
 	// must not be captured by the Gemini image rule.
-	if strings.Contains(lower, "imagen") || !strings.Contains(lower, "image") {
+	if strings.Contains(lower, "imagen") {
 		return 0, false
 	}
-	if !strings.Contains(lower, "gemini") {
+	// nano-banana is Google's alias for the Gemini image family; the upstream
+	// name a channel maps to (google/gemini-nano-banana-2.1) carries no "image".
+	banana := strings.Contains(lower, "nano-banana")
+	if !strings.Contains(lower, "gemini") && !banana {
 		return 0, false
 	}
-	if strings.Contains(lower, "gemini-3") {
+	if !strings.Contains(lower, "image") && !banana {
+		return 0, false
+	}
+	if strings.Contains(lower, "gemini-3") || banana {
 		w, h := canvasSize(size)
 		if max(w, h) > gemini3ProImage4KMaxSide {
 			return gemini3ProImageOutput4K, true
@@ -206,7 +212,8 @@ func GeminiImageOutputTokens(model, size string) int {
 // geminiInputImageTokens returns per-image input cost. Gemini 3 models bill a
 // fixed 560 per reference image, 2.x models a 258-token tile.
 func geminiInputImageTokens(model string) int {
-	if strings.Contains(strings.ToLower(model), "gemini-3") {
+	lower := strings.ToLower(model)
+	if strings.Contains(lower, "gemini-3") || strings.Contains(lower, "nano-banana") {
 		return gemini3InputImageToken
 	}
 	return gemini2InputImageToken
