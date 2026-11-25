@@ -947,7 +947,7 @@ func TestEncodeImageResponseRoundTripsExtras(t *testing.T) {
 		}},
 		Extras: map[string]any{"usage": map[string]any{"total_tokens": 7}},
 	}
-	encoded, err := encodeImageResponse(response, nil, true)
+	encoded, err := encodeImageResponse(response, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -986,7 +986,7 @@ func TestEncodeImageResponseFillsEstimatedTokens(t *testing.T) {
 		CompletionTokenDetails: dto.OutputTokenDetails{ImageTokens: 196},
 	}
 
-	encoded, err := encodeImageResponse(response, usage, false)
+	encoded, err := encodeImageResponse(response, usage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1008,6 +1008,38 @@ func TestEncodeImageResponseFillsEstimatedTokens(t *testing.T) {
 	details, _ := envelope.Usage["output_tokens_details"].(map[string]any)
 	if details["image_tokens"] != float64(196) {
 		t.Errorf("img_o missing: %#v", envelope.Usage)
+	}
+}
+
+// Gemini 上游的 usageMetadata 被折进 imageResponse.Usage，Extras 里没有 usage
+// 对象。回包不能因此写成空对象，必须落成标准 token 字段。
+func TestEncodeImageResponseFillsTokensWithoutEnvelopeUsage(t *testing.T) {
+	response := &imageResponse{
+		Created: 1,
+		Data:    []imageResponseItem{{URL: "https://cdn.example.com/a.png"}},
+	}
+	usage := &dto.Usage{
+		PromptTokens:           13,
+		CompletionTokens:       1602,
+		TotalTokens:            1615,
+		CompletionTokenDetails: dto.OutputTokenDetails{ImageTokens: 1120},
+	}
+
+	encoded, err := encodeImageResponse(response, usage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Usage map[string]any `json:"usage"`
+	}
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Usage["input_tokens"] != float64(13) || envelope.Usage["output_tokens"] != float64(1602) {
+		t.Errorf("token fields missing: %#v", envelope.Usage)
+	}
+	if len(envelope.Usage) == 0 {
+		t.Error("usage must not be an empty object")
 	}
 }
 
