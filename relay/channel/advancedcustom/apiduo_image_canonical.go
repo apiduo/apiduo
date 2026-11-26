@@ -265,8 +265,24 @@ func (c *imageCanonical) normalize() error {
 //
 // WxH 原样保留：客户端写了精确像素就按它发，不因为「接近官方表」改成表值。
 func (c *imageCanonical) normalizeSize() error {
+	// 三个字段都只收字符串：JSON 里写成 1024 或 true 是客户端错误，静默忽略
+	// 会变成「以为设了尺寸」。null 与缺席等价，放行。
+	for _, key := range []string{"size", "aspect_ratio", "image_size"} {
+		raw, exists := c.fields[key]
+		if !exists || raw == nil {
+			continue
+		}
+		if _, ok := raw.(string); !ok {
+			return fmt.Errorf("%s must be a string, got %T", key, raw)
+		}
+	}
+
 	sizeText, _ := c.fields["size"].(string)
 	sizeText = strings.TrimSpace(sizeText)
+	// 空字符串等于没传：留着它会把 size:"" 原样转给 ark 形状的上游。
+	if sizeText == "" {
+		delete(c.fields, "size")
+	}
 
 	ratio := ""
 	if raw, ok := c.fields["aspect_ratio"].(string); ok && strings.TrimSpace(raw) != "" {

@@ -864,6 +864,55 @@ func TestNormalizeSizeRejectsUnusable(t *testing.T) {
 	}
 }
 
+// 类型错误必须 400：写成数字会被静默忽略，客户端以为尺寸生效了。
+// null 与缺席等价，不算错误。
+func TestNormalizeSizeRejectsNonStringFields(t *testing.T) {
+	cases := []map[string]any{
+		{"size": 1024},
+		{"size": true},
+		{"aspect_ratio": 16},
+		{"image_size": 2048},
+	}
+	for _, fields := range cases {
+		canonical := newImageCanonical()
+		canonical.fields["prompt"] = "a cat"
+		for key, value := range fields {
+			canonical.fields[key] = value
+		}
+		if err := canonical.normalize(); err == nil {
+			t.Fatalf("%#v must be rejected", fields)
+		}
+	}
+
+	canonical := newImageCanonical()
+	canonical.fields["prompt"] = "a cat"
+	canonical.fields["size"] = nil
+	if err := canonical.normalize(); err != nil {
+		t.Fatalf("null size must be treated as absent: %v", err)
+	}
+}
+
+// 空字符串 size 不能残留：原样透传会让 ark 形状的上游收到 size:""。
+func TestNormalizeSizeDropsEmptyString(t *testing.T) {
+	canonical := newImageCanonical()
+	canonical.fields["prompt"] = "a cat"
+	canonical.fields["size"] = "  "
+	if err := canonical.normalize(); err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if _, exists := canonical.fields["size"]; exists {
+		t.Fatalf("empty size must be dropped, got %#v", canonical.fields["size"])
+	}
+
+	plan, err := planImageRequest(canonical, &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, exists := decodeGeminiPlanBody(t, plan.Body)["size"]; exists {
+		t.Fatal("size must not reach the upstream when the client sent an empty string")
+	}
+}
+
 // 归一化之后，ark 形状的上游收到的是像素：duck 对 1:1 会静默给 3:2。
 func TestPlanARKReceivesPixelSizeForRatioInput(t *testing.T) {
 	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK}
