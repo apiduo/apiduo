@@ -153,6 +153,9 @@ func TestPlanGeminiMapsSizeToImageConfig(t *testing.T) {
 		{size: "1:1", wantRatio: "1:1"},
 		{size: "16:9", wantRatio: "16:9"},
 		{size: "9 / 16", wantRatio: "9:16"},
+		// x 分隔：短边小于 minPixelSide 时是比例，不是像素。
+		{size: "16x9", wantRatio: "16:9"},
+		{size: "1x1", wantRatio: "1:1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.size, func(t *testing.T) {

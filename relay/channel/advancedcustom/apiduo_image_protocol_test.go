@@ -792,6 +792,10 @@ func TestNormalizeSizeFoldsToPixels(t *testing.T) {
 		{size: "1:1", want: "1024x1024"},
 		{size: "16:9", want: "1376x768"},
 		{size: "9 / 16", want: "768x1376"},
+		// x 分隔的小数值是比例，不是 16×9 像素（duck 会 400）。
+		{size: "16x9", want: "1376x768"},
+		{size: "9x16", want: "768x1376"},
+		{size: "1x1", want: "1024x1024"},
 		{size: "1K", want: "1024x1024"},
 		{size: "2K", want: "2048x2048"},
 		{size: "4k", want: "4096x4096"},

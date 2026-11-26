@@ -376,7 +376,13 @@ func nearestGeminiAspectRatio(w, h int) (string, [3][2]int) {
 }
 
 // parsePixelSize 只认 "2048x2048" 这类显式像素；"2K" 与 "auto" 在调用方分流。
-// 上界挡住 9e18 量级：int64(w)*int64(h) 溢出成负数会让面积比较得出完全相反的结论。
+//
+// 短边小于 minPixelSide 时不算像素：`16x9` 是比例写法（很多客户端用 x 代替
+// 冒号），按像素理解会变成一张 16×9 的图 —— 实测 duck 直接 400
+// `unsupported size '16x9'`，而 gemini 上游会被静默映射回 16:9，两条渠道分叉。
+// 上界挡住 9e18 量级：int64(w)*int64(h) 溢出成负数会让面积比较得出相反结论。
+const minPixelSide = 64
+
 func parsePixelSize(text string) (int, int, bool) {
 	parts := strings.FieldsFunc(text, func(r rune) bool {
 		return r == 'x' || r == 'X' || r == '×' || r == '*'
@@ -386,7 +392,7 @@ func parsePixelSize(text string) (int, int, bool) {
 	}
 	w, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
 	h, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
-	if errW != nil || errH != nil || w <= 0 || h <= 0 || w > 100000 || h > 100000 {
+	if errW != nil || errH != nil || w < minPixelSide || h < minPixelSide || w > 100000 || h > 100000 {
 		return 0, 0, false
 	}
 	return w, h, true

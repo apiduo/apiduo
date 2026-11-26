@@ -678,15 +678,17 @@ func geminiSizeTierColumn(tier string) (int, bool) {
 	return 0, false
 }
 
-// normaliseAspectRatio 接受 "16:9" / "16 / 9" 这类写法，输出 "16:9"。
+// normaliseAspectRatio 接受 "16:9" / "16 / 9" / "16x9" 这类写法，输出 "16:9"。
 // 空值按 1:1（官方默认）。上界 64 挡住 "9999:1" 这种会让面积算法溢出的输入。
+// 认 x 是因为客户端常用它代替冒号，而短边的 x 写法已被 parsePixelSize 排除在
+// 像素之外（minPixelSide），两条判据不重叠。
 func normaliseAspectRatio(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "1:1", true
 	}
 	parts := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ':' || r == '/' || r == '×'
+		return r == ':' || r == '/' || r == '×' || r == 'x' || r == 'X'
 	})
 	if len(parts) != 2 {
 		return "", false
