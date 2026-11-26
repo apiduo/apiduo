@@ -164,3 +164,37 @@ sed -i 's#server 127.0.0.1:3002 down max_fails#server 127.0.0.1:3002 max_fails#'
   真正的异地冗余还得另找一台机器 —— core-3 已在 11-25 下线（nginx 里那行注释保留了回滚办法）。
 - 备槽位是 `NODE_TYPE=slave`，不跑出账 / 任务轮询 / 渠道检测。切流期间这些后台任务暂停，
   1–2 分钟的窗口无所谓，但不要把它当长期主节点用。
+
+---
+
+# 固化：deploy/jieapi/rolling.sh（10:10）
+
+昨天（11-25 12:34–12:39）那次 0.0.228 就是用 core-1 的槽位手工滚动的 —— 槽位 data 目录里
+spool 的时间戳正好落在那次上线窗口，但**没留下脚本**，所以今天升级时我没有沿用，改成了裸重建。
+现在把这套流程固化：
+
+- 仓库：`deploy/jieapi/rolling.sh`；core-1 上放在 `/www/docker/apiduo/rolling.sh`
+- `rolling.sh --check` 只读检查（主/备版本、对外入口、nginx backup、compose tag、槽位 spool 是否已消费）
+- `rolling.sh <tag>` 正式滚动：备份 → 拉镜像 → 改 tag → 先升备槽位 → 主槽位置 down → 排空 30s →
+  `stop -t 150` → 重建主槽位 → 回切
+- `rolling.sh <tag> --no-backup` 跳过 mysqldump
+
+失败语义：
+- 备槽位起不来/版本不对 → 直接退出，**线上未动**（会把 compose tag 回滚）
+- 主槽位重建后版本不对 → nginx **保持在备槽位**，退出码 1，线上仍可用
+
+只读检查实跑结果（10:11）：
+
+```
+主槽位  3002 版本 0.0.241
+备槽位  3003 版本 0.0.241
+对外入口 200 / 版本 0.0.241
+nginx   1 条 3003 backup
+compose image: ghcr.io/apiduo/apiduo:0.0.241
+spool   logspool-20261126T095842…jsonl size=27676 offset=27676 已消费
+```
+
+未验证的部分：脚本里「切流 + 重建主槽位」这条完整链路还没用真实发版跑过一遍。
+其中每一步今天都手工执行过（切换 43 请求 0 失败、重建 4.6 s），只是没有串成一次脚本执行。
+下次发版是第一次实跑，建议盯着看；要先演练也行 —— 用同一个 tag 跑一遍等于纯演练，
+代价是主槽位的一次排空窗口。
