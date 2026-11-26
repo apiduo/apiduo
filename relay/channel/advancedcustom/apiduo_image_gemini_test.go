@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -237,23 +239,155 @@ func TestPlanGeminiKeepsImageSizeAlias(t *testing.T) {
 	}
 }
 
-// 回包必须带真实像素：size -> (aspectRatio, imageSize) 只有去的方向不够，
-// 客户端要能看见上游实际给了什么。
-func TestGeminiResponseCarriesDeliveredSize(t *testing.T) {
-	blob := testPNGImage(t, 1376, 768)
-	upstream := map[string]any{
+// 官方表 14 比例 × 3 档共 42 格，每一格都必须双向可逆：
+// WxH -> (ratio, tier)；ratio + tier 组合 -> 同一组 WxH；档位/比例 token 各管一维。
+func TestGeminiSizeTableRoundTrip(t *testing.T) {
+	tiers := []string{"1K", "2K", "4K"}
+	for _, ratio := range geminiAspectRatioOrder {
+		pixels := geminiImageSizeTable[ratio]
+		for column, tier := range tiers {
+			w, h := pixels[column][0], pixels[column][1]
+
+			// 像素写法：两维都由 size 给出。
+			ratioOut, tierOut, err := geminiImageConfig(imageCanonicalWithSize(fmt.Sprintf("%dx%d", w, h)))
+			if err != nil {
+				t.Fatalf("%s %s: %v", ratio, tier, err)
+			}
+			if ratioOut != ratio || tierOut != tier {
+				t.Fatalf("%dx%d -> (%s, %s), want (%s, %s)", w, h, ratioOut, tierOut, ratio, tier)
+			}
+
+			// 比例写法：只表比例，档位留给上游。
+			ratioOut, tierOut, err = geminiImageConfig(imageCanonicalWithSize(ratio))
+			if err != nil {
+				t.Fatalf("%s: %v", ratio, err)
+			}
+			if ratioOut != ratio || tierOut != "" {
+				t.Fatalf("ratio %s -> (%s, %s), want (%s, empty)", ratio, ratioOut, tierOut, ratio)
+			}
+
+			// 档位写法：只表档位，比例留给上游。
+			ratioOut, tierOut, err = geminiImageConfig(imageCanonicalWithSize(tier))
+			if err != nil {
+				t.Fatalf("%s: %v", tier, err)
+			}
+			if ratioOut != "" || tierOut != tier {
+				t.Fatalf("tier %s -> (%s, %s), want (empty, %s)", tier, ratioOut, tierOut, tier)
+			}
+
+			// 「size + aspect_ratio」是两维输入的完整形态。
+			canonical := imageCanonicalWithSize(tier)
+			canonical.fields["aspect_ratio"] = ratio
+			ratioOut, tierOut, err = geminiImageConfig(canonical)
+			if err != nil {
+				t.Fatalf("%s + %s: %v", tier, ratio, err)
+			}
+			if ratioOut != ratio || tierOut != tier {
+				t.Fatalf("%s + %s -> (%s, %s), want (%s, %s)", tier, ratio, ratioOut, tierOut, ratio, tier)
+			}
+		}
+	}
+}
+
+// 回程：交付字节自己的宽高决定 size，与上游声明的 size 无关。
+func TestImagePixelSizeReadsDeliveredBytes(t *testing.T) {
+	cases := []struct {
+		name   string
+		encode func(t *testing.T, w, h int) []byte
+	}{
+		{name: "png", encode: func(t *testing.T, w, h int) []byte { return testPNGImage(t, w, h) }},
+		{name: "jpeg", encode: func(t *testing.T, w, h int) []byte {
+			var buf bytes.Buffer
+			if err := jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, w, h)), nil); err != nil {
+				t.Fatalf("encode jpeg: %v", err)
+			}
+			return buf.Bytes()
+		}},
+	}
+	for _, tc := range cases {
+		for _, dims := range [][2]int{{1, 1}, {1376, 768}, {4096, 4096}, {768, 1376}} {
+			blob := tc.encode(t, dims[0], dims[1])
+			w, h, ok := imagePixelSize(base64.StdEncoding.EncodeToString(blob))
+			if !ok || w != dims[0] || h != dims[1] {
+				t.Fatalf("%s %dx%d: got (%d,%d,%v)", tc.name, dims[0], dims[1], w, h, ok)
+			}
+		}
+	}
+}
+
+// 认不出就不填：URL 引用、空串、垃圾 b64 都不许 panic 或编造尺寸。
+func TestImagePixelSizeRejectsNonImage(t *testing.T) {
+	for _, payload := range []string{
+		"",
+		"https://cdn.example.com/a.png",
+		base64.StdEncoding.EncodeToString([]byte("not an image at all")),
+		"iVBORw0KGgo=", // 16 字节的假 PNG 头，够不到 IHDR 宽高
+	} {
+		if w, h, ok := imagePixelSize(payload); ok {
+			t.Fatalf("%q must not yield a size, got %dx%d", payload, w, h)
+		}
+	}
+}
+
+// 双向闭环：请求 size -> imageConfig -> 上游按表产图 -> 回包 size 回到原值。
+func TestGeminiSizeRoundTripThroughResponse(t *testing.T) {
+	for _, ratio := range geminiAspectRatioOrder {
+		pixels := geminiImageSizeTable[ratio]
+		column, _ := geminiSizeTierColumn("2K")
+		w, h := pixels[column][0], pixels[column][1]
+
+		canonical := imageCanonicalWithSize(fmt.Sprintf("%dx%d", w, h))
+		ratioOut, tierOut, err := geminiImageConfig(canonical)
+		if err != nil {
+			t.Fatalf("%dx%d: %v", w, h, err)
+		}
+		if ratioOut != ratio || tierOut != "2K" {
+			t.Fatalf("%dx%d -> (%s, %s)", w, h, ratioOut, tierOut)
+		}
+
+		response, err := decodeGeminiImageResponse(geminiImageEnvelope(t, testPNGImage(t, w, h)), 0)
+		if err != nil {
+			t.Fatalf("%dx%d: decode: %v", w, h, err)
+		}
+		body, err := encodeImageResponse(response, nil)
+		if err != nil {
+			t.Fatalf("%dx%d: encode: %v", w, h, err)
+		}
+		entry := decodeGeminiPlanBody(t, body)["data"].([]any)[0].(map[string]any)
+		if want := fmt.Sprintf("%dx%d", w, h); entry["size"] != want {
+			t.Fatalf("round trip: size = %v, want %s", entry["size"], want)
+		}
+	}
+}
+
+func imageCanonicalWithSize(size string) *imageCanonical {
+	canonical := newImageCanonical()
+	canonical.fields["prompt"] = "a cat"
+	canonical.fields["size"] = size
+	return canonical
+}
+
+func geminiImageEnvelope(t *testing.T, blob []byte) []byte {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{
 		"candidates": []any{map[string]any{
 			"content": map[string]any{"parts": []any{map[string]any{
 				"inlineData": map[string]any{"mimeType": "image/png", "data": base64.StdEncoding.EncodeToString(blob)},
 			}}},
 		}},
-	}
-	raw, err := json.Marshal(upstream)
+	})
 	if err != nil {
-		t.Fatalf("marshal upstream: %v", err)
+		t.Fatalf("marshal envelope: %v", err)
 	}
+	return raw
+}
 
-	response, err := decodeGeminiImageResponse(raw, 0)
+// 回包必须带真实像素：size -> (aspectRatio, imageSize) 只有去的方向不够，
+// 客户端要能看见上游实际给了什么。
+func TestGeminiResponseCarriesDeliveredSize(t *testing.T) {
+	blob := testPNGImage(t, 1376, 768)
+
+	response, err := decodeGeminiImageResponse(geminiImageEnvelope(t, blob), 0)
 	if err != nil {
 		t.Fatalf("decodeGeminiImageResponse: %v", err)
 	}
