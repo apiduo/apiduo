@@ -273,13 +273,12 @@ func escapeGeminiModelPath(model string) string {
 
 // geminiImageConfig 决定发给上游的 imageConfig（比例 + 档位）。
 //
-// 两个来源，显式方言字段优先：
-//   - aspect_ratio / image_size 是 Gemini 原生写法，直接给出两维。
-//   - size 是 OpenAI / 方舟写法，可能是 "2048x2048"，也可能是 "2K"。
+// 对外契约只有两维输入：size（OpenAI / 方舟写法，档位或像素）与 aspect_ratio
+// （显式比例，可覆盖 size 推出来的那一维）。二者与上游的 (aspectRatio, imageSize)
+// 是同构的，所以响应侧会把真实像素写回 size（见 decodeGeminiImageResponse）。
 //
-// 只传 size 是标准客户端的常态，而 Gemini 只认离散的 (比例, 档位)。不在这里
-// 折算，size 会被静默丢掉：实测 size=2048x2048 曾经落成 1376x768（1K 16:9），
-// 客户端以为拿到了 2K。
+// image_size 是 gemini 原生方言，只作为 size 的档位别名保留给 0.0.230 之前的老
+// 客户端，不参与优先级：两个都写时 size 说了算。
 func geminiImageConfig(c *imageCanonical) (string, string, error) {
 	ratio := ""
 	if raw, ok := c.fields["aspect_ratio"].(string); ok && strings.TrimSpace(raw) != "" {
@@ -290,60 +289,63 @@ func geminiImageConfig(c *imageCanonical) (string, string, error) {
 		ratio = normalised
 	}
 
-	tier := ""
-	if raw, exists := c.fields["image_size"]; exists {
-		label, _ := raw.(string)
-		column, valid := geminiSizeTierColumn(label)
-		if !valid {
-			return "", "", fmt.Errorf("image_size must be 1K, 2K or 4K, got %q", raw)
-		}
-		if strings.TrimSpace(label) != "" {
-			tier = geminiTierLabel(column)
-		}
-	}
-
-	if ratio != "" && tier != "" {
-		return ratio, tier, nil
-	}
-
-	fromSizeRatio, fromSizeTier, err := geminiFieldsFromSize(c.fields["size"])
+	fromSizeRatio, fromSizeTier, ratioStated, tierStated, err := geminiFieldsFromSize(c.fields["size"])
 	if err != nil {
 		return "", "", err
 	}
-	if ratio == "" {
+	if ratio == "" && ratioStated {
 		ratio = fromSizeRatio
 	}
-	if tier == "" {
-		tier = fromSizeTier
+	tier := fromSizeTier
+
+	if !tierStated {
+		if raw, exists := c.fields["image_size"]; exists {
+			label, _ := raw.(string)
+			column, valid := geminiSizeTierColumn(label)
+			if !valid {
+				return "", "", fmt.Errorf("image_size must be 1K, 2K or 4K, got %q", raw)
+			}
+			if strings.TrimSpace(label) != "" {
+				tier = geminiTierLabel(column)
+			}
+		}
 	}
 	return ratio, tier, nil
 }
 
-// geminiFieldsFromSize 把 OpenAI / 方舟的 size 反推成 (aspectRatio, imageSize)。
+// geminiFieldsFromSize 把 size 反推成 (aspectRatio, imageSize)，两种写法都收：
 //
-// 三种合法写法：
-//   - 空 / "auto"：不表态，交给上游默认（缺席保持缺席）。
-//   - 档位 "1K" / "2K" / "4K"：方舟也用它表达清晰度，比例留给上游。
 //   - 像素 "2048x2048" / "3840x2160"：比例取最接近的官方档，档位按面积取最近，
 //     但降质超过三分之一就升一档 —— 按次计费下，把 3840x2160 降成 2K(2752x1536)
 //     是在替客户省钱的同时偷走他点的 4K，比多给像素更糟。
+//   - 比例 "1:1" / "16:9"：只表态比例，档位留给上游默认。
+//   - 档位 "1K" / "2K" / "4K"：方舟也用它表达清晰度，比例留给上游。
+//   - 空 / "auto"：不表态，两项都交给上游。
+//
+// 两个 stated 分开返回：size 只写了比例时，image_size 别名仍然可以补档位，
+// 一个整体布尔会把 "1:1 + image_size=4K" 这种组合误判成「size 全说了」。
 //
 // 超过 4K 档两倍直接报错：再往上没有档位可给，静默截断等于骗客户。
-func geminiFieldsFromSize(raw any) (string, string, error) {
+func geminiFieldsFromSize(raw any) (string, string, bool, bool, error) {
 	text, _ := raw.(string)
 	text = strings.TrimSpace(text)
 	if text == "" || strings.EqualFold(text, "auto") {
-		return "", "", nil
+		return "", "", false, false, nil
 	}
 	if column, valid := geminiSizeTierColumn(text); valid {
-		return "", geminiTierLabel(column), nil
+		return "", geminiTierLabel(column), false, true, nil
 	}
 
 	w, h, ok := parsePixelSize(text)
 	if !ok {
-		return "", "", fmt.Errorf(
-			"size must be a tier like %q, a pixel size like %q, or %q, got %q",
-			"2K", "2048x2048", "auto", text)
+		// 比例写法：size="1:1" 与 aspect_ratio="1:1" 等价。
+		ratio, valid := normaliseAspectRatio(text)
+		if !valid {
+			return "", "", false, false, fmt.Errorf(
+				"size must be a tier like %q, a pixel size like %q, a ratio like %q, or %q, got %q",
+				"2K", "2048x2048", "1:1", "auto", text)
+		}
+		return ratio, "", true, false, nil
 	}
 
 	ratio, pixels := nearestGeminiAspectRatio(w, h)
@@ -360,11 +362,11 @@ func geminiFieldsFromSize(raw any) (string, string, error) {
 		column++
 	}
 	if int64(pixels[2][0])*int64(pixels[2][1])*2 < requestedArea {
-		return "", "", fmt.Errorf(
+		return "", "", false, false, fmt.Errorf(
 			"size %dx%d exceeds the largest supported image (%dx%d for %s)",
 			w, h, pixels[2][0], pixels[2][1], ratio)
 	}
-	return ratio, geminiTierLabel(column), nil
+	return ratio, geminiTierLabel(column), true, true, nil
 }
 
 // nearestGeminiAspectRatio 按对数比距离取最近比例，并返回该比例的三档像素。

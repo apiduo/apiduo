@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -790,7 +791,13 @@ func decodeGeminiImageResponse(raw []byte, fallbackCreated int64) (*imageRespons
 			if !strings.HasPrefix(strings.ToLower(part.InlineData.MimeType), "image/") {
 				continue
 			}
-			items = append(items, imageResponseItem{B64JSON: part.InlineData.Data})
+			item := imageResponseItem{B64JSON: part.InlineData.Data}
+			// size 是入站契约的另一半：客户端传 size=2048x2048，上游实际给
+			// 2752x1536 时必须能看到真实像素，否则「size <=> 档位」只有去的方向。
+			if width, height, ok := imagePixelSize(part.InlineData.Data); ok {
+				item.Extras = map[string]any{"size": fmt.Sprintf("%dx%d", width, height)}
+			}
+			items = append(items, item)
 		}
 	}
 	if len(items) == 0 {
@@ -1162,4 +1169,66 @@ func writeImageJSON(c *gin.Context, body []byte) {
 	c.Writer.WriteHeader(http.StatusOK)
 	_, _ = c.Writer.Write(body)
 	trace.CaptureResponseBody(c, body)
+}
+
+// imageSizeHeaderWindow 是解码头部窗口的 base64 字符数（约 3KB 原始字节）：
+// SOF 在 EXIF 之后也能落在窗口内，而 4K 图的完整 b64 有 2700 万字符，
+// 全解一遍只为读 24 字节不值。
+const imageSizeHeaderWindow = 4096
+
+// imagePixelSize 从 base64 图片头读出交付像素。
+//
+// 这是 size 映射的回程：入站把 size 折成 (aspectRatio, imageSize)，出站必须
+// 把上游真实给的像素写回 size。客户端传 2048x2048、上游按最近档给 2752x1536
+// 时，回包说 2048x2048 就是撒谎，不说又只能靠客户端自己解 PNG。
+//
+// 只认 PNG 与 JPEG：它们覆盖 Gemini 与 OpenAI 形状上游的全部回包；认不出就
+// 不填，少一个便利字段不影响正确性。
+func imagePixelSize(data string) (int, int, bool) {
+	window := data
+	if len(window) > imageSizeHeaderWindow {
+		window = window[:imageSizeHeaderWindow]
+	}
+	// 截断到 4 的整数倍：base64 尾部残缺会直接解码失败。
+	window = window[:len(window)/4*4]
+	blob, err := base64.StdEncoding.DecodeString(window)
+	if err != nil || len(blob) < 24 {
+		return 0, 0, false
+	}
+	if bytes.HasPrefix(blob, []byte("\x89PNG\r\n\x1a\n")) && string(blob[12:16]) == "IHDR" {
+		width := int(binary.BigEndian.Uint32(blob[16:20]))
+		height := int(binary.BigEndian.Uint32(blob[20:24]))
+		return width, height, width > 0 && height > 0
+	}
+	if blob[0] == 0xFF && blob[1] == 0xD8 {
+		return jpegPixelSize(blob)
+	}
+	return 0, 0, false
+}
+
+// jpegPixelSize 扫段直到 SOF：段长只覆盖头部，熵编码数据无法按长度跳过，
+// 所以遇到 SOS 还没 SOF 就放弃，不猜。
+func jpegPixelSize(blob []byte) (int, int, bool) {
+	position := 2
+	for position+9 <= len(blob) {
+		if blob[position] != 0xFF {
+			return 0, 0, false
+		}
+		marker := blob[position+1]
+		if marker == 0xDA {
+			return 0, 0, false
+		}
+		// SOF0..SOF15：C4(DHT) / C8(JPG) / CC(DAC) 不是帧头。
+		if marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC {
+			height := int(binary.BigEndian.Uint16(blob[position+5 : position+7]))
+			width := int(binary.BigEndian.Uint16(blob[position+7 : position+9]))
+			return width, height, width > 0 && height > 0
+		}
+		segment := int(binary.BigEndian.Uint16(blob[position+2 : position+4]))
+		if segment < 2 {
+			return 0, 0, false
+		}
+		position += 2 + segment
+	}
+	return 0, 0, false
 }

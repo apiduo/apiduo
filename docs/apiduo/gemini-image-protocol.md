@@ -97,6 +97,11 @@ Gemini 不需要额外的主端点校验——它不读主端点。
 - `generations`：JSON，`image` 可缺省（文生图）或为 str/list（图生图）。
 - `edits`：只接受 multipart 文件流，文本引用一律 400（现有 `requireFileStreamEdits`）。
 - `mask` 在五个上游都不转发。
+- `size` 与上游的 `(aspectRatio, imageSize)` 是同构的，三种写法都收：
+  `1024x1024`（像素）、`1:1`（比例）、`4K`（档位）。像素按官方表取最近比例，
+  档位按面积取最近、降质超三分之一升一档；超 4K 档两倍报 400。
+  `aspect_ratio` 可单独覆盖比例（new-api 既有字段）。响应里 `data[].size` 回填
+  **从交付字节头测得的真实像素**，闭合这条映射（§5.1）。
 
 ### 3.2 chat / responses
 
@@ -411,7 +416,8 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 两张的开关，见 §3.5 的四组实测。
 
 - `n` 不转发：上游恒出 1 张，计费张数按客户端请求的 n（`image-endpoint-contract.md` §2.4）。
-- `size` 只映射五个确定档（1:1 / 3:2 / 2:3 / 16:9 / 9:16），未知值交给上游默认。
+- `size` 按 §3.1 折算成 `(aspectRatio, imageSize)`；`aspect_ratio` 覆盖比例维；
+  `image_size` 只作为档位别名兼容老客户端，与 `size` 冲突时 `size` 赢。
 - `seed` / `style` / `quality` / `negative_prompt` / `mask` 丢弃并记 `other.dropped_params`。
 
 ## 5. 出口净化：不暴露上游
@@ -422,13 +428,16 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 
 | 入口 | 允许出现的字段 | 必须丢弃 |
 |---|---|---|
-| images | `created` `data[].url` `data[].b64_json` `data[].revised_prompt` `usage?` | `candidates` `modelVersion` `promptFeedback`、上游的 `size` / `model` / `size_applied` 以及一切上游附加字段 |
+| images | `created` `data[].url` `data[].b64_json` `data[].revised_prompt` `data[].size` `usage?` | `candidates` `modelVersion` `promptFeedback`、上游的 `size` / `model` / `size_applied` 以及一切上游附加字段 |
 | chat | `id` `object` `created` `model` `choices` `usage` | 同上 |
 | responses | `id` `object` `created_at` `status` `model` `output` `usage` | 同上 |
 | gemini | `candidates` `usageMetadata` `modelVersion` `promptFeedback` | `data` `created` `object` 以及 OpenAI 特有字段 |
 
-**`size` 不回显，尽管上游会回。** 它是上游自己重采样的结果（duck 把 1254² 放大到
-2048² 再回 `size=2048x2048`），回给客户端会被当成模型原生像素；要真实尺寸只能读图本身。
+**上游的 `size` 不回显，网关测出来的回。** 上游回的 size 是它自己重采样的声明
+（duck 把 1254² 放大到 2048² 再回 `size=2048x2048`），透传会被当成模型原生像素。
+images 入口的 `data[].size` 改为网关从**交付字节的 PNG/JPEG 头**量出的宽高 ——
+这是 `size -> (aspectRatio, imageSize)` 的回程，客户端传 2048x2048、上游实际给
+2752x1536 时必须能看到 2752x1536。认不出格式就不填，不猜。
 同理，`model` 是上游身份，客户端的模型名由 `OriginModelName` 提供（§5.2），
 两者都不从上游报文里取。
 

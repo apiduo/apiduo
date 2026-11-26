@@ -146,6 +146,10 @@ func TestPlanGeminiMapsSizeToImageConfig(t *testing.T) {
 		// 档位 token：比例交给上游，不臆造。
 		{size: "2K", wantTier: "2K"},
 		{size: "4k", wantTier: "4K"},
+		// 比例 token：与 aspect_ratio 同义，档位留给上游默认。
+		{size: "1:1", wantRatio: "1:1"},
+		{size: "16:9", wantRatio: "16:9"},
+		{size: "9 / 16", wantRatio: "9:16"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.size, func(t *testing.T) {
@@ -170,8 +174,9 @@ func TestPlanGeminiMapsSizeToImageConfig(t *testing.T) {
 	}
 }
 
-// 显式方言字段逐维优先：image_size 只管档位，aspect_ratio 只管比例。
-func TestPlanGeminiExplicitFieldsWinOverSize(t *testing.T) {
+// 对外契约是 size（+ aspect_ratio）：size 与遗留别名 image_size 冲突时 size 赢，
+// 比例仍然逐维覆盖。
+func TestPlanGeminiSizeWinsOverImageSizeAlias(t *testing.T) {
 	canonical := newImageCanonical()
 	canonical.fields["prompt"] = "a cat"
 	canonical.fields["size"] = "1024x1024"
@@ -182,8 +187,8 @@ func TestPlanGeminiExplicitFieldsWinOverSize(t *testing.T) {
 		t.Fatalf("planGemini: %v", err)
 	}
 	imageConfig := decodeGeminiPlanBody(t, plan.Body)["generationConfig"].(map[string]any)["imageConfig"].(map[string]any)
-	if imageConfig["aspectRatio"] != "1:1" || imageConfig["imageSize"] != "4K" {
-		t.Fatalf("imageConfig = %#v, want 1:1 / 4K", imageConfig)
+	if imageConfig["aspectRatio"] != "1:1" || imageConfig["imageSize"] != "1K" {
+		t.Fatalf("imageConfig = %#v, want 1:1 / 1K (size wins)", imageConfig)
 	}
 
 	canonical = newImageCanonical()
@@ -198,6 +203,74 @@ func TestPlanGeminiExplicitFieldsWinOverSize(t *testing.T) {
 	imageConfig = decodeGeminiPlanBody(t, plan.Body)["generationConfig"].(map[string]any)["imageConfig"].(map[string]any)
 	if imageConfig["aspectRatio"] != "16:9" || imageConfig["imageSize"] != "2K" {
 		t.Fatalf("imageConfig = %#v, want 16:9 / 2K", imageConfig)
+	}
+}
+
+// image_size 是 gemini 原生方言，作为 size 的档位别名保留：
+// 老客户端只传它时仍然生效；size 只写了比例或 auto 时，别名仍然能补档位。
+func TestPlanGeminiKeepsImageSizeAlias(t *testing.T) {
+	for _, size := range []any{nil, "auto", "1:1"} {
+		canonical := newImageCanonical()
+		canonical.fields["prompt"] = "a cat"
+		canonical.fields["image_size"] = "2k"
+		if size != nil {
+			canonical.fields["size"] = size
+		}
+
+		plan, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image")
+		if err != nil {
+			t.Fatalf("size %v: planGemini: %v", size, err)
+		}
+		imageConfig := decodeGeminiPlanBody(t, plan.Body)["generationConfig"].(map[string]any)["imageConfig"].(map[string]any)
+		if imageConfig["imageSize"] != "2K" {
+			t.Fatalf("size %v: imageSize = %v, want 2K", size, imageConfig["imageSize"])
+		}
+		if size == "1:1" {
+			if imageConfig["aspectRatio"] != "1:1" {
+				t.Fatalf("size 1:1 must keep its ratio, got %v", imageConfig["aspectRatio"])
+			}
+			continue
+		}
+		if _, exists := imageConfig["aspectRatio"]; exists {
+			t.Fatalf("size %v: alias must not invent a ratio: %#v", size, imageConfig["aspectRatio"])
+		}
+	}
+}
+
+// 回包必须带真实像素：size -> (aspectRatio, imageSize) 只有去的方向不够，
+// 客户端要能看见上游实际给了什么。
+func TestGeminiResponseCarriesDeliveredSize(t *testing.T) {
+	blob := testPNGImage(t, 1376, 768)
+	upstream := map[string]any{
+		"candidates": []any{map[string]any{
+			"content": map[string]any{"parts": []any{map[string]any{
+				"inlineData": map[string]any{"mimeType": "image/png", "data": base64.StdEncoding.EncodeToString(blob)},
+			}}},
+		}},
+	}
+	raw, err := json.Marshal(upstream)
+	if err != nil {
+		t.Fatalf("marshal upstream: %v", err)
+	}
+
+	response, err := decodeGeminiImageResponse(raw, 0)
+	if err != nil {
+		t.Fatalf("decodeGeminiImageResponse: %v", err)
+	}
+	body, err := encodeImageResponse(response, nil)
+	if err != nil {
+		t.Fatalf("encodeImageResponse: %v", err)
+	}
+	data := decodeGeminiPlanBody(t, body)["data"].([]any)
+	if len(data) != 1 {
+		t.Fatalf("data = %#v", data)
+	}
+	entry := data[0].(map[string]any)
+	if entry["size"] != "1376x768" {
+		t.Fatalf("size = %v, want 1376x768", entry["size"])
+	}
+	if entry["b64_json"] == "" {
+		t.Fatal("b64_json must survive the size annotation")
 	}
 }
 
