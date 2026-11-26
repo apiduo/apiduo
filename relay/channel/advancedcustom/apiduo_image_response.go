@@ -117,9 +117,12 @@ func decodeImageResponse(raw []byte) (*imageResponse, error) {
 		if revised, ok := object["revised_prompt"]; ok {
 			item.Extras["revised_prompt"] = revised
 		}
-		// 上游的 size / model / size_applied 一律不回显：白名单只有
-		// url / b64_json / revised_prompt（§5.1）。size 尤其不能回 —— 它是上游
-		// 自己重采样的结果，回给客户端会被当成模型原生像素。
+		// 上游的 size / model / size_applied 一律不回显（§5.1）；但交付字节里的
+		// 宽高要回填 —— 客户端传 1024x1024、上游实际给 1295x1214（duck 实测），
+		// 不回就是让客户端以为尺寸精确生效了。URL 引用没有字节，不填。
+		if width, height, ok := imagePixelSize(item.B64JSON); ok {
+			item.Extras["size"] = fmt.Sprintf("%dx%d", width, height)
+		}
 		result.Data = append(result.Data, item)
 	}
 	return result, nil

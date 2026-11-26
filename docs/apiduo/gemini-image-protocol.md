@@ -97,11 +97,13 @@ Gemini 不需要额外的主端点校验——它不读主端点。
 - `generations`：JSON，`image` 可缺省（文生图）或为 str/list（图生图）。
 - `edits`：只接受 multipart 文件流，文本引用一律 400（现有 `requireFileStreamEdits`）。
 - `mask` 在五个上游都不转发。
-- `size` 与上游的 `(aspectRatio, imageSize)` 是同构的，三种写法都收：
-  `1024x1024`（像素）、`1:1`（比例）、`4K`（档位）。像素按官方表取最近比例，
-  档位按面积取最近、降质超三分之一升一档；超 4K 档两倍报 400。
-  `aspect_ratio` 可单独覆盖比例（new-api 既有字段）。响应里 `data[].size` 回填
-  **从交付字节头测得的真实像素**，闭合这条映射（§5.1）。
+- `size` 以 **WxH 像素为主形态**（`1024x1024`），另收两种便利写法：`1:1`（比例）、
+  `4K`（档位）。三种写法在 canonical 层统一折成官方像素表的 WxH 再下发：
+  `1:1` → 1024×1024（1K 1:1）、`4K` → 4096×4096、`16:9 + 4K` → 5504×3072。
+  WxH 原样保留，不因「接近表值」被改写。`aspect_ratio` 可覆盖比例维。
+  响应 `data[].size` 回填**从交付字节头测得的真实像素**，闭合这条映射（§5.1）。
+  归一化的位置是 `imageCanonical.normalizeSize`：ark 形状直接透传 WxH，gemini
+  形状从 WxH 反推 `(aspectRatio, imageSize)`，两种渠道对同一 size 给同一像素。
 
 ### 3.2 chat / responses
 
@@ -416,8 +418,9 @@ gemini 上游回的是 `candidates[]`，用 `decodeImageResponse` 解会得到�
 两张的开关，见 §3.5 的四组实测。
 
 - `n` 不转发：上游恒出 1 张，计费张数按客户端请求的 n（`image-endpoint-contract.md` §2.4）。
-- `size` 按 §3.1 折算成 `(aspectRatio, imageSize)`；`aspect_ratio` 覆盖比例维；
-  `image_size` 只作为档位别名兼容老客户端，与 `size` 冲突时 `size` 赢。
+- `size` 已在 canonical 归一化成 WxH（§3.1），这里只从 WxH 反推 `(aspectRatio, imageSize)`；
+  `aspect_ratio` 覆盖比例维；`image_size` 只作为档位别名兼容老客户端
+  （冲突时 `size` 赢，size 已经是 WxH 时别名不参与）。
 - `seed` / `style` / `quality` / `negative_prompt` / `mask` 丢弃并记 `other.dropped_params`。
 
 ## 5. 出口净化：不暴露上游

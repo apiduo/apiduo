@@ -732,6 +732,163 @@ func TestEmptyImageDataKeepsChatContentShape(t *testing.T) {
 	}
 }
 
+// 非 gemini 上游同样回填交付像素：上游自己的 size 字段仍然丢弃。
+// duck 实测 size=1024x1024 给 1295x1214，不回填客户端就只能猜。
+func TestDecodeImageResponseAnnotatesDeliveredSize(t *testing.T) {
+	blob := testPNGImage(t, 1295, 1214)
+	raw, err := json.Marshal(map[string]any{
+		"created": 1730000000,
+		"data": []any{map[string]any{
+			"b64_json": base64.StdEncoding.EncodeToString(blob),
+			"size":     "1024x1024",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeImageResponse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decoded.Data[0].Extras["size"]; got != "1295x1214" {
+		t.Fatalf("size = %v, want the delivered 1295x1214", got)
+	}
+
+	body, err := encodeImageResponse(decoded, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	entry := envelope["data"].([]any)[0].(map[string]any)
+	if entry["size"] != "1295x1214" {
+		t.Fatalf("envelope size = %v, want 1295x1214", entry["size"])
+	}
+
+	// URL 引用没有字节可读：不填，不猜。
+	urlOnly, err := decodeImageResponse([]byte(`{"created":1,"data":[{"url":"https://cdn.example.com/a.png"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := urlOnly.Data[0].Extras["size"]; exists {
+		t.Fatalf("url-only item must not carry a size: %#v", urlOnly.Data[0].Extras)
+	}
+}
+
+// size 的三种写法在 canonical 层收敛成 WxH：下游只有一种形状要处理。
+// WxH 原样保留，不因为「接近官方表」被改成表值（1295x1214 必须保持）。
+func TestNormalizeSizeFoldsToPixels(t *testing.T) {
+	cases := []struct {
+		size      string
+		aspect    string
+		imageSize string
+		want      string
+	}{
+		{size: "1024x1024", want: "1024x1024"},
+		{size: "2048x2048", want: "2048x2048"},
+		{size: "1295x1214", want: "1295x1214"},
+		{size: "1:1", want: "1024x1024"},
+		{size: "16:9", want: "1376x768"},
+		{size: "9 / 16", want: "768x1376"},
+		{size: "2K", want: "2048x2048"},
+		{size: "4k", want: "4096x4096"},
+		// 显式比例覆盖像素的比例维，档位沿用该像素所在的档。
+		{size: "2048x2048", aspect: "16:9", want: "2752x1536"},
+		{size: "3840x2160", aspect: "1:1", want: "4096x4096"},
+		// image_size 别名只在 size 没表态档位时补位。
+		{size: "1:1", imageSize: "2K", want: "2048x2048"},
+		{size: "4K", imageSize: "1K", want: "4096x4096"},
+		{size: "", aspect: "16:9", want: "1376x768"},
+		{size: "", imageSize: "2K", want: "2048x2048"},
+		// auto / 全缺：不臆造尺寸。
+		{size: "auto", want: "auto"},
+		{size: "", want: ""},
+	}
+	for _, tc := range cases {
+		canonical := newImageCanonical()
+		canonical.fields["prompt"] = "a cat"
+		if tc.size != "" {
+			canonical.fields["size"] = tc.size
+		}
+		if tc.aspect != "" {
+			canonical.fields["aspect_ratio"] = tc.aspect
+		}
+		if tc.imageSize != "" {
+			canonical.fields["image_size"] = tc.imageSize
+		}
+		if err := canonical.normalize(); err != nil {
+			t.Fatalf("%q + %q + %q: %v", tc.size, tc.aspect, tc.imageSize, err)
+		}
+		got, _ := canonical.fields["size"].(string)
+		if got != tc.want {
+			t.Fatalf("%q + %q + %q -> %q, want %q", tc.size, tc.aspect, tc.imageSize, got, tc.want)
+		}
+	}
+}
+
+func TestNormalizeSizeRejectsUnusable(t *testing.T) {
+	cases := []struct {
+		size      string
+		aspect    string
+		imageSize string
+	}{
+		{size: "999"},
+		{size: "abc"},
+		{size: "0x1024"},
+		{size: "8192x8192"},
+		{size: "1024x1024", aspect: "wide"},
+		{size: "", aspect: "1:1", imageSize: "8K"},
+	}
+	for _, tc := range cases {
+		canonical := newImageCanonical()
+		canonical.fields["prompt"] = "a cat"
+		if tc.size != "" {
+			canonical.fields["size"] = tc.size
+		}
+		if tc.aspect != "" {
+			canonical.fields["aspect_ratio"] = tc.aspect
+		}
+		if tc.imageSize != "" {
+			canonical.fields["image_size"] = tc.imageSize
+		}
+		if err := canonical.normalize(); err == nil {
+			t.Fatalf("%q + %q must be rejected", tc.size, tc.aspect)
+		}
+	}
+}
+
+// 归一化之后，ark 形状的上游收到的是像素：duck 对 1:1 会静默给 3:2。
+func TestPlanARKReceivesPixelSizeForRatioInput(t *testing.T) {
+	cfg := &dto.ImageProtocolConfig{Enabled: true, Upstream: dto.ImageUpstreamARK}
+	for _, tc := range []struct{ in, want string }{
+		{"1:1", "1024x1024"},
+		{"4K", "4096x4096"},
+		{"16:9", "1376x768"},
+	} {
+		canonical := newImageCanonical()
+		canonical.fields["prompt"] = "a cat"
+		canonical.fields["size"] = tc.in
+		if err := canonical.normalize(); err != nil {
+			t.Fatalf("%q: normalize: %v", tc.in, err)
+		}
+		plan, err := planImageRequest(canonical, cfg)
+		if err != nil {
+			t.Fatalf("%q: plan: %v", tc.in, err)
+		}
+		body := decodeGeminiPlanBody(t, plan.Body)
+		if body["size"] != tc.want {
+			t.Fatalf("%q -> size %v, want %s", tc.in, body["size"], tc.want)
+		}
+		for _, key := range []string{"aspect_ratio", "image_size"} {
+			if _, exists := body[key]; exists {
+				t.Fatalf("%q: %s must not reach an ark-shaped upstream", tc.in, key)
+			}
+		}
+	}
+}
+
 func TestDecodeImageResponseRejectsEmptyData(t *testing.T) {
 	if _, err := decodeImageResponse([]byte(`{"created":1,"data":[]}`)); err != nil {
 		t.Fatal("decode should succeed; an empty data array is a valid response envelope")

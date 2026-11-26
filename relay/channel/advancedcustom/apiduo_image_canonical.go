@@ -252,7 +252,105 @@ func (c *imageCanonical) normalize() error {
 			return errors.New("prompt is required when no image is provided")
 		}
 	}
+	return c.normalizeSize()
+}
+
+// normalizeSize 把 size 收敛成 canonical 的唯一形态：WxH。
+//
+// size 的本义是「像素目标」，OpenAI 与方舟都用 WxH 表达；"1:1" 与 "4K" 是便利
+// 写法，在这里一次性折成官方像素表里的 WxH。下游因此只有一种形状要处理：
+// ark / openai 形状原样透传，gemini 形状从 WxH 反推 (aspectRatio, imageSize)。
+// 若放到各上游脚本里各折一次，同一个请求在两种渠道上会得到不同像素 —— #47 的
+// duck 只认 WxH，1:1 会被它忽略并静默给 3:2。
+//
+// WxH 原样保留：客户端写了精确像素就按它发，不因为「接近官方表」改成表值。
+func (c *imageCanonical) normalizeSize() error {
+	sizeText, _ := c.fields["size"].(string)
+	sizeText = strings.TrimSpace(sizeText)
+
+	ratio := ""
+	if raw, ok := c.fields["aspect_ratio"].(string); ok && strings.TrimSpace(raw) != "" {
+		normalised, valid := normaliseAspectRatio(raw)
+		if !valid {
+			return fmt.Errorf("aspect_ratio must look like %q, got %q", "16:9", raw)
+		}
+		ratio = normalised
+	}
+
+	tier := ""
+	if raw, exists := c.fields["image_size"]; exists {
+		label, _ := raw.(string)
+		column, valid := geminiSizeTierColumn(label)
+		if !valid {
+			return fmt.Errorf("image_size must be 1K, 2K or 4K, got %q", raw)
+		}
+		if strings.TrimSpace(label) != "" {
+			tier = geminiTierLabel(column)
+		}
+	}
+
+	if sizeText != "" && !strings.EqualFold(sizeText, "auto") {
+		if w, h, ok := parsePixelSize(sizeText); ok {
+			nearest, pixels := nearestGeminiAspectRatio(w, h)
+			requested := int64(w) * int64(h)
+			// 超上限在归一化就拦住：放行到各上游，ark 会 400、gemini 会被静默降档。
+			if int64(pixels[2][0])*int64(pixels[2][1])*2 < requested {
+				return fmt.Errorf(
+					"size %dx%d exceeds the largest supported image (%dx%d for %s)",
+					w, h, pixels[2][0], pixels[2][1], nearest)
+			}
+			if ratio == "" {
+				return nil // 已经是最终像素
+			}
+			// 显式比例覆盖：按该像素所在的档位，换成目标比例的像素。
+			column := geminiColumnForArea(requested, pixels)
+			if target, exists := geminiImageSizeTable[ratio]; exists {
+				c.fields["size"] = fmt.Sprintf("%dx%d", target[column][0], target[column][1])
+			} else {
+				targetW, targetH := geminiTierPixels(ratio, column)
+				c.fields["size"] = fmt.Sprintf("%dx%d", targetW, targetH)
+			}
+			return nil
+		}
+		switch column, valid := geminiSizeTierColumn(sizeText); {
+		case valid:
+			tier = geminiTierLabel(column)
+		default:
+			parsed, valid := normaliseAspectRatio(sizeText)
+			if !valid {
+				return fmt.Errorf(
+					"size must be a pixel size like %q, a ratio like %q, a tier like %q, or %q, got %q",
+					"1024x1024", "1:1", "4K", "auto", sizeText)
+			}
+			ratio = parsed
+		}
+	}
+
+	if ratio == "" && tier == "" {
+		return nil
+	}
+	size, err := geminiCanonicalSize(ratio, tier)
+	if err != nil {
+		return err
+	}
+	c.fields["size"] = size
 	return nil
+}
+
+// geminiColumnForArea 在该比例的三档里按面积取最近；输出不足请求面积的三分之二
+// 时升一档 —— 按次计费下，把 3840x2160 降成 2K 是在替客户省钱的同时偷走 4K。
+func geminiColumnForArea(requested int64, pixels [3][2]int) int {
+	column, bestGap := 0, math.Inf(1)
+	for i := range 3 {
+		gap := math.Abs(math.Log(float64(pixels[i][0]) * float64(pixels[i][1]) / float64(requested)))
+		if gap < bestGap {
+			bestGap, column = gap, i
+		}
+	}
+	if column < 2 && int64(pixels[column][0])*int64(pixels[column][1])*3 < requested*2 {
+		column++
+	}
+	return column
 }
 
 func normaliseN(raw any) int {

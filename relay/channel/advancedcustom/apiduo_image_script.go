@@ -350,17 +350,7 @@ func geminiFieldsFromSize(raw any) (string, string, bool, bool, error) {
 
 	ratio, pixels := nearestGeminiAspectRatio(w, h)
 	requestedArea := int64(w) * int64(h)
-	column := 0
-	bestGap := math.Inf(1)
-	for i := range 3 {
-		gap := math.Abs(math.Log(float64(pixels[i][0]) * float64(pixels[i][1]) / float64(requestedArea)))
-		if gap < bestGap {
-			bestGap, column = gap, i
-		}
-	}
-	if column < 2 && int64(pixels[column][0])*int64(pixels[column][1])*3 < requestedArea*2 {
-		column++
-	}
+	column := geminiColumnForArea(requestedArea, pixels)
 	if int64(pixels[2][0])*int64(pixels[2][1])*2 < requestedArea {
 		return "", "", false, false, fmt.Errorf(
 			"size %dx%d exceeds the largest supported image (%dx%d for %s)",
