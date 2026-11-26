@@ -667,8 +667,12 @@ func TestWrapChatCompletionUsesMarkdownContent(t *testing.T) {
 func TestWrapChatCompletionStreamIsSSE(t *testing.T) {
 	response := &imageResponse{
 		Created: 1730000000,
-		Data:    []imageResponseItem{{URL: "https://cdn.example.com/a.png"}},
-		Extras:  map[string]any{},
+		Data: []imageResponseItem{{
+			URL: "https://cdn.example.com/a.png",
+			// size 是 images 形状的字段，item 带它时也不能被抬到 chunk 顶层。
+			Extras: map[string]any{"size": "1024x1024"},
+		}},
+		Extras: map[string]any{},
 	}
 	payload, err := wrapChatCompletionStream(response, "client-model")
 	if err != nil {
@@ -684,6 +688,9 @@ func TestWrapChatCompletionStreamIsSSE(t *testing.T) {
 	}
 	if first["object"] != "chat.completion.chunk" {
 		t.Fatalf("wrong chunk object: %#v", first["object"])
+	}
+	if _, exists := first["size"]; exists {
+		t.Fatalf("images-only size must not surface on a chat chunk: %#v", first["size"])
 	}
 	delta := first["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
 	if delta["content"] != "![image](https://cdn.example.com/a.png)" {

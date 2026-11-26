@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -357,6 +358,32 @@ func TestGeminiSizeRoundTripThroughResponse(t *testing.T) {
 		if want := fmt.Sprintf("%dx%d", w, h); entry["size"] != want {
 			t.Fatalf("round trip: size = %v, want %s", entry["size"], want)
 		}
+	}
+}
+
+// 窗口边界：SOF 被 EXIF 推出 3KB 窗口时放弃，不许返回一个猜出来的尺寸。
+func TestImagePixelSizeExifWindow(t *testing.T) {
+	jpegWithExif := func(exifBytes int) []byte {
+		var buf bytes.Buffer
+		if err := jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 640, 360)), nil); err != nil {
+			t.Fatalf("encode jpeg: %v", err)
+		}
+		blob := buf.Bytes()
+		segment := make([]byte, 4+exifBytes)
+		segment[0], segment[1] = 0xFF, 0xE1
+		binary.BigEndian.PutUint16(segment[2:4], uint16(exifBytes+2))
+		out := make([]byte, 0, len(blob)+len(segment))
+		out = append(out, blob[:2]...)
+		out = append(out, segment...)
+		out = append(out, blob[2:]...)
+		return out
+	}
+
+	if w, h, ok := imagePixelSize(base64.StdEncoding.EncodeToString(jpegWithExif(1024))); !ok || w != 640 || h != 360 {
+		t.Fatalf("small exif: got (%d,%d,%v), want (640,360,true)", w, h, ok)
+	}
+	if w, h, ok := imagePixelSize(base64.StdEncoding.EncodeToString(jpegWithExif(6000))); ok {
+		t.Fatalf("large exif must not yield a size, got %dx%d", w, h)
 	}
 }
 

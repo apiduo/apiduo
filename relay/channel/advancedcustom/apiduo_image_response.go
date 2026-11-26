@@ -540,6 +540,11 @@ func carryOverResponseExtras(envelope map[string]any, response *imageResponse, i
 	}
 	for _, item := range response.Data {
 		for key, value := range item.Extras {
+			// size 属于 images 形状的 data[]，chat chunk 的顶层没有这个位置：
+			// 抬上去就是 choices 旁边多一个非标准键，违反 §5.1 的白名单。
+			if key == "size" {
+				continue
+			}
 			if _, exists := envelope[key]; !exists {
 				envelope[key] = value
 			}
