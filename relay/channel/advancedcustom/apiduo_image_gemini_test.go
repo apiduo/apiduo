@@ -117,19 +117,130 @@ func TestPlanGeminiRejectsUnknownImageSize(t *testing.T) {
 	}
 }
 
-func TestPlanGeminiUnknownSizeIsLeftToUpstream(t *testing.T) {
+// size 是标准 OpenAI / 方舟写法，必须折算成 Gemini 的 (比例, 档位)。
+// 只认 image_size 会导致 size=2048x2048 落成 1K 16:9，客户端以为拿到了 2K。
+func TestPlanGeminiMapsSizeToImageConfig(t *testing.T) {
+	cases := []struct {
+		size      string
+		wantRatio string
+		wantTier  string
+	}{
+		{size: "1024x1024", wantRatio: "1:1", wantTier: "1K"},
+		{size: "4096x4096", wantRatio: "1:1", wantTier: "4K"},
+		{size: "2048x2048", wantRatio: "1:1", wantTier: "2K"},
+		{size: "2752x1536", wantRatio: "16:9", wantTier: "2K"},
+		{size: "5504x3072", wantRatio: "16:9", wantTier: "4K"},
+		// 4K UHD 是客户口中的「4K」，按面积最近会落成 2K，降质超三分之一要升档。
+		{size: "3840x2160", wantRatio: "16:9", wantTier: "4K"},
+		// OpenAI 的 1K 竖图：面积只差 32%，不许被抬成 2K。
+		{size: "1024x1536", wantRatio: "2:3", wantTier: "1K"},
+		{size: "1536x1024", wantRatio: "3:2", wantTier: "1K"},
+		{size: "1792x1024", wantRatio: "16:9", wantTier: "2K"},
+		// 表内极端比例。
+		{size: "1584x672", wantRatio: "21:9", wantTier: "1K"},
+		{size: "2048x512", wantRatio: "4:1", wantTier: "1K"},
+		// 表外像素取最近比例与档位，不静默丢弃。
+		{size: "999x999", wantRatio: "1:1", wantTier: "1K"},
+		{size: "800x600", wantRatio: "4:3", wantTier: "1K"},
+		{size: "5000x5000", wantRatio: "1:1", wantTier: "4K"},
+		// 档位 token：比例交给上游，不臆造。
+		{size: "2K", wantTier: "2K"},
+		{size: "4k", wantTier: "4K"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.size, func(t *testing.T) {
+			canonical := newImageCanonical()
+			canonical.fields["prompt"] = "a cat"
+			canonical.fields["size"] = tc.size
+
+			plan, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image")
+			if err != nil {
+				t.Fatalf("planGemini: %v", err)
+			}
+			parsed := decodeGeminiPlanBody(t, plan.Body)
+			generationConfig := parsed["generationConfig"].(map[string]any)
+			imageConfig, _ := generationConfig["imageConfig"].(map[string]any)
+			if got, _ := imageConfig["aspectRatio"].(string); got != tc.wantRatio {
+				t.Fatalf("aspectRatio = %q, want %q", got, tc.wantRatio)
+			}
+			if got, _ := imageConfig["imageSize"].(string); got != tc.wantTier {
+				t.Fatalf("imageSize = %q, want %q", got, tc.wantTier)
+			}
+		})
+	}
+}
+
+// 显式方言字段逐维优先：image_size 只管档位，aspect_ratio 只管比例。
+func TestPlanGeminiExplicitFieldsWinOverSize(t *testing.T) {
 	canonical := newImageCanonical()
 	canonical.fields["prompt"] = "a cat"
-	canonical.fields["size"] = "999x999"
+	canonical.fields["size"] = "1024x1024"
+	canonical.fields["image_size"] = "4k"
 
 	plan, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image")
 	if err != nil {
 		t.Fatalf("planGemini: %v", err)
 	}
-	parsed := decodeGeminiPlanBody(t, plan.Body)
-	generationConfig := parsed["generationConfig"].(map[string]any)
-	if _, exists := generationConfig["imageConfig"]; exists {
-		t.Fatalf("unknown size must not invent an aspect ratio: %#v", generationConfig["imageConfig"])
+	imageConfig := decodeGeminiPlanBody(t, plan.Body)["generationConfig"].(map[string]any)["imageConfig"].(map[string]any)
+	if imageConfig["aspectRatio"] != "1:1" || imageConfig["imageSize"] != "4K" {
+		t.Fatalf("imageConfig = %#v, want 1:1 / 4K", imageConfig)
+	}
+
+	canonical = newImageCanonical()
+	canonical.fields["prompt"] = "a cat"
+	canonical.fields["size"] = "2048x2048"
+	canonical.fields["aspect_ratio"] = "16 / 9"
+
+	plan, err = planGemini(context.Background(), canonical, "gemini-2.5-flash-image")
+	if err != nil {
+		t.Fatalf("planGemini: %v", err)
+	}
+	imageConfig = decodeGeminiPlanBody(t, plan.Body)["generationConfig"].(map[string]any)["imageConfig"].(map[string]any)
+	if imageConfig["aspectRatio"] != "16:9" || imageConfig["imageSize"] != "2K" {
+		t.Fatalf("imageConfig = %#v, want 16:9 / 2K", imageConfig)
+	}
+}
+
+// 缺席保持缺席：size 为空或 auto 时不写 imageConfig，让上游用默认。
+func TestPlanGeminiLeavesUnstatedSizeToUpstream(t *testing.T) {
+	for _, size := range []string{"", "auto", "AUTO"} {
+		canonical := newImageCanonical()
+		canonical.fields["prompt"] = "a cat"
+		if size != "" {
+			canonical.fields["size"] = size
+		}
+
+		plan, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image")
+		if err != nil {
+			t.Fatalf("size %q: planGemini: %v", size, err)
+		}
+		generationConfig := decodeGeminiPlanBody(t, plan.Body)["generationConfig"].(map[string]any)
+		if _, exists := generationConfig["imageConfig"]; exists {
+			t.Fatalf("size %q must not invent an imageConfig: %#v", size, generationConfig["imageConfig"])
+		}
+	}
+}
+
+// 认不出的写法与超上限必须 400：静默丢弃或截断会让客户端以为尺寸生效了。
+func TestPlanGeminiRejectsUnusableSize(t *testing.T) {
+	for _, size := range []string{"999", "abc", "0x1024", "1024x", "8192x8192", "999999999x999999999"} {
+		canonical := newImageCanonical()
+		canonical.fields["prompt"] = "a cat"
+		canonical.fields["size"] = size
+
+		if _, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image"); err == nil {
+			t.Fatalf("size %q must be rejected", size)
+		}
+	}
+}
+
+func TestPlanGeminiRejectsMalformedAspectRatio(t *testing.T) {
+	canonical := newImageCanonical()
+	canonical.fields["prompt"] = "a cat"
+	canonical.fields["aspect_ratio"] = "wide"
+
+	if _, err := planGemini(context.Background(), canonical, "gemini-2.5-flash-image"); err == nil {
+		t.Fatal("aspect_ratio wide must be rejected")
 	}
 }
 

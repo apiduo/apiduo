@@ -535,6 +535,12 @@ var geminiImageSizeTable = map[string][3][2]int{
 	"8:1":  {{3072, 384}, {6144, 768}, {12288, 1536}},
 }
 
+// geminiAspectRatioOrder 与上表同源，只固定遍历顺序：比例距离打平时
+// map 的随机迭代会让同一个 size 在两次请求里映射到不同比例。
+var geminiAspectRatioOrder = []string{
+	"1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1",
+}
+
 // geminiCanonicalSize 把 (aspectRatio, imageSize) 折成 canonical 的 size。
 //
 // 口径与 Google 的 imageConfig 语义对齐：

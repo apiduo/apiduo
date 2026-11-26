@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"mime/multipart"
 	"net/textproto"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -217,20 +219,16 @@ func planGemini(ctx context.Context, c *imageCanonical, upstreamModel string) (*
 		}
 	}
 
+	ratio, tier, err := geminiImageConfig(c)
+	if err != nil {
+		return nil, err
+	}
 	imageConfig := make(map[string]any, 2)
-	if ratio := geminiAspectRatio(c); ratio != "" {
+	if ratio != "" {
 		imageConfig["aspectRatio"] = ratio
 	}
-	if raw, exists := c.fields["image_size"]; exists {
-		size, _ := raw.(string)
-		size = strings.ToUpper(strings.TrimSpace(size))
-		switch size {
-		case "":
-		case "1K", "2K", "4K":
-			imageConfig["imageSize"] = size
-		default:
-			return nil, fmt.Errorf("image_size must be 1K, 2K or 4K, got %q", raw)
-		}
+	if tier != "" {
+		imageConfig["imageSize"] = tier
 	}
 
 	// 只声明 IMAGE：实测 google/gemini-nano-banana-2.1 在 ["TEXT","IMAGE"] 下会
@@ -273,28 +271,143 @@ func escapeGeminiModelPath(model string) string {
 	return strings.Join(segments, "/")
 }
 
-// geminiAspectRatio：显式 aspect_ratio 优先；size 只映射能唯一确定比例的五个档，
-// 其余交给上游默认——像素换比例是有损的，不做猜测。
-func geminiAspectRatio(c *imageCanonical) string {
-	if raw, ok := c.fields["aspect_ratio"].(string); ok {
-		if ratio := strings.TrimSpace(raw); ratio != "" {
-			return ratio
+// geminiImageConfig 决定发给上游的 imageConfig（比例 + 档位）。
+//
+// 两个来源，显式方言字段优先：
+//   - aspect_ratio / image_size 是 Gemini 原生写法，直接给出两维。
+//   - size 是 OpenAI / 方舟写法，可能是 "2048x2048"，也可能是 "2K"。
+//
+// 只传 size 是标准客户端的常态，而 Gemini 只认离散的 (比例, 档位)。不在这里
+// 折算，size 会被静默丢掉：实测 size=2048x2048 曾经落成 1376x768（1K 16:9），
+// 客户端以为拿到了 2K。
+func geminiImageConfig(c *imageCanonical) (string, string, error) {
+	ratio := ""
+	if raw, ok := c.fields["aspect_ratio"].(string); ok && strings.TrimSpace(raw) != "" {
+		normalised, valid := normaliseAspectRatio(raw)
+		if !valid {
+			return "", "", fmt.Errorf("aspect_ratio must look like %q, got %q", "16:9", raw)
+		}
+		ratio = normalised
+	}
+
+	tier := ""
+	if raw, exists := c.fields["image_size"]; exists {
+		label, _ := raw.(string)
+		column, valid := geminiSizeTierColumn(label)
+		if !valid {
+			return "", "", fmt.Errorf("image_size must be 1K, 2K or 4K, got %q", raw)
+		}
+		if strings.TrimSpace(label) != "" {
+			tier = geminiTierLabel(column)
 		}
 	}
-	size, _ := c.fields["size"].(string)
-	switch strings.TrimSpace(size) {
-	case "1024x1024":
-		return "1:1"
-	case "1536x1024":
-		return "3:2"
-	case "1024x1536":
-		return "2:3"
-	case "1792x1024":
-		return "16:9"
-	case "1024x1792":
-		return "9:16"
+
+	if ratio != "" && tier != "" {
+		return ratio, tier, nil
+	}
+
+	fromSizeRatio, fromSizeTier, err := geminiFieldsFromSize(c.fields["size"])
+	if err != nil {
+		return "", "", err
+	}
+	if ratio == "" {
+		ratio = fromSizeRatio
+	}
+	if tier == "" {
+		tier = fromSizeTier
+	}
+	return ratio, tier, nil
+}
+
+// geminiFieldsFromSize 把 OpenAI / 方舟的 size 反推成 (aspectRatio, imageSize)。
+//
+// 三种合法写法：
+//   - 空 / "auto"：不表态，交给上游默认（缺席保持缺席）。
+//   - 档位 "1K" / "2K" / "4K"：方舟也用它表达清晰度，比例留给上游。
+//   - 像素 "2048x2048" / "3840x2160"：比例取最接近的官方档，档位按面积取最近，
+//     但降质超过三分之一就升一档 —— 按次计费下，把 3840x2160 降成 2K(2752x1536)
+//     是在替客户省钱的同时偷走他点的 4K，比多给像素更糟。
+//
+// 超过 4K 档两倍直接报错：再往上没有档位可给，静默截断等于骗客户。
+func geminiFieldsFromSize(raw any) (string, string, error) {
+	text, _ := raw.(string)
+	text = strings.TrimSpace(text)
+	if text == "" || strings.EqualFold(text, "auto") {
+		return "", "", nil
+	}
+	if column, valid := geminiSizeTierColumn(text); valid {
+		return "", geminiTierLabel(column), nil
+	}
+
+	w, h, ok := parsePixelSize(text)
+	if !ok {
+		return "", "", fmt.Errorf(
+			"size must be a tier like %q, a pixel size like %q, or %q, got %q",
+			"2K", "2048x2048", "auto", text)
+	}
+
+	ratio, pixels := nearestGeminiAspectRatio(w, h)
+	requestedArea := int64(w) * int64(h)
+	column := 0
+	bestGap := math.Inf(1)
+	for i := range 3 {
+		gap := math.Abs(math.Log(float64(pixels[i][0]) * float64(pixels[i][1]) / float64(requestedArea)))
+		if gap < bestGap {
+			bestGap, column = gap, i
+		}
+	}
+	if column < 2 && int64(pixels[column][0])*int64(pixels[column][1])*3 < requestedArea*2 {
+		column++
+	}
+	if int64(pixels[2][0])*int64(pixels[2][1])*2 < requestedArea {
+		return "", "", fmt.Errorf(
+			"size %dx%d exceeds the largest supported image (%dx%d for %s)",
+			w, h, pixels[2][0], pixels[2][1], ratio)
+	}
+	return ratio, geminiTierLabel(column), nil
+}
+
+// nearestGeminiAspectRatio 按对数比距离取最近比例，并返回该比例的三档像素。
+// 固定遍历顺序：map 迭代随机，比例打平时同一尺寸会在两次请求里给出不同结果。
+func nearestGeminiAspectRatio(w, h int) (string, [3][2]int) {
+	target := math.Log(float64(w) / float64(h))
+	best := geminiAspectRatioOrder[0]
+	bestDistance := math.Inf(1)
+	for _, ratio := range geminiAspectRatioOrder {
+		pixels := geminiImageSizeTable[ratio]
+		distance := math.Abs(target - math.Log(float64(pixels[0][0])/float64(pixels[0][1])))
+		if distance < bestDistance {
+			bestDistance, best = distance, ratio
+		}
+	}
+	return best, geminiImageSizeTable[best]
+}
+
+// parsePixelSize 只认 "2048x2048" 这类显式像素；"2K" 与 "auto" 在调用方分流。
+// 上界挡住 9e18 量级：int64(w)*int64(h) 溢出成负数会让面积比较得出完全相反的结论。
+func parsePixelSize(text string) (int, int, bool) {
+	parts := strings.FieldsFunc(text, func(r rune) bool {
+		return r == 'x' || r == 'X' || r == '×' || r == '*'
+	})
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	w, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if errW != nil || errH != nil || w <= 0 || h <= 0 || w > 100000 || h > 100000 {
+		return 0, 0, false
+	}
+	return w, h, true
+}
+
+func geminiTierLabel(column int) string {
+	switch column {
+	case 0:
+		return "1K"
+	case 1:
+		return "2K"
 	default:
-		return ""
+		return "4K"
 	}
 }
 
