@@ -104,3 +104,63 @@ docker-compose up -d apiduo     # 约 5 s
 
 第 1 条的取舍：同机备节点只能扛容器/Docker 故障（0.1 ms 接管），异机 core-3 能扛整机故障
 （137 ms）。两者覆盖场景不同，资源允许时都留着最稳。
+
+---
+
+# 补：把 core-1 的同机槽位接回来（09:57–09:59）
+
+这次升级是裸重建（4.6 s，79 条 502）。根因不是没有槽位，而是**槽位没在用**：
+compose 里 `apiduo-standby`（profile `local-standby`，127.0.0.1:3003）是 2026-11-15 就设计好的
+同机备节点，11-25 那次升级用过它，之后一直 `Exited`。
+
+## 为什么当时不敢直接用
+
+它的 `/data/log_spool` 里留着 11-25 12:35 的 3.8 MB spool（`logspool.offset` 与文件等长，
+说明已全部 flush，只是没来得及删文件）。启动时若误判成「未消费」，这批 1891 行会被重放，
+既重复入库又影响账单。核实办法：从 spool 里取一个 `request_id` 去 CH 查 ——
+查到 2 行（type=5 失败 + type=2 成功，重试产生的合法双行），确认已入库，才敢清。
+
+## 做了什么
+
+1. spool 挪到备份目录（不删，留证据）：`pre-0241-*/standby-spool/`。
+2. compose 给 standby 加共享导出卷：`/www/docker/apiduo/data/data/exports:/data/data/exports`
+   —— 只共享 exports，**不共享 `/data` 根**，否则两个日志 writer 抢同一批 spool 会重复入库。
+3. `docker-compose --profile local-standby up -d apiduo-standby` → 1 s healthy，0.0.241，
+   日志确认 `billing/growth task skipped on non-master node`。
+4. nginx upstream：core-3 那行（11-25 已被注释）保留，新增
+   `server 127.0.0.1:3003 backup max_fails=2 fail_timeout=30s;`。
+
+## 切换实测（等同下一次滚动升级的演练）
+
+```
+主槽位置 down → nginx -t → reload → 发 6 次外网请求：200 200 200 200 200 200
+窗口内 43 条请求：5xx = 0，其中 14 条由 127.0.0.1:3003 处理
+回切后请求立即落回 127.0.0.1:3002
+```
+
+**0 失败**，与 11-24 那次（4 条 502）和今天裸重建（79 条 502）对比明显。
+
+## 下次升级的滚动流程（4 条命令）
+
+```bash
+cd /www/docker/apiduo
+sed -i 's#image: ghcr.io/apiduo/apiduo:.*#image: ghcr.io/apiduo/apiduo:0.0.242#' docker-compose.yml
+docker-compose --profile local-standby up -d apiduo-standby        # 先升不吃流量的备槽位
+# 等 3003 版本号变成新 tag 后：
+sed -i 's#server 127.0.0.1:3002 max_fails#server 127.0.0.1:3002 down max_fails#' \
+  /www/server/panel/vhost/nginx/0.apiduo-canary.conf && nginx -s reload
+sleep 30                                                            # 排空旧连接
+docker stop -t 150 jieapi-apiduo && docker-compose up -d apiduo      # 升主槽位
+sed -i 's#server 127.0.0.1:3002 down max_fails#server 127.0.0.1:3002 max_fails#' \
+  /www/server/panel/vhost/nginx/0.apiduo-canary.conf && nginx -s reload
+```
+
+注意回切后**等 3 分钟再动别的东西**：reload 前的旧 worker 会继续按旧配置把请求发到 3003，
+11-24 那 2 条 502 就是这么来的。
+
+## 限制（要说清）
+
+- 同机槽位只能扛**容器 / Docker 故障**（RTT 0.1 ms），扛不了整机、内核、磁盘故障。
+  真正的异地冗余还得另找一台机器 —— core-3 已在 11-25 下线（nginx 里那行注释保留了回滚办法）。
+- 备槽位是 `NODE_TYPE=slave`，不跑出账 / 任务轮询 / 渠道检测。切流期间这些后台任务暂停，
+  1–2 分钟的窗口无所谓，但不要把它当长期主节点用。
