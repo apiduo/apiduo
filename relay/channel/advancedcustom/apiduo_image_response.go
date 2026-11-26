@@ -1179,10 +1179,13 @@ func writeImageJSON(c *gin.Context, body []byte) {
 	trace.CaptureResponseBody(c, body)
 }
 
-// imageSizeHeaderWindow 是解码头部窗口的 base64 字符数（约 3KB 原始字节）：
-// SOF 在 EXIF 之后也能落在窗口内，而 4K 图的完整 b64 有 2700 万字符，
-// 全解一遍只为读 24 字节不值。
-const imageSizeHeaderWindow = 4096
+// imageSizeHeaderWindow 是首试窗口的 base64 字符数（约 3KB 原始字节）。
+// JPEG 的 SOF 在 EXIF/APP 段之后，长度不可控：duck 的小图 EXIF 就能把 SOF
+// 推出 3KB，所以失败后按 imageSizeHeaderMaxWindow 再试一次。
+const (
+	imageSizeHeaderWindow    = 4096
+	imageSizeHeaderMaxWindow = 131072 // ≈96KB 原始字节，覆盖常见 EXIF
+)
 
 // imagePixelSize 从 base64 图片头读出交付像素。
 //
@@ -1191,15 +1194,24 @@ const imageSizeHeaderWindow = 4096
 // 时，回包说 2048x2048 就是撒谎，不说又只能靠客户端自己解 PNG。
 //
 // 只认 PNG 与 JPEG：它们覆盖 Gemini 与 OpenAI 形状上游的全部回包；认不出就
-// 不填，少一个便利字段不影响正确性。
+// 不填，少一个便利字段不影响正确性。两级窗口是为了 EXIF：首试 3KB 命中
+// 绝大多数 PNG，失败再给 96KB，仍读不到就放弃，不做全量解码（4K 图 20MB）。
 func imagePixelSize(data string) (int, int, bool) {
-	window := data
-	if len(window) > imageSizeHeaderWindow {
-		window = window[:imageSizeHeaderWindow]
+	for _, window := range [2]int{imageSizeHeaderWindow, imageSizeHeaderMaxWindow} {
+		if width, height, ok := imagePixelSizeInWindow(data, window); ok {
+			return width, height, true
+		}
+	}
+	return 0, 0, false
+}
+
+func imagePixelSizeInWindow(data string, window int) (int, int, bool) {
+	if len(data) > window {
+		data = data[:window]
 	}
 	// 截断到 4 的整数倍：base64 尾部残缺会直接解码失败。
-	window = window[:len(window)/4*4]
-	blob, err := base64.StdEncoding.DecodeString(window)
+	data = data[:len(data)/4*4]
+	blob, err := base64.StdEncoding.DecodeString(data)
 	if err != nil || len(blob) < 24 {
 		return 0, 0, false
 	}

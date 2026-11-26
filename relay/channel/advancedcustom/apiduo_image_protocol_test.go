@@ -792,6 +792,7 @@ func TestNormalizeSizeFoldsToPixels(t *testing.T) {
 		{size: "1:1", want: "1024x1024"},
 		{size: "16:9", want: "1376x768"},
 		{size: "9 / 16", want: "768x1376"},
+		{size: "1K", want: "1024x1024"},
 		{size: "2K", want: "2048x2048"},
 		{size: "4k", want: "4096x4096"},
 		// 显式比例覆盖像素的比例维，档位沿用该像素所在的档。

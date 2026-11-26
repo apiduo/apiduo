@@ -361,29 +361,42 @@ func TestGeminiSizeRoundTripThroughResponse(t *testing.T) {
 	}
 }
 
-// 窗口边界：SOF 被 EXIF 推出 3KB 窗口时放弃，不许返回一个猜出来的尺寸。
+// 窗口边界：首试 3KB 读不到就放大到 96KB，仍读不到才放弃，不许猜尺寸。
 func TestImagePixelSizeExifWindow(t *testing.T) {
-	jpegWithExif := func(exifBytes int) []byte {
+	jpegWithPadding := func(padding int) []byte {
 		var buf bytes.Buffer
 		if err := jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 640, 360)), nil); err != nil {
 			t.Fatalf("encode jpeg: %v", err)
 		}
 		blob := buf.Bytes()
-		segment := make([]byte, 4+exifBytes)
-		segment[0], segment[1] = 0xFF, 0xE1
-		binary.BigEndian.PutUint16(segment[2:4], uint16(exifBytes+2))
-		out := make([]byte, 0, len(blob)+len(segment))
-		out = append(out, blob[:2]...)
-		out = append(out, segment...)
+		out := append([]byte{}, blob[:2]...)
+		// 单个 APP 段上限 65535，大填充要拆成多段才合法。
+		for remaining := padding; remaining > 0; {
+			chunk := remaining
+			if chunk > 60000 {
+				chunk = 60000
+			}
+			segment := make([]byte, 4+chunk)
+			segment[0], segment[1] = 0xFF, 0xE1
+			binary.BigEndian.PutUint16(segment[2:4], uint16(chunk+2))
+			out = append(out, segment...)
+			remaining -= chunk
+		}
 		out = append(out, blob[2:]...)
 		return out
 	}
 
-	if w, h, ok := imagePixelSize(base64.StdEncoding.EncodeToString(jpegWithExif(1024))); !ok || w != 640 || h != 360 {
+	// 小 EXIF：首试窗口内。
+	if w, h, ok := imagePixelSize(base64.StdEncoding.EncodeToString(jpegWithPadding(1024))); !ok || w != 640 || h != 360 {
 		t.Fatalf("small exif: got (%d,%d,%v), want (640,360,true)", w, h, ok)
 	}
-	if w, h, ok := imagePixelSize(base64.StdEncoding.EncodeToString(jpegWithExif(6000))); ok {
-		t.Fatalf("large exif must not yield a size, got %dx%d", w, h)
+	// 中 EXIF：把 SOF 推出 3KB，第二级窗口要接住（duck 的小图就是这样）。
+	if w, h, ok := imagePixelSize(base64.StdEncoding.EncodeToString(jpegWithPadding(6000))); !ok || w != 640 || h != 360 {
+		t.Fatalf("medium exif: got (%d,%d,%v), want (640,360,true)", w, h, ok)
+	}
+	// 超大 EXIF：两级窗口都读不到，放弃。
+	if w, h, ok := imagePixelSize(base64.StdEncoding.EncodeToString(jpegWithPadding(200000))); ok {
+		t.Fatalf("huge exif must not yield a size, got %dx%d", w, h)
 	}
 }
 
