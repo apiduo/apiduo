@@ -54,14 +54,24 @@ nginx_reload() {
   "$NGINX_BIN" -s reload
 }
 
+# 主槽位的引用有两处，必须一起切：
+#   1. upstream 里的 server 行（99% 流量）
+#   2. map $apiduo_split 的 "1" 分支（1% 灰度，直接写 IP，绕开 upstream 的 down）
+# 只切 upstream 的后果实测过：0.0.241→0.0.250 升级里 5 条 502 全部来自这条
+# 1% 灰度，落在主容器重建的那一秒。
 primary_down() { # 主槽位置 down
-  sed -i 's#^\(\s*\)server 127\.0\.0\.1:3002 max_fails#\1server 127.0.0.1:3002 down max_fails#' "$CONF"
+  sed -i 's#^\([[:space:]]*\)server 127\.0\.0\.1:3002 max_fails#\1server 127.0.0.1:3002 down max_fails#' "$CONF"
   grep -q '127.0.0.1:3002 down ' "$CONF" || die "置 down 失败，检查 $CONF"
+  sed -i '/^[[:space:]]*"1"[[:space:]]/ s#127\.0\.0\.1:3002#127.0.0.1:3003#' "$CONF"
+  grep -Eq '^[[:space:]]*"1"[[:space:]]+127\.0\.0\.1:3002;' "$CONF" && die "灰度 map 未切到备槽位，检查 $CONF"
+  return 0
 }
 
 primary_up() { # 取消 down
-  sed -i 's#^\(\s*\)server 127\.0\.0\.1:3002 down max_fails#\1server 127.0.0.1:3002 max_fails#' "$CONF"
+  sed -i 's#^\([[:space:]]*\)server 127\.0\.0\.1:3002 down max_fails#\1server 127.0.0.1:3002 max_fails#' "$CONF"
   grep -q '127.0.0.1:3002 down ' "$CONF" && die "取消 down 失败，检查 $CONF"
+  sed -i '/^[[:space:]]*"1"[[:space:]]/ s#127\.0\.0\.1:3003#127.0.0.1:3002#' "$CONF"
+  grep -Eq '^[[:space:]]*"1"[[:space:]]+127\.0\.0\.1:3003;' "$CONF" && die "灰度 map 未切回主槽位，检查 $CONF"
   return 0
 }
 
