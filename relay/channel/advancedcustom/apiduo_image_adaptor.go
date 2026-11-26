@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/imageusage"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -153,6 +154,30 @@ func (a *Adaptor) prepareImageProtocol(
 	// 上游一次只产出一张，n 不是扇出指令（planImageRequestWithModel 把它改写成 1）；
 	// chat / responses / Gemini 原生三个入口的折叠函数刻意不搬 n，所以那里恒为 1。
 	a.imageRequestCount = requestedImageCount(canonical)
+
+	// APIDUO:image-usage-estimate:BEGIN
+	// 五个入口在这里收敛。images 入口的估算在 relay/image_handler.go 里算，
+	// 其余四个入口不经过那段代码 —— 不在这里补，ark / gemini 上游不返 usage
+	// 时就落 {1,0,1}：实测同一模型 gemini 入口扣 38 quota、images 入口扣 170063
+	// （差 4475 倍，客户走 gemini 入口几乎免费）。只在缺席时补，不覆盖
+	// image_handler 已算好的那份。
+	if info.EstimatedImageUsage == nil {
+		estimateModel := strings.TrimSpace(info.UpstreamModelName)
+		if !imageusage.Supported(estimateModel) {
+			estimateModel = strings.TrimSpace(info.OriginModelName)
+		}
+		prompt, _ := canonical.fields["prompt"].(string)
+		size, _ := canonical.fields["size"].(string)
+		quality, _ := canonical.fields["quality"].(string)
+		if estimate, ok := imageusage.ForRequest(
+			estimateModel, prompt, size, quality,
+			a.imageRequestCount, len(canonical.imageRefs()),
+		); ok {
+			info.EstimatedImageUsage = estimate.Usage()
+			info.EstimatedImageCount = a.imageRequestCount
+		}
+	}
+	// APIDUO:image-usage-estimate:END
 	return plan, true, nil
 }
 

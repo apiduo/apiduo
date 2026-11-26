@@ -1042,6 +1042,47 @@ func TestPlanARKUsesFoldedGeminiSize(t *testing.T) {
 	}
 }
 
+// gemini / chat / responses 入口不经过 image_handler 的估算，必须在
+// prepareImageProtocol 补：否则上游不返 usage 时只扣 {1,0,1}。
+// 实测：同一模型 gemini 入口 38 quota、images 入口 170063。
+func TestPrepareImageProtocolEstimatesUsageForGeminiEntry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost,
+		"/v1beta/models/gemini-3.1-flash-image-preview:generateContent", bytes.NewReader([]byte(`{}`)))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	info := &common.RelayInfo{
+		RelayMode: relayconstant.RelayModeGemini,
+		ChannelMeta: &common.ChannelMeta{
+			UpstreamModelName: "gemini-3.1-flash-image-preview",
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				ImageProtocol: &dto.ImageProtocolConfig{
+					Enabled:  true,
+					Upstream: dto.ImageUpstreamARK,
+				},
+			},
+		},
+		Request: geminiImageConfigRequest("1:1", "2K"),
+	}
+
+	adaptor := &Adaptor{}
+	if _, handled, err := adaptor.prepareImageProtocol(c, info); err != nil || !handled {
+		t.Fatalf("prepareImageProtocol: handled=%v err=%v", handled, err)
+	}
+	if info.EstimatedImageUsage == nil {
+		t.Fatal("gemini 入口必须在本层补估算，否则上游不返 usage 时只扣 1 token")
+	}
+	if info.EstimatedImageUsage.CompletionTokens <= 0 {
+		t.Fatalf("估算的 completion tokens = %d，图片请求必须计入输出侧",
+			info.EstimatedImageUsage.CompletionTokens)
+	}
+	if info.EstimatedImageCount != 1 {
+		t.Fatalf("EstimatedImageCount = %d, want 1", info.EstimatedImageCount)
+	}
+}
+
 // Gemini 入口必须真的走图片协议层，不能落回原生 Gemini 适配器。
 // 这是 prepareImageProtocol 的 RelayModeGemini 分支门禁：分支丢了，请求会落到
 // 原生适配器，size 与多垫图一起消失（ServesPath 那条链路由 dto 包的用例钉住）。
